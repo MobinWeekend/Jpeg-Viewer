@@ -12,6 +12,7 @@ rayon = "1.12.0"
 rfd = "0.17.2"
 pollster = "1.0.1"
 rust-ini = "0.21.3"
+zip = "8.6.0"
 
 [build-dependencies]
 winresource = "0.1"

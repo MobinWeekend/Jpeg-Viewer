@@ -1,23 +1,20 @@
+use crate::settings::SettingsManager;
 use eframe::egui;
-//use egui::Checkbox;
-//use eframe::glow::ZERO;
-//use egui::Direction;
-//use egui_extras::widgets::Toggle;
 use image::DynamicImage;
 use rayon::spawn;
-use std::sync::mpsc::{channel, Receiver};
-use std::path::PathBuf;
 use std::fs;
-use crate::settings::SettingsManager;
+use std::fs::File;
+use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, channel};
+use zip::ZipArchive;
 
 pub struct ViewerApp {
     texture: Option<egui::TextureHandle>,
     receiver: Option<Receiver<DynamicImage>>,
     zoom: f32,
     pan: egui::Vec2,
-    current_image_path: Option<PathBuf>,
     current_directory: Option<PathBuf>,
-    image_files: Vec<PathBuf>,
+    image_entries: Vec<ImageEntry>,
     current_index: usize,
     is_loading: bool,
     is_fit_to_window: bool,
@@ -26,6 +23,19 @@ pub struct ViewerApp {
     is_zoom_used: bool,
     is_ctrl_invert: bool,
     settings_manager: SettingsManager,
+}
+
+#[derive(Clone, Debug)]
+pub struct ZipImage {
+    pub archive_path: PathBuf,
+    pub entry_index: usize,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum ImageEntry {
+    File(PathBuf),
+    Zip(ZipImage),
 }
 
 impl Default for ViewerApp {
@@ -38,9 +48,7 @@ impl Default for ViewerApp {
             receiver: None,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
-            current_image_path: None,
             current_directory: None,
-            image_files: Vec::new(),
             current_index: 0,
             is_loading: false,
             is_fit_to_window: false,
@@ -49,29 +57,122 @@ impl Default for ViewerApp {
             is_zoom_used: false,
             is_ctrl_invert: settings.is_ctrl_invert,
             settings_manager,
+            image_entries: Vec::new(),
         }
     }
 }
 
+// ====== ViewerApp  ======
 impl ViewerApp {
     fn load_image(&mut self, path: PathBuf) {
         // Store the directory and find all images
         if let Some(parent) = path.parent() {
             self.current_directory = Some(parent.to_path_buf());
-            
+
             // Get all image files in the directory
             let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
             let mut files: Vec<PathBuf> = fs::read_dir(parent)
                 .ok()
                 .into_iter()
                 .flat_map(|entries| {
-                    entries.filter_map(|entry| {
+                    entries
+                        .filter_map(|entry| {
+                            let entry = entry.ok()?;
+                            let path = entry.path();
+                            // have to seperate the is_file to seperate the zip form photo
+                            if path.is_file() {
+                                if let Some(ext) = path.extension() {
+                                    if let Some(ext_str) = ext.to_str() {
+                                        if image_extensions
+                                            .iter()
+                                            .any(|&e| e.eq_ignore_ascii_case(ext_str))
+                                        {
+                                            return Some(path);
+                                        }
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+
+            files.sort();
+
+            if let Some(index) = files.iter().position(|p| p == &path) {
+                let mut entries = Vec::new();
+                // instead of image files we have ImageEntrys (for also supporting zip)
+                for file in files {
+                    entries.push(ImageEntry::File(file));
+                }
+
+                self.set_image_entries(entries, index);
+                self.current_index = index;
+            }
+        }
+    }
+
+    fn load_current_image(&mut self) {
+        let entry = match self.image_entries.get(self.current_index) {
+            Some(entry) => entry.clone(),
+            None => return,
+        };
+
+        self.is_loading = true;
+
+        let (tx, rx) = channel();
+
+        spawn(move || {
+            let image = match entry {
+                ImageEntry::File(path) => crate::loader::load(path),
+                ImageEntry::Zip(zip) => crate::loader::load_zip_image(zip),
+            };
+
+            if let Some(img) = image {
+                let _ = tx.send(img);
+            }
+        });
+
+        self.receiver = Some(rx);
+    }
+
+    fn navigate_images(&mut self, direction: i32) {
+        if self.image_entries.is_empty() {
+            return;
+        }
+
+        let len = self.image_entries.len();
+        let new_index = (self.current_index as i32 + direction).rem_euclid(len as i32) as usize;
+
+        if new_index != self.current_index {
+            self.current_index = new_index;
+            self.pan = egui::Vec2::ZERO;
+            self.is_fit_to_window = true;
+            self.image_rect = None;
+            self.load_current_image();
+        }
+        self.is_zoom_used = false;
+    }
+
+    fn load_directory(&mut self, path: &PathBuf) {
+        self.current_directory = Some(path.clone());
+        let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
+        let files: Vec<PathBuf> = fs::read_dir(path)
+            .ok()
+            .into_iter()
+            .flat_map(|entries| {
+                entries
+                    .filter_map(|entry| {
                         let entry = entry.ok()?;
                         let path = entry.path();
                         if path.is_file() {
                             if let Some(ext) = path.extension() {
                                 if let Some(ext_str) = ext.to_str() {
-                                    if image_extensions.iter().any(|&e| e.eq_ignore_ascii_case(ext_str)) {
+                                    if image_extensions
+                                        .iter()
+                                        .any(|&e| e.eq_ignore_ascii_case(ext_str))
+                                    {
                                         return Some(path);
                                     }
                                 }
@@ -80,59 +181,120 @@ impl ViewerApp {
                         None
                     })
                     .collect::<Vec<_>>()
-                })
-                .collect();
-            
-            files.sort();
-            
-            if let Some(index) = files.iter().position(|p| p == &path) {
-                self.image_files = files;
-                self.current_index = index;
-                self.current_image_path = Some(path);
-            }
-        }
-    }
+            })
+            .collect();
 
-    fn load_current_image(&mut self) {
-        if let Some(path) = &self.current_image_path {
-            self.is_loading = true;
-            let (tx, rx) = channel();
-            let path_clone = path.clone();
-
-            spawn(move || {
-                if let Some(img) = crate::loader::load(path_clone) {
-                    let _ = tx.send(img);
-                }
-            });
-
-            self.receiver = Some(rx);
-        }
-    }
-
-    fn navigate_images(&mut self, direction: i32) {
-        if self.image_files.is_empty() {
+        if files.is_empty() {
+            println!("No images found in directory: {:?}", path);
             return;
         }
+        let mut entries = Vec::new();
 
-        let len = self.image_files.len();
-        let new_index = (self.current_index as i32 + direction).rem_euclid(len as i32) as usize;
-        
-        if new_index != self.current_index {
-            self.current_index = new_index;
-            if let Some(path) = self.image_files.get(new_index) {
-                self.current_image_path = Some(path.clone());
-                self.pan = egui::Vec2::ZERO;
-                self.is_fit_to_window = true;
-                self.image_rect = None;
-                self.load_current_image();
+        for file in files {
+            entries.push(ImageEntry::File(file));
+        }
+
+        self.set_image_entries(entries, 0);
+        self.current_index = 0;
+        self.zoom = 1.0;
+        self.is_fit_to_window = true;
+        self.pan = egui::Vec2::ZERO;
+        self.load_current_image();
+    }
+
+    // ===== zip file support =====
+
+    fn scan_zip(path: &PathBuf) -> Vec<ImageEntry> {
+        let mut images = Vec::new();
+
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(err) => {
+                eprintln!("Failed to open ZIP: {}", err);
+                return images;
+            }
+        };
+
+        let mut archive = match ZipArchive::new(file) {
+            Ok(archive) => archive,
+            Err(err) => {
+                eprintln!("Failed to read ZIP: {}", err);
+                return images;
+            }
+        };
+
+        for i in 0..archive.len() {
+            let entry = match archive.by_index(i) {
+                Ok(entry) => entry,
+                Err(_) => continue,
+            };
+
+            if entry.is_dir() {
+                continue;
+            }
+
+            let name = entry.name().to_string();
+
+            let extension = std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+
+            if matches!(
+                extension.as_str(),
+                "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp"
+            ) {
+                images.push(ImageEntry::Zip(ZipImage {
+                    archive_path: path.clone(),
+                    entry_index: i,
+                    name,
+                }));
             }
         }
-        self.is_zoom_used = false;
+
+        println!("Found {} image(s) in ZIP.", images.len());
+
+        images
+    }
+
+    // handeling entries
+    fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
+        self.image_entries = entries;
+        self.current_index = current_index;
+        self.pan = egui::Vec2::ZERO;
+        self.is_fit_to_window = true;
+        self.load_current_image();
     }
 }
 
+// ====== eframe  ======
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // drag & drop
+        let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
+
+        if !dropped_files.is_empty() {
+            for file in dropped_files {
+                if let Some(path) = file.path {
+                    if path.is_dir() {
+                        self.load_directory(&path);
+                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        match ext.to_ascii_lowercase().as_str() {
+                            "zip" => {
+                                self.set_image_entries(Self::scan_zip(&path), 0);
+                            }
+
+                            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
+                                self.load_image(path);
+                            }
+
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
 
         // check for window resize
         let current_size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
@@ -147,23 +309,11 @@ impl eframe::App for ViewerApp {
         if let Some(rx) = &self.receiver {
             if let Ok(img) = rx.try_recv() {
                 let rgba = img.to_rgba8();
-                let size = [
-                    rgba.width() as usize,
-                    rgba.height() as usize,
-                ];
-                let color = egui::ColorImage::from_rgba_unmultiplied(
-                    size,
-                    rgba.as_raw(),
-                );
+                let size = [rgba.width() as usize, rgba.height() as usize];
+                let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
 
-                self.texture = Some(
-                    ctx.load_texture(
-                        "image",
-                        color,
-                        Default::default(),
-                    ),
-                );
-                
+                self.texture = Some(ctx.load_texture("image", color, Default::default()));
+
                 // Auto-zoom to fit if image is larger than window or is_fit_to_window is true
                 self.is_fit_to_window = true;
                 self.pan = egui::Vec2::ZERO;
@@ -173,60 +323,55 @@ impl eframe::App for ViewerApp {
         }
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            if ui.button("Open").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Images", &["jpg", "jpeg", "png", "gif", "bmp", "webp"])
-                    .pick_file()
-                {
-                    self.load_image(path.clone());
-                    self.is_zoom_used = false;
-                    self.zoom = 1.0;
-                    self.is_fit_to_window = true;
-                    self.image_rect = None;
-                    self.load_current_image();
-                }
-            }
             ui.horizontal(|ui| {
+                if ui.button("Open").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Images", &["jpg", "jpeg", "png", "gif", "bmp", "webp"])
+                        .pick_file()
+                    {
+                        self.is_zoom_used = false;
+                        self.zoom = 1.0;
+                        self.is_fit_to_window = true;
+                        self.image_rect = None;
+
+                        self.load_image(path);
+                    }
+                }
+
                 ui.add(
                     egui::Slider::new(&mut self.zoom, 0.01..=10.0)
                         .logarithmic(true)
-                        .text("Zoom"),
+                        .text("Zoom | "),
                 );
 
-                //let mut is_ctrl_invert = self.settings_manager.get().is_ctrl_invert;
-                //ui.add(Checkbox::new(&mut self.is_ctrl_invert, "Invert Ctrl Scroll"));
-                if ui.checkbox(&mut self.is_ctrl_invert, "Invert Ctrl Scroll").changed() {
+                if ui
+                    .checkbox(&mut self.is_ctrl_invert, "Invert Ctrl Scroll | ")
+                    .changed()
+                {
                     // Save the setting when changed
                     let _ = self.settings_manager.update(|settings| {
                         settings.is_ctrl_invert = self.is_ctrl_invert;
                     });
                 }
 
-                /*
-                if let Some(texture) = &self.texture {
-                        let texture_limit = (texture.size_vec2() / 2.0) + ((ctx.available_rect().size() / self.zoom) / 4.0);
-                ui.add(
-                    egui::Slider::new(&mut self.pan.x, -texture_limit.x..=texture_limit.x)
-                        .logarithmic(false)
-                        .text("X"),
-                );
-
-                ui.add(
-                    egui::Slider::new(&mut self.pan.y, -texture_limit.y..=texture_limit.y)
-                        .logarithmic(false)
-                        .text("Y"),
-                );
-                } */
-
                 // Show current image info
-                if let Some(path) = &self.current_image_path {
-                    if let Some(file_name) = path.file_name() {
-                        ui.label(format!("{} ({}/{})", 
-                            file_name.to_string_lossy(),
-                            self.current_index + 1,
-                            self.image_files.len()
-                        ));
-                    }
+                if let Some(entry) = self.image_entries.get(self.current_index) {
+                    let name = match entry {
+                        ImageEntry::File(path) => path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string(),
+
+                        ImageEntry::Zip(zip) => zip.name.clone(),
+                    };
+
+                    ui.label(format!(
+                        "{} ({}/{})",
+                        name,
+                        self.current_index + 1,
+                        self.image_entries.len()
+                    ));
                 }
                 if !self.is_ctrl_invert {
                     ui.label("Scroll to navigate | Zoom with ctrl + Scroll");
@@ -242,21 +387,19 @@ impl eframe::App for ViewerApp {
                 let image_available_size = ui.available_size();
                 if self.is_fit_to_window {
                     // ^ when true, checks the image to see if it needs fiting inside the window
-                    if let Some(texture) = &self.texture {
-                        let texture_size = texture.size_vec2();
-                        let zoom_x = image_available_size.x / texture_size.x;
-                        let zoom_y = image_available_size.y / texture_size.y;
-                        let fit_zoom = zoom_x.min(zoom_y).min(1.0); // Only zoom out if needed
-                        self.zoom = fit_zoom;
-                        self.is_fit_to_window = false;
-                    }
+                    let texture_size = texture.size_vec2();
+                    let zoom_x = image_available_size.x / texture_size.x;
+                    let zoom_y = image_available_size.y / texture_size.y;
+                    let fit_zoom = zoom_x.min(zoom_y).min(1.0); // Only zoom out if needed
+                    self.zoom = fit_zoom;
+                    self.is_fit_to_window = false;
                 }
 
                 let display_size = texture_size * self.zoom;
                 //let image_fits =
                 //    display_size.x <= image_available_size.x + 0.5 &&
                 //    display_size.y <= image_available_size.y + 0.5;
-                
+
                 let viewport = ui.max_rect();
 
                 let image_rect = egui::Rect::from_center_size(
@@ -264,32 +407,30 @@ impl eframe::App for ViewerApp {
                     display_size,
                 );
 
-                ui.put(
-                    image_rect,
-                    egui::Image::new((texture.id(), display_size)),
-                );
-                
+                ui.put(image_rect, egui::Image::new((texture.id(), display_size)));
+
                 let response = ui.interact(
-                    viewport,                        // The area to interact with
-                    ui.id().with("image"),           // Unique ID for this interaction
-                    egui::Sense::drag(),             // Only detect drag gestures
+                    viewport,              // The area to interact with
+                    ui.id().with("image"), // Unique ID for this interaction
+                    egui::Sense::drag(),   // Only detect drag gestures
                 );
 
                 if response.dragged() {
                     self.pan += response.drag_delta() / self.zoom;
                     if let Some(texture) = &self.texture {
-                        let texture_limit = (texture.size_vec2() / 2.0) + ((ctx.available_rect().size() / self.zoom) / 4.0);
+                        let texture_limit = (texture.size_vec2() / 2.0)
+                            + ((ctx.available_rect().size() / self.zoom) / 4.0);
                         self.pan = self.pan.clamp(-texture_limit, texture_limit);
                     }
                 }
 
                 // Check for arrow key presses
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-                    self.navigate_images(-1);  // Go to previous image
+                    self.navigate_images(-1); // Go to previous image
                 }
 
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-                    self.navigate_images(1);   // Go to next image
+                    self.navigate_images(1); // Go to next image
                 }
 
                 let scroll_delta = ctx.input(|i| i.raw_scroll_delta);
@@ -297,66 +438,37 @@ impl eframe::App for ViewerApp {
                     // Only navigate if the image fits OR if Shift is held AND the mouse is over the image
                     let mouse_over = response.hovered();
                     let click_toggle_key_pressed = ctx.input(|i| i.modifiers.ctrl);
-                    //println!("Scroll: {}, Mouse over: {}, toggle: {}, Image fits: {}", 
-                    //    scroll_delta.y, mouse_over, click_toggle_key_pressed, image_fits);     
+                    //println!("Scroll: {}, Mouse over: {}, toggwle: {}, Image fits: {}",
+                    //    scroll_delta.y, mouse_over, click_toggle_key_pressed, image_fits);
                     if mouse_over {
-                        if (!click_toggle_key_pressed && !self.is_ctrl_invert) || (click_toggle_key_pressed && self.is_ctrl_invert) {
+                        if (!click_toggle_key_pressed && !self.is_ctrl_invert)
+                            || (click_toggle_key_pressed && self.is_ctrl_invert)
+                        {
                             let direction = if scroll_delta.y > 0.0 { -1 } else { 1 };
                             self.navigate_images(direction);
                         } else {
-                            let zoom_direction: f32 = if scroll_delta.y > 0.0 {1.0} else {-1.0};
+                            let zoom_direction: f32 = if scroll_delta.y > 0.0 { 1.0 } else { -1.0 };
                             self.zoom += self.zoom * zoom_direction * 0.1;
+                            self.zoom = self.zoom.clamp(0.01, 10.0);
                             if let Some(texture) = &self.texture {
-                                let texture_limit = (texture.size_vec2() / 2.0) + ((ctx.available_rect().size() / self.zoom) / 4.0);
+                                let texture_limit = (texture.size_vec2() / 2.0)
+                                    + ((ctx.available_rect().size() / self.zoom) / 4.0);
                                 self.pan = self.pan.clamp(-texture_limit, texture_limit);
                             }
                             self.is_zoom_used = true;
                         }
                     }
                 }
-                // Store the response to check for scroll events
-                /*let mut response = None;
-                 if image_fits {
-                    // Image fits, center it
-                    ui.centered_and_justified(|ui| {
-                        let img = ui.add(
-                            egui::Image::new((texture.id(), display_size))
-                                .fit_to_exact_size(display_size)
-                        );
-                        response = Some(img);
-                    });
-                } else {
-                    // Image doesn't fit, show with scrollbars
-                    let scroll_area = egui::ScrollArea::both()
-                        .auto_shrink([false; 2]);
-                    
-                    response = Some(scroll_area.show(ui, |ui| {
-                        ui.add(egui::Image::new((texture.id(), display_size)))
-                    }).inner);
-                }
-                
-                // Handle mouse wheel for navigation
-                // Check if scroll happened and it wasn't consumed by the scroll area
-                if let Some(resp) = response {
-                    let scroll_delta = ctx.input(|i| i.raw_scroll_delta);
-                    if scroll_delta.y != 0.0 {
-                        // Only navigate if the image fits OR if Shift is held
-                        // AND the mouse is over the image
-                        let mouse_over = resp.hovered();
-                        
-                        if (image_fits || ctx.input(|i| i.modifiers.shift)) && mouse_over {
-                            let direction = if scroll_delta.y > 0.0 { -1 } else { 1 };
-                            // Prevent navigation if we're still scrolling (debounce)
-                            self.navigate_images(direction);
-                        }
-                    }
-                } */
             } else {
                 ui.centered_and_justified(|ui| {
                     if self.is_loading {
                         ui.label("Loading image...");
                     } else {
-                        ui.label("Open an image file.");
+                        ui.label(
+                            egui::RichText::new("Open an image file, drag and drop a photo, \n\
+                            folder or a .zip file containing your photos. 😊")
+                            .size(32.0)
+                        );
                     }
                 });
             }

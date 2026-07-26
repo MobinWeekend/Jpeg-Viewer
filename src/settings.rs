@@ -107,10 +107,10 @@ impl SettingsManager {
         &self.settings
     }
 
-    /// Get a mutable reference to the current settings
-    pub fn get_mut(&mut self) -> &mut AppSettings {
-        &mut self.settings
-    }
+    // Get a mutable reference to the current settings
+    //pub fn get_mut(&mut self) -> &mut AppSettings {
+    //    &mut self.settings
+    //}
 
     /// Save current settings to disk
     pub fn save(&self) -> Result<(), String> {
@@ -126,15 +126,15 @@ impl SettingsManager {
         self.save()
     }
 
-    /// Reload settings from disk (discards in-memory changes)
-    pub fn reload(&mut self) {
-        self.settings = Self::load_from_file(&self.path);
-    }
+    // Reload settings from disk (discards in-memory changes)
+    //pub fn reload(&mut self) {
+    //    self.settings = Self::load_from_file(&self.path);
+    //}
 
-    /// Get the path to the settings file
-    pub fn path(&self) -> &PathBuf {
-        &self.path
-    }
+    // Get the path to the settings file
+    //pub fn path(&self) -> &PathBuf {
+    //    &self.path
+    //}
 }
 
 impl Default for SettingsManager {
