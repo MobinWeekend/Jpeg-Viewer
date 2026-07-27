@@ -1,4 +1,4 @@
-use crate::image_entry::{ArchiveImage, S7ArchiveImage};
+use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
 use crate::helpers::is_supported_image;
 use image::DynamicImage;
 use std::fs;
@@ -7,6 +7,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 use sevenz_rust2::{ArchiveReader, Password};
+use unrar::Archive as RarArchive;
 
 pub fn load(path: PathBuf) -> Option<DynamicImage> {
     image::open(path).ok()
@@ -35,6 +36,34 @@ pub fn load_7z_image(image: S7ArchiveImage) -> Option<DynamicImage> {
     // Decode the image
     image::load_from_memory(&bytes).ok()
 }
+
+
+pub fn load_rar_image(image: RarArchiveImage) -> Option<DynamicImage> {
+    let archive = RarArchive::new(&image.archive_path)
+        .open_for_processing()
+        .ok()?;
+
+    let mut archive = archive;
+
+    loop {
+        let header = archive.read_header().ok()??;
+
+        let filename = header
+            .entry()
+            .filename
+            .to_string_lossy()
+            .to_string();
+
+        if filename == image.name {
+            let (bytes, _) = header.read().ok()?;
+
+            return image::load_from_memory(&bytes).ok();
+        }
+
+        archive = header.skip().ok()?;
+    }
+}
+
 
 
 pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {

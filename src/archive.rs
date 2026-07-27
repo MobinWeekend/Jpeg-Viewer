@@ -1,9 +1,10 @@
-use crate::image_entry::{ArchiveImage, ImageEntry, S7ArchiveImage};
+use crate::image_entry::{ArchiveImage, ImageEntry, S7ArchiveImage, RarArchiveImage};
 use crate::helpers::is_supported_image;
 use std::fs::File;
 use std::path::Path;
 use zip::ZipArchive;
-use sevenz_rust2::Archive;
+use sevenz_rust2::Archive as SevenZipArchive;
+use unrar::Archive as RarArchive;
 
 pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
     let mut images = Vec::new();
@@ -53,7 +54,7 @@ pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
 pub fn scan_7z(path: &Path) -> Vec<ImageEntry> {
     let mut images = Vec::new();
 
-    let archive = match Archive::open(path) {
+    let archive = match SevenZipArchive::open(path) {
         Ok(archive) => archive,
         Err(err) => {
             eprintln!("Failed to open 7z archive: {}", err);
@@ -81,4 +82,41 @@ pub fn scan_7z(path: &Path) -> Vec<ImageEntry> {
     images
 }
 
-//pub fn scan_rar(path: &Path) -> Vec<ImageEntry>
+pub fn scan_rar(path: &Path) -> Vec<ImageEntry> {
+    let mut images = Vec::new();
+
+    let mut archive = match RarArchive::new(path).open_for_listing() {
+        Ok(archive) => archive,
+        Err(err) => {
+            eprintln!("Failed to open RAR: {}", err);
+            return images;
+        }
+    };
+
+    while let Some(header) = archive.read_header().unwrap_or(None) {
+        let entry = header.entry();
+
+        if !entry.is_directory() {
+            let name = entry.filename.to_string_lossy().to_string();
+
+            if is_supported_image(Path::new(&name)) {
+                images.push(ImageEntry::Rar(RarArchiveImage {
+                    archive_path: path.to_path_buf(),
+                    name,
+                }));
+            }
+        }
+
+        archive = match header.skip() {
+            Ok(next) => next,
+            Err(err) => {
+                eprintln!("Failed reading RAR entry: {}", err);
+                break;
+            }
+        };
+    }
+
+    println!("Found {} image(s) in RAR.", images.len());
+
+    images
+}

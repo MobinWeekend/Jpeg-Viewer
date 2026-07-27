@@ -1,5 +1,5 @@
 use crate::settings::SettingsManager;
-use crate::archive::{scan_zip, scan_7z};
+use crate::archive::{scan_zip, scan_7z, scan_rar};
 use crate::image_entry::ImageEntry;
 use eframe::egui;
 use image::DynamicImage;
@@ -80,6 +80,7 @@ impl ViewerApp {
                 ImageEntry::File(path) => crate::loader::load(path),
                 ImageEntry::Zip(zip) => crate::loader::load_zip_image(zip),
                 ImageEntry::S7z(s7z) => crate::loader::load_7z_image(s7z),
+                ImageEntry::Rar(rar) => crate::loader::load_rar_image(rar),
             };
 
             if let Some(img) = image {
@@ -153,6 +154,9 @@ impl eframe::App for ViewerApp {
                             }
                             "7z" => {
                                 self.set_image_entries(scan_7z(&path), 0);
+                            }
+                            "rar" => {
+                                self.set_image_entries(scan_rar(&path), 0);
                             }
 
                             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
@@ -235,6 +239,7 @@ impl eframe::App for ViewerApp {
 
                         ImageEntry::Zip(zip) => zip.name.clone(),
                         ImageEntry::S7z(s7z) => s7z.name.clone(),
+                        ImageEntry::Rar(rar) => rar.name.clone(),
                     };
 
                     ui.label(format!(
@@ -337,8 +342,8 @@ impl eframe::App for ViewerApp {
                     } else {
                         ui.label(
                             egui::RichText::new(
-                                "Open an image file, drag and drop a photo, \n\
-                            folder or a .zip, 7z file containing your photos. 😊",
+                                "Open or drag and drop a photo, folder \n\
+                                or a (.zip, .7z and .rar) file containing your photos. 😊",
                             )
                             .size(32.0),
                         );
