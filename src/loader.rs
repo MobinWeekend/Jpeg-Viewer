@@ -1,4 +1,5 @@
-use crate::app::ZipImage;
+use crate::image_entry::ArchiveImage;
+use crate::helpers::is_supported_image;
 use image::DynamicImage;
 use std::fs;
 use std::fs::File;
@@ -10,7 +11,7 @@ pub fn load(path: PathBuf) -> Option<DynamicImage> {
     image::open(path).ok()
 }
 
-pub fn load_zip_image(image: ZipImage) -> Option<image::DynamicImage> {
+pub fn load_zip_image(image: ArchiveImage) -> Option<image::DynamicImage> {
     let file = File::open(&image.archive_path).ok()?;
     let mut archive = ZipArchive::new(file).ok()?;
 
@@ -23,7 +24,6 @@ pub fn load_zip_image(image: ZipImage) -> Option<image::DynamicImage> {
 }
 
 pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
-    let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
     let mut files: Vec<PathBuf> = fs::read_dir(path)
         .ok()
         .into_iter()
@@ -32,18 +32,9 @@ pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
                 .filter_map(|entry| {
                     let entry = entry.ok()?;
                     let path = entry.path();
-                    if path.is_file() {
-                        if let Some(ext) = path.extension() {
-                            if let Some(ext_str) = ext.to_str() {
-                                if image_extensions
-                                    .iter()
-                                    .any(|e| e.eq_ignore_ascii_case(ext_str))
-                                {
-                                    return Some(path);
-                                }
-                            }
-                        }
-                    }
+                    if path.is_file() && is_supported_image(&path) {
+    return Some(path);
+}
                     None
                 })
                 .collect::<Vec<_>>()

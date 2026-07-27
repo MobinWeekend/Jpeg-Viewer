@@ -1,11 +1,12 @@
 use crate::settings::SettingsManager;
+use crate::archive::scan_zip;
+use crate::image_entry::ImageEntry;
 use eframe::egui;
 use image::DynamicImage;
 use rayon::spawn;
-use std::fs::File;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
-use zip::ZipArchive;
+
 
 pub struct ViewerApp {
     texture: Option<egui::TextureHandle>,
@@ -22,19 +23,6 @@ pub struct ViewerApp {
     is_zoom_used: bool,
     is_ctrl_invert: bool,
     settings_manager: SettingsManager,
-}
-
-#[derive(Clone, Debug)]
-pub struct ZipImage {
-    pub archive_path: PathBuf,
-    pub entry_index: usize,
-    pub name: String,
-}
-
-#[derive(Clone, Debug)]
-pub enum ImageEntry {
-    File(PathBuf),
-    Zip(ZipImage),
 }
 
 impl Default for ViewerApp {
@@ -135,62 +123,7 @@ impl ViewerApp {
         self.zoom = 1.0;
     }
 
-    // ===== zip file support =====
-
-    fn scan_zip(path: &PathBuf) -> Vec<ImageEntry> {
-        let mut images = Vec::new();
-
-        let file = match File::open(path) {
-            Ok(file) => file,
-            Err(err) => {
-                eprintln!("Failed to open ZIP: {}", err);
-                return images;
-            }
-        };
-
-        let mut archive = match ZipArchive::new(file) {
-            Ok(archive) => archive,
-            Err(err) => {
-                eprintln!("Failed to read ZIP: {}", err);
-                return images;
-            }
-        };
-
-        for i in 0..archive.len() {
-            let entry = match archive.by_index(i) {
-                Ok(entry) => entry,
-                Err(_) => continue,
-            };
-
-            if entry.is_dir() {
-                continue;
-            }
-
-            let name = entry.name().to_string();
-
-            let extension = std::path::Path::new(&name)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-
-            if matches!(
-                extension.as_str(),
-                "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp"
-            ) {
-                images.push(ImageEntry::Zip(ZipImage {
-                    archive_path: path.clone(),
-                    entry_index: i,
-                    name,
-                }));
-            }
-        }
-
-        println!("Found {} image(s) in ZIP.", images.len());
-
-        images
-    }
-
+    
     // handeling entries
     fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
         self.image_entries = entries;
@@ -215,7 +148,7 @@ impl eframe::App for ViewerApp {
                     } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         match ext.to_ascii_lowercase().as_str() {
                             "zip" => {
-                                self.set_image_entries(Self::scan_zip(&path), 0);
+                                self.set_image_entries(scan_zip(&path), 0);
                             }
 
                             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {

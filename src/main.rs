@@ -2,6 +2,9 @@
 mod app;
 mod loader;
 mod settings;
+mod archive;
+mod image_entry;
+mod helpers;
 
 use app::ViewerApp;
 
