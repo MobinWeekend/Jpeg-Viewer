@@ -1,5 +1,5 @@
 use crate::settings::SettingsManager;
-use crate::archive::scan_zip;
+use crate::archive::{scan_zip, scan_7z};
 use crate::image_entry::ImageEntry;
 use eframe::egui;
 use image::DynamicImage;
@@ -79,6 +79,7 @@ impl ViewerApp {
             let image = match entry {
                 ImageEntry::File(path) => crate::loader::load(path),
                 ImageEntry::Zip(zip) => crate::loader::load_zip_image(zip),
+                ImageEntry::S7z(s7z) => crate::loader::load_7z_image(s7z),
             };
 
             if let Some(img) = image {
@@ -123,7 +124,7 @@ impl ViewerApp {
         self.zoom = 1.0;
     }
 
-    
+
     // handeling entries
     fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
         self.image_entries = entries;
@@ -149,6 +150,9 @@ impl eframe::App for ViewerApp {
                         match ext.to_ascii_lowercase().as_str() {
                             "zip" => {
                                 self.set_image_entries(scan_zip(&path), 0);
+                            }
+                            "7z" => {
+                                self.set_image_entries(scan_7z(&path), 0);
                             }
 
                             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
@@ -230,6 +234,7 @@ impl eframe::App for ViewerApp {
                             .to_string(),
 
                         ImageEntry::Zip(zip) => zip.name.clone(),
+                        ImageEntry::S7z(s7z) => s7z.name.clone(),
                     };
 
                     ui.label(format!(
@@ -333,7 +338,7 @@ impl eframe::App for ViewerApp {
                         ui.label(
                             egui::RichText::new(
                                 "Open an image file, drag and drop a photo, \n\
-                            folder or a .zip file containing your photos. 😊",
+                            folder or a .zip, 7z file containing your photos. 😊",
                             )
                             .size(32.0),
                         );

@@ -1,8 +1,9 @@
-use crate::image_entry::{ArchiveImage, ImageEntry};
+use crate::image_entry::{ArchiveImage, ImageEntry, S7ArchiveImage};
 use crate::helpers::is_supported_image;
 use std::fs::File;
 use std::path::Path;
 use zip::ZipArchive;
+use sevenz_rust2::Archive;
 
 pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
     let mut images = Vec::new();
@@ -48,6 +49,36 @@ pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
     images
 }
 
-//pub fn scan_7z(path: &Path) -> Vec<ImageEntry>
+
+pub fn scan_7z(path: &Path) -> Vec<ImageEntry> {
+    let mut images = Vec::new();
+
+    let archive = match Archive::open(path) {
+        Ok(archive) => archive,
+        Err(err) => {
+            eprintln!("Failed to open 7z archive: {}", err);
+            return images;
+        }
+    };
+
+    for entry in &archive.files {
+        if entry.is_directory() {
+            continue;
+        }
+
+        let name = entry.name().to_string();
+
+        if is_supported_image(Path::new(&name)) {
+            images.push(ImageEntry::S7z(S7ArchiveImage {
+                archive_path: path.to_path_buf(),
+                name,
+            }));
+        }
+    }
+
+    println!("Found {} image(s) in 7z.", images.len());
+
+    images
+}
 
 //pub fn scan_rar(path: &Path) -> Vec<ImageEntry>

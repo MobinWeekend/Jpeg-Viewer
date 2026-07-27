@@ -8,7 +8,14 @@ pub struct ArchiveImage {
 }
 
 #[derive(Clone, Debug)]
+pub struct S7ArchiveImage {
+    pub archive_path: PathBuf,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
 pub enum ImageEntry {
     File(PathBuf),
     Zip(ArchiveImage),
+    S7z(S7ArchiveImage),
 }

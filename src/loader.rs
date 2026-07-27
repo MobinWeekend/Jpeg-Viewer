@@ -1,4 +1,4 @@
-use crate::image_entry::ArchiveImage;
+use crate::image_entry::{ArchiveImage, S7ArchiveImage};
 use crate::helpers::is_supported_image;
 use image::DynamicImage;
 use std::fs;
@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
+use sevenz_rust2::{ArchiveReader, Password};
 
 pub fn load(path: PathBuf) -> Option<DynamicImage> {
     image::open(path).ok()
@@ -22,6 +23,19 @@ pub fn load_zip_image(image: ArchiveImage) -> Option<image::DynamicImage> {
 
     image::load_from_memory(&bytes).ok()
 }
+
+pub fn load_7z_image(image: S7ArchiveImage) -> Option<DynamicImage> {
+    // Open the archive
+    let mut reader =
+        ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
+
+    // Read the requested file
+    let bytes = reader.read_file(&image.name).ok()?;
+
+    // Decode the image
+    image::load_from_memory(&bytes).ok()
+}
+
 
 pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(path)
