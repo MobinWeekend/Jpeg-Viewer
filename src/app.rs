@@ -1,12 +1,14 @@
-use crate::settings::SettingsManager;
-use crate::archive::{scan_zip, scan_7z, scan_rar};
+use crate::archive::{scan_7z, scan_rar, scan_zip};
+use crate::helpers::{get_extension, is_supported_image};
 use crate::image_entry::ImageEntry;
+use crate::settings::SettingsManager;
+use crate::shortcuts::{KeyBindings, ViewerCommand, handle_keyboard, handle_mouse};
 use eframe::egui;
 use image::DynamicImage;
 use rayon::spawn;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
-
+use crate::helpers::{IMAGE_EXT, ARCHIVE_EXT};
 
 pub struct ViewerApp {
     texture: Option<egui::TextureHandle>,
@@ -23,6 +25,7 @@ pub struct ViewerApp {
     is_zoom_used: bool,
     is_ctrl_invert: bool,
     settings_manager: SettingsManager,
+    pub key_bindings: KeyBindings,
 }
 
 impl Default for ViewerApp {
@@ -45,11 +48,11 @@ impl Default for ViewerApp {
             is_ctrl_invert: settings.is_ctrl_invert,
             settings_manager,
             image_entries: Vec::new(),
+            key_bindings: KeyBindings::default(),
         }
     }
 }
 
-// ====== ViewerApp  ======
 impl ViewerApp {
     fn load_image(&mut self, path: PathBuf) {
         if let Some(parent) = path.parent() {
@@ -116,15 +119,11 @@ impl ViewerApp {
             println!("No images found in directory: {:?}", path);
             return;
         }
-        let entries = files
-        .into_iter()
-        .map(ImageEntry::File)
-        .collect();
+        let entries = files.into_iter().map(ImageEntry::File).collect();
 
         self.set_image_entries(entries, 0);
         self.zoom = 1.0;
     }
-
 
     // handeling entries
     fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
@@ -134,39 +133,106 @@ impl ViewerApp {
         self.is_fit_to_window = true;
         self.load_current_image();
     }
+
+    fn handle_command(&mut self, command: ViewerCommand) {
+        match command {
+            ViewerCommand::NextImage => {
+                self.navigate_images(1);
+            }
+
+            ViewerCommand::PreviousImage => {
+                self.navigate_images(-1);
+            }
+
+            ViewerCommand::ZoomIn => {
+                self.zoom *= 1.1;
+                self.zoom = self.zoom.clamp(0.01, 10.0);
+                self.is_zoom_used = true;
+            }
+
+            ViewerCommand::ZoomOut => {
+                self.zoom /= 1.1;
+                self.zoom = self.zoom.clamp(0.01, 10.0);
+                self.is_zoom_used = true;
+            }
+
+            ViewerCommand::ResetZoom => {
+                self.zoom = 1.0;
+            }
+
+            ViewerCommand::ToggleFit => {
+                self.is_fit_to_window = !self.is_fit_to_window;
+            }
+
+            ViewerCommand::OpenFile => {
+                self.open_file_dialog();
+            }
+        }
+    }
+
+    fn open_path(&mut self, path: PathBuf) {
+        self.is_zoom_used = false;
+        self.zoom = 1.0;
+        self.is_fit_to_window = true;
+        self.image_rect = None;
+
+        if path.is_dir() {
+            self.load_directory(&path);
+            return;
+        }
+
+        match get_extension(&path).as_deref() {
+            Some("zip") => {
+                self.set_image_entries(scan_zip(&path), 0);
+            }
+
+            Some("7z") => {
+                self.set_image_entries(scan_7z(&path), 0);
+            }
+
+            Some("rar") => {
+                self.set_image_entries(scan_rar(&path), 0);
+            }
+
+            Some(_) if is_supported_image(&path) => {
+                self.load_image(path);
+            }
+
+            _ => {
+                println!("Unsupported file: {:?}", path);
+            }
+        }
+    }
+
+    fn open_file_dialog(&mut self) {
+        let mut extensions = Vec::new();
+        extensions.extend_from_slice(IMAGE_EXT);
+        extensions.extend_from_slice(ARCHIVE_EXT);
+
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Images and Archives", &extensions)
+            .pick_file()
+        {
+            self.open_path(path);
+        }
+    }
 }
 
-// ====== eframe  ======
+// =========== update  ===========
+
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // keys
+        for command in handle_keyboard(ctx, &self.key_bindings) {
+            self.handle_command(command);
+        }
+
         // drag & drop
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
 
-        if !dropped_files.is_empty() {
-            for file in dropped_files {
-                if let Some(path) = file.path {
-                    if path.is_dir() {
-                        self.load_directory(&path);
-                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        match ext.to_ascii_lowercase().as_str() {
-                            "zip" => {
-                                self.set_image_entries(scan_zip(&path), 0);
-                            }
-                            "7z" => {
-                                self.set_image_entries(scan_7z(&path), 0);
-                            }
-                            "rar" => {
-                                self.set_image_entries(scan_rar(&path), 0);
-                            }
-
-                            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" => {
-                                self.load_image(path);
-                            }
-
-                            _ => {}
-                        }
-                    }
-                }
+        for file in dropped_files {
+            if let Some(path) = file.path {
+                self.open_path(path);
             }
         }
 
@@ -199,17 +265,7 @@ impl eframe::App for ViewerApp {
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Open").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Images", &["jpg", "jpeg", "png", "gif", "bmp", "webp"])
-                        .pick_file()
-                    {
-                        self.is_zoom_used = false;
-                        self.zoom = 1.0;
-                        self.is_fit_to_window = true;
-                        self.image_rect = None;
-
-                        self.load_image(path);
-                    }
+                    self.handle_command(ViewerCommand::OpenFile);
                 }
 
                 ui.add(
@@ -291,48 +347,16 @@ impl eframe::App for ViewerApp {
                     egui::Sense::drag(),   // Only detect drag gestures
                 );
 
+                for command in handle_mouse(ctx, self.is_ctrl_invert, response.hovered()) {
+                    self.handle_command(command);
+                }
+
                 if response.dragged() {
                     self.pan += response.drag_delta() / self.zoom;
                     if let Some(texture) = &self.texture {
                         let texture_limit = (texture.size_vec2() / 2.0)
                             + ((ctx.available_rect().size() / self.zoom) / 4.0);
                         self.pan = self.pan.clamp(-texture_limit, texture_limit);
-                    }
-                }
-
-                // Check for arrow key presses
-                if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-                    self.navigate_images(-1); // Go to previous image
-                }
-
-                if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-                    self.navigate_images(1); // Go to next image
-                }
-
-                let scroll_delta = ctx.input(|i| i.raw_scroll_delta);
-                if scroll_delta.y != 0.0 {
-                    // Only navigate if the image fits OR if Shift is held AND the mouse is over the image
-                    let mouse_over = response.hovered();
-                    let click_toggle_key_pressed = ctx.input(|i| i.modifiers.ctrl);
-                    //println!("Scroll: {}, Mouse over: {}, toggwle: {}, Image fits: {}",
-                    //    scroll_delta.y, mouse_over, click_toggle_key_pressed, image_fits);
-                    if mouse_over {
-                        if (!click_toggle_key_pressed && !self.is_ctrl_invert)
-                            || (click_toggle_key_pressed && self.is_ctrl_invert)
-                        {
-                            let direction = if scroll_delta.y > 0.0 { -1 } else { 1 };
-                            self.navigate_images(direction);
-                        } else {
-                            let zoom_direction: f32 = if scroll_delta.y > 0.0 { 1.0 } else { -1.0 };
-                            self.zoom += self.zoom * zoom_direction * 0.1;
-                            self.zoom = self.zoom.clamp(0.01, 10.0);
-                            if let Some(texture) = &self.texture {
-                                let texture_limit = (texture.size_vec2() / 2.0)
-                                    + ((ctx.available_rect().size() / self.zoom) / 4.0);
-                                self.pan = self.pan.clamp(-texture_limit, texture_limit);
-                            }
-                            self.is_zoom_used = true;
-                        }
                     }
                 }
             } else {

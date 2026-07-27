@@ -1,6 +1,6 @@
 use std::path::Path;
 
-const IMAGE_EXT: &[&str] = &[
+pub const IMAGE_EXT: &[&str] = &[
     "jpg",
     "jpeg",
     "png",
@@ -8,6 +8,18 @@ const IMAGE_EXT: &[&str] = &[
     "bmp",
     "webp",
 ];
+
+pub const ARCHIVE_EXT: &[&str] = &[
+    "zip",
+    "7z",
+    "rar",
+];
+
+pub fn get_extension(path: &Path) -> Option<String> {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+}
 
 pub fn is_supported_image(path: &Path) -> bool {
      path.extension()
@@ -20,3 +32,18 @@ pub fn is_supported_image(path: &Path) -> bool {
         })
         .unwrap_or(false)
 }
+
+/*
+// this will be used one day...
+pub fn is_supported_archive(path: &Path) -> bool {
+     path.extension()
+        .and_then(|ext| ext.to_str()) //Convert to UTF-8 Option<&OsStr> becomes Option<&Str>
+        // support check
+        .map(|ext| {
+            ARCHIVE_EXT
+                .iter()
+                .any(|supported| supported.eq_ignore_ascii_case(ext))
+        })
+        .unwrap_or(false)
+}
+*/

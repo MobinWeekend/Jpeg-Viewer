@@ -5,6 +5,7 @@ mod settings;
 mod archive;
 mod image_entry;
 mod helpers;
+mod shortcuts;
 
 use app::ViewerApp;
 
