@@ -2,7 +2,6 @@ use crate::settings::SettingsManager;
 use eframe::egui;
 use image::DynamicImage;
 use rayon::spawn;
-use std::fs;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
@@ -65,50 +64,15 @@ impl Default for ViewerApp {
 // ====== ViewerApp  ======
 impl ViewerApp {
     fn load_image(&mut self, path: PathBuf) {
-        // Store the directory and find all images
         if let Some(parent) = path.parent() {
             self.current_directory = Some(parent.to_path_buf());
 
-            // Get all image files in the directory
-            let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
-            let mut files: Vec<PathBuf> = fs::read_dir(parent)
-                .ok()
-                .into_iter()
-                .flat_map(|entries| {
-                    entries
-                        .filter_map(|entry| {
-                            let entry = entry.ok()?;
-                            let path = entry.path();
-                            // have to seperate the is_file to seperate the zip form photo
-                            if path.is_file() {
-                                if let Some(ext) = path.extension() {
-                                    if let Some(ext_str) = ext.to_str() {
-                                        if image_extensions
-                                            .iter()
-                                            .any(|&e| e.eq_ignore_ascii_case(ext_str))
-                                        {
-                                            return Some(path);
-                                        }
-                                    }
-                                }
-                            }
-                            None
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect();
-
-            files.sort();
+            let files = crate::loader::load_directory_images(parent);
 
             if let Some(index) = files.iter().position(|p| p == &path) {
-                let mut entries = Vec::new();
-                // instead of image files we have ImageEntrys (for also supporting zip)
-                for file in files {
-                    entries.push(ImageEntry::File(file));
-                }
+                let entries = files.into_iter().map(ImageEntry::File).collect();
 
                 self.set_image_entries(entries, index);
-                self.current_index = index;
             }
         }
     }
@@ -157,49 +121,18 @@ impl ViewerApp {
 
     fn load_directory(&mut self, path: &PathBuf) {
         self.current_directory = Some(path.clone());
-        let image_extensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
-        let files: Vec<PathBuf> = fs::read_dir(path)
-            .ok()
-            .into_iter()
-            .flat_map(|entries| {
-                entries
-                    .filter_map(|entry| {
-                        let entry = entry.ok()?;
-                        let path = entry.path();
-                        if path.is_file() {
-                            if let Some(ext) = path.extension() {
-                                if let Some(ext_str) = ext.to_str() {
-                                    if image_extensions
-                                        .iter()
-                                        .any(|&e| e.eq_ignore_ascii_case(ext_str))
-                                    {
-                                        return Some(path);
-                                    }
-                                }
-                            }
-                        }
-                        None
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-
+        let files = crate::loader::load_directory_images(path);
         if files.is_empty() {
             println!("No images found in directory: {:?}", path);
             return;
         }
-        let mut entries = Vec::new();
-
-        for file in files {
-            entries.push(ImageEntry::File(file));
-        }
+        let entries = files
+        .into_iter()
+        .map(ImageEntry::File)
+        .collect();
 
         self.set_image_entries(entries, 0);
-        self.current_index = 0;
         self.zoom = 1.0;
-        self.is_fit_to_window = true;
-        self.pan = egui::Vec2::ZERO;
-        self.load_current_image();
     }
 
     // ===== zip file support =====
@@ -465,9 +398,11 @@ impl eframe::App for ViewerApp {
                         ui.label("Loading image...");
                     } else {
                         ui.label(
-                            egui::RichText::new("Open an image file, drag and drop a photo, \n\
-                            folder or a .zip file containing your photos. 😊")
-                            .size(32.0)
+                            egui::RichText::new(
+                                "Open an image file, drag and drop a photo, \n\
+                            folder or a .zip file containing your photos. 😊",
+                            )
+                            .size(32.0),
                         );
                     }
                 });
