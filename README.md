@@ -11,6 +11,32 @@ Created primarily for personal use, this project aims to provide a responsive im
 
 More formats, improvements, and features are coming as the project continues to grow.
 
+## Features
+
+- **GPU-accelerated rendering** using `egui` and `wgpu`
+- **Archive support**: View images inside `.zip`, `.7z`, and `.rar` archives without extracting
+- **GIF animation support** with speed control and playback controls
+- **Smart caching system** with configurable cache radius for smooth navigation
+- **Background preloading** of adjacent images for seamless browsing
+- **Full screen mode** for immersive viewing
+- **Persistent settings** saved automatically
+- **Drag and drop** support for images, folders, and archives
+- **Trash/Recycle Bin integration** for deleting images
+
+## Supported Formats
+
+| Format | Support |
+|--------|---------|
+| JPEG/JPG | ✅ Full |
+| PNG | ✅ Full |
+| GIF | ✅ Full (with Speed controls) |
+| BMP | ✅ Full |
+| WEBP | ✅ Full |
+
+### Archive Support
+- ZIP archives (`.zip`)
+- 7-Zip archives (`.7z`)
+- RAR archives (`.rar`)
 
 ## Keyboard & Mouse Shortcuts
 
@@ -28,10 +54,17 @@ More formats, improvements, and features are coming as the project continues to 
 | Reset Zoom (100%) | `W` / `Up Arrow` |
 | Fit Image to Window | `S` / `Down Arrow` / `Num 0` |
 | Toggle Fullscreen | `F11` / `Enter` / `F` |
-| Move Image to trash | `Delete` |
+| Move Image to Trash | `Delete` |
 | Exit Fullscreen/Program | `Esc` |
 
----
+#### GIF Controls
+
+| Action | Shortcut |
+|---|---|
+| Play/Pause GIF | `Space` |
+| Slow Down GIF | `[` |
+| Speed Up GIF | `]` |
+| Reset GIF Speed | `P` |
 
 ### Mouse Controls
 
@@ -39,15 +72,11 @@ More formats, improvements, and features are coming as the project continues to 
 |---|---|
 | Open File | Double-click Left Mouse Button |
 | Fit Image to Window | Double-click Right Mouse Button |
-| Toggle Fullscreen | Click Middle Mouse Button |
-
----
+| Toggle Full screen | Click Middle Mouse Button |
 
 ### Mouse Wheel
 
-- The mouse wheel can be used for either image navigation or zooming.
-- You can toggle it by holding control key on keyboard.
-- The mouse wheel zoom behavior can be inverted from the application settings.
+The mouse wheel can be used for either image navigation or zooming:
 
 | Action | Shortcut |
 |---|---|
@@ -55,15 +84,26 @@ More formats, improvements, and features are coming as the project continues to 
 | Previous Image | Scroll Up |
 | Zoom In / Out | Hold `Ctrl` while scrolling |
 
----
+**Note**: The mouse wheel behavior can be inverted using the "Invert Ctrl Scroll" toggle in the toolbar or by changing the `b_ctrl_invert` setting.
+
+## Caching & Performance
+
+JPEG Viewer uses an intelligent caching system to ensure smooth navigation:
+
+- **Configurable cache radius** (1-100): Controls how many images are kept in memory on each side of the current image
+- **Delta threshold**: Smart preloading that focuses on images near your current position
+- **Navigation timer**: Pause for 1.2 seconds (configurable) before shifting the cache origin
+- **Memory-efficient**: Automatically evicts images outside the cache radius
+
+The cache status is displayed in the toolbar as: `Cache: X/Y (r:N, Δ:M)` where:
+- `X` = currently cached images
+- `Y` = maximum cache capacity
+- `r` = cache radius setting
+- `Δ` = delta threshold (3/5 of radius)
 
 ## Tips
 
 - Mouse actions only work when the cursor is over the image area.
-
----
-
-### for now my plan is:
-- Best viewing experience for: jpeg, dds and gif.
-- Keeping the program lightweight and fast.
-- functional for everyday casual use.
+- GIFs load progressively: first frame appears immediately, full animation loads in the background.
+- The cache radius can be adjusted in real-time from the toolbar.
+- Window position and size are saved automatically on exit.
