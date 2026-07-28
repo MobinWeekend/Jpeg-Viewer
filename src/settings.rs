@@ -4,13 +4,13 @@ use std::path::PathBuf;
 /// Application settings stored in INI format
 #[derive(Debug, Clone)]
 pub struct AppSettings {
-    pub is_ctrl_invert: bool,
+    pub b_ctrl_invert: bool,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            is_ctrl_invert: false,
+            b_ctrl_invert: false,
         }
     }
 }
@@ -64,9 +64,9 @@ impl SettingsManager {
                 
                 // Get the Settings section
                 if let Some(section) = conf.section(Some("Settings")) {
-                    // Read is_ctrl_invert (boolean)
-                    if let Some(value) = section.get("is_ctrl_invert") {
-                        settings.is_ctrl_invert = Self::parse_bool(value);
+                    // Read b_ctrl_invert (boolean)
+                    if let Some(value) = section.get("b_ctrl_invert") {
+                        settings.b_ctrl_invert = Self::parse_bool(value);
                     }
                 }
                 
@@ -83,9 +83,9 @@ impl SettingsManager {
     fn save_to_file(path: &PathBuf, settings: &AppSettings) -> Result<(), String> {
         let mut conf = Ini::new();
         
-        // Create the Settings section with is_ctrl_invert
+        // Create the Settings section with b_ctrl_invert
         conf.with_section(Some("Settings"))
-            .set("is_ctrl_invert", if settings.is_ctrl_invert { "true" } else { "false" });
+            .set("b_ctrl_invert", if settings.b_ctrl_invert { "true" } else { "false" });
         
         // Write the file
         conf.write_to_file(path)
@@ -164,6 +164,6 @@ mod tests {
     #[test]
     fn test_default_settings() {
         let settings = AppSettings::default();
-        assert!(!settings.is_ctrl_invert);
+        assert!(!settings.b_ctrl_invert);
     }
 }

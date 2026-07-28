@@ -1,7 +1,6 @@
 use eframe::egui;
 use std::collections::HashMap;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ViewerCommand {
     NextImage,
@@ -9,80 +8,244 @@ pub enum ViewerCommand {
     ZoomIn,
     ZoomOut,
     ResetZoom,
-    ToggleFit,
+    MakeFit,
     OpenFile,
+    ToggleFullscreen,
+    //Close, //close the app, not needed for now
 }
-
+#[derive(Debug, Clone)]
+pub enum MouseAction {
+    SingleClick,
+    DoubleClick,
+    //Drag,
+}
 
 #[derive(Debug, Clone)]
-pub struct KeyBindings {
-    pub keys: HashMap<ViewerCommand, egui::Key>,
+pub struct KeyBinding {
+    pub key: egui::Key,
+    pub ctrl: Option<bool>,
+    pub shift: Option<bool>,
+    pub alt: Option<bool>,
 }
 
+#[derive(Debug, Clone)]
+pub struct MouseBinding {
+    pub button: egui::PointerButton,
+    pub action: MouseAction,
+    pub ctrl: Option<bool>,
+    pub shift: Option<bool>,
+    pub alt: Option<bool>,
+}
 
-impl Default for KeyBindings {
-    fn default() -> Self {
-        let mut keys = HashMap::new();
+#[derive(Debug, Clone)]
+pub struct InputBindings {
+    pub keyboard: HashMap<ViewerCommand, Vec<KeyBinding>>,
+    pub mouse: HashMap<ViewerCommand, Vec<MouseBinding>>,
+}
 
-        keys.insert(
-            ViewerCommand::NextImage,
-            egui::Key::ArrowRight,
-        );
-
-        keys.insert(
-            ViewerCommand::PreviousImage,
-            egui::Key::ArrowLeft,
-        );
-
-        keys.insert(
-            ViewerCommand::ZoomIn,
-            egui::Key::Plus,
-        );
-
-        keys.insert(
-            ViewerCommand::ZoomOut,
-            egui::Key::Minus,
-        );
-
-        keys.insert(
-            ViewerCommand::ResetZoom,
-            egui::Key::R,
-        );
-
-        keys.insert(
-            ViewerCommand::ToggleFit,
-            egui::Key::F,
-        );
-
-        keys.insert(
-            ViewerCommand::OpenFile,
-            egui::Key::O,
-        );
-
+impl KeyBinding {
+    /* for later use
+       pub fn new(
+           key: egui::Key,
+           ctrl: Option<bool>,
+           shift: Option<bool>,
+           alt: Option<bool>,
+       ) -> Self {
+           Self {
+               key,
+               ctrl,
+               shift,
+               alt,
+           }
+       }
+    */
+    pub fn plain(key: egui::Key) -> Self {
         Self {
-            keys,
+            key,
+            ctrl: Some(false),
+            shift: Some(false),
+            alt: Some(false),
         }
+    }
+    pub fn ctrl(key: egui::Key) -> Self {
+        Self {
+            key,
+            ctrl: Some(true),
+            shift: Some(false),
+            alt: Some(false),
+        }
+    }
+    pub fn matches(&self, input: &egui::InputState) -> bool {
+        if !input.key_pressed(self.key) {
+            return false;
+        }
+
+        if let Some(ctrl) = self.ctrl {
+            if input.modifiers.ctrl != ctrl {
+                return false;
+            }
+        }
+
+        if let Some(shift) = self.shift {
+            if input.modifiers.shift != shift {
+                return false;
+            }
+        }
+
+        if let Some(alt) = self.alt {
+            if input.modifiers.alt != alt {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
+impl MouseBinding {
+    pub fn plain(button: egui::PointerButton, action: MouseAction) -> Self {
+        Self {
+            button,
+            action,
+            ctrl: Some(false),
+            shift: Some(false),
+            alt: Some(false),
+        }
+    }
+    pub fn matches(&self, input: &egui::InputState) -> bool {
+        let clicked = match self.action {
+            MouseAction::SingleClick => input.pointer.button_pressed(self.button),
+            MouseAction::DoubleClick => input.pointer.button_double_clicked(self.button),
+            //MouseAction::Drag => input.pointer.button_down(self.button),
+        };
 
-pub fn handle_keyboard(
-    ctx: &egui::Context,
-    bindings: &KeyBindings,
-) -> Vec<ViewerCommand> {
+        if !clicked {
+            return false;
+        }
 
+        if let Some(ctrl) = self.ctrl {
+            if input.modifiers.ctrl != ctrl {
+                return false;
+            }
+        }
+
+        if let Some(shift) = self.shift {
+            if input.modifiers.shift != shift {
+                return false;
+            }
+        }
+
+        if let Some(alt) = self.alt {
+            if input.modifiers.alt != alt {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl Default for InputBindings {
+    fn default() -> Self {
+        let mut keyboard = HashMap::new();
+
+        keyboard.insert(
+            ViewerCommand::NextImage,
+            vec![
+                KeyBinding::plain(egui::Key::ArrowRight),
+                KeyBinding::plain(egui::Key::D),
+            ],
+        );
+
+        keyboard.insert(
+            ViewerCommand::PreviousImage,
+            vec![
+                KeyBinding::plain(egui::Key::ArrowLeft),
+                KeyBinding::plain(egui::Key::A),
+                KeyBinding::plain(egui::Key::Q),
+            ],
+        );
+
+        keyboard.insert(
+            ViewerCommand::ZoomIn,
+            vec![KeyBinding::plain(egui::Key::Plus)],
+        );
+
+        keyboard.insert(
+            ViewerCommand::ZoomOut,
+            vec![KeyBinding::plain(egui::Key::Minus)],
+        );
+
+        keyboard.insert(
+            ViewerCommand::ResetZoom,
+            vec![
+                KeyBinding::plain(egui::Key::W),
+                KeyBinding::plain(egui::Key::ArrowUp),
+                KeyBinding::plain(egui::Key::ArrowDown),
+            ],
+        );
+
+        keyboard.insert(
+            ViewerCommand::MakeFit,
+            vec![
+                KeyBinding::plain(egui::Key::S),
+                KeyBinding::plain(egui::Key::ArrowDown),
+                KeyBinding::plain(egui::Key::Num0),
+            ],
+        );
+        keyboard.insert(
+            ViewerCommand::OpenFile,
+            vec![KeyBinding::ctrl(egui::Key::O)],
+        );
+
+        keyboard.insert(
+            ViewerCommand::ToggleFullscreen,
+            vec![
+                KeyBinding::plain(egui::Key::F11),
+                KeyBinding::plain(egui::Key::Enter),
+                KeyBinding::plain(egui::Key::F),
+            ],
+        );
+
+        let mut mouse = HashMap::new();
+
+        mouse.insert(
+            ViewerCommand::ToggleFullscreen,
+            vec![MouseBinding::plain(
+                egui::PointerButton::Middle,
+                MouseAction::SingleClick,
+            )],
+        );
+
+        mouse.insert(
+            ViewerCommand::OpenFile,
+            vec![MouseBinding::plain(
+                egui::PointerButton::Primary,
+                MouseAction::DoubleClick,
+            )],
+        );
+
+        mouse.insert(
+            ViewerCommand::MakeFit,
+            vec![MouseBinding::plain(
+                egui::PointerButton::Secondary,
+                MouseAction::DoubleClick,
+            )],
+        );
+
+        Self { keyboard, mouse }
+    }
+}
+
+pub fn handle_keyboard(ctx: &egui::Context, bindings: &InputBindings) -> Vec<ViewerCommand> {
     let mut commands = Vec::new();
 
     ctx.input(|input| {
-
-        for (command, key) in &bindings.keys {
-
-            if input.key_pressed(*key) {
+        for (command, bindings) in &bindings.keyboard {
+            if bindings.iter().any(|binding| binding.matches(input)) {
                 commands.push(*command);
             }
-
         }
-
     });
 
     commands
@@ -90,10 +253,10 @@ pub fn handle_keyboard(
 
 pub fn handle_mouse(
     ctx: &egui::Context,
-    is_ctrl_invert: bool,
+    bindings: &InputBindings,
     mouse_over: bool,
+    b_ctrl_invert: bool
 ) -> Vec<ViewerCommand> {
-
     let mut commands = Vec::new();
 
     if !mouse_over {
@@ -101,32 +264,29 @@ pub fn handle_mouse(
     }
 
     ctx.input(|input| {
-        let scroll = input.raw_scroll_delta.y;
-
-        if scroll == 0.0 {
-            return;
-        }
-
-        let ctrl = input.modifiers.ctrl;
-
-        let zooming =
-            (!is_ctrl_invert && ctrl)
-            ||
-            (is_ctrl_invert && !ctrl);
-
-
-        if zooming {
-            if scroll > 0.0 {
-                commands.push(ViewerCommand::ZoomIn);
-            } else {
-                commands.push(ViewerCommand::ZoomOut);
+        for (command, bindings) in &bindings.mouse {
+            if bindings.iter().any(|binding| binding.matches(input)) {
+                commands.push(*command);
             }
         }
-        else {
-            if scroll > 0.0 {
-                commands.push(ViewerCommand::PreviousImage);
+        let scroll = input.raw_scroll_delta.y;
+
+        if scroll != 0.0 {
+            let ctrl = input.modifiers.ctrl;
+            let zooming = (!b_ctrl_invert && ctrl) || (b_ctrl_invert && !ctrl);
+
+            if zooming {
+                commands.push(if scroll > 0.0 {
+                    ViewerCommand::ZoomIn
+                } else {
+                    ViewerCommand::ZoomOut
+                });
             } else {
-                commands.push(ViewerCommand::NextImage);
+                commands.push(if scroll > 0.0 {
+                    ViewerCommand::PreviousImage
+                } else {
+                    ViewerCommand::NextImage
+                });
             }
         }
     });

@@ -1,14 +1,14 @@
 use crate::archive::{scan_7z, scan_rar, scan_zip};
+use crate::helpers::{ARCHIVE_EXT, IMAGE_EXT};
 use crate::helpers::{get_extension, is_supported_image};
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
-use crate::shortcuts::{KeyBindings, ViewerCommand, handle_keyboard, handle_mouse};
+use crate::shortcuts::{InputBindings, ViewerCommand, handle_keyboard, handle_mouse};
 use eframe::egui;
 use image::DynamicImage;
 use rayon::spawn;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
-use crate::helpers::{IMAGE_EXT, ARCHIVE_EXT};
 
 pub struct ViewerApp {
     texture: Option<egui::TextureHandle>,
@@ -18,14 +18,14 @@ pub struct ViewerApp {
     current_directory: Option<PathBuf>,
     image_entries: Vec<ImageEntry>,
     current_index: usize,
-    is_loading: bool,
-    is_fit_to_window: bool,
+    b_is_loading: bool,
+    b_fit_to_window: bool,
     image_rect: Option<egui::Rect>,
     last_window_size: Option<egui::Vec2>,
-    is_zoom_used: bool,
-    is_ctrl_invert: bool,
+    b_zoom_used: bool,
+    b_ctrl_invert: bool,
     settings_manager: SettingsManager,
-    pub key_bindings: KeyBindings,
+    pub input_bindings: InputBindings,
 }
 
 impl Default for ViewerApp {
@@ -40,15 +40,15 @@ impl Default for ViewerApp {
             pan: egui::Vec2::ZERO,
             current_directory: None,
             current_index: 0,
-            is_loading: false,
-            is_fit_to_window: false,
+            b_is_loading: false,
+            b_fit_to_window: false,
             image_rect: None,
             last_window_size: None,
-            is_zoom_used: false,
-            is_ctrl_invert: settings.is_ctrl_invert,
+            b_zoom_used: false,
+            b_ctrl_invert: settings.b_ctrl_invert,
             settings_manager,
             image_entries: Vec::new(),
-            key_bindings: KeyBindings::default(),
+            input_bindings: InputBindings::default(),
         }
     }
 }
@@ -74,7 +74,7 @@ impl ViewerApp {
             None => return,
         };
 
-        self.is_loading = true;
+        self.b_is_loading = true;
 
         let (tx, rx) = channel();
 
@@ -104,12 +104,11 @@ impl ViewerApp {
 
         if new_index != self.current_index {
             self.current_index = new_index;
-            self.pan = egui::Vec2::ZERO;
-            self.is_fit_to_window = true;
+            self.b_fit_to_window = true;
             self.image_rect = None;
             self.load_current_image();
         }
-        self.is_zoom_used = false;
+        self.b_zoom_used = false;
     }
 
     fn load_directory(&mut self, path: &PathBuf) {
@@ -129,12 +128,11 @@ impl ViewerApp {
     fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
         self.image_entries = entries;
         self.current_index = current_index;
-        self.pan = egui::Vec2::ZERO;
-        self.is_fit_to_window = true;
+        self.b_fit_to_window = true;
         self.load_current_image();
     }
 
-    fn handle_command(&mut self, command: ViewerCommand) {
+    fn handle_command(&mut self, ctx: &egui::Context, command: ViewerCommand) {
         match command {
             ViewerCommand::NextImage => {
                 self.navigate_images(1);
@@ -147,33 +145,49 @@ impl ViewerApp {
             ViewerCommand::ZoomIn => {
                 self.zoom *= 1.1;
                 self.zoom = self.zoom.clamp(0.01, 10.0);
-                self.is_zoom_used = true;
+                self.b_zoom_used = true;
             }
 
             ViewerCommand::ZoomOut => {
                 self.zoom /= 1.1;
                 self.zoom = self.zoom.clamp(0.01, 10.0);
-                self.is_zoom_used = true;
+                self.b_zoom_used = true;
             }
 
             ViewerCommand::ResetZoom => {
                 self.zoom = 1.0;
             }
 
-            ViewerCommand::ToggleFit => {
-                self.is_fit_to_window = !self.is_fit_to_window;
+            ViewerCommand::MakeFit => {
+                self.b_fit_to_window = true;
+                self.b_zoom_used = false; // Reset zoom usage to allow fit-to-window recalculation
             }
 
             ViewerCommand::OpenFile => {
                 self.open_file_dialog();
             }
+            ViewerCommand::ToggleFullscreen => {
+                self.toggle_fullscreen(ctx);
+                self.b_fit_to_window = false;
+            } /*
+              // this will used later when i implement a close button in the ui
+              ViewerCommand::Close => {
+                  let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+
+                  if is_fullscreen {
+                      ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+                  } else {
+                      ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                  }
+              }
+               */
         }
     }
 
     fn open_path(&mut self, path: PathBuf) {
-        self.is_zoom_used = false;
+        self.b_zoom_used = false;
         self.zoom = 1.0;
-        self.is_fit_to_window = true;
+        self.b_fit_to_window = true;
         self.image_rect = None;
 
         if path.is_dir() {
@@ -216,15 +230,43 @@ impl ViewerApp {
             self.open_path(path);
         }
     }
+
+    fn toggle_fullscreen(&self, ctx: &egui::Context) {
+        let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
+    }
 }
 
 // =========== update  ===========
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // almighty esc key
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+
+            if fullscreen {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+
+            return;
+        }
+
         // keys
-        for command in handle_keyboard(ctx, &self.key_bindings) {
-            self.handle_command(command);
+        for command in handle_keyboard(ctx, &self.input_bindings) {
+            self.handle_command(ctx, command);
+        }
+
+        // mouse buttons
+        for command in handle_mouse(
+            ctx,
+            &self.input_bindings,
+            ctx.is_pointer_over_area(),
+            self.b_ctrl_invert,
+        ) {
+            self.handle_command(ctx, command);
         }
 
         // drag & drop
@@ -239,8 +281,8 @@ impl eframe::App for ViewerApp {
         // check for window resize
         let current_size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
         if let (Some(prev), Some(curr)) = (self.last_window_size, current_size) {
-            if prev != curr && !self.is_zoom_used {
-                self.is_fit_to_window = true;
+            if prev != curr && !self.b_zoom_used {
+                self.b_fit_to_window = true;
             }
         }
         self.last_window_size = current_size;
@@ -254,10 +296,9 @@ impl eframe::App for ViewerApp {
 
                 self.texture = Some(ctx.load_texture("image", color, Default::default()));
 
-                // Auto-zoom to fit if image is larger than window or is_fit_to_window is true
-                self.is_fit_to_window = true;
-                self.pan = egui::Vec2::ZERO;
-                self.is_loading = false;
+                // Auto-zoom to fit if image is larger than window or b_fit_to_window is true
+                self.b_fit_to_window = true;
+                self.b_is_loading = false;
                 self.receiver = None;
             }
         }
@@ -265,7 +306,7 @@ impl eframe::App for ViewerApp {
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Open").clicked() {
-                    self.handle_command(ViewerCommand::OpenFile);
+                    self.handle_command(ctx, ViewerCommand::OpenFile);
                 }
 
                 ui.add(
@@ -275,12 +316,12 @@ impl eframe::App for ViewerApp {
                 );
 
                 if ui
-                    .checkbox(&mut self.is_ctrl_invert, "Invert Ctrl Scroll | ")
+                    .checkbox(&mut self.b_ctrl_invert, "Invert Ctrl Scroll | ")
                     .changed()
                 {
                     // Save the setting when changed
                     let _ = self.settings_manager.update(|settings| {
-                        settings.is_ctrl_invert = self.is_ctrl_invert;
+                        settings.b_ctrl_invert = self.b_ctrl_invert;
                     });
                 }
 
@@ -305,7 +346,7 @@ impl eframe::App for ViewerApp {
                         self.image_entries.len()
                     ));
                 }
-                if !self.is_ctrl_invert {
+                if !self.b_ctrl_invert {
                     ui.label("Scroll to navigate | Zoom with ctrl + Scroll");
                 } else {
                     ui.label(" ctrl + Scroll to navigate | Zoom with Scroll");
@@ -317,14 +358,17 @@ impl eframe::App for ViewerApp {
             if let Some(texture) = &self.texture {
                 let texture_size = texture.size_vec2();
                 let image_available_size = ui.available_size();
-                if self.is_fit_to_window {
+
+                // Auto-fit to window if b_fit_to_window is true
+                if self.b_fit_to_window {
                     // ^ when true, checks the image to see if it needs fiting inside the window
                     let texture_size = texture.size_vec2();
                     let zoom_x = image_available_size.x / texture_size.x;
                     let zoom_y = image_available_size.y / texture_size.y;
                     let fit_zoom = zoom_x.min(zoom_y).min(1.0); // Only zoom out if needed
                     self.zoom = fit_zoom;
-                    self.is_fit_to_window = false;
+                    self.pan = egui::Vec2::ZERO; // Reset pan when fitting to window
+                    self.b_fit_to_window = false;
                 }
 
                 let display_size = texture_size * self.zoom;
@@ -347,21 +391,46 @@ impl eframe::App for ViewerApp {
                     egui::Sense::drag(),   // Only detect drag gestures
                 );
 
-                for command in handle_mouse(ctx, self.is_ctrl_invert, response.hovered()) {
-                    self.handle_command(command);
+                for command in handle_mouse(
+                    ctx,
+                    &self.input_bindings,
+                    response.hovered(),
+                    self.b_ctrl_invert,
+                ) {
+                    self.handle_command(ctx, command);
                 }
 
                 if response.dragged() {
-                    self.pan += response.drag_delta() / self.zoom;
-                    if let Some(texture) = &self.texture {
-                        let texture_limit = (texture.size_vec2() / 2.0)
-                            + ((ctx.available_rect().size() / self.zoom) / 4.0);
-                        self.pan = self.pan.clamp(-texture_limit, texture_limit);
+                    let (left_down, right_down, delta) = ctx.input(|i| {
+                        (
+                            i.pointer.button_down(egui::PointerButton::Primary),
+                            i.pointer.button_down(egui::PointerButton::Secondary),
+                            i.pointer.delta(),
+                        )
+                    });
+
+                    if left_down {
+                        // Pan
+                        self.pan += delta / self.zoom;
+
+                        if let Some(texture) = &self.texture {
+                            let texture_limit = (texture.size_vec2() / 2.0)
+                                + ((ctx.available_rect().size() / self.zoom) / 4.0);
+
+                            self.pan = self.pan.clamp(-texture_limit, texture_limit);
+                        }
+                    }
+
+                    if right_down {
+                        // Zoom
+                        self.zoom *= 1.0 + delta.y * -0.01;
+                        self.zoom = self.zoom.clamp(0.01, 10.0);
+                        self.b_zoom_used = true;
                     }
                 }
             } else {
                 ui.centered_and_justified(|ui| {
-                    if self.is_loading {
+                    if self.b_is_loading {
                         ui.label("Loading image...");
                     } else {
                         ui.label(
