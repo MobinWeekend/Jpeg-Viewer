@@ -26,6 +26,7 @@ pub struct ViewerApp {
     b_ctrl_invert: bool,
     settings_manager: SettingsManager,
     pub input_bindings: InputBindings,
+    logo_texture: Option<egui::TextureHandle>,
 }
 
 impl Default for ViewerApp {
@@ -48,6 +49,7 @@ impl Default for ViewerApp {
             b_ctrl_invert: settings.b_ctrl_invert,
             settings_manager,
             image_entries: Vec::new(),
+            logo_texture: None,
             input_bindings: InputBindings::default(),
         }
     }
@@ -184,9 +186,8 @@ impl ViewerApp {
         }
     }
 
-    fn open_path(&mut self, path: PathBuf) {
+    pub fn open_path(&mut self, path: PathBuf) {
         self.b_zoom_used = false;
-        self.zoom = 1.0;
         self.b_fit_to_window = true;
         self.image_rect = None;
 
@@ -241,6 +242,18 @@ impl ViewerApp {
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        if self.logo_texture.is_none() {
+            let image = image::load_from_memory(include_bytes!("../assets/icon.ico"))
+                .unwrap()
+                .into_rgba8();
+
+            let size = [image.width() as usize, image.height() as usize];
+
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+
+            self.logo_texture = Some(ctx.load_texture("logo", color_image, Default::default()));
+        }
+
         // almighty esc key
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -429,19 +442,31 @@ impl eframe::App for ViewerApp {
                     }
                 }
             } else {
-                ui.centered_and_justified(|ui| {
-                    if self.b_is_loading {
+                if self.b_is_loading {
+                    ui.centered_and_justified(|ui| {
                         ui.label("Loading image...");
-                    } else {
+                    });
+                } else {
+                    let available = ui.available_height();
+                    let content_height = 128.0 + 16.0 + 60.0; // icon + gap + roughly two text lines
+
+                    ui.add_space((available - content_height).max(0.0) * 0.5);
+
+                    ui.vertical_centered(|ui| {
+                        if let Some(icon) = &self.logo_texture {
+                            ui.image((icon.id(), egui::vec2(128.0, 128.0)));
+                            ui.add_space(16.0);
+                        }
+
                         ui.label(
                             egui::RichText::new(
-                                "Open or drag and drop a photo, folder \n\
-                                or a (.zip, .7z and .rar) file containing your photos. 😊",
+                                "Press Ctrl+O or drag and drop a photo, folder\n\
+                 or a .zip, .7z, or .rar archive containing your photos.",
                             )
-                            .size(32.0),
+                            .size(24.0),
                         );
-                    }
-                });
+                    });
+                }
             }
         });
         ctx.request_repaint();
