@@ -180,3 +180,54 @@ jobs:
             **Version**: ${{ github.ref_name }}
           files: |
             release/**/*
+
+  build-linux:
+    name: Build Linux (x86_64)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            libgtk-3-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          cargo install cargo-edit
+          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
+          echo "Setting version to: $VERSION"
+          cargo set-version $VERSION
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Rename binary
+        run: |
+          cp target/release/jpeg_viewer JPEG-View-Linux
+          chmod +x JPEG-View-Linux
+
+      - name: Upload Linux executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux
+          path: JPEG-View-Linux
