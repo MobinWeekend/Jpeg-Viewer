@@ -10,6 +10,8 @@ pub struct AppSettings {
     pub cache_radius: usize,
     pub cache_delta_factor: f32,
     pub navigation_pause_ms: u64,
+    pub max_cache_task: u8,
+    pub texture_filter: String, // "nearest", "linear", "mipmap"
 }
 
 impl Default for AppSettings {
@@ -18,9 +20,11 @@ impl Default for AppSettings {
             b_ctrl_invert: false,
             window_pos: None,
             window_size: None,
-            cache_radius: 5,
+            cache_radius: 6,
             cache_delta_factor: 0.6,
             navigation_pause_ms: 1200,
+            max_cache_task: 2,
+            texture_filter: "linear".to_string(),
         }
     }
 }
@@ -119,6 +123,17 @@ impl SettingsManager {
                             }
                         }
                     }
+                    // Read max_cache_task
+                    if let Some(value) = section.get("max_cache_task") {
+                        if let Ok(tasks) = value.parse::<u8>() {
+                            if tasks > 100 {
+                                settings.max_cache_task = tasks;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("texture_filter") {
+                        settings.texture_filter = value.to_string();
+                    }
                 }
 
                 settings
@@ -156,9 +171,19 @@ impl SettingsManager {
 
         section.set("cache_radius", settings.cache_radius.to_string());
 
-        section.set("cache_delta_factor", settings.cache_delta_factor.to_string());
+        section.set(
+            "cache_delta_factor",
+            settings.cache_delta_factor.to_string(),
+        );
 
-        section.set("navigation_pause_ms", settings.navigation_pause_ms.to_string());
+        section.set(
+            "navigation_pause_ms",
+            settings.navigation_pause_ms.to_string(),
+        );
+
+        section.set("max_cache_task", settings.max_cache_task.to_string());
+
+        section.set("texture_filter", &settings.texture_filter);
 
         // Write the file
         conf.write_to_file(path)
@@ -187,7 +212,7 @@ impl SettingsManager {
     }
 
     /// Get a mutable reference to settings
-    
+
     //pub fn get_mut(&mut self) -> &mut AppSettings {
     //    &mut self.settings
     //}
@@ -209,7 +234,7 @@ impl SettingsManager {
     pub fn update_window_state(&mut self, pos: [f32; 2], size: [f32; 2]) -> Result<(), String> {
         // Clamp to reasonable values (prevent off-screen)
         let size = [size[0].max(100.0), size[1].max(100.0)];
-        
+
         self.settings.window_pos = Some(pos);
         self.settings.window_size = Some(size);
         self.save()
@@ -248,6 +273,7 @@ mod tests {
         assert!(settings.window_size.is_none());
         assert_eq!(settings.cache_radius, 5);
         assert_eq!(settings.cache_delta_factor, 0.6);
-        assert_eq!(settings.navigation_pause_ms, 1200)
+        assert_eq!(settings.navigation_pause_ms, 1200);
+        assert_eq!(settings.max_cache_task, 4)
     }
 }

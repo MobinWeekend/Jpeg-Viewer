@@ -1,3 +1,4 @@
+//this needs to be splitted
 use super::types::ViewerApp;
 use crate::shortcuts::{ViewerCommand, handle_keyboard, handle_mouse};
 use eframe::egui;
@@ -89,7 +90,8 @@ impl eframe::App for ViewerApp {
                         let height = rgba.height();
                         let size = [width as usize, height as usize];
                         let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                        self.texture = Some(ctx.load_texture("image", color, Default::default()));
+                        let options = self.get_texture_options();
+                        self.texture = Some(ctx.load_texture("image", color, options));
                         self.gif_animation = None;
                         self.is_gif = false;
                         self.is_preview = false;
@@ -141,7 +143,8 @@ impl eframe::App for ViewerApp {
                 let rgba = full_image.to_rgba8();
                 let size = [rgba.width() as usize, rgba.height() as usize];
                 let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                self.texture = Some(ctx.load_texture("image_full", color, Default::default()));
+                let options = self.get_texture_options();
+                self.texture = Some(ctx.load_texture("image_full", color, options));
                 self.b_is_loading_full = false;
                 self.is_preview = false;
                 self.b_fit_to_window = true;
@@ -194,11 +197,10 @@ impl eframe::App for ViewerApp {
                     self.handle_command(ctx, ViewerCommand::OpenFile);
                 }
 
-                ui.add(
-                    egui::Slider::new(&mut self.zoom, 0.01..=10.0)
-                        .logarithmic(true)
-                        .text("Zoom | "),
-                );
+                ui.label(format!(
+                    "Zoom: {}%",
+                    (self.zoom * 100.0).round().max(1.0) as i32
+                ));
 
                 // Cache radius control
                 ui.add_space(10.0);
@@ -226,11 +228,6 @@ impl eframe::App for ViewerApp {
                     }
                 }
                 ui.label(" | ");
-
-                // Loading indicator for full resolution
-                if self.b_is_loading_full {
-                    ui.label("⏳ Loading...");
-                }
 
                 // Show cache info with delta info
                 let total_images = self.image_entries.len();
@@ -298,7 +295,7 @@ impl eframe::App for ViewerApp {
                 }
 
                 if ui
-                    .checkbox(&mut self.b_ctrl_invert, "Invert Ctrl Scroll | ")
+                    .checkbox(&mut self.b_ctrl_invert, "Scroll Zoom")
                     .changed()
                 {
                     let _ = self.settings_manager.update(|settings| {
@@ -306,19 +303,45 @@ impl eframe::App for ViewerApp {
                     });
                 }
 
-                // Show only index counter, filename is in window title
-                if self.current_index < self.image_entries.len() {
-                    ui.label(format!(
-                        "({}/{})",
-                        self.current_index + 1,
-                        self.image_entries.len()
-                    ));
+                //My very first option! :)
+                if !self.b_ctrl_invert {
+                    ui.label(" | Scroll to navigate & ctrl + Scroll to Zoom | ");
+                } else {
+                    ui.label(" | ctrl + Scroll to navigate & Scroll to Zoom | ");
                 }
 
-                if !self.b_ctrl_invert {
-                    ui.label("Scroll to navigate | Zoom with ctrl + Scroll");
-                } else {
-                    ui.label(" ctrl + Scroll to navigate | Zoom with Scroll");
+                //ui for quality of filtering
+                ui.add_space(10.0);
+                ui.label("Filter:");
+
+                // Get current filter value
+                let mut filter = self.settings_manager.get().texture_filter.clone();
+
+                // Show combo box
+                egui::ComboBox::from_label("")
+                    .selected_text(&filter)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut filter, "nearest".to_string(), "Nearest (fast)");
+                        ui.selectable_value(&mut filter, "linear".to_string(), "Linear (smooth)");
+                        ui.selectable_value(&mut filter, "mipmap".to_string(), "Mipmap (best)");
+                    });
+
+                // Check if filter changed by comparing with stored value
+                let current_filter = self.settings_manager.get().texture_filter.clone();
+                if filter != current_filter {
+                    // Save the new setting
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.texture_filter = filter.clone();
+                    });
+                    // Reload current image to apply the new filter
+                    if !self.image_entries.is_empty() {
+                        self.load_current_image_with_cache();
+                    }
+                }
+
+                // Loading indicator for full resolution
+                if self.b_is_loading_full {
+                    ui.label("Loading...");
                 }
             });
         });
@@ -408,31 +431,6 @@ impl eframe::App for ViewerApp {
                     );
                 }
 
-                // Draw loading indicator overlay for full resolution
-                if self.b_is_loading_full && self.is_preview && !self.is_gif {
-                    let painter = ui.painter();
-                    let text = "Loading high resolution...".to_string();
-                    let font_id = egui::FontId::proportional(16.0);
-                    let galley = painter.layout(text, font_id, egui::Color32::WHITE, f32::INFINITY);
-                    let rect = galley.rect;
-
-                    let bg_rect = rect.expand(10.0);
-                    painter.rect_filled(
-                        bg_rect,
-                        4.0,
-                        egui::Color32::from_rgba_premultiplied(0, 0, 0, 180),
-                    );
-
-                    painter.galley(
-                        egui::pos2(
-                            response.rect.center().x - rect.width() / 2.0,
-                            response.rect.bottom() - 50.0,
-                        ),
-                        galley,
-                        egui::Color32::WHITE,
-                    );
-                }
-
                 // Handle mouse input on the response
                 for command in handle_mouse(
                     ctx,
@@ -443,6 +441,20 @@ impl eframe::App for ViewerApp {
                     self.handle_command(ctx, command);
                 }
 
+                // Check for middle drag separately from other drags
+                if response.hovered() {
+                    let mid_dragging = ctx.input(|i| {
+                        i.pointer.button_down(egui::PointerButton::Middle)
+                            && i.pointer.delta().length() > 0.0
+                    });
+
+                    if mid_dragging {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                    }
+                }
+
+                // Then handle left/right drags
                 if response.dragged() {
                     let (left_down, right_down, delta) = ctx.input(|i| {
                         (
@@ -452,18 +464,15 @@ impl eframe::App for ViewerApp {
                         )
                     });
 
-                    if left_down {
+                    // Only handle left/right drags, skip middle
+                    if left_down && !right_down {
                         self.pan += delta / self.zoom;
-                        if let Some(texture) = &self.texture {
-                            let texture_limit = (texture.size_vec2() / 2.0)
-                                + ((response.rect.size() / self.zoom) / 4.0);
-                            self.pan = self.pan.clamp(-texture_limit, texture_limit);
-                        }
+                        // ... pan logic
                     }
 
-                    if right_down {
-                        self.zoom *= 1.0 + delta.y * -0.01;
-                        self.zoom = self.zoom.clamp(0.01, 10.0);
+                    if right_down && !left_down {
+                        self.zoom += delta.y * -0.005;
+                        self.zoom = self.zoom.clamp(0.005, 50.0);
                         self.b_zoom_used = true;
                     }
                 }
@@ -546,12 +555,15 @@ impl Drop for ViewerApp {
 
 impl ViewerApp {
     pub fn update_gif_texture(&mut self, ctx: &egui::Context) {
+        // Get options first (immutable borrow of self)
+        let options = self.get_texture_options();
+
         if let Some(gif) = &mut self.gif_animation {
             if let Some(frame) = gif.get_current_frame() {
                 let size = [frame.width() as usize, frame.height() as usize];
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
 
-                self.texture = Some(ctx.load_texture("gif_frame", color_image, Default::default()));
+                self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
 
                 if gif.is_playing {
                     ctx.request_repaint();

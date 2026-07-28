@@ -101,11 +101,10 @@ impl ViewerApp {
 
                     let size = [width as usize, height as usize];
                     let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                    Some(ctx.load_texture(
-                        &format!("cache_{}", image_id),
-                        color,
-                        Default::default(),
-                    ))
+
+                    let options = self.get_texture_options();
+                    Some(ctx.load_texture(&format!("cache_{}", image_id), color, options))
+                    
                 }
                 LoadedImage::Animated(gif, _) => {
                     // This shouldn't be reached since we skip GIFs above

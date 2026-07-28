@@ -1,3 +1,4 @@
+//needs to be splited down the road
 use eframe::egui;
 use std::collections::HashMap;
 
@@ -21,7 +22,7 @@ pub enum ViewerCommand {
 
 #[derive(Debug, Clone)]
 pub enum MouseAction {
-    SingleClick,
+    //SingleClick,  //mostly used in update
     DoubleClick,
 }
 
@@ -105,7 +106,8 @@ impl MouseBinding {
     }
     pub fn matches(&self, input: &egui::InputState) -> bool {
         let clicked = match self.action {
-            MouseAction::SingleClick => input.pointer.button_pressed(self.button),
+            // most of our singleclicks are coded into the update
+            //MouseAction::SingleClick => input.pointer.button_pressed(self.button),
             MouseAction::DoubleClick => input.pointer.button_double_clicked(self.button),
         };
 
@@ -225,7 +227,7 @@ impl Default for InputBindings {
             ViewerCommand::ToggleFullscreen,
             vec![MouseBinding::plain(
                 egui::PointerButton::Middle,
-                MouseAction::SingleClick,
+                MouseAction::DoubleClick,
             )],
         );
 

@@ -66,6 +66,8 @@ pub struct ViewerApp {
     pub should_stop_caching: bool,
     pub navigation_timer: Option<std::time::Instant>,
     pub navigation_pause_duration: std::time::Duration,
+    pub cache_delta_factor: f32,
+    pub max_cache_task: u8,
 }
 
 impl Default for ViewerApp {
@@ -113,6 +115,8 @@ impl Default for ViewerApp {
             navigation_pause_duration: std::time::Duration::from_millis(
                 settings_manager.get().navigation_pause_ms,
             ),
+            cache_delta_factor: settings_manager.get().cache_delta_factor,
+            max_cache_task: settings_manager.get().max_cache_task,
         }
     }
 }
@@ -166,5 +170,25 @@ impl ViewerApp {
 
         // If ratio is less than 0.1 (very tall or very wide)
         ratio < 0.1
+    }
+
+    pub fn get_texture_options(&self) -> egui::TextureOptions {
+        let settings = self.settings_manager.get();
+        match settings.texture_filter.as_str() {
+            "nearest" => egui::TextureOptions {
+                magnification: egui::TextureFilter::Nearest,
+                minification: egui::TextureFilter::Nearest,
+                mipmap_mode: None, // Mipmaps not needed for nearest
+                ..Default::default()
+            },
+            "mipmap" => egui::TextureOptions {
+                magnification: egui::TextureFilter::Linear,
+                minification: egui::TextureFilter::Linear,
+                // Enable mipmaps with linear filtering between levels
+                mipmap_mode: Some(egui::TextureFilter::Linear),
+                ..Default::default()
+            },
+            _ => egui::TextureOptions::LINEAR, // Default fallback
+        }
     }
 }

@@ -1,3 +1,4 @@
+//preloading governs the range and tasks and duration for preloading
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
 use crate::image_entry::ImageEntry;
 use eframe::egui;
@@ -7,6 +8,7 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 
 impl ViewerApp {
+    
     pub fn preload_adjacent_images(&mut self, ctx: &egui::Context) {
         // Check if caching should be stopped
         if self.should_stop_caching {
@@ -22,8 +24,9 @@ impl ViewerApp {
             return;
         }
 
-        // Calculate delta as 3/5 of radius, minimum 1
-        let delta_threshold = ((self.cache_radius as f32 * 3.0 / 5.0).round() as usize).max(1);
+        // Calculate delta of radius, minimum 1
+        let delta_threshold =
+            ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
         self.delta_threshold = delta_threshold;
 
         // Check if user has stopped navigating or gone through the range
@@ -44,10 +47,17 @@ impl ViewerApp {
         if should_update_origin {
             // Reset the navigation timer
             self.navigation_timer = None;
-            
+
             // Update origin to current index
             self.preload_origin = self.current_index;
-            self.clean_cache_outside_radius();
+            
+            // Only clean cache when cache is full OR we need to make room for new images
+            let cache_is_full = self.image_cache.len() >= self.max_cache_size;
+            let has_new_indices_to_load = self.has_new_indices_in_range();
+            
+            if cache_is_full || has_new_indices_to_load {
+                self.clean_cache_outside_radius();
+            }
         }
 
         // Determine which indices to preload
@@ -58,7 +68,7 @@ impl ViewerApp {
             indices_to_preload.push(self.current_index);
         }
 
-        // Preload delta range (3/5 of radius) around the origin
+        // Preload delta range around the origin
         for offset in 1..=delta_threshold {
             let fwd_idx = (self.preload_origin + offset) % len;
             if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
@@ -86,15 +96,14 @@ impl ViewerApp {
         }
 
         // Limit concurrent preloading
-        let max_concurrent: usize = 4;
-        let current_tasks = self.preload_tasks.len();
-        let available_slots =
-            max_concurrent.saturating_sub(current_tasks);
-        
+        let max_concurrent: u8 = self.max_cache_task;
+        let current_tasks = self.preload_tasks.len() as u8;
+        let available_slots = max_concurrent.saturating_sub(current_tasks);
+
         if available_slots > 0 && !indices_to_preload.is_empty() {
             let to_load: Vec<_> = indices_to_preload
                 .into_iter()
-                .take(available_slots)
+                .take(available_slots as usize)
                 .collect();
 
             for idx in to_load {
@@ -103,6 +112,44 @@ impl ViewerApp {
         }
 
         ctx.request_repaint();
+    }
+
+    // Helper function to check if there are new indices in range that need loading
+    fn has_new_indices_in_range(&self) -> bool {
+        let len = self.image_entries.len();
+        if len == 0 {
+            return false;
+        }
+
+        let delta_threshold = ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+        
+        // Check delta range first (higher priority)
+        for offset in 1..=delta_threshold {
+            let fwd_idx = (self.preload_origin + offset) % len;
+            if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
+                return true;
+            }
+
+            let bwd_idx = (self.preload_origin + len - offset) % len;
+            if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
+                return true;
+            }
+        }
+
+        // Check full radius range (lower priority)
+        for offset in (delta_threshold + 1)..=self.cache_radius {
+            let fwd_idx = (self.preload_origin + offset) % len;
+            if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
+                return true;
+            }
+
+            let bwd_idx = (self.preload_origin + len - offset) % len;
+            if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
+                return true;
+            }
+        }
+
+        false
     }
 
     pub fn reset_navigation_timer(&mut self) {
@@ -128,12 +175,10 @@ impl ViewerApp {
                                 crate::loader::load_gif_preview(path)
                                     .map(|g| LoadedImage::Animated(g, true))
                             } else {
-                                crate::loader::load_full_resolution(path)
-                                    .map(LoadedImage::Static)
+                                crate::loader::load_full_resolution(path).map(LoadedImage::Static)
                             }
                         } else {
-                            crate::loader::load_full_resolution(path)
-                                .map(LoadedImage::Static)
+                            crate::loader::load_full_resolution(path).map(LoadedImage::Static)
                         }
                     }
                     ImageEntry::Zip(zip) => {
@@ -185,7 +230,8 @@ impl ViewerApp {
         }
 
         let mut keep_indices = std::collections::HashSet::new();
-        
+
+        // Keep all indices within the full radius
         for offset in 0..=self.cache_radius {
             let idx = (self.preload_origin + offset) % len;
             keep_indices.insert(idx);
@@ -205,8 +251,13 @@ impl ViewerApp {
             }
         }
 
-        for id in to_remove {
-            self.image_cache.pop(&id);
+        // Only remove if we need to make room
+        if !to_remove.is_empty() {
+            // Remove the oldest entries first (LruCache already handles this)
+            // But we want to remove entries outside our radius first
+            for id in to_remove {
+                self.image_cache.pop(&id);
+            }
         }
     }
 
@@ -257,14 +308,15 @@ impl ViewerApp {
         let radius = new_radius.max(1).min(100);
         if radius != self.cache_radius {
             self.cache_radius = radius;
-            self.delta_threshold = ((radius as f32 * 3.0 / 5.0).round() as usize).max(1);
-            
+            self.delta_threshold = ((radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+
             let new_size = (radius * 2 + 1).max(3);
             self.max_cache_size = new_size;
-            
+
             if let Some(non_zero) = NonZeroUsize::new(new_size) {
                 let mut new_cache = lru::LruCache::new(non_zero);
-                let entries: Vec<(String, CachedImage)> = self.image_cache
+                let entries: Vec<(String, CachedImage)> = self
+                    .image_cache
                     .iter()
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
@@ -273,11 +325,12 @@ impl ViewerApp {
                 }
                 self.image_cache = new_cache;
             }
-            
+
             self.preload_origin = self.current_index;
             self.preloading_indices.clear();
             self.preload_tasks.clear();
-            
+
+            // Clean cache immediately when radius changes
             self.clean_cache_outside_radius();
             self.cache_current_image();
         }
