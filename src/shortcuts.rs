@@ -11,8 +11,10 @@ pub enum ViewerCommand {
     MakeFit,
     OpenFile,
     ToggleFullscreen,
-    DeleteCurrent,
+    JumpToFirst,
+    JumpToLast,
     //Close, //close the app, not needed for now
+    //DeleteCurrent, //holding it deletes multiple images without user even noticing, Hell no!
 }
 #[derive(Debug, Clone)]
 pub enum MouseAction {
@@ -231,11 +233,23 @@ impl Default for InputBindings {
                 MouseAction::DoubleClick,
             )],
         );
+
         keyboard.insert(
-            ViewerCommand::DeleteCurrent,
+            ViewerCommand::JumpToFirst,
             vec![
-                KeyBinding::plain(egui::Key::Delete),
+                KeyBinding::plain(egui::Key::Home),
+                KeyBinding::ctrl(egui::Key::ArrowLeft),
+                KeyBinding::ctrl(egui::Key::A),
             ],
+        );
+
+        keyboard.insert(
+            ViewerCommand::JumpToLast,
+            vec![
+                KeyBinding::plain(egui::Key::End),
+                KeyBinding::ctrl(egui::Key::ArrowRight),
+                KeyBinding::ctrl(egui::Key::D)
+                ],
         );
 
         Self { keyboard, mouse }

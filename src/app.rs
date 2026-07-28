@@ -29,6 +29,7 @@ pub struct ViewerApp {
     pub input_bindings: InputBindings,
     logo_texture: Option<egui::TextureHandle>,
     pub show_delete_confirmation: bool,
+    delete_key_was_pressed: bool, //prevent multiple delete commands from being sent when the delete key is held down
 }
 
 impl Default for ViewerApp {
@@ -54,6 +55,7 @@ impl Default for ViewerApp {
             logo_texture: None,
             input_bindings: InputBindings::default(),
             show_delete_confirmation: false,
+            delete_key_was_pressed: false,
         }
     }
 }
@@ -175,14 +177,22 @@ impl ViewerApp {
                 self.toggle_fullscreen(ctx);
                 self.b_fit_to_window = false;
             }
-            ViewerCommand::DeleteCurrent => {
-                //self.show_delete_confirmation = true;
-                // Uncomment to show confirmation dialog.
-                //Works but i think its better to just delete the file without confirmation,
-                //since the user can always restore it from the trash/recycle bin
-                self.delete_current_image();
+            ViewerCommand::JumpToFirst => {
+                if !self.image_entries.is_empty() {
+                    self.current_index = 0;
+                    self.b_fit_to_window = true;
+                    self.image_rect = None;
+                    self.load_current_image();
+                }
             }
-            /*
+            ViewerCommand::JumpToLast => {
+                if !self.image_entries.is_empty() {
+                    self.current_index = self.image_entries.len() - 1;
+                    self.b_fit_to_window = true;
+                    self.image_rect = None;
+                    self.load_current_image();
+                }
+            } /*
               // this will used later when i implement a close button in the ui
               ViewerCommand::Close => {
                   let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -192,6 +202,15 @@ impl ViewerApp {
                   } else {
                       ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                   }
+              }
+              // deleting without confirmation is not recommended, as it repeats the command every frame
+              // when the delete key is held down, which can lead to accidental mass deletion of images.
+              ViewerCommand::DeleteCurrent => {
+                //self.show_delete_confirmation = true;
+                // Uncomment to show confirmation dialog.
+                //Works but i think its better to just delete the file without confirmation,
+                //since the user can always restore it from the trash/recycle bin
+                self.delete_current_image();
               }
                */
         }
@@ -363,9 +382,22 @@ impl eframe::App for ViewerApp {
             return;
         }
 
-        // keys
+        // Standard keyboard shortcuts
         for command in handle_keyboard(ctx, &self.input_bindings) {
             self.handle_command(ctx, command);
+        }
+
+        // Delete key - trigger on key release
+        // This prevents auto-repeat and ensures delete only happens once per press/release cycle
+        let delete_pressed = ctx.input(|i| i.key_pressed(egui::Key::Delete));
+        let delete_released = ctx.input(|i| i.key_released(egui::Key::Delete));
+
+        if delete_pressed {
+            self.delete_key_was_pressed = true;
+        } else if delete_released && self.delete_key_was_pressed {
+            // Only trigger when the key is released after being pressed
+            self.delete_current_image();
+            self.delete_key_was_pressed = false;
         }
 
         // mouse buttons

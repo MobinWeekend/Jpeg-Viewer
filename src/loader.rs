@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 use sevenz_rust2::{ArchiveReader, Password};
 use unrar::Archive as RarArchive;
+use natord::compare;
 
 pub fn load(path: PathBuf) -> Option<DynamicImage> {
     image::open(path).ok()
@@ -75,14 +76,27 @@ pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
                 .filter_map(|entry| {
                     let entry = entry.ok()?;
                     let path = entry.path();
+
                     if path.is_file() && is_supported_image(&path) {
-    return Some(path);
-}
+                        return Some(path);
+                    }
+
                     None
                 })
                 .collect::<Vec<_>>()
         })
         .collect();
-    files.sort();
+
+    files.sort_by(|a, b| {
+        compare(
+            &a.file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
+            &b.file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
+        )
+    });
+
     files
 }

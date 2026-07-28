@@ -16,6 +16,7 @@ zip = "8.6.0"
 sevenz-rust2 = "0.21.3"
 unrar = "0.5"
 trash = "5.2.6"
+natord = "1.0"
 
 [build-dependencies]
 winresource = "0.1"
