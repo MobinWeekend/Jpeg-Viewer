@@ -3,9 +3,9 @@
 
 Do I look like I know what a jpeg is?!
 
-This is a gpu based image viewer wrote on rust.
+This is a GPU based image viewer wrote on rust.
 The main goal is personal use and focused on fast, lightweight viewing experience.
-More file support comeing soon.
+More file support coming soon.
 
 for now my plan is:
 - Best viewing experience for: jpeg, dds and gif.
