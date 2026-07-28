@@ -8,6 +8,7 @@ use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
+use std::time::{Duration, Instant};
 
 // Define LoadedImage enum with Clone derive
 #[derive(Clone)]
@@ -64,10 +65,12 @@ pub struct ViewerApp {
     pub preload_origin: usize,
     pub delta_threshold: usize,
     pub should_stop_caching: bool,
-    pub navigation_timer: Option<std::time::Instant>,
-    pub navigation_pause_duration: std::time::Duration,
+    pub navigation_timer: Option<Instant>,
+    pub navigation_pause_duration: Duration,
     pub cache_delta_factor: f32,
     pub max_cache_task: u8,
+    pub last_preload_start: Option<Instant>, // Throttle preloads
+    pub processed_this_frame: usize,          // Track tasks processed per frame
 }
 
 impl Default for ViewerApp {
@@ -117,6 +120,8 @@ impl Default for ViewerApp {
             ),
             cache_delta_factor: settings_manager.get().cache_delta_factor,
             max_cache_task: settings_manager.get().max_cache_task,
+            last_preload_start: None,
+            processed_this_frame: 0,
         }
     }
 }
@@ -178,17 +183,16 @@ impl ViewerApp {
             "nearest" => egui::TextureOptions {
                 magnification: egui::TextureFilter::Nearest,
                 minification: egui::TextureFilter::Nearest,
-                mipmap_mode: None, // Mipmaps not needed for nearest
+                mipmap_mode: None,
                 ..Default::default()
             },
             "mipmap" => egui::TextureOptions {
                 magnification: egui::TextureFilter::Linear,
                 minification: egui::TextureFilter::Linear,
-                // Enable mipmaps with linear filtering between levels
                 mipmap_mode: Some(egui::TextureFilter::Linear),
                 ..Default::default()
             },
-            _ => egui::TextureOptions::LINEAR, // Default fallback
+            _ => egui::TextureOptions::LINEAR,
         }
     }
 }

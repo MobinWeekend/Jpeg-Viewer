@@ -5,10 +5,9 @@ use eframe::egui;
 use rayon::spawn;
 use std::num::NonZeroUsize;
 use std::sync::mpsc::channel;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 impl ViewerApp {
-    
     pub fn preload_adjacent_images(&mut self, ctx: &egui::Context) {
         // Check if caching should be stopped
         if self.should_stop_caching {
@@ -23,6 +22,20 @@ impl ViewerApp {
         if len <= 1 {
             return;
         }
+
+        // Throttle: Don't start new preloads too frequently
+        if let Some(last) = self.last_preload_start {
+            if last.elapsed() < Duration::from_millis(50) {
+                return;
+            }
+        }
+
+        // Reduce concurrency when main image is loading
+        let max_concurrent = if self.b_is_loading || self.b_is_loading_full {
+            self.max_cache_task.min(1) // Use only 1 thread
+        } else {
+            self.max_cache_task
+        };
 
         // Calculate delta of radius, minimum 1
         let delta_threshold =
@@ -50,11 +63,11 @@ impl ViewerApp {
 
             // Update origin to current index
             self.preload_origin = self.current_index;
-            
+
             // Only clean cache when cache is full OR we need to make room for new images
             let cache_is_full = self.image_cache.len() >= self.max_cache_size;
             let has_new_indices_to_load = self.has_new_indices_in_range();
-            
+
             if cache_is_full || has_new_indices_to_load {
                 self.clean_cache_outside_radius();
             }
@@ -96,19 +109,22 @@ impl ViewerApp {
         }
 
         // Limit concurrent preloading
-        let max_concurrent: u8 = self.max_cache_task;
         let current_tasks = self.preload_tasks.len() as u8;
         let available_slots = max_concurrent.saturating_sub(current_tasks);
 
         if available_slots > 0 && !indices_to_preload.is_empty() {
+            // Only load a small batch at a time
+            let batch_size = available_slots.min(2);
             let to_load: Vec<_> = indices_to_preload
                 .into_iter()
-                .take(available_slots as usize)
+                .take(batch_size as usize)
                 .collect();
 
             for idx in to_load {
                 self.start_preload_task(idx);
             }
+
+            self.last_preload_start = Some(Instant::now());
         }
 
         ctx.request_repaint();
@@ -121,8 +137,9 @@ impl ViewerApp {
             return false;
         }
 
-        let delta_threshold = ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
-        
+        let delta_threshold =
+            ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+
         // Check delta range first (higher priority)
         for offset in 1..=delta_threshold {
             let fwd_idx = (self.preload_origin + offset) % len;
@@ -253,8 +270,6 @@ impl ViewerApp {
 
         // Only remove if we need to make room
         if !to_remove.is_empty() {
-            // Remove the oldest entries first (LruCache already handles this)
-            // But we want to remove entries outside our radius first
             for id in to_remove {
                 self.image_cache.pop(&id);
             }
@@ -278,16 +293,28 @@ impl ViewerApp {
             return;
         }
 
+        // Process only a limited number of tasks per frame
+        const MAX_PER_FRAME: usize = 1; // Only process 1 task per frame to avoid freezes
+        let mut processed = 0;
+
         let mut completed_indices = Vec::new();
         let mut completed_images = Vec::new();
 
         for task in &mut self.preload_tasks {
+            if processed >= MAX_PER_FRAME {
+                break;
+            }
+
             if let Ok(loaded_image) = task.receiver.try_recv() {
                 completed_indices.push(task.index);
                 completed_images.push((task.index, loaded_image));
+                processed += 1;
             }
         }
 
+        self.processed_this_frame = processed;
+
+        // Remove completed tasks
         self.preload_tasks
             .retain(|task| !completed_indices.contains(&task.index));
 
@@ -295,10 +322,12 @@ impl ViewerApp {
             self.preloading_indices.remove(idx);
         }
 
+        // Add to cache (this creates textures on main thread, one at a time)
         for (idx, loaded_image) in completed_images {
             self.add_to_cache(ctx, idx, loaded_image);
         }
 
+        // Continue preloading if needed
         if !self.image_entries.is_empty() && !self.b_is_loading {
             self.preload_adjacent_images(ctx);
         }
@@ -308,7 +337,8 @@ impl ViewerApp {
         let radius = new_radius.max(1).min(100);
         if radius != self.cache_radius {
             self.cache_radius = radius;
-            self.delta_threshold = ((radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+            self.delta_threshold =
+                ((radius as f32 * self.cache_delta_factor).round() as usize).max(1);
 
             let new_size = (radius * 2 + 1).max(3);
             self.max_cache_size = new_size;

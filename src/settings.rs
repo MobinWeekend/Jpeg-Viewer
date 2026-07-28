@@ -12,6 +12,7 @@ pub struct AppSettings {
     pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
     pub texture_filter: String, // "nearest", "linear", "mipmap"
+    pub preload_throttle_ms: u64, // Delay between preload batches
 }
 
 impl Default for AppSettings {
@@ -20,11 +21,12 @@ impl Default for AppSettings {
             b_ctrl_invert: false,
             window_pos: None,
             window_size: None,
-            cache_radius: 6,
+            cache_radius: 7,
             cache_delta_factor: 0.6,
             navigation_pause_ms: 1200,
-            max_cache_task: 2,
+            max_cache_task: 4,
             texture_filter: "linear".to_string(),
+            preload_throttle_ms: 200,
         }
     }
 }
@@ -126,13 +128,22 @@ impl SettingsManager {
                     // Read max_cache_task
                     if let Some(value) = section.get("max_cache_task") {
                         if let Ok(tasks) = value.parse::<u8>() {
-                            if tasks > 100 {
+                            if tasks > 0 && tasks <= 10 {
                                 settings.max_cache_task = tasks;
                             }
                         }
                     }
+                    // Read texture_filter
                     if let Some(value) = section.get("texture_filter") {
                         settings.texture_filter = value.to_string();
+                    }
+                    // Read preload_throttle_ms
+                    if let Some(value) = section.get("preload_throttle_ms") {
+                        if let Ok(throttle) = value.parse::<u64>() {
+                            if throttle >= 10 {
+                                settings.preload_throttle_ms = throttle;
+                            }
+                        }
                     }
                 }
 
@@ -184,6 +195,8 @@ impl SettingsManager {
         section.set("max_cache_task", settings.max_cache_task.to_string());
 
         section.set("texture_filter", &settings.texture_filter);
+        
+        section.set("preload_throttle_ms", settings.preload_throttle_ms.to_string());
 
         // Write the file
         conf.write_to_file(path)
@@ -210,12 +223,6 @@ impl SettingsManager {
     pub fn get(&self) -> &AppSettings {
         &self.settings
     }
-
-    /// Get a mutable reference to settings
-
-    //pub fn get_mut(&mut self) -> &mut AppSettings {
-    //    &mut self.settings
-    //}
 
     /// Save current settings to disk
     pub fn save(&self) -> Result<(), String> {
@@ -271,9 +278,11 @@ mod tests {
         assert!(!settings.b_ctrl_invert);
         assert!(settings.window_pos.is_none());
         assert!(settings.window_size.is_none());
-        assert_eq!(settings.cache_radius, 5);
+        assert_eq!(settings.cache_radius, 6);
         assert_eq!(settings.cache_delta_factor, 0.6);
         assert_eq!(settings.navigation_pause_ms, 1200);
-        assert_eq!(settings.max_cache_task, 4)
+        assert_eq!(settings.max_cache_task, 2);
+        assert_eq!(settings.texture_filter, "linear");
+        assert_eq!(settings.preload_throttle_ms, 50);
     }
 }
