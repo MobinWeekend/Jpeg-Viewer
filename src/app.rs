@@ -24,7 +24,7 @@ pub struct ViewerApp {
     last_window_size: Option<egui::Vec2>,
     b_zoom_used: bool,
     b_ctrl_invert: bool,
-    settings_manager: SettingsManager,
+    pub settings_manager: SettingsManager,
     pub input_bindings: InputBindings,
     logo_texture: Option<egui::TextureHandle>,
 }
@@ -47,7 +47,7 @@ impl Default for ViewerApp {
             last_window_size: None,
             b_zoom_used: false,
             b_ctrl_invert: settings.b_ctrl_invert,
-            settings_manager,
+            settings_manager: SettingsManager::new(),
             image_entries: Vec::new(),
             logo_texture: None,
             input_bindings: InputBindings::default(),
@@ -236,6 +236,21 @@ impl ViewerApp {
         let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
     }
+
+    pub fn save_window_state(&mut self, ctx: &egui::Context) {
+        // Use outer_rect to include window decorations
+        if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+            let pos = [rect.min.x, rect.min.y];
+            let size = [rect.width(), rect.height()];
+
+            let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+            if !is_fullscreen && size[0] > 100.0 && size[1] > 100.0 {
+                if let Err(e) = self.settings_manager.update_window_state(pos, size) {
+                    eprintln!("Failed to save window state: {}", e);
+                }
+            }
+        }
+    }
 }
 
 // =========== update  ===========
@@ -261,6 +276,8 @@ impl eframe::App for ViewerApp {
             if fullscreen {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
             } else {
+                // Save window state before closing
+                self.save_window_state(ctx);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
 
@@ -470,6 +487,10 @@ impl eframe::App for ViewerApp {
             }
         });
         ctx.request_repaint();
+
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.save_window_state(ctx);
+        }
     }
 }
 

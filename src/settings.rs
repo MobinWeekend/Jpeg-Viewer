@@ -5,12 +5,16 @@ use std::path::PathBuf;
 #[derive(Debug, Clone)]
 pub struct AppSettings {
     pub b_ctrl_invert: bool,
+    pub window_pos: Option<[f32; 2]>,
+    pub window_size: Option<[f32; 2]>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             b_ctrl_invert: false,
+            window_pos: None,
+            window_size: None,
         }
     }
 }
@@ -26,16 +30,19 @@ impl SettingsManager {
     pub fn new() -> Self {
         let path = Self::get_settings_path();
         let settings = Self::load_from_file(&path);
-        
+
         // If no settings file exists, create default and save it
         if !path.exists() {
             let default = AppSettings::default();
             if let Err(e) = Self::save_to_file(&path, &default) {
                 eprintln!("Warning: Could not save default settings: {}", e);
             }
-            return Self { path, settings: default };
+            return Self {
+                path,
+                settings: default,
+            };
         }
-        
+
         Self { path, settings }
     }
 
@@ -47,7 +54,7 @@ impl SettingsManager {
                 return parent.join("jpeg_viewer settings.ini");
             }
         }
-        
+
         // Fallback: current working directory
         PathBuf::from("jpeg_viewer settings.ini")
     }
@@ -61,15 +68,29 @@ impl SettingsManager {
         match Ini::load_from_file(path) {
             Ok(conf) => {
                 let mut settings = AppSettings::default();
-                
+
                 // Get the Settings section
                 if let Some(section) = conf.section(Some("Settings")) {
                     // Read b_ctrl_invert (boolean)
                     if let Some(value) = section.get("b_ctrl_invert") {
                         settings.b_ctrl_invert = Self::parse_bool(value);
                     }
+                    // Read window position
+                    if let Some(value) = section.get("window_pos") {
+                        if let Some((x, y)) = Self::parse_f32_pair(value) {
+                            settings.window_pos = Some([x, y]);
+                        }
+                    }
+                    // Read window size
+                    if let Some(value) = section.get("window_size") {
+                        if let Some((width, height)) = Self::parse_f32_pair(value) {
+                            if width > 100.0 && height > 100.0 {
+                                settings.window_size = Some([width, height]);
+                            }
+                        }
+                    }
                 }
-                
+
                 settings
             }
             Err(e) => {
@@ -82,15 +103,31 @@ impl SettingsManager {
     /// Save settings to an INI file
     fn save_to_file(path: &PathBuf, settings: &AppSettings) -> Result<(), String> {
         let mut conf = Ini::new();
-        
+
         // Create the Settings section with b_ctrl_invert
-        conf.with_section(Some("Settings"))
-            .set("b_ctrl_invert", if settings.b_ctrl_invert { "true" } else { "false" });
-        
+        let mut section = conf.with_section(Some("Settings"));
+
+        section.set(
+            "b_ctrl_invert",
+            if settings.b_ctrl_invert {
+                "true"
+            } else {
+                "false"
+            },
+        );
+
+        if let Some([x, y]) = settings.window_pos {
+            section.set("window_pos", format!("{},{}", x, y));
+        }
+
+        if let Some([w, h]) = settings.window_size {
+            section.set("window_size", format!("{},{}", w, h));
+        }
+
         // Write the file
         conf.write_to_file(path)
             .map_err(|e| format!("Failed to save settings: {}", e))?;
-        
+
         Ok(())
     }
 
@@ -100,8 +137,14 @@ impl SettingsManager {
         matches!(lower.as_str(), "true" | "1" | "yes" | "on")
     }
 
+    fn parse_f32_pair(value: &str) -> Option<(f32, f32)> {
+        let (a, b) = value.split_once(',')?;
+
+        Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+    }
+
     // ===== Public API =====
-    
+
     /// Get a reference to the current settings
     pub fn get(&self) -> &AppSettings {
         &self.settings
@@ -135,6 +178,15 @@ impl SettingsManager {
     //pub fn path(&self) -> &PathBuf {
     //    &self.path
     //}
+
+    pub fn update_window_state(&mut self, pos: [f32; 2], size: [f32; 2]) -> Result<(), String> {
+    // Clamp to reasonable values (prevent off-screen)
+    let size = [size[0].max(100.0), size[1].max(100.0)];
+    
+    self.settings.window_pos = Some(pos);
+    self.settings.window_size = Some(size);
+    self.save()
+}
 }
 
 impl Default for SettingsManager {
@@ -165,5 +217,7 @@ mod tests {
     fn test_default_settings() {
         let settings = AppSettings::default();
         assert!(!settings.b_ctrl_invert);
+        assert!(settings.window_pos.is_none());
+        assert!(settings.window_size.is_none());
     }
 }
