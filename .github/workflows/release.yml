@@ -126,87 +126,9 @@ jobs:
           name: JPEG-View-macOS
           path: JPEG-View-macOS
 
-  build-linux:
-    name: Build Linux Portable
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev \
-            libssl-dev \
-            file \
-            fuse
-
-      - name: Set version from Git tag
-        run: |
-          cargo install cargo-edit
-          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
-          echo "Setting version to: $VERSION"
-          cargo set-version $VERSION
-
-      - name: Build release
-        run: cargo build --release
-
-      - name: Prepare Linux executables
-        run: |
-          # Standard Linux binary
-          cp target/release/jpeg_viewer JPEG-View-x86_64
-          chmod +x JPEG-View-x86_64
-          
-          # Build AppImage for better compatibility (all dependencies included)
-          # Download linuxdeploy
-          wget -c "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
-          chmod +x linuxdeploy-x86_64.AppImage
-          
-          # Create AppDir
-          mkdir -p AppDir/usr/bin
-          cp target/release/jpeg_viewer AppDir/usr/bin/
-          
-          # Create desktop file
-          cat > AppDir/jpeg_viewer.desktop << EOF
-          [Desktop Entry]
-          Name=JPEG Viewer
-          Comment=View JPEG images
-          Exec=jpeg_viewer
-          Type=Application
-          Categories=Graphics;
-          EOF
-          
-          # Build AppImage (this is portable, no install needed)
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage
-          
-          # Rename to match your requested format
-          mv JPEG_Viewer-*.AppImage JPEG-View-x86_64.AppImage
-
-      - name: Upload Linux executables
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-executables
-          path: |
-            JPEG-View-x86_64
-            JPEG-View-x86_64.AppImage
-
   release:
     name: Create GitHub Release
-    needs: [build-windows-x64, build-windows-arm, build-macos, build-linux]
+    needs: [build-windows-x64, build-windows-arm, build-macos]
     runs-on: ubuntu-latest
 
     steps:
@@ -254,10 +176,6 @@ jobs:
             
             ### macOS
             - **Apple Silicon**: `JPEG-View-macOS` - For M1-M5 Macs (may need to right-click → Open first time)
-            
-            ### Linux
-            - `JPEG-View-x86_64.AppImage` - Most portable, double-click to run (recommended)
-            - `JPEG-View-x86_64` - Raw binary, run with `./JPEG-View-x86_64` (requires system libraries)
             
             **Version**: ${{ github.ref_name }}
           files: |
