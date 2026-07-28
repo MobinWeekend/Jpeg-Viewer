@@ -9,25 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            artifact: jpeg_viewer-windows.exe
-            binary: jpeg_viewer.exe
-
-          - os: ubuntu-latest
-            artifact: jpeg_viewer-linux
-            binary: jpeg_viewer
-
-          - os: macos-latest
-            artifact: jpeg_viewer-macos
-            binary: jpeg_viewer
-
+  build-windows-x64:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -40,30 +25,70 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          cargo install cargo-edit
+          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
+          echo "Setting version to: $VERSION"
+          cargo set-version $VERSION
+
       - name: Build release
         run: cargo build --release
 
-      - name: Prepare artifact
-        shell: bash
+      - name: Rename binary
         run: |
-          mkdir dist
+          copy target\release\jpeg_viewer.exe JPEG-View-Windows-x64.exe
 
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp target/release/${{ matrix.binary }} dist/${{ matrix.artifact }}
-          else
-            cp target/release/${{ matrix.binary }} dist/${{ matrix.artifact }}
-          fi
-
-      - name: Upload build artifact
+      - name: Upload Windows x64 executable
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: JPEG-View-Windows-x64.exe
+          path: JPEG-View-Windows-x64.exe
 
+  build-windows-arm:
+    name: Build Windows (ARM64)
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          cargo install cargo-edit
+          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
+          echo "Setting version to: $VERSION"
+          cargo set-version $VERSION
+
+      - name: Build for ARM64
+        run: |
+          cargo build --release --target aarch64-pc-windows-msvc
+
+      - name: Rename binary
+        run: |
+          copy target\aarch64-pc-windows-msvc\release\jpeg_viewer.exe JPEG-View-Windows-ARM64.exe
+
+      - name: Upload Windows ARM64 executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Windows-ARM64.exe
+          path: JPEG-View-Windows-ARM64.exe
 
   release:
     name: Create GitHub Release
-    needs: build
+    needs: [build-windows-x64, build-windows-arm]
     runs-on: ubuntu-latest
 
     steps:
@@ -72,39 +97,87 @@ jobs:
         with:
           fetch-depth: 0
 
-
       - name: Generate changelog
         id: changelog
         shell: bash
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
-          if [ -z "$LAST_TAG" ]; then
-            LOG=$(git log --pretty=format:"- %s")
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          # Generate changelog based on commits since last tag
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # If no previous tag, get all commits
+            CHANGELOG=$(git log --pretty=format:"- %s" --reverse)
           else
-            LOG=$(git log $LAST_TAG..HEAD --pretty=format:"- %s")
+            # Get commits between tags
+            CHANGELOG=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s" --reverse)
           fi
-
+          
+          # Also try to get commit messages with their authors for better context
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG_DETAILED=$(git log --pretty=format:"- %s (%an)" --reverse)
+          else
+            CHANGELOG_DETAILED=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%an)" --reverse)
+          fi
+          
+          # Use detailed changelog if available, otherwise use simple one
+          if [ -n "$CHANGELOG_DETAILED" ]; then
+            CHANGELOG="$CHANGELOG_DETAILED"
+          fi
+          
+          # If no commits found, use a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- Initial release or no new commits since last tag"
+          fi
+          
+          # Output the changelog
           {
             echo "body<<EOF"
-            echo "$LOG"
+            echo "$CHANGELOG"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
 
+      - name: List downloaded files
+        run: ls -la release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            ## Changes
-
+            ## 📦 Windows Portable Release
+            
+            ### What's Changed
             ${{ steps.changelog.outputs.body }}
-
+            
+            ---
+            
+            ### 📥 Downloads
+            
+            **Windows x64** (Intel/AMD 64-bit):
+            - `JPEG-View-Windows-x64.exe` - Most Windows PCs
+            
+            **Windows ARM64** (ARM-based Windows):
+            - `JPEG-View-Windows-ARM64.exe` - Surface Pro X, Lenovo ThinkPad X13s, etc.
+            
+            ---
+            
+            ### 🚀 How to Use
+            1. Download the appropriate `.exe` file for your system
+            2. Double-click to run - no installation required!
+            3. Enjoy viewing your JPEG images
+            
+            ### 📝 Version
+            ${{ github.ref_name }}
+            
+            ### ⚡ Features
+            - Fast JPEG viewing
+            - Portable - no installation needed
+            - Lightweight and efficient
           files: |
             release/**/*
+          generate_release_notes: false
