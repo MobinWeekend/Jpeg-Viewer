@@ -1,0 +1,110 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: jpeg_viewer-windows.exe
+            binary: jpeg_viewer.exe
+
+          - os: ubuntu-latest
+            artifact: jpeg_viewer-linux
+            binary: jpeg_viewer
+
+          - os: macos-latest
+            artifact: jpeg_viewer-macos
+            binary: jpeg_viewer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir dist
+
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/release/${{ matrix.binary }} dist/${{ matrix.artifact }}
+          else
+            cp target/release/${{ matrix.binary }} dist/${{ matrix.artifact }}
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            LOG=$(git log --pretty=format:"- %s")
+          else
+            LOG=$(git log $LAST_TAG..HEAD --pretty=format:"- %s")
+          fi
+
+          {
+            echo "body<<EOF"
+            echo "$LOG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.body }}
+
+          files: |
+            release/**/*
