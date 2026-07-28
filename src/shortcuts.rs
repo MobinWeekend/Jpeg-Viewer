@@ -11,6 +11,7 @@ pub enum ViewerCommand {
     MakeFit,
     OpenFile,
     ToggleFullscreen,
+    DeleteCurrent,
     //Close, //close the app, not needed for now
 }
 #[derive(Debug, Clone)]
@@ -230,6 +231,12 @@ impl Default for InputBindings {
                 MouseAction::DoubleClick,
             )],
         );
+        keyboard.insert(
+            ViewerCommand::DeleteCurrent,
+            vec![
+                KeyBinding::plain(egui::Key::Delete),
+            ],
+        );
 
         Self { keyboard, mouse }
     }
@@ -253,7 +260,7 @@ pub fn handle_mouse(
     ctx: &egui::Context,
     bindings: &InputBindings,
     mouse_over: bool,
-    b_ctrl_invert: bool
+    b_ctrl_invert: bool,
 ) -> Vec<ViewerCommand> {
     let mut commands = Vec::new();
 

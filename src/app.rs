@@ -9,6 +9,7 @@ use image::DynamicImage;
 use rayon::spawn;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
+use trash;
 
 pub struct ViewerApp {
     texture: Option<egui::TextureHandle>,
@@ -27,6 +28,7 @@ pub struct ViewerApp {
     pub settings_manager: SettingsManager,
     pub input_bindings: InputBindings,
     logo_texture: Option<egui::TextureHandle>,
+    pub show_delete_confirmation: bool,
 }
 
 impl Default for ViewerApp {
@@ -51,6 +53,7 @@ impl Default for ViewerApp {
             image_entries: Vec::new(),
             logo_texture: None,
             input_bindings: InputBindings::default(),
+            show_delete_confirmation: false,
         }
     }
 }
@@ -171,7 +174,15 @@ impl ViewerApp {
             ViewerCommand::ToggleFullscreen => {
                 self.toggle_fullscreen(ctx);
                 self.b_fit_to_window = false;
-            } /*
+            }
+            ViewerCommand::DeleteCurrent => {
+                //self.show_delete_confirmation = true;
+                // Uncomment to show confirmation dialog.
+                //Works but i think its better to just delete the file without confirmation,
+                //since the user can always restore it from the trash/recycle bin
+                self.delete_current_image();
+            }
+            /*
               // this will used later when i implement a close button in the ui
               ViewerCommand::Close => {
                   let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -248,6 +259,74 @@ impl ViewerApp {
                 if let Err(e) = self.settings_manager.update_window_state(pos, size) {
                     eprintln!("Failed to save window state: {}", e);
                 }
+            }
+        }
+    }
+    fn delete_current_image(&mut self) {
+        if self.image_entries.is_empty() {
+            return;
+        }
+
+        // Get the current entry
+        let entry = match self.image_entries.get(self.current_index) {
+            Some(entry) => entry.clone(),
+            None => return,
+        };
+
+        // Only files can be deleted from disk (archive entries are inside archives)
+        let file_path = match entry {
+            ImageEntry::File(path) => path,
+            _ => {
+                println!("Cannot delete images inside archives directly");
+                return;
+            }
+        };
+
+        // Check if file exists
+        if !file_path.exists() {
+            println!("File no longer exists on disk");
+            // Remove from list and move to next
+            self.image_entries.remove(self.current_index);
+            if self.current_index >= self.image_entries.len() {
+                self.current_index = 0;
+            }
+            if !self.image_entries.is_empty() {
+                self.load_current_image();
+            } else {
+                self.texture = None;
+            }
+            return;
+        }
+
+        // Move file to trash/recycle bin using the trash crate
+        match trash::delete(&file_path) {
+            Ok(_) => {
+                println!("Moved to trash: {:?}", file_path);
+
+                // Remove from list
+                self.image_entries.remove(self.current_index);
+
+                // Navigate to next image
+                if self.image_entries.is_empty() {
+                    // No more images
+                    self.texture = None;
+                    self.current_index = 0;
+                } else if self.current_index >= self.image_entries.len() {
+                    // If we removed the last item, go to the new last
+                    self.current_index = self.image_entries.len() - 1;
+                    self.load_current_image();
+                } else {
+                    // Load the next image (which is now at the same index)
+                    self.load_current_image();
+                }
+
+                self.b_fit_to_window = true;
+                self.image_rect = None;
+                self.b_zoom_used = false;
+            }
+            Err(e) => {
+                eprintln!("Failed to move to trash: {}", e);
+                // Optionally show error to user via UI
             }
         }
     }
@@ -490,6 +569,27 @@ impl eframe::App for ViewerApp {
 
         if ctx.input(|i| i.viewport().close_requested()) {
             self.save_window_state(ctx);
+        }
+
+        // In the update method, after the CentralPanel
+        if self.show_delete_confirmation {
+            egui::Window::new("Confirm Delete")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.label("Move this file to the Trash/Recycle Bin?");
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes").clicked() {
+                            self.show_delete_confirmation = false;
+                            self.delete_current_image();
+                        }
+                        if ui.button("No").clicked() {
+                            self.show_delete_confirmation = false;
+                        }
+                    });
+                });
         }
     }
 }
