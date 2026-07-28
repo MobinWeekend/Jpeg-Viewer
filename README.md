@@ -16,10 +16,10 @@ More file support coming soon.
 |---|---|
 | Open File | `Ctrl + O` |
 | Next Image | `Right Arrow` or `D` |
-| Previous Image | `Left Arrow` or `A` or `Q` |
+| Previous Image | `Left Arrow` or `A` |
 | Zoom In | `+` |
 | Zoom Out | `-` |
-| Reset Zoom | `W` or `Up Arrow` or `Down Arrow` |
+| Reset Zoom | `W` or `Up Arrow` |
 | Fit Image to Window | `S` or `Down Arrow` or `Numpad 0` |
 | Toggle Fullscreen | `F11` or `Enter` or `F` |
 
@@ -38,6 +38,7 @@ More file support coming soon.
 ## Mouse Wheel
 
 The mouse wheel can be used for either image navigation or zooming.
+You can toggle it by holding control key on keyboard.
 
 ### Normal Mode
 | Input | Action |
@@ -61,8 +62,9 @@ When zoom mode is active:
 - `Ctrl + O` opens the file picker.
 - Fullscreen can be toggled quickly using `F11`, `F`, `Enter`, or the middle mouse button.
 
+---
 
-for now my plan is:
+### for now my plan is:
 - Best viewing experience for: jpeg, dds and gif.
 - Keeping the program lightweight and fast.
 - functional for everyday casual use.

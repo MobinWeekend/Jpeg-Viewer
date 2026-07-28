@@ -162,7 +162,6 @@ impl Default for InputBindings {
             vec![
                 KeyBinding::plain(egui::Key::ArrowLeft),
                 KeyBinding::plain(egui::Key::A),
-                KeyBinding::plain(egui::Key::Q),
             ],
         );
 
@@ -181,7 +180,6 @@ impl Default for InputBindings {
             vec![
                 KeyBinding::plain(egui::Key::W),
                 KeyBinding::plain(egui::Key::ArrowUp),
-                KeyBinding::plain(egui::Key::ArrowDown),
             ],
         );
 
