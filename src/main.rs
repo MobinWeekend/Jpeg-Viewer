@@ -7,6 +7,7 @@ mod image_entry;
 mod loader;
 mod settings;
 mod shortcuts;
+mod gif_animation;
 
 use app::ViewerApp;
 use eframe::egui;

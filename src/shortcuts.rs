@@ -13,14 +13,15 @@ pub enum ViewerCommand {
     ToggleFullscreen,
     JumpToFirst,
     JumpToLast,
-    //Close, //close the app, not needed for now
-    //DeleteCurrent, //holding it deletes multiple images without user even noticing, Hell no!
+    ToggleGifPlay,
+    GifSpeedHalf,    // New: 0.5x speed
+    GifSpeedUp,  // New: 3x speed
 }
+
 #[derive(Debug, Clone)]
 pub enum MouseAction {
     SingleClick,
     DoubleClick,
-    //Drag,
 }
 
 #[derive(Debug, Clone)]
@@ -47,21 +48,6 @@ pub struct InputBindings {
 }
 
 impl KeyBinding {
-    /* for later use
-       pub fn new(
-           key: egui::Key,
-           ctrl: Option<bool>,
-           shift: Option<bool>,
-           alt: Option<bool>,
-       ) -> Self {
-           Self {
-               key,
-               ctrl,
-               shift,
-               alt,
-           }
-       }
-    */
     pub fn plain(key: egui::Key) -> Self {
         Self {
             key,
@@ -78,6 +64,7 @@ impl KeyBinding {
             alt: Some(false),
         }
     }
+
     pub fn matches(&self, input: &egui::InputState) -> bool {
         if !input.key_pressed(self.key) {
             return false;
@@ -119,7 +106,6 @@ impl MouseBinding {
         let clicked = match self.action {
             MouseAction::SingleClick => input.pointer.button_pressed(self.button),
             MouseAction::DoubleClick => input.pointer.button_double_clicked(self.button),
-            //MouseAction::Drag => input.pointer.button_down(self.button),
         };
 
         if !clicked {
@@ -207,6 +193,24 @@ impl Default for InputBindings {
                 KeyBinding::plain(egui::Key::F),
             ],
         );
+        keyboard.insert(
+            ViewerCommand::ToggleGifPlay,
+            vec![KeyBinding::plain(egui::Key::Space)],
+        );
+
+        // GIF speed controls
+        keyboard.insert(
+            ViewerCommand::GifSpeedHalf,
+            vec![
+                KeyBinding::plain(egui::Key::OpenBracket), // for half speed
+            ],
+        );
+        keyboard.insert(
+            ViewerCommand::GifSpeedUp,
+            vec![
+                KeyBinding::plain(egui::Key::CloseBracket), //for triple speed
+            ],
+        );
 
         let mut mouse = HashMap::new();
 
@@ -248,8 +252,8 @@ impl Default for InputBindings {
             vec![
                 KeyBinding::plain(egui::Key::End),
                 KeyBinding::ctrl(egui::Key::ArrowRight),
-                KeyBinding::ctrl(egui::Key::D)
-                ],
+                KeyBinding::ctrl(egui::Key::D),
+            ],
         );
 
         Self { keyboard, mouse }

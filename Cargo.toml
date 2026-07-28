@@ -1,6 +1,6 @@
 [package]
 name = "jpeg_viewer"
-version = "0.1.5"
+version = "0.1.4"
 edition = "2024"
 
 [dependencies]
@@ -17,6 +17,7 @@ sevenz-rust2 = "0.21.3"
 unrar = "0.5"
 trash = "5.2.6"
 natord = "1.0"
+gif = "0.13"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
