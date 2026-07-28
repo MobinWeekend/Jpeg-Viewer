@@ -1,6 +1,7 @@
 use image::RgbaImage;
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
 pub struct GifAnimation {
     frames: Vec<RgbaImage>,
     delays: Vec<Duration>,
@@ -46,8 +47,8 @@ impl GifAnimation {
             speed_multiplier: 1.0,
         })
     }
-    
-    // Preview mode: only load the first frame
+
+    // Preview mode: only load the first frame (fast loading)
     pub fn from_bytes_preview(data: &[u8]) -> Result<Self, String> {
         use image::codecs::gif::GifDecoder;
         use image::AnimationDecoder;
@@ -71,6 +72,13 @@ impl GifAnimation {
             is_playing: false, // Start paused for preview
             speed_multiplier: 1.0,
         })
+    }
+    
+    pub fn get_current_frame_ref(&self) -> Option<&RgbaImage> {
+        if self.frames.is_empty() {
+            return None;
+        }
+        Some(&self.frames[self.current_frame])
     }
     
     // Replace preview with full GIF (upgrade from preview to full)

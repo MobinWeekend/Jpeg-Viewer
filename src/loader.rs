@@ -11,17 +11,16 @@ use sevenz_rust2::{ArchiveReader, Password};
 use unrar::Archive as RarArchive;
 use natord::compare;
 
-pub fn load(path: PathBuf) -> Option<DynamicImage> {
-    if let Some(ext) = path.extension() {
-        if ext.eq_ignore_ascii_case("gif") {
-            return None;
-        }
-    }
-    
+// ========== Image Loading ==========
+
+// Load full resolution image
+pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
     image::open(path).ok()
 }
 
-// Load full GIF
+// ========== GIF Loading ==========
+
+// Load full GIF (all frames)
 pub fn load_gif(path: PathBuf) -> Option<GifAnimation> {
     if let Ok(data) = std::fs::read(&path) {
         if let Ok(gif) = GifAnimation::from_bytes(&data) {
@@ -31,7 +30,7 @@ pub fn load_gif(path: PathBuf) -> Option<GifAnimation> {
     None
 }
 
-// Load GIF preview (first frame only)
+// Load only first frame of GIF for preview (fast loading)
 pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
     if let Ok(data) = std::fs::read(&path) {
         if let Ok(gif) = GifAnimation::from_bytes_preview(&data) {
@@ -41,73 +40,7 @@ pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
     None
 }
 
-// Full GIF from ZIP
-pub fn load_zip_gif(image: ArchiveImage) -> Option<GifAnimation> {
-    let file = File::open(&image.archive_path).ok()?;
-    let mut archive = ZipArchive::new(file).ok()?;
-    let mut entry = archive.by_index(image.entry_index).ok()?;
-    let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).ok()?;
-    GifAnimation::from_bytes(&bytes).ok()
-}
-
-// GIF preview from ZIP
-pub fn load_zip_gif_preview(image: ArchiveImage) -> Option<GifAnimation> {
-    let file = File::open(&image.archive_path).ok()?;
-    let mut archive = ZipArchive::new(file).ok()?;
-    let mut entry = archive.by_index(image.entry_index).ok()?;
-    let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).ok()?;
-    GifAnimation::from_bytes_preview(&bytes).ok()
-}
-
-// Full GIF from 7z
-pub fn load_7z_gif(image: S7ArchiveImage) -> Option<GifAnimation> {
-    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
-    let bytes = reader.read_file(&image.name).ok()?;
-    GifAnimation::from_bytes(&bytes).ok()
-}
-
-// GIF preview from 7z
-pub fn load_7z_gif_preview(image: S7ArchiveImage) -> Option<GifAnimation> {
-    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
-    let bytes = reader.read_file(&image.name).ok()?;
-    GifAnimation::from_bytes_preview(&bytes).ok()
-}
-
-// Full GIF from RAR
-pub fn load_rar_gif(image: RarArchiveImage) -> Option<GifAnimation> {
-    let archive = RarArchive::new(&image.archive_path)
-        .open_for_processing()
-        .ok()?;
-    let mut archive = archive;
-    loop {
-        let header = archive.read_header().ok()??;
-        let filename = header.entry().filename.to_string_lossy().to_string();
-        if filename == image.name {
-            let (bytes, _) = header.read().ok()?;
-            return GifAnimation::from_bytes(&bytes).ok();
-        }
-        archive = header.skip().ok()?;
-    }
-}
-
-// GIF preview from RAR
-pub fn load_rar_gif_preview(image: RarArchiveImage) -> Option<GifAnimation> {
-    let archive = RarArchive::new(&image.archive_path)
-        .open_for_processing()
-        .ok()?;
-    let mut archive = archive;
-    loop {
-        let header = archive.read_header().ok()??;
-        let filename = header.entry().filename.to_string_lossy().to_string();
-        if filename == image.name {
-            let (bytes, _) = header.read().ok()?;
-            return GifAnimation::from_bytes_preview(&bytes).ok();
-        }
-        archive = header.skip().ok()?;
-    }
-}
+// ========== Archive Loading ==========
 
 pub fn load_zip_image(image: ArchiveImage) -> Option<DynamicImage> {
     let file = File::open(&image.archive_path).ok()?;
@@ -118,11 +51,47 @@ pub fn load_zip_image(image: ArchiveImage) -> Option<DynamicImage> {
     image::load_from_memory(&bytes).ok()
 }
 
+pub fn load_zip_gif(image: ArchiveImage) -> Option<GifAnimation> {
+    let file = File::open(&image.archive_path).ok()?;
+    let mut archive = ZipArchive::new(file).ok()?;
+    let mut entry = archive.by_index(image.entry_index).ok()?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).ok()?;
+    GifAnimation::from_bytes(&bytes).ok()
+}
+
+// Load only first frame of GIF from ZIP for preview
+pub fn load_zip_gif_preview(image: ArchiveImage) -> Option<GifAnimation> {
+    let file = File::open(&image.archive_path).ok()?;
+    let mut archive = ZipArchive::new(file).ok()?;
+    let mut entry = archive.by_index(image.entry_index).ok()?;
+    let mut bytes = Vec::new();
+    entry.read_to_end(&mut bytes).ok()?;
+    GifAnimation::from_bytes_preview(&bytes).ok()
+}
+
+// ========== 7z Archive Loading ==========
+
 pub fn load_7z_image(image: S7ArchiveImage) -> Option<DynamicImage> {
     let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
     let bytes = reader.read_file(&image.name).ok()?;
     image::load_from_memory(&bytes).ok()
 }
+
+pub fn load_7z_gif(image: S7ArchiveImage) -> Option<GifAnimation> {
+    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
+    let bytes = reader.read_file(&image.name).ok()?;
+    GifAnimation::from_bytes(&bytes).ok()
+}
+
+// Load only first frame of GIF from 7z for preview
+pub fn load_7z_gif_preview(image: S7ArchiveImage) -> Option<GifAnimation> {
+    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
+    let bytes = reader.read_file(&image.name).ok()?;
+    GifAnimation::from_bytes_preview(&bytes).ok()
+}
+
+// ========== RAR Archive Loading ==========
 
 pub fn load_rar_image(image: RarArchiveImage) -> Option<DynamicImage> {
     let archive = RarArchive::new(&image.archive_path)
@@ -139,6 +108,41 @@ pub fn load_rar_image(image: RarArchiveImage) -> Option<DynamicImage> {
         archive = header.skip().ok()?;
     }
 }
+
+pub fn load_rar_gif(image: RarArchiveImage) -> Option<GifAnimation> {
+    let archive = RarArchive::new(&image.archive_path)
+        .open_for_processing()
+        .ok()?;
+    let mut archive = archive;
+    loop {
+        let header = archive.read_header().ok()??;
+        let filename = header.entry().filename.to_string_lossy().to_string();
+        if filename == image.name {
+            let (bytes, _) = header.read().ok()?;
+            return GifAnimation::from_bytes(&bytes).ok();
+        }
+        archive = header.skip().ok()?;
+    }
+}
+
+// Load only first frame of GIF from RAR for preview
+pub fn load_rar_gif_preview(image: RarArchiveImage) -> Option<GifAnimation> {
+    let archive = RarArchive::new(&image.archive_path)
+        .open_for_processing()
+        .ok()?;
+    let mut archive = archive;
+    loop {
+        let header = archive.read_header().ok()??;
+        let filename = header.entry().filename.to_string_lossy().to_string();
+        if filename == image.name {
+            let (bytes, _) = header.read().ok()?;
+            return GifAnimation::from_bytes_preview(&bytes).ok();
+        }
+        archive = header.skip().ok()?;
+    }
+}
+
+// ========== Directory Loading ==========
 
 pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(path)

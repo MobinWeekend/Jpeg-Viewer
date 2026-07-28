@@ -17,7 +17,15 @@ sevenz-rust2 = "0.21.3"
 unrar = "0.5"
 trash = "5.2.6"
 natord = "1.0"
-gif = "0.13"
+gif = "0.14.2"
+lru = "0.18.1"  # for LRU cache
+dirs = "6.0.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

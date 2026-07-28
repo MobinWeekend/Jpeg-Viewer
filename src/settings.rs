@@ -7,6 +7,9 @@ pub struct AppSettings {
     pub b_ctrl_invert: bool,
     pub window_pos: Option<[f32; 2]>,
     pub window_size: Option<[f32; 2]>,
+    pub cache_radius: usize,
+    pub cache_delta_factor: f32,
+    pub navigation_pause_ms: u64,
 }
 
 impl Default for AppSettings {
@@ -15,6 +18,9 @@ impl Default for AppSettings {
             b_ctrl_invert: false,
             window_pos: None,
             window_size: None,
+            cache_radius: 5,
+            cache_delta_factor: 0.6,
+            navigation_pause_ms: 1200,
         }
     }
 }
@@ -89,6 +95,30 @@ impl SettingsManager {
                             }
                         }
                     }
+                    // Read cache radius
+                    if let Some(value) = section.get("cache_radius") {
+                        if let Ok(radius) = value.parse::<usize>() {
+                            if radius > 0 && radius <= 100 {
+                                settings.cache_radius = radius;
+                            }
+                        }
+                    }
+                    // Read cache delta_factor
+                    if let Some(value) = section.get("cache_delta_factor") {
+                        if let Ok(factor) = value.parse::<f32>() {
+                            if factor > 0.0 {
+                                settings.cache_delta_factor = factor;
+                            }
+                        }
+                    }
+                    // Read navigation pause in ms
+                    if let Some(value) = section.get("navigation_pause_ms") {
+                        if let Ok(pausetime) = value.parse::<u64>() {
+                            if pausetime > 100 {
+                                settings.navigation_pause_ms = pausetime;
+                            }
+                        }
+                    }
                 }
 
                 settings
@@ -124,6 +154,12 @@ impl SettingsManager {
             section.set("window_size", format!("{},{}", w, h));
         }
 
+        section.set("cache_radius", settings.cache_radius.to_string());
+
+        section.set("cache_delta_factor", settings.cache_delta_factor.to_string());
+
+        section.set("navigation_pause_ms", settings.navigation_pause_ms.to_string());
+
         // Write the file
         conf.write_to_file(path)
             .map_err(|e| format!("Failed to save settings: {}", e))?;
@@ -150,7 +186,8 @@ impl SettingsManager {
         &self.settings
     }
 
-    // Get a mutable reference to the current settings
+    /// Get a mutable reference to settings
+    
     //pub fn get_mut(&mut self) -> &mut AppSettings {
     //    &mut self.settings
     //}
@@ -169,24 +206,14 @@ impl SettingsManager {
         self.save()
     }
 
-    // Reload settings from disk (discards in-memory changes)
-    //pub fn reload(&mut self) {
-    //    self.settings = Self::load_from_file(&self.path);
-    //}
-
-    // Get the path to the settings file
-    //pub fn path(&self) -> &PathBuf {
-    //    &self.path
-    //}
-
     pub fn update_window_state(&mut self, pos: [f32; 2], size: [f32; 2]) -> Result<(), String> {
-    // Clamp to reasonable values (prevent off-screen)
-    let size = [size[0].max(100.0), size[1].max(100.0)];
-    
-    self.settings.window_pos = Some(pos);
-    self.settings.window_size = Some(size);
-    self.save()
-}
+        // Clamp to reasonable values (prevent off-screen)
+        let size = [size[0].max(100.0), size[1].max(100.0)];
+        
+        self.settings.window_pos = Some(pos);
+        self.settings.window_size = Some(size);
+        self.save()
+    }
 }
 
 impl Default for SettingsManager {
@@ -219,5 +246,8 @@ mod tests {
         assert!(!settings.b_ctrl_invert);
         assert!(settings.window_pos.is_none());
         assert!(settings.window_size.is_none());
+        assert_eq!(settings.cache_radius, 5);
+        assert_eq!(settings.cache_delta_factor, 0.6);
+        assert_eq!(settings.navigation_pause_ms, 1200)
     }
 }

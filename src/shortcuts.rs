@@ -16,6 +16,7 @@ pub enum ViewerCommand {
     ToggleGifPlay,
     GifSpeedHalf,    // New: 0.5x speed
     GifSpeedUp,  // New: 3x speed
+    GifSpeedReset,
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +210,12 @@ impl Default for InputBindings {
             ViewerCommand::GifSpeedUp,
             vec![
                 KeyBinding::plain(egui::Key::CloseBracket), //for triple speed
+            ],
+        );
+        keyboard.insert(
+            ViewerCommand::GifSpeedReset,
+            vec![
+                KeyBinding::plain(egui::Key::P), //for triple speed
             ],
         );
 
