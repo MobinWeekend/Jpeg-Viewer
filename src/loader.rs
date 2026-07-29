@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 use sevenz_rust2::{ArchiveReader, Password};
 use unrar::Archive as RarArchive;
-use natord::compare;
 
 // ========== Image Loading ==========
 
@@ -163,10 +162,10 @@ pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
         .collect();
 
     files.sort_by(|a, b| {
-        compare(
-            &a.file_name().unwrap_or_default().to_string_lossy(),
-            &b.file_name().unwrap_or_default().to_string_lossy(),
-        )
+        let a_name = a.file_name().unwrap_or_default().to_string_lossy();
+        let b_name = b.file_name().unwrap_or_default().to_string_lossy();
+        // Case-insensitive natural order sorting
+        natord::compare(&a_name.to_lowercase(), &b_name.to_lowercase())
     });
 
     files

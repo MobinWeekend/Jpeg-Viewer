@@ -500,7 +500,7 @@ impl eframe::App for ViewerApp {
 
                     ui.vertical_centered(|ui| {
                         if let Some(icon) = &self.logo_texture {
-                            ui.image((icon.id(), egui::vec2(128.0, 128.0)));
+                            ui.image((icon.id(), egui::vec2(256.0, 256.0)));
                             ui.add_space(16.0);
                         }
 
