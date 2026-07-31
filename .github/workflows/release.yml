@@ -150,19 +150,11 @@ jobs:
         with:
           body: |
             ## 📦 Windows Portable Release
+
+            ${{ github.ref_name }}            
             
             ### What's Changed
             ${{ steps.changelog.outputs.body }}
-            
-            ---
-            
-            ### 📥 Downloads
-            
-            **Windows x64** (Intel/AMD 64-bit):
-            - `JPEG-View-Windows-x64.exe` - Most Windows PCs
-            
-            **Windows ARM64** (ARM-based Windows):
-            - `JPEG-View-Windows-ARM64.exe` - Surface Pro X, Lenovo ThinkPad X13s, etc.
             
             ---
             
@@ -170,14 +162,6 @@ jobs:
             1. Download the appropriate `.exe` file for your system
             2. Double-click to run - no installation required!
             3. Enjoy viewing your JPEG images
-            
-            ### 📝 Version
-            ${{ github.ref_name }}
-            
-            ### ⚡ Features
-            - Fast JPEG viewing
-            - Portable - no installation needed
-            - Lightweight and efficient
           files: |
             release/**/*
           generate_release_notes: false
