@@ -71,6 +71,7 @@ pub struct ViewerApp {
     pub max_cache_task: u8,
     pub last_preload_start: Option<Instant>, // Throttle preloads
     pub processed_this_frame: usize,         // Track tasks processed per frame
+    pub image_error: Option<String>,
 }
 
 impl Default for ViewerApp {
@@ -122,6 +123,7 @@ impl Default for ViewerApp {
             max_cache_task: settings_manager.get().max_cache_task,
             last_preload_start: None,
             processed_this_frame: 0,
+            image_error: None,
         }
     }
 }

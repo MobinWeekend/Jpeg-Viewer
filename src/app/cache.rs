@@ -104,7 +104,6 @@ impl ViewerApp {
 
                     let options = self.get_texture_options();
                     Some(ctx.load_texture(&format!("cache_{}", image_id), color, options))
-                    
                 }
                 LoadedImage::Animated(gif, _) => {
                     // This shouldn't be reached since we skip GIFs above

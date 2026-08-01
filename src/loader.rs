@@ -1,7 +1,7 @@
 use crate::gif_animation::GifAnimation;
 use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
 use crate::helpers::is_supported_image;
-use image::{DynamicImage, ImageReader, ImageDecoder};
+use image::{DynamicImage, ImageReader, ImageDecoder, GenericImageView, metadata::Orientation};
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -14,7 +14,6 @@ use unrar::Archive as RarArchive;
 
 // Load full resolution image
 pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
-    // Open image reader and decode
     let mut reader = match ImageReader::open(&path) {
         Ok(reader) => match reader.into_decoder() {
             Ok(decoder) => decoder,
@@ -23,20 +22,26 @@ pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
         Err(_) => return None,
     };
     
-    // Get orientation - you need to handle the Result properly
     let orientation = match reader.orientation() {
         Ok(orient) => orient,
-        Err(_) => return None, // Or use Orientation::Normal as default
+        Err(_) => Orientation::NoTransforms,
     };
     
-    // Decode image
     let mut img = match DynamicImage::from_decoder(reader) {
         Ok(img) => img,
         Err(_) => return None,
     };
     
-    // Apply orientation - this is a method on DynamicImage
     img.apply_orientation(orientation);
+    
+    // Check for extreme dimensions that would crash egui
+    let (width, height) = img.dimensions();
+    const MAX_TEXTURE_SIZE: u32 = 32768;
+    
+    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+        eprintln!("Image too large: {}x{} (max: {}x{})", width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE);
+        return None; // Return None so the app can show an error message
+    }
     
     Some(img)
 }

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use super::types::ViewerApp;
 use crate::shortcuts::{handle_keyboard, handle_mouse};
 use eframe::egui;
+use image::GenericImageView;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
@@ -61,7 +62,7 @@ impl eframe::App for ViewerApp {
         // drag & drop
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
 
-        if !dropped_files.is_empty() {    
+        if !dropped_files.is_empty() {
             let paths: Vec<PathBuf> = dropped_files
                 .iter()
                 .filter_map(|file| file.path.clone())
@@ -95,6 +96,31 @@ impl eframe::App for ViewerApp {
 
                 match loaded_image {
                     super::types::LoadedImage::Static(img) => {
+                        let (width, height) = img.dimensions();
+                        const MAX_TEXTURE_SIZE: u32 = 32768;
+
+                        if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+                            // Show error message instead of crashing
+                            self.b_is_loading = false;
+                            self.texture = None;
+                            self.image_error = Some(format!(
+                                "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                                width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+                            ));
+                            eprintln!("Failed to load image: too large ({}x{})", width, height);
+                            return;
+                        }
+
+                        let rgba = img.to_rgba8();
+                        let size = [width as usize, height as usize];
+                        let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                        let options = self.get_texture_options();
+                        self.texture = Some(ctx.load_texture("image", color, options));
+                        self.gif_animation = None;
+                        self.is_gif = false;
+                        self.is_preview = false;
+                        self.b_is_loading_full = false;
+                        self.image_error = None;
                         let rgba = img.to_rgba8();
                         let width = rgba.width();
                         let height = rgba.height();
