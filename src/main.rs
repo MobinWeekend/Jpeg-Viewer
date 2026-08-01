@@ -16,14 +16,14 @@ fn main() -> eframe::Result<()> {
     let settings_manager = settings::SettingsManager::new();
     let app_settings = settings_manager.get();
 
-    let image = image::load_from_memory(include_bytes!("../assets/icon.ico"))
+    let icon = image::load_from_memory(include_bytes!("../assets/icon.ico"))
         .expect("Failed to load icon")
         .into_rgba8();
-
+    let (icon_width, icon_height) = icon.dimensions();
     let icon = egui::IconData {
-        rgba: image.into_raw(),
-        width: 128,
-        height: 128,
+        rgba: icon.into_raw(),
+        width: icon_width,
+        height: icon_height,
     };
 
     let mut viewport = egui::ViewportBuilder::default().with_icon(icon);

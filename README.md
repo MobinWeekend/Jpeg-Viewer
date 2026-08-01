@@ -25,13 +25,7 @@ More formats, improvements, and features are coming as the project continues to 
 
 ## Supported Formats
 
-| Format | Support |
-|--------|---------|
-| JPEG/JPG | ✅ Full |
-| PNG | ✅ Full |
-| GIF | ✅ Full (with Speed controls) |
-| BMP | ✅ Full |
-| WEBP | ✅ Full |
+JPEG/JPG, PNG, GIF (with speed controls), BMP, WEBP
 
 ### Archive Support
 - ZIP archives (`.zip`)

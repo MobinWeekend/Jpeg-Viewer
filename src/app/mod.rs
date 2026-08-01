@@ -5,6 +5,7 @@ mod loading;
 mod navigation;
 mod preload;
 mod types;
+mod update;
 mod ui;
 
 pub use types::ViewerApp;

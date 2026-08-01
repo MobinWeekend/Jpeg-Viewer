@@ -70,7 +70,7 @@ pub struct ViewerApp {
     pub cache_delta_factor: f32,
     pub max_cache_task: u8,
     pub last_preload_start: Option<Instant>, // Throttle preloads
-    pub processed_this_frame: usize,          // Track tasks processed per frame
+    pub processed_this_frame: usize,         // Track tasks processed per frame
 }
 
 impl Default for ViewerApp {
