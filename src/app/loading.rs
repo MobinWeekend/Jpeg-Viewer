@@ -19,9 +19,23 @@ impl ViewerApp {
     }
 
     pub fn load_current_image(&mut self) {
+        // Clear any previous state before loading
+        self.image_error = None;
+        self.texture = None;
+        self.gif_animation = None;
+        self.is_gif = false;
+        self.is_preview = false;
+        self.full_image_receiver = None;
+        self.full_gif_receiver = None;
+        self.b_is_loading_full = false;
+        self.receiver = None; // Clear any previous receiver
+        
         let entry = match self.image_entries.get(self.current_index) {
             Some(entry) => entry.clone(),
-            None => return,
+            None => {
+                self.b_is_loading = false;
+                return;
+            }
         };
 
         if let ImageEntry::File(path) = &entry {
@@ -31,14 +45,6 @@ impl ViewerApp {
         }
 
         self.b_is_loading = true;
-        self.b_is_loading_full = false;
-        self.is_preview = false;
-        self.gif_animation = None;
-        self.is_gif = false;
-        self.texture = None;
-        self.full_image_receiver = None;
-        self.full_gif_receiver = None;
-
         self.b_fit_to_window = true;
         let (tx, rx) = channel();
 
@@ -82,7 +88,9 @@ impl ViewerApp {
                     }
                 };
                 if let Some(img) = preview {
-                    let _ = preview_tx.send(img);
+                    let _ = preview_tx.send(Ok(img));
+                } else {
+                    let _ = preview_tx.send(Err("Failed to load GIF preview".to_string()));
                 }
             });
 
@@ -112,33 +120,45 @@ impl ViewerApp {
                     }
                 };
                 if let Some(img) = full {
-                    let _ = full_tx.send(img);
+                    let _ = full_tx.send(Ok(img));
+                } else {
+                    let _ = full_tx.send(Err("Failed to load full GIF".to_string()));
                 }
             });
             
             self.full_gif_receiver = Some(full_rx);
             
         } else {
-            // Non-GIF: load full resolution directly
+            // Non-GIF: load full resolution directly - send Result through channel
             spawn(move || {
-                let loaded = match entry {
+                let result = match entry {
                     ImageEntry::File(path) => {
-                        crate::loader::load_full_resolution(path).map(LoadedImage::Static)
+                        match crate::loader::load_full_resolution(path) {
+                            Ok(img) => Ok(LoadedImage::Static(img)),
+                            Err(err) => Err(err),
+                        }
                     }
                     ImageEntry::Zip(zip) => {
-                        crate::loader::load_zip_image(zip).map(LoadedImage::Static)
+                        match crate::loader::load_zip_image(zip) {
+                            Ok(img) => Ok(LoadedImage::Static(img)),
+                            Err(err) => Err(err),
+                        }
                     }
                     ImageEntry::S7z(s7z) => {
-                        crate::loader::load_7z_image(s7z).map(LoadedImage::Static)
+                        match crate::loader::load_7z_image(s7z) {
+                            Ok(img) => Ok(LoadedImage::Static(img)),
+                            Err(err) => Err(err),
+                        }
                     }
                     ImageEntry::Rar(rar) => {
-                        crate::loader::load_rar_image(rar).map(LoadedImage::Static)
+                        match crate::loader::load_rar_image(rar) {
+                            Ok(img) => Ok(LoadedImage::Static(img)),
+                            Err(err) => Err(err),
+                        }
                     }
                 };
-
-                if let Some(img) = loaded {
-                    let _ = tx.send(img);
-                }
+                
+                let _ = tx.send(result);
             });
 
             self.receiver = Some(rx);
@@ -148,6 +168,7 @@ impl ViewerApp {
     pub fn load_current_image_with_cache(&mut self) {
         if self.load_from_cache(self.current_index) {
             self.b_is_loading = false;
+            self.image_error = None; // Clear any errors if we loaded from cache
             return;
         }
         self.load_current_image();
@@ -163,6 +184,10 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.image_error = None;
+        self.receiver = None;
+        self.full_image_receiver = None;
+        self.full_gif_receiver = None;
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
@@ -184,6 +209,10 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.image_error = None;
+        self.receiver = None;
+        self.full_image_receiver = None;
+        self.full_gif_receiver = None;
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();

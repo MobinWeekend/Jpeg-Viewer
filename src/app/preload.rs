@@ -204,48 +204,65 @@ impl ViewerApp {
             let (tx, rx) = channel();
 
             spawn(move || {
-                let loaded = match entry {
+                let result = match entry {
                     ImageEntry::File(path) => {
                         if let Some(ext) = path.extension() {
                             if ext.eq_ignore_ascii_case("gif") {
                                 crate::loader::load_gif_preview(path)
                                     .map(|g| LoadedImage::Animated(g, true))
+                                    .ok_or_else(|| "Failed to load GIF preview".to_string())
                             } else {
-                                crate::loader::load_full_resolution(path).map(LoadedImage::Static)
+                                match crate::loader::load_full_resolution(path) {
+                                    Ok(img) => Ok(LoadedImage::Static(img)),
+                                    Err(err) => Err(err),
+                                }
                             }
                         } else {
-                            crate::loader::load_full_resolution(path).map(LoadedImage::Static)
+                            match crate::loader::load_full_resolution(path) {
+                                Ok(img) => Ok(LoadedImage::Static(img)),
+                                Err(err) => Err(err),
+                            }
                         }
                     }
                     ImageEntry::Zip(zip) => {
                         if zip.name.to_lowercase().ends_with(".gif") {
                             crate::loader::load_zip_gif_preview(zip)
                                 .map(|g| LoadedImage::Animated(g, true))
+                                .ok_or_else(|| "Failed to load GIF preview from ZIP".to_string())
                         } else {
-                            crate::loader::load_zip_image(zip).map(LoadedImage::Static)
+                            match crate::loader::load_zip_image(zip) {
+                                Ok(img) => Ok(LoadedImage::Static(img)),
+                                Err(err) => Err(err),
+                            }
                         }
                     }
                     ImageEntry::S7z(s7z) => {
                         if s7z.name.to_lowercase().ends_with(".gif") {
                             crate::loader::load_7z_gif_preview(s7z)
                                 .map(|g| LoadedImage::Animated(g, true))
+                                .ok_or_else(|| "Failed to load GIF preview from 7z".to_string())
                         } else {
-                            crate::loader::load_7z_image(s7z).map(LoadedImage::Static)
+                            match crate::loader::load_7z_image(s7z) {
+                                Ok(img) => Ok(LoadedImage::Static(img)),
+                                Err(err) => Err(err),
+                            }
                         }
                     }
                     ImageEntry::Rar(rar) => {
                         if rar.name.to_lowercase().ends_with(".gif") {
                             crate::loader::load_rar_gif_preview(rar)
                                 .map(|g| LoadedImage::Animated(g, true))
+                                .ok_or_else(|| "Failed to load GIF preview from RAR".to_string())
                         } else {
-                            crate::loader::load_rar_image(rar).map(LoadedImage::Static)
+                            match crate::loader::load_rar_image(rar) {
+                                Ok(img) => Ok(LoadedImage::Static(img)),
+                                Err(err) => Err(err),
+                            }
                         }
                     }
                 };
 
-                if let Some(img) = loaded {
-                    let _ = tx.send(img);
-                }
+                let _ = tx.send(result);
             });
 
             self.preload_tasks.push(PreloadTask {
@@ -324,10 +341,16 @@ impl ViewerApp {
                 break;
             }
 
-            if let Ok(loaded_image) = task.receiver.try_recv() {
-                completed_indices.push(task.index);
-                completed_images.push((task.index, loaded_image));
-                processed += 1;
+            if let Ok(result) = task.receiver.try_recv() {
+                if let Ok(loaded_image) = result {
+                    completed_indices.push(task.index);
+                    completed_images.push((task.index, loaded_image));
+                    processed += 1;
+                } else {
+                    // Preload failed, just remove the task
+                    completed_indices.push(task.index);
+                    processed += 1;
+                }
             }
         }
 

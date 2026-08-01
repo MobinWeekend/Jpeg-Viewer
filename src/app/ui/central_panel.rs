@@ -5,27 +5,33 @@ use eframe::egui;
 impl ViewerApp {
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let error = self.image_error.take(); // Take the error out of self first
+            // Check for error first - clone the error to avoid borrowing issues
+            let error = self.image_error.clone();
+            
             if let Some(error) = error {
-            // Display error message
-            ui.centered_and_justified(|ui| {
-                ui.add_space(20.0);
-                ui.label(egui::RichText::new("⚠️ Error loading image")
-                    .size(24.0)
-                    .color(egui::Color32::RED)
-                    .strong());
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new(error).size(16.0));
-                ui.add_space(10.0);
-                ui.label(egui::RichText::new("Try navigating to another image.").size(14.0));
+                // Display error message
+                ui.centered_and_justified(|ui| {
+                    ui.add_space(20.0);
+                    ui.label(egui::RichText::new("⚠️ Image too large! :(")
+                        .size(32.0)
+                        .color(egui::Color32::RED)
+                        .strong());
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new(&error).size(16.0));
+                    ui.add_space(10.0);
+                    ui.label(egui::RichText::new("Try navigating to another image.").size(14.0));
+                });
                 
-                // Add a retry button
+                // Add retry button outside the centered_and_justified closure
+                ui.add_space(10.0);
                 if ui.button("Retry").clicked() {
                     self.image_error = None;
                     self.load_current_image_with_cache();
                 }
-            });
-        } else if let Some(texture) = &self.texture {
+                return;
+            }
+
+            if let Some(texture) = &self.texture {
                 let texture_size = texture.size_vec2();
                 let available = ui.available_size();
 

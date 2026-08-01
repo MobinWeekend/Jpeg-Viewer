@@ -88,128 +88,144 @@ impl eframe::App for ViewerApp {
         // Process preload tasks first (background caching)
         self.process_preload_tasks(ctx);
 
-        // Check for loaded image
+        // Check for loaded image - now handles Result
         if let Some(rx) = &self.receiver {
-            if let Ok(loaded_image) = rx.try_recv() {
-                // Cache the loaded image (GIFs will be skipped)
-                self.add_to_cache(ctx, self.current_index, loaded_image.clone());
+            if let Ok(result) = rx.try_recv() {
+                // Clear the receiver immediately to prevent duplicate processing
+                self.receiver = None;
+                
+                match result {
+                    Ok(loaded_image) => {
+                        // Success - process the image
+                        self.add_to_cache(ctx, self.current_index, loaded_image.clone());
 
-                match loaded_image {
-                    super::types::LoadedImage::Static(img) => {
-                        let (width, height) = img.dimensions();
-                        const MAX_TEXTURE_SIZE: u32 = 32768;
+                        match loaded_image {
+                            super::types::LoadedImage::Static(img) => {
+                                let (width, height) = img.dimensions();
+                                const MAX_TEXTURE_SIZE: u32 = 32768;
 
-                        if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-                            // Show error message instead of crashing
-                            self.b_is_loading = false;
-                            self.texture = None;
-                            self.image_error = Some(format!(
-                                "Image too large: {}x{}\nMaximum supported size: {}x{}",
-                                width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
-                            ));
-                            eprintln!("Failed to load image: too large ({}x{})", width, height);
-                            return;
+                                if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+                                    // This shouldn't happen now since we check in loader, but keep as safety
+                                    self.b_is_loading = false;
+                                    self.texture = None;
+                                    self.image_error = Some(format!(
+                                        "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                                        width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+                                    ));
+                                    eprintln!("Failed to load image: too large ({}x{})", width, height);
+                                    ctx.request_repaint();
+                                    return;
+                                }
+
+                                let rgba = img.to_rgba8();
+                                let size = [width as usize, height as usize];
+                                let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                                let options = self.get_texture_options();
+                                self.texture = Some(ctx.load_texture("image", color, options));
+                                self.gif_animation = None;
+                                self.is_gif = false;
+                                self.is_preview = false;
+                                self.b_is_loading_full = false;
+                                self.image_error = None;
+
+                                // Check for extreme aspect ratio
+                                if self.has_extreme_aspect_ratio(width, height) {
+                                    self.b_fit_to_window = false;
+                                    self.zoom = 1.0;
+                                    self.pan = egui::Vec2::ZERO;
+                                    self.b_zoom_used = true;
+                                } else {
+                                    self.b_fit_to_window = true;
+                                }
+                            }
+                            super::types::LoadedImage::Animated(gif, is_preview) => {
+                                self.gif_animation = Some(gif);
+                                self.is_gif = true;
+                                self.is_preview = is_preview;
+                                self.image_error = None;
+                            }
                         }
+                        
+                        self.b_is_loading = false;
 
-                        let rgba = img.to_rgba8();
-                        let size = [width as usize, height as usize];
-                        let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                        let options = self.get_texture_options();
-                        self.texture = Some(ctx.load_texture("image", color, options));
-                        self.gif_animation = None;
-                        self.is_gif = false;
-                        self.is_preview = false;
-                        self.b_is_loading_full = false;
-                        self.image_error = None;
-                        let rgba = img.to_rgba8();
-                        let width = rgba.width();
-                        let height = rgba.height();
-                        let size = [width as usize, height as usize];
-                        let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                        let options = self.get_texture_options();
-                        self.texture = Some(ctx.load_texture("image", color, options));
-                        self.gif_animation = None;
-                        self.is_gif = false;
-                        self.is_preview = false;
-                        self.b_is_loading_full = false;
+                        // After loading, cache the current image (GIFs will be skipped)
+                        self.cache_current_image();
 
-                        // Check for extreme aspect ratio
-                        if self.has_extreme_aspect_ratio(width, height) {
-                            // Disable fit to window and use 1.0 zoom
-                            self.b_fit_to_window = false;
-                            self.zoom = 1.0;
-                            self.pan = egui::Vec2::ZERO;
-                            self.b_zoom_used = true; // Mark as zoom used so fit doesn't auto-apply
-                        } else {
-                            // Normal behavior: fit to window
-                            self.b_fit_to_window = true;
-                        }
+                        // Update window title with current filename
+                        self.update_window_title(ctx);
+
+                        // Trigger initial preload immediately after loading
+                        self.preload_adjacent_images(ctx);
                     }
-                    super::types::LoadedImage::Animated(gif, is_preview) => {
-                        self.gif_animation = Some(gif);
-                        self.is_gif = true;
-                        self.is_preview = is_preview;
-
-                        // If it's a preview, we'll show the loading message
-                        // The full GIF will be loaded in the background
-                        if is_preview {
-                            // Preview frame is loaded, show it immediately
-                            // The full GIF loading will complete via full_gif_receiver
-                        }
+                    Err(error) => {
+                        // Error - show the error message and clean up
+                        self.b_is_loading = false;
+                        self.texture = None;
+                        self.image_error = Some(error);
+                        // Clear any GIF state
+                        self.gif_animation = None;
+                        self.is_gif = false;
+                        self.is_preview = false;
+                        eprintln!("Error loading image: {}", self.image_error.as_ref().unwrap());
+                        ctx.request_repaint();
                     }
                 }
-                self.b_fit_to_window = true;
-                self.b_is_loading = false;
-                self.receiver = None;
-
-                // After loading, cache the current image (GIFs will be skipped)
-                self.cache_current_image();
-
-                // Update window title with current filename
-                self.update_window_title(ctx);
-
-                // Trigger initial preload immediately after loading
-                self.preload_adjacent_images(ctx);
             }
         }
 
         // Check for full image loaded (keep for compatibility)
         if let Some(rx) = &self.full_image_receiver {
             if let Ok(full_image) = rx.try_recv() {
-                let rgba = full_image.to_rgba8();
-                let size = [rgba.width() as usize, rgba.height() as usize];
-                let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-                let options = self.get_texture_options();
-                self.texture = Some(ctx.load_texture("image_full", color, options));
-                self.b_is_loading_full = false;
-                self.is_preview = false;
-                self.b_fit_to_window = true;
-                self.full_image_receiver = None;
+                // Only process if we haven't navigated away
+                if !self.b_is_loading && self.texture.is_some() {
+                    let rgba = full_image.to_rgba8();
+                    let size = [rgba.width() as usize, rgba.height() as usize];
+                    let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                    let options = self.get_texture_options();
+                    self.texture = Some(ctx.load_texture("image_full", color, options));
+                    self.b_is_loading_full = false;
+                    self.is_preview = false;
+                    self.b_fit_to_window = true;
+                    self.full_image_receiver = None;
 
-                // Update cache with full quality
-                self.cache_current_image();
+                    // Update cache with full quality
+                    self.cache_current_image();
 
-                // Update window title
-                self.update_window_title(ctx);
+                    // Update window title
+                    self.update_window_title(ctx);
+                } else {
+                    // We navigated away, discard the result
+                    self.full_image_receiver = None;
+                }
             }
         }
 
         // Check for full GIF upgrade (background loading complete)
         if let Some(rx) = &self.full_gif_receiver {
-            if let Ok(loaded_image) = rx.try_recv() {
-                if let super::types::LoadedImage::Animated(full_gif, _) = loaded_image {
-                    if let Some(gif) = &mut self.gif_animation {
-                        gif.upgrade_to_full(full_gif);
-                        self.is_preview = false;
+            if let Ok(result) = rx.try_recv() {
+                // Clear receiver immediately
+                self.full_gif_receiver = None;
+                
+                match result {
+                    Ok(loaded_image) => {
+                        // Only upgrade if we're still on the same image and have a GIF animation
+                        if let Some(gif) = &mut self.gif_animation {
+                            if let super::types::LoadedImage::Animated(full_gif, _) = loaded_image {
+                                gif.upgrade_to_full(full_gif);
+                                self.is_preview = false;
 
-                        // Update cache (GIFs are not cached, but update texture)
-                        self.full_gif_receiver = None;
+                                // Update window title
+                                self.update_window_title(ctx);
 
-                        // Update window title
-                        self.update_window_title(ctx);
-
-                        // Force texture update
-                        self.update_gif_texture(ctx);
+                                // Force texture update
+                                self.update_gif_texture(ctx);
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        // Full GIF failed to load, but we already have preview
+                        eprintln!("Failed to load full GIF: {}", error);
+                        // Keep the preview, just log the error
                     }
                 }
             }
@@ -221,7 +237,7 @@ impl eframe::App for ViewerApp {
         }
 
         // Preload adjacent images (non-blocking)
-        if !self.image_entries.is_empty() && !self.b_is_loading {
+        if !self.image_entries.is_empty() && !self.b_is_loading && self.image_error.is_none() {
             self.preload_adjacent_images(ctx);
         }
 

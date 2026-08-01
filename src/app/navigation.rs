@@ -21,6 +21,8 @@ impl ViewerApp {
             self.full_image_receiver = None;
             self.full_gif_receiver = None;
             self.b_is_loading_full = false;
+            self.image_error = None; // Clear any previous errors
+            self.receiver = None; // Clear any previous receiver
 
             // Reset navigation timer when user navigates
             self.reset_navigation_timer();

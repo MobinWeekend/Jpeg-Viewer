@@ -28,15 +28,15 @@ pub struct CachedImage {
 // Preload task
 pub struct PreloadTask {
     pub index: usize,
-    pub receiver: Receiver<LoadedImage>,
+    pub receiver: Receiver<Result<LoadedImage, String>>, // Changed to Result
 }
 
 pub struct ViewerApp {
     pub texture: Option<egui::TextureHandle>,
     pub gif_animation: Option<GifAnimation>,
-    pub receiver: Option<Receiver<LoadedImage>>,
+    pub receiver: Option<Receiver<Result<LoadedImage, String>>>, // Changed to Result
     pub full_image_receiver: Option<Receiver<DynamicImage>>,
-    pub full_gif_receiver: Option<Receiver<LoadedImage>>,
+    pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>, // Changed to Result
     pub zoom: f32,
     pub pan: egui::Vec2,
     pub current_directory: Option<PathBuf>,

@@ -12,14 +12,14 @@ use unrar::Archive as RarArchive;
 
 // ========== Image Loading ==========
 
-// Load full resolution image
-pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
+// Load full resolution image - returns Result with error message
+pub fn load_full_resolution(path: PathBuf) -> Result<DynamicImage, String> {
     let mut reader = match ImageReader::open(&path) {
         Ok(reader) => match reader.into_decoder() {
             Ok(decoder) => decoder,
-            Err(_) => return None,
+            Err(e) => return Err(format!("Failed to decode image: {}", e)),
         },
-        Err(_) => return None,
+        Err(e) => return Err(format!("Failed to open image: {}", e)),
     };
     
     let orientation = match reader.orientation() {
@@ -29,7 +29,7 @@ pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
     
     let mut img = match DynamicImage::from_decoder(reader) {
         Ok(img) => img,
-        Err(_) => return None,
+        Err(e) => return Err(format!("Failed to load image: {}", e)),
     };
     
     img.apply_orientation(orientation);
@@ -39,11 +39,13 @@ pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
     const MAX_TEXTURE_SIZE: u32 = 32768;
     
     if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-        eprintln!("Image too large: {}x{} (max: {}x{})", width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE);
-        return None; // Return None so the app can show an error message
+        return Err(format!(
+            "Image too large: {}x{}\nMaximum supported size: {}x{}",
+            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+        ));
     }
     
-    Some(img)
+    Ok(img)
 }
 
 // ========== GIF Loading ==========
@@ -70,13 +72,31 @@ pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
 
 // ========== Archive Loading ==========
 
-pub fn load_zip_image(image: ArchiveImage) -> Option<DynamicImage> {
-    let file = File::open(&image.archive_path).ok()?;
-    let mut archive = ZipArchive::new(file).ok()?;
-    let mut entry = archive.by_index(image.entry_index).ok()?;
+pub fn load_zip_image(image: ArchiveImage) -> Result<DynamicImage, String> {
+    let file = File::open(&image.archive_path)
+        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    let mut entry = archive.by_index(image.entry_index)
+        .map_err(|e| format!("Failed to read entry: {}", e))?;
     let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).ok()?;
-    image::load_from_memory(&bytes).ok()
+    entry.read_to_end(&mut bytes)
+        .map_err(|e| format!("Failed to read data: {}", e))?;
+    
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
+    
+    // Check size
+    let (width, height) = img.dimensions();
+    const MAX_TEXTURE_SIZE: u32 = 32768;
+    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+        return Err(format!(
+            "Image too large: {}x{}\nMaximum supported size: {}x{}",
+            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+        ));
+    }
+    
+    Ok(img)
 }
 
 pub fn load_zip_gif(image: ArchiveImage) -> Option<GifAnimation> {
@@ -100,10 +120,26 @@ pub fn load_zip_gif_preview(image: ArchiveImage) -> Option<GifAnimation> {
 
 // ========== 7z Archive Loading ==========
 
-pub fn load_7z_image(image: S7ArchiveImage) -> Option<DynamicImage> {
-    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
-    let bytes = reader.read_file(&image.name).ok()?;
-    image::load_from_memory(&bytes).ok()
+pub fn load_7z_image(image: S7ArchiveImage) -> Result<DynamicImage, String> {
+    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty())
+        .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
+    let bytes = reader.read_file(&image.name)
+        .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
+    
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
+    
+    // Check size
+    let (width, height) = img.dimensions();
+    const MAX_TEXTURE_SIZE: u32 = 32768;
+    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+        return Err(format!(
+            "Image too large: {}x{}\nMaximum supported size: {}x{}",
+            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+        ));
+    }
+    
+    Ok(img)
 }
 
 pub fn load_7z_gif(image: S7ArchiveImage) -> Option<GifAnimation> {
@@ -121,19 +157,37 @@ pub fn load_7z_gif_preview(image: S7ArchiveImage) -> Option<GifAnimation> {
 
 // ========== RAR Archive Loading ==========
 
-pub fn load_rar_image(image: RarArchiveImage) -> Option<DynamicImage> {
+pub fn load_rar_image(image: RarArchiveImage) -> Result<DynamicImage, String> {
     let archive = RarArchive::new(&image.archive_path)
         .open_for_processing()
-        .ok()?;
+        .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
     let mut archive = archive;
     loop {
-        let header = archive.read_header().ok()??;
+        let header = archive.read_header()
+            .map_err(|e| format!("Failed to read RAR header: {}", e))?
+            .ok_or_else(|| format!("File not found in archive: {}", image.name))?;
         let filename = header.entry().filename.to_string_lossy().to_string();
         if filename == image.name {
-            let (bytes, _) = header.read().ok()?;
-            return image::load_from_memory(&bytes).ok();
+            let (bytes, _) = header.read()
+                .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
+            
+            let img = image::load_from_memory(&bytes)
+                .map_err(|e| format!("Failed to decode image: {}", e))?;
+            
+            // Check size
+            let (width, height) = img.dimensions();
+            const MAX_TEXTURE_SIZE: u32 = 32768;
+            if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+                return Err(format!(
+                    "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                    width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+                ));
+            }
+            
+            return Ok(img);
         }
-        archive = header.skip().ok()?;
+        archive = header.skip()
+            .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
     }
 }
 
