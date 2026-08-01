@@ -1,12 +1,21 @@
 use std::path::Path;
 
 pub const IMAGE_EXT: &[&str] = &[
-    "jpg",
-    "jpeg",
-    "png",
-    "gif",
-    "bmp",
-    "webp",
+    "avif", // default feature: avif
+    "bmp",  // default feature: bmp
+    "dds",  // default feature: dds
+    "exr",  // default feature: exr
+    "gif",  // default feature: gif
+    "hdr",  // default feature: hdr
+    "ico",  // default feature: ico
+    "jpg",  // default feature: jpeg (the flag is "jpeg")
+    "jpeg", // default feature: jpeg
+    "png",  // default feature: png
+    "pnm",  // default feature: pnm
+    "qoi",  // default feature: qoi
+    "tga",  // default feature: tga
+    "tiff", // default feature: tiff
+    "webp", // default feature: webp
 ];
 
 pub const ARCHIVE_EXT: &[&str] = &[

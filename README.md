@@ -25,7 +25,7 @@ More formats, improvements, and features are coming as the project continues to 
 
 ## Supported Formats
 
-JPEG/JPG, PNG, GIF (with speed controls), BMP, WEBP
+AVIF, BMP, DDS, EXR, GIF (with speed controls), HDR, ICO, JPEG/JPG, PNG, PNM, QOI, TGA, TIFF, WEBP
 
 ### Archive Support
 - ZIP archives (`.zip`)
