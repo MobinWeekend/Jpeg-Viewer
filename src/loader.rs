@@ -1,7 +1,7 @@
 use crate::gif_animation::GifAnimation;
 use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
 use crate::helpers::is_supported_image;
-use image::DynamicImage;
+use image::{DynamicImage, ImageReader, ImageDecoder};
 use std::fs;
 use std::fs::File;
 use std::io::Read;
@@ -14,7 +14,31 @@ use unrar::Archive as RarArchive;
 
 // Load full resolution image
 pub fn load_full_resolution(path: PathBuf) -> Option<DynamicImage> {
-    image::open(path).ok()
+    // Open image reader and decode
+    let mut reader = match ImageReader::open(&path) {
+        Ok(reader) => match reader.into_decoder() {
+            Ok(decoder) => decoder,
+            Err(_) => return None,
+        },
+        Err(_) => return None,
+    };
+    
+    // Get orientation - you need to handle the Result properly
+    let orientation = match reader.orientation() {
+        Ok(orient) => orient,
+        Err(_) => return None, // Or use Orientation::Normal as default
+    };
+    
+    // Decode image
+    let mut img = match DynamicImage::from_decoder(reader) {
+        Ok(img) => img,
+        Err(_) => return None,
+    };
+    
+    // Apply orientation - this is a method on DynamicImage
+    img.apply_orientation(orientation);
+    
+    Some(img)
 }
 
 // ========== GIF Loading ==========
