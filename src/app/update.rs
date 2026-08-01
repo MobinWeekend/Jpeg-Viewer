@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 //this needs to be splitted
 use super::types::ViewerApp;
 use crate::shortcuts::{handle_keyboard, handle_mouse};
@@ -59,12 +61,20 @@ impl eframe::App for ViewerApp {
         // drag & drop
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
 
-        for file in dropped_files {
-            if let Some(path) = file.path {
-                self.open_path(path);
+        if !dropped_files.is_empty() {    
+            let paths: Vec<PathBuf> = dropped_files
+                .iter()
+                .filter_map(|file| file.path.clone())
+                .collect();
+            if paths.len() == 1 {
+                // If a single file is dropped, use default behavior (open the file)
+                if let Some(path) = paths.get(0) {
+                    self.open_path(path.clone());
+                }
+            } else if paths.len() > 1 {
+                self.load_dropped_files(paths);
             }
         }
-
         // check for window resize
         let current_size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
         if let (Some(prev), Some(curr)) = (self.last_window_size, current_size) {

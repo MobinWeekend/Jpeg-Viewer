@@ -1,6 +1,6 @@
 use super::types::ViewerApp;
-use crate::helpers::{ARCHIVE_EXT, IMAGE_EXT, get_extension, is_supported_image};
 use crate::archive::{scan_7z, scan_rar, scan_zip};
+use crate::helpers::{ARCHIVE_EXT, IMAGE_EXT, get_extension, is_supported_image};
 use crate::image_entry::ImageEntry;
 use eframe::egui;
 use std::path::PathBuf;
@@ -133,5 +133,64 @@ impl ViewerApp {
                 eprintln!("Failed to move to trash: {}", e);
             }
         }
+    }
+    
+    pub fn load_dropped_files(&mut self, paths: Vec<PathBuf>) {
+        if paths.is_empty() {
+            return;
+        }
+
+        // Reset state
+        self.b_zoom_used = false;
+        self.b_fit_to_window = true;
+        self.image_rect = None;
+        self.gif_animation = None;
+        self.is_gif = false;
+        self.is_preview = false;
+        self.texture = None;
+        self.full_image_receiver = None;
+        self.full_gif_receiver = None;
+        self.b_is_loading_full = false;
+        self.image_cache.clear();
+        self.preloading_indices.clear();
+        self.preload_tasks.clear();
+
+        // Filter to only supported images
+        let image_paths: Vec<PathBuf> = paths
+            .into_iter()
+            .filter(|path| {
+                if path.is_file() {
+                    crate::helpers::is_supported_image(path)
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        if image_paths.is_empty() {
+            println!("No supported images found in dropped files");
+            return;
+        }
+
+        // Store the current directory from the first file
+        if let Some(parent) = image_paths.first().and_then(|p| p.parent()) {
+            self.current_directory = Some(parent.to_path_buf());
+        }
+
+        // Convert to ImageEntries
+        let entries: Vec<ImageEntry> = image_paths.into_iter().map(ImageEntry::File).collect();
+
+        // Set image entries starting at index 0
+        self.set_image_entries(entries, 0);
+        self.zoom = 1.0;
+        self.gif_animation = None;
+        self.is_gif = false;
+        self.is_preview = false;
+        self.texture = None;
+        self.image_cache.clear();
+        self.preloading_indices.clear();
+        self.preload_tasks.clear();
+
+        println!("Loaded {} dropped image(s)", self.image_entries.len());
     }
 }

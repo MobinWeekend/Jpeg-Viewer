@@ -8,6 +8,25 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
 impl ViewerApp {
+    // Helper function to safely get backward index
+    fn get_backward_index(&self, origin: usize, offset: usize, len: usize) -> usize {
+        if len == 0 {
+            return 0;
+        }
+        // Use checked_sub to avoid overflow
+        if offset <= len {
+            (origin + len - offset) % len
+        } else {
+            // If offset > len, use modulo first
+            let offset_mod = offset % len;
+            if offset_mod == 0 {
+                origin % len
+            } else {
+                (origin + len - offset_mod) % len
+            }
+        }
+    }
+
     pub fn preload_adjacent_images(&mut self, ctx: &egui::Context) {
         // Check if caching should be stopped
         if self.should_stop_caching {
@@ -88,7 +107,7 @@ impl ViewerApp {
                 indices_to_preload.push(fwd_idx);
             }
 
-            let bwd_idx = (self.preload_origin + len - offset) % len;
+            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
             if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
                 indices_to_preload.push(bwd_idx);
             }
@@ -102,7 +121,7 @@ impl ViewerApp {
                 indices_to_preload.push(fwd_idx);
             }
 
-            let bwd_idx = (self.preload_origin + len - offset) % len;
+            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
             if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
                 indices_to_preload.push(bwd_idx);
             }
@@ -147,7 +166,7 @@ impl ViewerApp {
                 return true;
             }
 
-            let bwd_idx = (self.preload_origin + len - offset) % len;
+            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
             if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
                 return true;
             }
@@ -160,7 +179,7 @@ impl ViewerApp {
                 return true;
             }
 
-            let bwd_idx = (self.preload_origin + len - offset) % len;
+            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
             if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
                 return true;
             }
@@ -252,7 +271,7 @@ impl ViewerApp {
         for offset in 0..=self.cache_radius {
             let idx = (self.preload_origin + offset) % len;
             keep_indices.insert(idx);
-            let idx = (self.preload_origin + len - offset) % len;
+            let idx = self.get_backward_index(self.preload_origin, offset, len);
             keep_indices.insert(idx);
         }
 
