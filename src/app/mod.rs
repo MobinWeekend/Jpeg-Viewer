@@ -7,5 +7,6 @@ mod preload;
 mod types;
 mod update;
 mod ui;
+mod hardcoded_input;
 
 pub use types::ViewerApp;

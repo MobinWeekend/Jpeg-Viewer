@@ -1,8 +1,4 @@
-use std::path::PathBuf;
-
-//this needs to be splitted
 use super::types::ViewerApp;
-use crate::shortcuts::{handle_keyboard, handle_mouse};
 use eframe::egui;
 use image::GenericImageView;
 
@@ -19,75 +15,15 @@ impl eframe::App for ViewerApp {
             self.logo_texture = Some(ctx.load_texture("logo", color_image, Default::default()));
         }
 
-        // almighty esc key
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        // ========== HARDCODED INPUT HANDLING ==========
+        self.handle_input(ctx);
+        self.handle_window_resize(ctx);
 
-            if fullscreen {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
-            } else {
-                self.save_window_state(ctx);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
-
-            return;
-        }
-
-        // Standard keyboard shortcuts
-        for command in handle_keyboard(ctx, &self.input_bindings) {
-            self.handle_command(ctx, command);
-        }
-
-        // Delete key - trigger on key release
-        let delete_pressed = ctx.input(|i| i.key_pressed(egui::Key::Delete));
-        let delete_released = ctx.input(|i| i.key_released(egui::Key::Delete));
-
-        if delete_pressed {
-            self.delete_key_was_pressed = true;
-        } else if delete_released && self.delete_key_was_pressed {
-            self.delete_current_image();
-            self.delete_key_was_pressed = false;
-        }
-
-        // mouse buttons
-        for command in handle_mouse(
-            ctx,
-            &self.input_bindings,
-            ctx.is_pointer_over_area(),
-            self.b_ctrl_invert,
-        ) {
-            self.handle_command(ctx, command);
-        }
-
-        // drag & drop
-        let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
-
-        if !dropped_files.is_empty() {
-            let paths: Vec<PathBuf> = dropped_files
-                .iter()
-                .filter_map(|file| file.path.clone())
-                .collect();
-            if paths.len() == 1 {
-                // If a single file is dropped, use default behavior (open the file)
-                if let Some(path) = paths.get(0) {
-                    self.open_path(path.clone());
-                }
-            } else if paths.len() > 1 {
-                self.load_dropped_files(paths);
-            }
-        }
-        // check for window resize
-        let current_size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
-        if let (Some(prev), Some(curr)) = (self.last_window_size, current_size) {
-            if prev != curr && !self.b_zoom_used {
-                self.b_fit_to_window = true;
-            }
-        }
-        self.last_window_size = current_size;
-
+        // ========== PRELOAD TASKS ==========
         // Process preload tasks first (background caching)
         self.process_preload_tasks(ctx);
 
+        // ========== IMAGE LOADING ==========
         // Check for loaded image - now handles Result
         if let Some(rx) = &self.receiver {
             if let Ok(result) = rx.try_recv() {
@@ -173,6 +109,7 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // ========== FULL IMAGE LOADING ==========
         // Check for full image loaded (keep for compatibility)
         if let Some(rx) = &self.full_image_receiver {
             if let Ok(full_image) = rx.try_recv() {
@@ -200,6 +137,7 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // ========== FULL GIF UPGRADE ==========
         // Check for full GIF upgrade (background loading complete)
         if let Some(rx) = &self.full_gif_receiver {
             if let Ok(result) = rx.try_recv() {
@@ -231,28 +169,31 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // ========== GIF ANIMATION ==========
         // Update GIF animation
         if self.is_gif {
             self.update_gif_texture(ctx);
         }
 
+        // ========== PRELOAD ==========
         // Preload adjacent images (non-blocking)
         if !self.image_entries.is_empty() && !self.b_is_loading && self.image_error.is_none() {
             self.preload_adjacent_images(ctx);
         }
 
-        // ========== UI ==========
-
+        // ========== UI RENDERING ==========
         self.render_top_panel(ctx);
         self.render_central_panel(ctx);
 
         ctx.request_repaint();
 
+        // ========== CLEANUP ==========
         if ctx.input(|i| i.viewport().close_requested()) {
             self.stop_caching(); // Stop all caching
             self.save_window_state(ctx);
         }
 
+        // ========== DELETE CONFIRMATION ==========
         if self.show_delete_confirmation {
             egui::Window::new("Confirm Delete")
                 .collapsible(false)
