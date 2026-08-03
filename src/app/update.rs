@@ -208,6 +208,12 @@ impl eframe::App for ViewerApp {
         self.render_top_panel(ctx);
         self.render_central_panel(ctx);
 
+        // ========== KEYBOARD SHORTCUT HELP ==========
+        // Show a small help overlay when no image is loaded
+        if self.texture.is_none() && !self.b_is_loading && self.image_entries.is_empty() {
+            self.render_shortcut_help(ctx);
+        }
+
         // ========== SETTINGS MENU ==========
         if self.show_settings_menu {
             self.render_settings_menu(ctx);

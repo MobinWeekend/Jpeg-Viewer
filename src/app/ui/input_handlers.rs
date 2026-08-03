@@ -1,3 +1,4 @@
+// src/app/ui/input_handlers.rs
 use crate::app::types::ViewerApp;
 use crate::shortcuts::{ViewerCommand, handle_mouse};
 use eframe::egui;
@@ -187,5 +188,48 @@ impl ViewerApp {
                 .size(24.0),
             );
         });
+    }
+
+    /// Render keyboard shortcut help overlay
+    pub fn render_shortcut_help(&self, ctx: &egui::Context) {
+        egui::Window::new("Keyboard Shortcuts")
+            .title_bar(false)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0.0, -20.0))
+            .frame(egui::Frame {
+                fill: egui::Color32::from_rgba_premultiplied(20, 20, 30, 200),
+                stroke: egui::Stroke::new(1.0f32, egui::Color32::from_rgba_premultiplied(60, 60, 80, 80)),
+                corner_radius: egui::CornerRadius::same(8),
+                outer_margin: egui::Margin::ZERO,
+                inner_margin: egui::Margin::symmetric(16, 12),
+                ..Default::default()
+            })
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("⌨️").size(18.0));
+                    ui.add_space(8.0);
+                    
+                    let shortcuts = [
+                        ("←/→", "Navigate"),
+                        ("Ctrl+O", "Open"),
+                        ("F11/F", "Fullscreen"),
+                        ("Space", "Play/Pause GIF"),
+                        ("+/-", "Zoom"),
+                        ("Home/End", "First/Last"),
+                        ("Tab", "Settings"),
+                    ];
+                    
+                    for (i, (key, action)) in shortcuts.iter().enumerate() {
+                        if i > 0 {
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new("·").color(egui::Color32::DARK_GRAY));
+                            ui.add_space(4.0);
+                        }
+                        ui.colored_label(egui::Color32::LIGHT_GRAY, *key);
+                        ui.colored_label(egui::Color32::GRAY, *action);
+                    }
+                });
+            });
     }
 }

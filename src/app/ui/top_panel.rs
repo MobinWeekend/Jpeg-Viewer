@@ -1,122 +1,286 @@
-use crate::app::types::ViewerApp;
+// src/app/ui/top_panel.rs
 use crate::app::aspect_ratio::AspectRatio;
+use crate::app::types::ViewerApp;
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
 
 impl ViewerApp {
     pub fn render_top_panel(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            // Use a horizontal scrollable area to prevent overflow
-            egui::ScrollArea::horizontal()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        // ========== LEFT SECTION ==========
-                        // Open button
-                        if ui.button("📂 Open").clicked() {
-                            self.handle_command(ctx, ViewerCommand::OpenFile);
-                        }
-                        ui.add_space(8.0);
+        egui::TopBottomPanel::top("toolbar")
+            .frame(egui::Frame {
+                fill: egui::Color32::from_rgba_premultiplied(30, 30, 40, 240),
+                stroke: egui::Stroke::new(
+                    1.0f32,
+                    egui::Color32::from_rgba_premultiplied(60, 60, 80, 100),
+                ),
+                corner_radius: egui::CornerRadius::ZERO,
+                outer_margin: egui::Margin::ZERO,
+                inner_margin: egui::Margin::symmetric(8, 6),
+                ..Default::default()
+            })
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // ========== LEFT SECTION ==========
+                    // Open button with icon
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("📂 Open").size(14.0))
+                                .min_size(egui::vec2(70.0, 28.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::OpenFile);
+                    }
+                    ui.add_space(4.0);
 
-                        // Zoom display
-                        ui.label(format!(
-                            "Zoom: {}%",
+                    // Navigation buttons
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("◀").size(16.0))
+                                .min_size(egui::vec2(32.0, 28.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::PreviousImage);
+                    }
+
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("▶").size(16.0))
+                                .min_size(egui::vec2(32.0, 28.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::NextImage);
+                    }
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    // Zoom controls
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{}%",
                             (self.zoom * 100.0).round().max(1.0) as i32
-                        ));
-                        ui.add_space(8.0);
+                        ))
+                        .size(13.0)
+                        .color(egui::Color32::LIGHT_BLUE),
+                    );
 
-                        // Cache info
-                        let total_images = self.image_entries.len();
-                        let cached_count = self.image_cache.len();
-                        let cache_range = self.get_cache_range();
-                        let target_count = (cache_range * 2 + 1).min(total_images);
-                        ui.label(format!("📦 {}/{}", cached_count, target_count));
-                        ui.add_space(8.0);
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("+").size(16.0))
+                                .min_size(egui::vec2(24.0, 24.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::ZoomIn);
+                    }
 
-                        // ========== IMAGE INFO ==========
-                        if let Some(texture) = &self.texture {
-                            let size = texture.size_vec2();
-                            let width = size.x as u32;
-                            let height = size.y as u32;
-                            
-                            let file_size_str = self.get_file_size_string();
-                            let aspect_ratio_str = AspectRatio::get_label(width, height);
-                            
-                            ui.separator();
-                            ui.add_space(6.0);
-                            
-                            // Resolution
-                            ui.label(format!("{}×{}", width, height));
-                            
-                            // File size if available
-                            if !file_size_str.is_empty() {
-                                ui.label(format!("({})", file_size_str));
-                            }
-                            
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("−").size(16.0))
+                                .min_size(egui::vec2(24.0, 24.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::ZoomOut);
+                    }
+
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("⊡").size(14.0))
+                                .min_size(egui::vec2(28.0, 24.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::MakeFit);
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("1:1").size(14.0))
+                                .min_size(egui::vec2(28.0, 24.0)),
+                        )
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::ResetZoom);
+                    }
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    // ========== IMAGE INFO ==========
+                    if let Some(texture) = &self.texture {
+                        let size = texture.size_vec2();
+                        let width = size.x as u32;
+                        let height = size.y as u32;
+
+                        let file_size_str = self.get_file_size_string();
+                        let aspect_ratio_str = AspectRatio::get_label(width, height);
+
+                        // Resolution
+                        ui.label(
+                            egui::RichText::new(format!("{}×{}", width, height))
+                                .size(12.0)
+                                .color(egui::Color32::LIGHT_GRAY),
+                        );
+                        ui.add_space(4.0);
+
+                        // File size
+                        if !file_size_str.is_empty() {
+                            ui.label(
+                                egui::RichText::new(file_size_str)
+                                    .size(12.0)
+                                    .color(egui::Color32::from_rgb(150, 200, 150)),
+                            );
                             ui.add_space(4.0);
-                            
-                            // Aspect ratio
-                            if let Some(label) = aspect_ratio_str {
-                                ui.colored_label(egui::Color32::LIGHT_BLUE, label);
-                            } else {
-                                let ratio_display = AspectRatio::format_as_ratio(width, height);
-                                ui.colored_label(egui::Color32::LIGHT_YELLOW, format!("{} (Uncommon)", ratio_display));
-                            }
-                            
-                            ui.add_space(6.0);
-                            ui.separator();
-                            ui.add_space(6.0);
                         }
 
-                        // ========== GIF CONTROLS ==========
-                        if self.is_gif {
-                            if let Some(gif) = &mut self.gif_animation {
-                                if gif.is_animated() {
-                                    if ui.button(if gif.is_playing { "⏸" } else { "▶" }).clicked() {
-                                        gif.toggle_play();
-                                    }
-                                    ui.label(format!(
-                                        " {}/{}",
+                        // Aspect ratio - colored pill
+                        if let Some(label) = aspect_ratio_str {
+                            let color =
+                                if label.contains("Widescreen") || label.contains("Ultrawide") {
+                                    egui::Color32::from_rgb(100, 180, 255)
+                                } else if label.contains("Cinema") || label.contains("Scope") {
+                                    egui::Color32::from_rgb(255, 180, 100)
+                                } else if label.contains("Square") {
+                                    egui::Color32::from_rgb(150, 200, 150)
+                                } else {
+                                    egui::Color32::LIGHT_BLUE
+                                };
+
+                            ui.colored_label(color, label);
+                        } else {
+                            let ratio_display = AspectRatio::format_as_ratio(width, height);
+                            ui.colored_label(
+                                egui::Color32::from_rgb(255, 200, 100),
+                                format!("{} (Uncommon)", ratio_display),
+                            );
+                        }
+                    }
+
+                    // ========== GIF CONTROLS ==========
+                    if self.is_gif {
+                        if let Some(gif) = &mut self.gif_animation {
+                            if gif.is_animated() {
+                                ui.add_space(8.0);
+                                ui.separator();
+                                ui.add_space(8.0);
+
+                                // Play/Pause button
+                                let play_text = if gif.is_playing { "⏸" } else { "▶" };
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(play_text).size(16.0),
+                                        )
+                                        .min_size(egui::vec2(32.0, 28.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    gif.toggle_play();
+                                }
+
+                                // Frame counter
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{}/{}",
                                         gif.get_current_frame_index() + 1,
                                         gif.frame_count()
-                                    ));
-                                    if self.is_preview {
-                                        ui.label("⏳");
-                                    }
-                                    ui.add_space(6.0);
-                                    ui.separator();
-                                    ui.add_space(6.0);
+                                    ))
+                                    .size(12.0)
+                                    .color(egui::Color32::LIGHT_GRAY),
+                                );
+
+                                // Speed controls
+                                let speed_text = if gif.speed_multiplier == 1.0 {
+                                    "1×".to_string()
+                                } else if gif.speed_multiplier < 1.0 {
+                                    format!("{:.1}×", gif.speed_multiplier)
+                                } else {
+                                    format!("{}×", gif.speed_multiplier as i32)
+                                };
+
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(&speed_text).size(12.0),
+                                        )
+                                        .min_size(egui::vec2(40.0, 24.0)),
+                                    )
+                                    .clicked()
+                                {
+                                    // Cycle speeds: 0.5x -> 1x -> 2x -> 3x -> 1x
+                                    let current = gif.speed_multiplier;
+                                    let next = if current == 0.5 {
+                                        1.0
+                                    } else if current == 1.0 {
+                                        2.0
+                                    } else if current == 2.0 {
+                                        3.0
+                                    } else {
+                                        0.5
+                                    };
+                                    gif.set_speed(next);
+                                }
+
+                                if self.is_preview {
+                                    ui.label(
+                                        egui::RichText::new("⏳ Loading...")
+                                            .size(12.0)
+                                            .color(egui::Color32::from_rgb(255, 200, 100)),
+                                    );
                                 }
                             }
                         }
+                    }
 
-                        // ========== MIDDLE SECTION - Spacer pushes settings to the right ==========
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            // Settings button (always visible, on the right)
-                            if ui.button("⚙️ Settings").clicked() {
-                                self.toggle_settings_menu();
-                            }
-                            ui.add_space(8.0);
+                    // ========== RIGHT SECTION ==========
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Settings button
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new("⚙️").size(16.0))
+                                    .min_size(egui::vec2(36.0, 28.0)),
+                            )
+                            .clicked()
+                        {
+                            self.toggle_settings_menu();
+                        }
+                        ui.add_space(4.0);
 
-                            // Loading indicator (right side)
-                            if self.b_is_loading_full {
-                                ui.label("⏳ Loading...");
-                                ui.add_space(4.0);
-                            }
+                        // Fullscreen button
+                        let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                        let fs_text = if is_fullscreen { "⛶" } else { "⛶" };
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new(fs_text).size(16.0))
+                                    .min_size(egui::vec2(36.0, 28.0)),
+                            )
+                            .clicked()
+                        {
+                            self.toggle_fullscreen(ctx);
+                        }
+                        ui.add_space(8.0);
 
-                            // Scroll zoom indicator
-                            if !self.b_ctrl_invert {
-                                ui.label("Scroll: ↕ | Ctrl+Scroll: Zoom");
-                            } else {
-                                ui.label("Scroll: Zoom | Ctrl+Scroll: ↕");
-                            }
+                        // Loading indicator
+                        if self.b_is_loading_full || self.b_is_loading {
+                            ui.add(egui::Spinner::new());
                             ui.add_space(4.0);
-                        });
+                        }
+
+                        ui.label(
+                            egui::RichText::new("⌨️ Scroll: Navigate • Ctrl+Scroll: Zoom")
+                                .size(11.0)
+                                .color(egui::Color32::from_rgb(150, 150, 180)),
+                        );
                     });
                 });
-        });
+            });
     }
-    
+
     /// Get file size as a formatted string
     fn get_file_size_string(&self) -> String {
         if let Some(path) = &self.current_image_path {
@@ -124,7 +288,7 @@ impl ViewerApp {
                 return Self::format_file_size(metadata.len());
             }
         }
-        
+
         // For archive images, try to get size from the entry
         if let Some(entry) = self.image_entries.get(self.current_index) {
             match entry {
@@ -143,16 +307,16 @@ impl ViewerApp {
                 _ => {}
             }
         }
-        
+
         String::new()
     }
-    
+
     /// Format file size in human-readable format
     fn format_file_size(bytes: u64) -> String {
         const KB: u64 = 1024;
         const MB: u64 = 1024 * KB;
         const GB: u64 = 1024 * MB;
-        
+
         if bytes >= GB {
             format!("{:.1} GB", bytes as f64 / GB as f64)
         } else if bytes >= MB {

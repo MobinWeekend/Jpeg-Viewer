@@ -6,19 +6,27 @@ impl ViewerApp {
         let mut open = self.show_settings_menu;
         let mut close_requested = false;
         
-        egui::Window::new("")
+        egui::Window::new("Settings")
             .title_bar(false)
             .collapsible(false)
             .resizable(true)
-            .default_size([400.0, 520.0])
+            .default_size([420.0, 540.0])
             .min_size([350.0, 400.0])
-            .max_size([600.0, 700.0])
+            .max_size([600.0, 750.0])
             .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-10.0, 10.0))
+            .frame(egui::Frame {
+                fill: egui::Color32::from_rgba_premultiplied(35, 35, 45, 240),
+                stroke: egui::Stroke::new(1.0f32, egui::Color32::from_rgba_premultiplied(60, 60, 80, 100)),
+                corner_radius: egui::CornerRadius::same(12),
+                outer_margin: egui::Margin::ZERO,
+                inner_margin: egui::Margin::symmetric(8, 8),
+                ..Default::default()
+            })
             .open(&mut open)
             .show(ctx, |ui| {
                 // ========== CUSTOM TITLE BAR ==========
                 ui.horizontal(|ui| {
-                    ui.add_space(8.0);
+                    ui.add_space(4.0);
                     ui.heading(egui::RichText::new("⚙️ Settings").size(18.0));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Close button
@@ -37,9 +45,9 @@ impl ViewerApp {
                     });
                 });
                 
-                ui.add_space(4.0);
+                ui.add_space(2.0);
                 ui.separator();
-                ui.add_space(6.0);
+                ui.add_space(4.0);
 
                 // ========== SCROLLABLE CONTENT ==========
                 egui::ScrollArea::vertical()
@@ -56,10 +64,8 @@ impl ViewerApp {
                                 // Scroll Zoom invert
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
-                                    if ui
-                                        .checkbox(&mut self.b_ctrl_invert, "Invert Scroll Zoom")
-                                        .changed()
-                                    {
+                                    let response = ui.checkbox(&mut self.b_ctrl_invert, "Invert Scroll Zoom");
+                                    if response.changed() {
                                         let _ = self.settings_manager.update(|settings| {
                                             settings.b_ctrl_invert = self.b_ctrl_invert;
                                         });
@@ -119,6 +125,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut radius)
                                                 .range(1..=100)
                                                 .speed(1)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -148,6 +155,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut factor)
                                                 .range(0.1..=1.0)
                                                 .speed(0.05)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -174,6 +182,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut tasks)
                                                 .range(1..=10)
                                                 .speed(1)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -200,6 +209,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut throttle)
                                                 .range(10..=1000)
                                                 .speed(10)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -225,6 +235,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut pause)
                                                 .range(100..=5000)
                                                 .speed(100)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -243,27 +254,39 @@ impl ViewerApp {
                                 ui.separator();
                                 ui.add_space(8.0);
 
-                                // Cache info
+                                // Cache info with progress bar
                                 let total_images = self.image_entries.len();
                                 let cached_count = self.image_cache.len();
                                 let cache_range = self.get_cache_range();
                                 let target_count = (cache_range * 2 + 1).min(total_images);
+                                
+                                let progress = if target_count > 0 {
+                                    cached_count as f32 / target_count as f32
+                                } else {
+                                    0.0
+                                };
+                                
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     ui.colored_label(
                                         egui::Color32::LIGHT_BLUE,
-                                        format!(
-                                            "📊 {}/{} images cached (Radius: {})",
-                                            cached_count, target_count, self.cache_radius
-                                        )
+                                        format!("📊 Cache: {}/{} images", cached_count, target_count)
                                     );
+                                });
+                                
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.add(egui::ProgressBar::new(progress)
+                                        .fill(egui::Color32::from_rgb(80, 150, 255))
+                                        .desired_width(200.0));
                                 });
 
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     if ui
-                                        .button(egui::RichText::new("🗑️ Clear Cache").size(13.0))
+                                        .add(egui::Button::new(egui::RichText::new("🗑️ Clear Cache").size(13.0))
+                                            .min_size(egui::vec2(100.0, 28.0)))
                                         .clicked()
                                     {
                                         self.image_cache.clear();
@@ -301,6 +324,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut max_fps)
                                                 .range(0.0..=120.0)
                                                 .speed(1.0)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -332,6 +356,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut idle_fps)
                                                 .range(0.0..=60.0)
                                                 .speed(1.0)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -365,6 +390,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut timeout)
                                                 .range(100..=10000)
                                                 .speed(100)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -394,6 +420,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut unfocused_timeout)
                                                 .range(50..=5000)
                                                 .speed(50)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -423,6 +450,7 @@ impl ViewerApp {
                                             egui::DragValue::new(&mut unfocused_fps)
                                                 .range(0.0..=60.0)
                                                 .speed(1.0)
+                                                .clamp_existing_to_range(true)
                                         )
                                         .changed()
                                     {
@@ -448,7 +476,7 @@ impl ViewerApp {
                                 ui.separator();
                                 ui.add_space(8.0);
 
-                                // Show current state
+                                // Show current state with colored indicators
                                 let state_text = if self.is_animating {
                                     "🎬 Animating"
                                 } else if self.b_is_loading {
@@ -457,6 +485,16 @@ impl ViewerApp {
                                     "💤 Idle"
                                 } else {
                                     "🔄 Active"
+                                };
+                                
+                                let state_color = if self.is_animating {
+                                    egui::Color32::from_rgb(100, 255, 150)
+                                } else if self.b_is_loading {
+                                    egui::Color32::from_rgb(255, 200, 100)
+                                } else if self.is_idle {
+                                    egui::Color32::from_rgb(150, 150, 200)
+                                } else {
+                                    egui::Color32::from_rgb(100, 200, 255)
                                 };
                                 
                                 let idle_text = if self.idle_fps_limit == 0.0 {
@@ -474,9 +512,9 @@ impl ViewerApp {
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     ui.colored_label(
-                                        egui::Color32::LIGHT_YELLOW,
+                                        state_color,
                                         format!(
-                                            "Current: {} | Idle: {} | Focused: {}",
+                                            "Current: {} | Idle: {} | {}",
                                             state_text, idle_text, focus_text
                                         )
                                     );
@@ -496,7 +534,8 @@ impl ViewerApp {
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     if ui
-                                        .button(egui::RichText::new("🔄 Reset Window Position").size(13.0))
+                                        .add(egui::Button::new(egui::RichText::new("🔄 Reset Window Position").size(13.0))
+                                            .min_size(egui::vec2(160.0, 28.0)))
                                         .clicked()
                                     {
                                         let _ = self.settings_manager.update(|settings| {
@@ -510,7 +549,8 @@ impl ViewerApp {
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     if ui
-                                        .button(egui::RichText::new("🔄 Reset Window Size").size(13.0))
+                                        .add(egui::Button::new(egui::RichText::new("🔄 Reset Window Size").size(13.0))
+                                            .min_size(egui::vec2(160.0, 28.0)))
                                         .clicked()
                                     {
                                         let _ = self.settings_manager.update(|settings| {
@@ -526,11 +566,12 @@ impl ViewerApp {
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     if ui
-                                        .button(
+                                        .add(egui::Button::new(
                                             egui::RichText::new("⚠️ Reset All Settings to Default")
                                                 .color(egui::Color32::from_rgb(255, 150, 150))
                                                 .size(13.0)
                                         )
+                                        .min_size(egui::vec2(220.0, 32.0)))
                                         .clicked()
                                     {
                                         let default_settings = crate::settings::AppSettings::default();
