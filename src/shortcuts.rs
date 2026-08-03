@@ -15,15 +15,18 @@ pub enum ViewerCommand {
     JumpToFirst,
     JumpToLast,
     ToggleGifPlay,
-    GifSpeedHalf, // New: 0.5x speed
-    GifSpeedUp,   // New: 3x speed
+    GifSpeedHalf,
+    GifSpeedUp,
     GifSpeedReset,
     Settings,
+    // Slideshow commands
+    ToggleSlideshow,
+    SlideshowSpeedUp,
+    SlideshowSpeedDown,
 }
 
 #[derive(Debug, Clone)]
 pub enum MouseAction {
-    //SingleClick,  //mostly used in update
     DoubleClick,
 }
 
@@ -107,8 +110,6 @@ impl MouseBinding {
     }
     pub fn matches(&self, input: &egui::InputState) -> bool {
         let clicked = match self.action {
-            // most of our singleclicks are coded into the update
-            //MouseAction::SingleClick => input.pointer.button_pressed(self.button),
             MouseAction::DoubleClick => input.pointer.button_double_clicked(self.button),
         };
 
@@ -210,21 +211,29 @@ impl Default for InputBindings {
         // GIF speed controls
         keyboard.insert(
             ViewerCommand::GifSpeedHalf,
-            vec![
-                KeyBinding::plain(egui::Key::OpenBracket), // for half speed
-            ],
+            vec![KeyBinding::plain(egui::Key::OpenBracket)],
         );
         keyboard.insert(
             ViewerCommand::GifSpeedUp,
-            vec![
-                KeyBinding::plain(egui::Key::CloseBracket), //for triple speed
-            ],
+            vec![KeyBinding::plain(egui::Key::CloseBracket)],
         );
         keyboard.insert(
             ViewerCommand::GifSpeedReset,
-            vec![
-                KeyBinding::plain(egui::Key::P), //for triple speed
-            ],
+            vec![KeyBinding::plain(egui::Key::P)],
+        );
+
+        // Slideshow controls
+        keyboard.insert(
+            ViewerCommand::ToggleSlideshow,
+            vec![KeyBinding::plain(egui::Key::L)], // L for Loop/Slideshow
+        );
+        keyboard.insert(
+            ViewerCommand::SlideshowSpeedUp,
+            vec![KeyBinding::plain(egui::Key::Period)], // > for faster
+        );
+        keyboard.insert(
+            ViewerCommand::SlideshowSpeedDown,
+            vec![KeyBinding::plain(egui::Key::Comma)], // < for slower
         );
 
         let mut mouse = HashMap::new();

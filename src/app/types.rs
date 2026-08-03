@@ -28,15 +28,15 @@ pub struct CachedImage {
 // Preload task
 pub struct PreloadTask {
     pub index: usize,
-    pub receiver: Receiver<Result<LoadedImage, String>>, // Changed to Result
+    pub receiver: Receiver<Result<LoadedImage, String>>,
 }
 
 pub struct ViewerApp {
     pub texture: Option<egui::TextureHandle>,
     pub gif_animation: Option<GifAnimation>,
-    pub receiver: Option<Receiver<Result<LoadedImage, String>>>, // Changed to Result
+    pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
     pub full_image_receiver: Option<Receiver<DynamicImage>>,
-    pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>, // Changed to Result
+    pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>,
     pub zoom: f32,
     pub pan: egui::Vec2,
     pub current_directory: Option<PathBuf>,
@@ -69,21 +69,28 @@ pub struct ViewerApp {
     pub navigation_pause_duration: Duration,
     pub cache_delta_factor: f32,
     pub max_cache_task: u8,
-    pub last_preload_start: Option<Instant>, // Throttle preloads
-    pub processed_this_frame: usize,         // Track tasks processed per frame
+    pub last_preload_start: Option<Instant>,
+    pub processed_this_frame: usize,
     pub image_error: Option<String>,
     // Frame limiter fields
     pub last_repaint_time: Instant,
     pub last_interaction_time: Instant,
     pub is_idle: bool,
-    pub max_fps: f32,                         // Maximum FPS (0 = unlimited)
-    pub idle_fps_limit: f32,                  // FPS limit when idle
-    pub idle_timeout_ms: u64,                 // Timeout when focused
-    pub unfocused_idle_timeout_ms: u64,       // Timeout when unfocused
-    pub unfocused_idle_fps_limit: f32,        // FPS limit when unfocused and idle
+    pub max_fps: f32,
+    pub idle_fps_limit: f32,
+    pub idle_timeout_ms: u64,
+    pub unfocused_idle_timeout_ms: u64,
+    pub unfocused_idle_fps_limit: f32,
     pub is_animating: bool,
     // Settings window
-    pub show_settings_menu: bool,             // Track settings menu visibility
+    pub show_settings_menu: bool,
+    // Slideshow fields
+    pub slideshow_enabled: bool,
+    pub slideshow_interval: Duration,
+    pub slideshow_loop: bool,
+    pub slideshow_random: bool,
+    pub slideshow_last_advance: Instant,
+    pub slideshow_has_advanced: bool,
 }
 
 impl Default for ViewerApp {
@@ -148,6 +155,13 @@ impl Default for ViewerApp {
             is_animating: false,
             // Settings window
             show_settings_menu: false,
+            // Slideshow defaults
+            slideshow_enabled: settings.slideshow_enabled,
+            slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
+            slideshow_loop: settings.slideshow_loop,
+            slideshow_random: settings.slideshow_random,
+            slideshow_last_advance: Instant::now(),
+            slideshow_has_advanced: false,
         }
     }
 }
@@ -173,10 +187,12 @@ impl ViewerApp {
     pub fn update_window_title(&self, ctx: &egui::Context) {
         let filename = self.get_current_filename();
         let total = self.image_entries.len();
+        let slideshow_indicator = if self.slideshow_enabled { " ▶" } else { "" };
         let title = if total > 0 {
             format!(
-                "{} ({}/{}) - JPEG Viewer",
+                "{}{} ({}/{}) - JPEG Viewer",
                 filename,
+                slideshow_indicator,
                 self.current_index + 1,
                 total
             )
@@ -220,5 +236,83 @@ impl ViewerApp {
             },
             _ => egui::TextureOptions::LINEAR,
         }
+    }
+
+    // Slideshow methods
+    pub fn toggle_slideshow(&mut self) {
+        self.slideshow_enabled = !self.slideshow_enabled;
+        if self.slideshow_enabled {
+            self.slideshow_last_advance = Instant::now();
+            self.slideshow_has_advanced = false;
+        }
+        let _ = self.settings_manager.update(|settings| {
+            settings.slideshow_enabled = self.slideshow_enabled;
+        });
+        self.update_window_title(&eframe::egui::Context::default());
+    }
+
+    pub fn slideshow_speed_up(&mut self) {
+        let new_interval = self.slideshow_interval.as_millis().max(500) as u64 / 2;
+        self.slideshow_interval = Duration::from_millis(new_interval.max(500));
+        let _ = self.settings_manager.update(|settings| {
+            settings.slideshow_interval_ms = new_interval.max(500);
+        });
+    }
+
+    pub fn slideshow_speed_down(&mut self) {
+        let new_interval = self.slideshow_interval.as_millis() as u64 * 2;
+        self.slideshow_interval = Duration::from_millis(new_interval.min(60000));
+        let _ = self.settings_manager.update(|settings| {
+            settings.slideshow_interval_ms = new_interval.min(60000);
+        });
+    }
+
+    pub fn advance_slideshow(&mut self) {
+        if self.image_entries.is_empty() {
+            return;
+        }
+
+        let len = self.image_entries.len();
+        use rand::Rng;
+        let new_index = if self.slideshow_random {
+            let mut rng = rand::thread_rng();
+
+            let mut idx;
+            loop {
+                idx = rng.gen_range(0..len);
+
+                if idx != self.current_index || len <= 1 {
+                    break;
+                }
+            }
+
+            idx
+        } else {
+            (self.current_index + 1) % len
+        };
+
+        self.current_index = new_index;
+        self.b_fit_to_window = true;
+        self.image_rect = None;
+        self.gif_animation = None;
+        self.is_gif = false;
+        self.is_preview = false;
+        self.texture = None;
+        self.full_image_receiver = None;
+        self.full_gif_receiver = None;
+        self.b_is_loading_full = false;
+        self.image_error = None;
+        self.receiver = None;
+
+        self.load_current_image_with_cache();
+        self.update_window_title(&eframe::egui::Context::default());
+    }
+
+    pub fn load_slideshow_settings(&mut self) {
+        let settings = self.settings_manager.get();
+        self.slideshow_enabled = settings.slideshow_enabled;
+        self.slideshow_interval = Duration::from_millis(settings.slideshow_interval_ms);
+        self.slideshow_loop = settings.slideshow_loop;
+        self.slideshow_random = settings.slideshow_random;
     }
 }

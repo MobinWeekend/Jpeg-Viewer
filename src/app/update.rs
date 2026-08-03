@@ -1,6 +1,7 @@
 use super::types::ViewerApp;
 use eframe::egui;
 use image::GenericImageView;
+use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
@@ -18,6 +19,23 @@ impl eframe::App for ViewerApp {
         // Load frame limiter settings on first run
         if self.max_fps == 0.0 && self.idle_fps_limit == 0.0 {
             self.load_frame_limiter_settings();
+        }
+
+        // Load slideshow settings on first run
+        if !self.slideshow_has_advanced {
+            self.load_slideshow_settings();
+        }
+
+        // Handle startup fullscreen
+        static mut STARTUP_FULLSCREEN_SET: bool = false;
+        unsafe {
+            if !STARTUP_FULLSCREEN_SET {
+                STARTUP_FULLSCREEN_SET = true;
+                let settings = self.settings_manager.get();
+                if settings.start_fullscreen {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+                }
+            }
         }
 
         // ========== HARDCODED INPUT HANDLING ==========
@@ -48,6 +66,28 @@ impl eframe::App for ViewerApp {
             false
         };
         self.set_animating(is_animating);
+
+        // ========== SLIDESHOW LOGIC ==========
+        if self.slideshow_enabled && !self.image_entries.is_empty() && !self.b_is_loading {
+            let elapsed = self.slideshow_last_advance.elapsed();
+            if elapsed >= self.slideshow_interval {
+                // Check if we should loop or stop
+                if self.slideshow_loop || self.current_index < self.image_entries.len() - 1 {
+                    self.advance_slideshow();
+                    self.slideshow_last_advance = Instant::now();
+                    self.slideshow_has_advanced = true;
+                    // Repaint to show the new image
+                    ctx.request_repaint();
+                } else {
+                    // Reached end and not looping - stop slideshow
+                    self.slideshow_enabled = false;
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.slideshow_enabled = false;
+                    });
+                    self.update_window_title(ctx);
+                }
+            }
+        }
 
         // ========== PRELOAD TASKS ==========
         self.process_preload_tasks(ctx);

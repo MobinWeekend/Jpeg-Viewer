@@ -1,5 +1,6 @@
 use crate::app::types::ViewerApp;
 use eframe::egui;
+use std::time::Duration;
 
 impl ViewerApp {
     pub fn render_settings_menu(&mut self, ctx: &egui::Context) {
@@ -10,9 +11,9 @@ impl ViewerApp {
             .title_bar(true)
             .collapsible(false)
             .resizable(true)
-            .default_size([420.0, 540.0])
-            .min_size([350.0, 400.0])
-            .max_size([600.0, 750.0])
+            .default_size([420.0, 620.0])
+            .min_size([350.0, 450.0])
+            .max_size([600.0, 800.0])
             .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-10.0, 10.0))
             .open(&mut open)
             .show(ctx, |ui| {
@@ -67,16 +68,132 @@ impl ViewerApp {
                                         }
                                     }
                                 });
+
+                                ui.add_space(4.0);
+                                ui.separator();
+                                ui.add_space(4.0);
+
+                                // Startup settings (moved here from separate section)
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    let mut start_fs = self.settings_manager.get().start_fullscreen;
+                                    if ui.checkbox(&mut start_fs, "Start in Fullscreen Mode").changed() {
+                                        let _ = self.settings_manager.update(|settings| {
+                                            settings.start_fullscreen = start_fs;
+                                        });
+                                    }
+                                });
+
+                                ui.add_space(2.0);
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.label("Note: When started in fullscreen, Escape will close the app.");
+                                });
                                 ui.add_space(4.0);
                             }
                         );
 
                         ui.add_space(4.0);
 
-                        // ========== CACHE SETTINGS ==========
+                        // ========== SLIDESHOW SETTINGS ==========
                         ui.collapsing(
-                            egui::RichText::new("💾 Cache Settings").size(15.0),
+                            egui::RichText::new("🎬 Slideshow").size(15.0),
                             |ui| {
+                                ui.add_space(4.0);
+                                
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    let mut enabled = self.slideshow_enabled;
+                                    if ui.checkbox(&mut enabled, "Enable Slideshow").changed() {
+                                        self.slideshow_enabled = enabled;
+                                        let _ = self.settings_manager.update(|settings| {
+                                            settings.slideshow_enabled = enabled;
+                                        });
+                                        self.update_window_title(ctx);
+                                    }
+                                });
+
+                                ui.add_space(4.0);
+
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.label("Interval (seconds):");
+                                    ui.add_space(8.0);
+                                    let mut interval_secs = self.slideshow_interval.as_secs_f32();
+                                    if ui
+                                        .add(
+                                            egui::DragValue::new(&mut interval_secs)
+                                                .range(0.5..=60.0)
+                                                .speed(0.5)
+                                                .clamp_existing_to_range(true)
+                                        )
+                                        .changed()
+                                    {
+                                        let interval_ms = (interval_secs * 1000.0) as u64;
+                                        self.slideshow_interval = Duration::from_millis(interval_ms);
+                                        let _ = self.settings_manager.update(|settings| {
+                                            settings.slideshow_interval_ms = interval_ms;
+                                        });
+                                    }
+                                    ui.add_space(4.0);
+                                    ui.label(format!("{:.1}s", interval_secs));
+                                });
+
+                                ui.add_space(4.0);
+
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    let mut loop_enabled = self.slideshow_loop;
+                                    if ui.checkbox(&mut loop_enabled, "Loop").changed() {
+                                        self.slideshow_loop = loop_enabled;
+                                        let _ = self.settings_manager.update(|settings| {
+                                            settings.slideshow_loop = loop_enabled;
+                                        });
+                                    }
+                                });
+
+                                ui.add_space(4.0);
+
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    let mut random_enabled = self.slideshow_random;
+                                    if ui.checkbox(&mut random_enabled, "Random Order").changed() {
+                                        self.slideshow_random = random_enabled;
+                                        let _ = self.settings_manager.update(|settings| {
+                                            settings.slideshow_random = random_enabled;
+                                        });
+                                    }
+                                });
+
+                                ui.add_space(8.0);
+                                ui.separator();
+                                ui.add_space(8.0);
+
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.label("Shortcuts:");
+                                    ui.add_space(4.0);
+                                    ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
+                                    ui.label("= Toggle, ");
+                                    ui.colored_label(egui::Color32::LIGHT_GREEN, ",");
+                                    ui.label("= Slower, ");
+                                    ui.colored_label(egui::Color32::LIGHT_GREEN, ".");
+                                    ui.label("= Faster");
+                                });
+                                ui.add_space(4.0);
+                            }
+                        );
+
+                        ui.add_space(4.0);
+
+                        // ========== ADVANCED SETTINGS ==========
+                        ui.collapsing(
+                            egui::RichText::new("⚙️ Advanced").size(15.0),
+                            |ui| {
+                                ui.add_space(4.0);
+                                
+                                // ===== CACHE SETTINGS =====
+                                ui.label(egui::RichText::new("💾 Cache Settings").size(13.0).strong());
                                 ui.add_space(4.0);
                                 
                                 ui.horizontal(|ui| {
@@ -254,16 +371,13 @@ impl ViewerApp {
                                         self.preload_tasks.clear();
                                     }
                                 });
-                                ui.add_space(4.0);
-                            }
-                        );
 
-                        ui.add_space(4.0);
+                                ui.add_space(8.0);
+                                ui.separator();
+                                ui.add_space(8.0);
 
-                        // ========== FRAME LIMITER SETTINGS ==========
-                        ui.collapsing(
-                            egui::RichText::new("🎮 Frame Limiter").size(15.0),
-                            |ui| {
+                                // ===== FRAME LIMITER SETTINGS =====
+                                ui.label(egui::RichText::new("🎮 Frame Limiter").size(13.0).strong());
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
@@ -465,16 +579,13 @@ impl ViewerApp {
                                         )
                                     );
                                 });
-                                ui.add_space(4.0);
-                            }
-                        );
 
-                        ui.add_space(4.0);
+                                ui.add_space(8.0);
+                                ui.separator();
+                                ui.add_space(8.0);
 
-                        // ========== WINDOW SETTINGS ==========
-                        ui.collapsing(
-                            egui::RichText::new("🪟 Window").size(15.0),
-                            |ui| {
+                                // ===== WINDOW SETTINGS =====
+                                ui.label(egui::RichText::new("🪟 Window").size(13.0).strong());
                                 ui.add_space(4.0);
                                 
                                 ui.horizontal(|ui| {
@@ -525,6 +636,7 @@ impl ViewerApp {
                                         });
                                         // Reload all settings
                                         self.load_frame_limiter_settings();
+                                        self.load_slideshow_settings();
                                         self.b_ctrl_invert = self.settings_manager.get().b_ctrl_invert;
                                         self.cache_radius = self.settings_manager.get().cache_radius;
                                         self.cache_delta_factor = self.settings_manager.get().cache_delta_factor;
@@ -539,6 +651,7 @@ impl ViewerApp {
                                         if !self.image_entries.is_empty() {
                                             self.load_current_image_with_cache();
                                         }
+                                        self.update_window_title(ctx);
                                     }
                                 });
                                 ui.add_space(4.0);

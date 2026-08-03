@@ -1,14 +1,31 @@
 use super::types::ViewerApp;
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
+use std::time::Instant;
 
 impl ViewerApp {
     pub fn handle_command(&mut self, ctx: &egui::Context, command: ViewerCommand) {
         match command {
             ViewerCommand::NextImage => {
+                // Stop slideshow when manually navigating
+                if self.slideshow_enabled {
+                    self.slideshow_enabled = false;
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.slideshow_enabled = false;
+                    });
+                    self.update_window_title(ctx);
+                }
                 self.navigate_images(ctx, 1);
             }
             ViewerCommand::PreviousImage => {
+                // Stop slideshow when manually navigating
+                if self.slideshow_enabled {
+                    self.slideshow_enabled = false;
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.slideshow_enabled = false;
+                    });
+                    self.update_window_title(ctx);
+                }
                 self.navigate_images(ctx, -1);
             }
             ViewerCommand::ZoomIn => {
@@ -29,6 +46,14 @@ impl ViewerApp {
                 self.b_zoom_used = false;
             }
             ViewerCommand::OpenFile => {
+                // Stop slideshow when opening a file
+                if self.slideshow_enabled {
+                    self.slideshow_enabled = false;
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.slideshow_enabled = false;
+                    });
+                    self.update_window_title(ctx);
+                }
                 self.open_file_dialog();
             }
             ViewerCommand::ToggleFullscreen => {
@@ -37,6 +62,14 @@ impl ViewerApp {
             }
             ViewerCommand::JumpToFirst => {
                 if !self.image_entries.is_empty() {
+                    // Stop slideshow when jumping
+                    if self.slideshow_enabled {
+                        self.slideshow_enabled = false;
+                        let _ = self.settings_manager.update(|settings| {
+                            settings.slideshow_enabled = false;
+                        });
+                        self.update_window_title(ctx);
+                    }
                     self.current_index = 0;
                     self.b_fit_to_window = true;
                     self.image_rect = None;
@@ -53,6 +86,14 @@ impl ViewerApp {
             }
             ViewerCommand::JumpToLast => {
                 if !self.image_entries.is_empty() {
+                    // Stop slideshow when jumping
+                    if self.slideshow_enabled {
+                        self.slideshow_enabled = false;
+                        let _ = self.settings_manager.update(|settings| {
+                            settings.slideshow_enabled = false;
+                        });
+                        self.update_window_title(ctx);
+                    }
                     self.current_index = self.image_entries.len() - 1;
                     self.b_fit_to_window = true;
                     self.image_rect = None;
@@ -89,6 +130,21 @@ impl ViewerApp {
             }
             ViewerCommand::Settings => {
                 self.toggle_settings_menu();
+            }
+            ViewerCommand::ToggleSlideshow => {
+                self.toggle_slideshow();
+                if self.slideshow_enabled {
+                    // Reset timer when starting slideshow
+                    self.slideshow_last_advance = Instant::now();
+                    ctx.request_repaint();
+                }
+                self.update_window_title(ctx);
+            }
+            ViewerCommand::SlideshowSpeedUp => {
+                self.slideshow_speed_up();
+            }
+            ViewerCommand::SlideshowSpeedDown => {
+                self.slideshow_speed_down();
             }
         }
     }

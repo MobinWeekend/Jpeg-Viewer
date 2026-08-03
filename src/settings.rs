@@ -19,6 +19,13 @@ pub struct AppSettings {
     pub idle_timeout_ms: u64,           // Time of inactivity before entering idle mode
     pub unfocused_idle_timeout_ms: u64, // Timeout when window is unfocused
     pub unfocused_idle_fps_limit: f32,  // FPS limit when window is unfocused and idle
+    // Slideshow settings
+    pub slideshow_enabled: bool,
+    pub slideshow_interval_ms: u64,
+    pub slideshow_loop: bool,
+    pub slideshow_random: bool,
+    // Startup settings
+    pub start_fullscreen: bool,
 }
 
 impl Default for AppSettings {
@@ -33,11 +40,16 @@ impl Default for AppSettings {
             max_cache_task: 4,
             texture_filter: "linear".to_string(),
             preload_throttle_ms: 200,
-            max_fps: 0.0, // 0 = unlimited
+            max_fps: 0.0,
             idle_fps_limit: 15.0,
             idle_timeout_ms: 2000,
             unfocused_idle_timeout_ms: 500,
             unfocused_idle_fps_limit: 1.0,
+            slideshow_enabled: false,
+            slideshow_interval_ms: 3000,
+            slideshow_loop: true,
+            slideshow_random: false,
+            start_fullscreen: false,
         }
     }
 }
@@ -196,6 +208,27 @@ impl SettingsManager {
                             }
                         }
                     }
+                    // Read slideshow settings
+                    if let Some(value) = section.get("slideshow_enabled") {
+                        settings.slideshow_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("slideshow_interval_ms") {
+                        if let Ok(interval) = value.parse::<u64>() {
+                            if interval >= 500 && interval <= 60000 {
+                                settings.slideshow_interval_ms = interval;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("slideshow_loop") {
+                        settings.slideshow_loop = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("slideshow_random") {
+                        settings.slideshow_random = Self::parse_bool(value);
+                    }
+                    // Read startup settings
+                    if let Some(value) = section.get("start_fullscreen") {
+                        settings.start_fullscreen = Self::parse_bool(value);
+                    }
                 }
 
                 settings
@@ -260,6 +293,12 @@ impl SettingsManager {
             settings.unfocused_idle_fps_limit.to_string(),
         );
 
+        // Slideshow settings
+        section.set("slideshow_enabled", if settings.slideshow_enabled { "true" } else { "false" });
+        section.set("slideshow_interval_ms", settings.slideshow_interval_ms.to_string());
+        section.set("slideshow_loop", if settings.slideshow_loop { "true" } else { "false" });
+        section.set("slideshow_random", if settings.slideshow_random { "true" } else { "false" });
+        section.set("start_fullscreen", if settings.start_fullscreen { "true" } else { "false" });
 
         // Write the file
         conf.write_to_file(path)
@@ -352,5 +391,10 @@ mod tests {
         assert_eq!(settings.idle_timeout_ms, 2000);
         assert_eq!(settings.unfocused_idle_timeout_ms, 500);
         assert_eq!(settings.unfocused_idle_fps_limit, 1.0);
+        assert!(!settings.slideshow_enabled);
+        assert_eq!(settings.slideshow_interval_ms, 3000);
+        assert!(settings.slideshow_loop);
+        assert!(!settings.slideshow_random);
+        assert!(!settings.start_fullscreen);
     }
 }

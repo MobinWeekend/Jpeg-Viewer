@@ -50,8 +50,16 @@ impl ViewerApp {
 
         let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
 
+        // Check if we started in fullscreen mode
+        let start_fullscreen = self.settings_manager.get().start_fullscreen;
+
         if fullscreen {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            // If we started in fullscreen mode, close the app on Escape
+            if start_fullscreen {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            }
         } else {
             self.save_window_state(ctx);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -77,6 +85,15 @@ impl ViewerApp {
 
         if dropped_files.is_empty() {
             return;
+        }
+
+        // Stop slideshow when dropping files
+        if self.slideshow_enabled {
+            self.slideshow_enabled = false;
+            let _ = self.settings_manager.update(|settings| {
+                settings.slideshow_enabled = false;
+            });
+            self.update_window_title(ctx);
         }
 
         let paths: Vec<PathBuf> = dropped_files

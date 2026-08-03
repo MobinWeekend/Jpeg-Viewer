@@ -19,6 +19,7 @@ natord = "1.0"
 gif = "0.14.2"
 lru = "0.18.2"  # for LRU cache
 dirs = "6.0.0"
+rand = "0.8"
 
 [profile.release]
 opt-level = 3
