@@ -15,12 +15,41 @@ impl eframe::App for ViewerApp {
             self.logo_texture = Some(ctx.load_texture("logo", color_image, Default::default()));
         }
 
+        // Load frame limiter settings on first run
+        if self.max_fps == 0.0 && self.idle_fps_limit == 0.0 {
+            self.load_frame_limiter_settings();
+        }
+
         // ========== HARDCODED INPUT HANDLING ==========
+        // Mark interaction if any input is processed
+        let had_input = ctx.input(|i| {
+            i.pointer.any_down()
+                || i.pointer.delta().length() > 0.0
+                || !i.keys_down.is_empty()
+                || i.raw_scroll_delta != egui::Vec2::ZERO
+        });
+
+        // Check if window has focus (handle Option<bool>)
+        let has_focus = ctx.input(|i| i.viewport().focused).unwrap_or(false);
+
+        // Only mark interaction if window has focus OR it's a key press
+        if had_input && (has_focus || ctx.input(|i| !i.keys_down.is_empty())) {
+            self.mark_interaction();
+        }
+
         self.handle_input(ctx);
         self.handle_window_resize(ctx);
 
+        // ========== UPDATE ANIMATION STATE ==========
+        // Track if we have an animated GIF playing
+        let is_animating = if let Some(gif) = &self.gif_animation {
+            gif.is_playing && gif.is_animated()
+        } else {
+            false
+        };
+        self.set_animating(is_animating);
+
         // ========== PRELOAD TASKS ==========
-        // Process preload tasks first (background caching)
         self.process_preload_tasks(ctx);
 
         // ========== IMAGE LOADING ==========
@@ -29,7 +58,7 @@ impl eframe::App for ViewerApp {
             if let Ok(result) = rx.try_recv() {
                 // Clear the receiver immediately to prevent duplicate processing
                 self.receiver = None;
-                
+
                 match result {
                     Ok(loaded_image) => {
                         // Success - process the image
@@ -41,21 +70,25 @@ impl eframe::App for ViewerApp {
                                 const MAX_TEXTURE_SIZE: u32 = 32768;
 
                                 if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-                                    // This shouldn't happen now since we check in loader, but keep as safety
                                     self.b_is_loading = false;
                                     self.texture = None;
                                     self.image_error = Some(format!(
                                         "Image too large: {}x{}\nMaximum supported size: {}x{}",
                                         width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
                                     ));
-                                    eprintln!("Failed to load image: too large ({}x{})", width, height);
+                                    eprintln!(
+                                        "Failed to load image: too large ({}x{})",
+                                        width, height
+                                    );
+                                    // Force repaint to show error
                                     ctx.request_repaint();
                                     return;
                                 }
 
                                 let rgba = img.to_rgba8();
                                 let size = [width as usize, height as usize];
-                                let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                                let color =
+                                    egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
                                 let options = self.get_texture_options();
                                 self.texture = Some(ctx.load_texture("image", color, options));
                                 self.gif_animation = None;
@@ -81,7 +114,7 @@ impl eframe::App for ViewerApp {
                                 self.image_error = None;
                             }
                         }
-                        
+
                         self.b_is_loading = false;
 
                         // After loading, cache the current image (GIFs will be skipped)
@@ -91,18 +124,24 @@ impl eframe::App for ViewerApp {
                         self.update_window_title(ctx);
 
                         // Trigger initial preload immediately after loading
-                        self.preload_adjacent_images(ctx);
+                        self.preload_adjacent_images();
+
+                        // Mark interaction so we show the loaded image immediately
+                        self.mark_interaction();
                     }
                     Err(error) => {
                         // Error - show the error message and clean up
                         self.b_is_loading = false;
                         self.texture = None;
                         self.image_error = Some(error);
-                        // Clear any GIF state
                         self.gif_animation = None;
                         self.is_gif = false;
                         self.is_preview = false;
-                        eprintln!("Error loading image: {}", self.image_error.as_ref().unwrap());
+                        eprintln!(
+                            "Error loading image: {}",
+                            self.image_error.as_ref().unwrap()
+                        );
+                        // Force repaint to show error
                         ctx.request_repaint();
                     }
                 }
@@ -110,10 +149,8 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== FULL IMAGE LOADING ==========
-        // Check for full image loaded (keep for compatibility)
         if let Some(rx) = &self.full_image_receiver {
             if let Ok(full_image) = rx.try_recv() {
-                // Only process if we haven't navigated away
                 if !self.b_is_loading && self.texture.is_some() {
                     let rgba = full_image.to_rgba8();
                     let size = [rgba.width() as usize, rgba.height() as usize];
@@ -124,72 +161,67 @@ impl eframe::App for ViewerApp {
                     self.is_preview = false;
                     self.b_fit_to_window = true;
                     self.full_image_receiver = None;
-
-                    // Update cache with full quality
                     self.cache_current_image();
-
-                    // Update window title
                     self.update_window_title(ctx);
+                    self.mark_interaction();
                 } else {
-                    // We navigated away, discard the result
                     self.full_image_receiver = None;
                 }
             }
         }
 
         // ========== FULL GIF UPGRADE ==========
-        // Check for full GIF upgrade (background loading complete)
         if let Some(rx) = &self.full_gif_receiver {
             if let Ok(result) = rx.try_recv() {
-                // Clear receiver immediately
                 self.full_gif_receiver = None;
-                
+
                 match result {
                     Ok(loaded_image) => {
-                        // Only upgrade if we're still on the same image and have a GIF animation
                         if let Some(gif) = &mut self.gif_animation {
                             if let super::types::LoadedImage::Animated(full_gif, _) = loaded_image {
                                 gif.upgrade_to_full(full_gif);
                                 self.is_preview = false;
-
-                                // Update window title
                                 self.update_window_title(ctx);
-
-                                // Force texture update
                                 self.update_gif_texture(ctx);
+                                self.mark_interaction();
                             }
                         }
                     }
                     Err(error) => {
-                        // Full GIF failed to load, but we already have preview
                         eprintln!("Failed to load full GIF: {}", error);
-                        // Keep the preview, just log the error
                     }
                 }
             }
         }
 
         // ========== GIF ANIMATION ==========
-        // Update GIF animation
         if self.is_gif {
             self.update_gif_texture(ctx);
         }
 
         // ========== PRELOAD ==========
-        // Preload adjacent images (non-blocking)
         if !self.image_entries.is_empty() && !self.b_is_loading && self.image_error.is_none() {
-            self.preload_adjacent_images(ctx);
+            self.preload_adjacent_images();
         }
 
         // ========== UI RENDERING ==========
         self.render_top_panel(ctx);
         self.render_central_panel(ctx);
 
-        ctx.request_repaint();
+        // ========== SETTINGS MENU ==========
+        if self.show_settings_menu {
+            self.render_settings_menu(ctx);
+        }
+
+        // ========== FRAME LIMITER ==========
+        // Only request repaint if the frame limiter allows it
+        if self.should_request_repaint(ctx) {
+            ctx.request_repaint();
+        }
 
         // ========== CLEANUP ==========
         if ctx.input(|i| i.viewport().close_requested()) {
-            self.stop_caching(); // Stop all caching
+            self.stop_caching();
             self.save_window_state(ctx);
         }
 
@@ -226,7 +258,6 @@ impl Drop for ViewerApp {
 
 impl ViewerApp {
     pub fn update_gif_texture(&mut self, ctx: &egui::Context) {
-        // Get options first (immutable borrow of self)
         let options = self.get_texture_options();
 
         if let Some(gif) = &mut self.gif_animation {
@@ -237,6 +268,7 @@ impl ViewerApp {
                 self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
 
                 if gif.is_playing {
+                    // GIF animations always need repaint
                     ctx.request_repaint();
                 }
             }

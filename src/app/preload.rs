@@ -27,7 +27,7 @@ impl ViewerApp {
         }
     }
 
-    pub fn preload_adjacent_images(&mut self, ctx: &egui::Context) {
+    pub fn preload_adjacent_images(&mut self) {
         // Check if caching should be stopped
         if self.should_stop_caching {
             return;
@@ -145,8 +145,6 @@ impl ViewerApp {
 
             self.last_preload_start = Some(Instant::now());
         }
-
-        ctx.request_repaint();
     }
 
     // Helper function to check if there are new indices in range that need loading
@@ -366,13 +364,12 @@ impl ViewerApp {
 
         // Add to cache (this creates textures on main thread, one at a time)
         for (idx, loaded_image) in completed_images {
+            // Use the ctx directly - it's already the correct type
             self.add_to_cache(ctx, idx, loaded_image);
         }
 
-        // Continue preloading if needed
-        if !self.image_entries.is_empty() && !self.b_is_loading {
-            self.preload_adjacent_images(ctx);
-        }
+        // Don't call preload_adjacent_images() here - let the main update loop handle it
+        // This prevents recursive calls and allows the frame limiter to work properly
     }
 
     pub fn update_cache_radius(&mut self, new_radius: usize) {

@@ -11,8 +11,14 @@ pub struct AppSettings {
     pub cache_delta_factor: f32,
     pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
-    pub texture_filter: String, // "nearest", "linear", "mipmap"
+    pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches
+    // Frame limiter settings
+    pub max_fps: f32,                   // Maximum FPS (0 = unlimited)
+    pub idle_fps_limit: f32,            // FPS limit when idle (0 = unlimited)
+    pub idle_timeout_ms: u64,           // Time of inactivity before entering idle mode
+    pub unfocused_idle_timeout_ms: u64, // Timeout when window is unfocused
+    pub unfocused_idle_fps_limit: f32,  // FPS limit when window is unfocused and idle
 }
 
 impl Default for AppSettings {
@@ -27,6 +33,11 @@ impl Default for AppSettings {
             max_cache_task: 4,
             texture_filter: "linear".to_string(),
             preload_throttle_ms: 200,
+            max_fps: 0.0, // 0 = unlimited
+            idle_fps_limit: 15.0,
+            idle_timeout_ms: 2000,
+            unfocused_idle_timeout_ms: 500,
+            unfocused_idle_fps_limit: 1.0,
         }
     }
 }
@@ -145,6 +156,46 @@ impl SettingsManager {
                             }
                         }
                     }
+                    // Read max_fps
+                    if let Some(value) = section.get("max_fps") {
+                        if let Ok(fps) = value.parse::<f32>() {
+                            if fps >= 0.0 && fps <= 120.0 {
+                                settings.max_fps = fps;
+                            }
+                        }
+                    }
+                    // Read idle_fps_limit
+                    if let Some(value) = section.get("idle_fps_limit") {
+                        if let Ok(fps) = value.parse::<f32>() {
+                            if fps >= 0.0 && fps <= 120.0 {
+                                settings.idle_fps_limit = fps;
+                            }
+                        }
+                    }
+                    // Read idle_timeout_ms
+                    if let Some(value) = section.get("idle_timeout_ms") {
+                        if let Ok(timeout) = value.parse::<u64>() {
+                            if timeout >= 100 && timeout <= 10000 {
+                                settings.idle_timeout_ms = timeout;
+                            }
+                        }
+                    }
+                    // Read unfocused_idle_timeout_ms
+                    if let Some(value) = section.get("unfocused_idle_timeout_ms") {
+                        if let Ok(timeout) = value.parse::<u64>() {
+                            if timeout >= 50 && timeout <= 5000 {
+                                settings.unfocused_idle_timeout_ms = timeout;
+                            }
+                        }
+                    }
+                    // Read unfocused_idle_fps_limit
+                    if let Some(value) = section.get("unfocused_idle_fps_limit") {
+                        if let Ok(fps) = value.parse::<f32>() {
+                            if fps >= 0.0 && fps <= 120.0 {
+                                settings.unfocused_idle_fps_limit = fps;
+                            }
+                        }
+                    }
                 }
 
                 settings
@@ -181,22 +232,34 @@ impl SettingsManager {
         }
 
         section.set("cache_radius", settings.cache_radius.to_string());
-
         section.set(
             "cache_delta_factor",
             settings.cache_delta_factor.to_string(),
         );
-
         section.set(
             "navigation_pause_ms",
             settings.navigation_pause_ms.to_string(),
         );
-
         section.set("max_cache_task", settings.max_cache_task.to_string());
-
         section.set("texture_filter", &settings.texture_filter);
-        
-        section.set("preload_throttle_ms", settings.preload_throttle_ms.to_string());
+        section.set(
+            "preload_throttle_ms",
+            settings.preload_throttle_ms.to_string(),
+        );
+
+        // Frame limiter settings
+        section.set("max_fps", settings.max_fps.to_string());
+        section.set("idle_fps_limit", settings.idle_fps_limit.to_string());
+        section.set("idle_timeout_ms", settings.idle_timeout_ms.to_string());
+        section.set(
+            "unfocused_idle_timeout_ms",
+            settings.unfocused_idle_timeout_ms.to_string(),
+        );
+        section.set(
+            "unfocused_idle_fps_limit",
+            settings.unfocused_idle_fps_limit.to_string(),
+        );
+
 
         // Write the file
         conf.write_to_file(path)
@@ -278,11 +341,16 @@ mod tests {
         assert!(!settings.b_ctrl_invert);
         assert!(settings.window_pos.is_none());
         assert!(settings.window_size.is_none());
-        assert_eq!(settings.cache_radius, 6);
+        assert_eq!(settings.cache_radius, 7);
         assert_eq!(settings.cache_delta_factor, 0.6);
         assert_eq!(settings.navigation_pause_ms, 1200);
-        assert_eq!(settings.max_cache_task, 2);
+        assert_eq!(settings.max_cache_task, 4);
         assert_eq!(settings.texture_filter, "linear");
-        assert_eq!(settings.preload_throttle_ms, 50);
+        assert_eq!(settings.preload_throttle_ms, 200);
+        assert_eq!(settings.max_fps, 0.0);
+        assert_eq!(settings.idle_fps_limit, 15.0);
+        assert_eq!(settings.idle_timeout_ms, 2000);
+        assert_eq!(settings.unfocused_idle_timeout_ms, 500);
+        assert_eq!(settings.unfocused_idle_fps_limit, 1.0);
     }
 }

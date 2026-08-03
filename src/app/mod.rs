@@ -8,5 +8,6 @@ mod types;
 mod update;
 mod ui;
 mod hardcoded_input;
+mod frame_limiter;
 
 pub use types::ViewerApp;

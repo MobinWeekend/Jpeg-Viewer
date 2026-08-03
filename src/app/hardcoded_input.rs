@@ -6,6 +6,17 @@ use std::path::PathBuf;
 impl ViewerApp {
     /// Handle all hardcoded input events (keyboard, mouse, drag & drop)
     pub fn handle_input(&mut self, ctx: &egui::Context) {
+        // Mark interaction if any input occurs
+        let has_input = ctx.input(|i| {
+            i.pointer.any_down()
+                || i.pointer.delta().length() > 0.0
+                || !i.keys_down.is_empty()
+                || i.raw_scroll_delta != egui::Vec2::ZERO
+        });
+
+        if has_input {
+            self.mark_interaction();
+        }
         // Handle Escape key for fullscreen toggle / close
         self.handle_escape_key(ctx);
 
@@ -87,13 +98,13 @@ impl ViewerApp {
     /// Check for window resize and update fit-to-window accordingly
     pub fn handle_window_resize(&mut self, ctx: &egui::Context) {
         let current_size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
-        
+
         if let (Some(prev), Some(curr)) = (self.last_window_size, current_size) {
             if prev != curr && !self.b_zoom_used {
                 self.b_fit_to_window = true;
             }
         }
-        
+
         self.last_window_size = current_size;
     }
 }

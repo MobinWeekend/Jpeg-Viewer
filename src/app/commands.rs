@@ -48,7 +48,7 @@ impl ViewerApp {
                     self.full_gif_receiver = None;
                     self.b_is_loading_full = false;
                     self.load_current_image_with_cache();
-                    self.preload_adjacent_images(ctx);
+                    self.preload_adjacent_images();
                 }
             }
             ViewerCommand::JumpToLast => {
@@ -64,7 +64,7 @@ impl ViewerApp {
                     self.full_gif_receiver = None;
                     self.b_is_loading_full = false;
                     self.load_current_image_with_cache();
-                    self.preload_adjacent_images(ctx);
+                    self.preload_adjacent_images();
                 }
             }
             ViewerCommand::ToggleGifPlay => {
@@ -86,6 +86,9 @@ impl ViewerApp {
                 if let Some(gif) = &mut self.gif_animation {
                     gif.set_speed(1.0);
                 }
+            }
+            ViewerCommand::Settings => {
+                self.toggle_settings_menu();
             }
         }
     }

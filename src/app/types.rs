@@ -72,6 +72,18 @@ pub struct ViewerApp {
     pub last_preload_start: Option<Instant>, // Throttle preloads
     pub processed_this_frame: usize,         // Track tasks processed per frame
     pub image_error: Option<String>,
+    // Frame limiter fields
+    pub last_repaint_time: Instant,
+    pub last_interaction_time: Instant,
+    pub is_idle: bool,
+    pub max_fps: f32,                         // Maximum FPS (0 = unlimited)
+    pub idle_fps_limit: f32,                  // FPS limit when idle
+    pub idle_timeout_ms: u64,                 // Timeout when focused
+    pub unfocused_idle_timeout_ms: u64,       // Timeout when unfocused
+    pub unfocused_idle_fps_limit: f32,        // FPS limit when unfocused and idle
+    pub is_animating: bool,
+    // Settings window
+    pub show_settings_menu: bool,             // Track settings menu visibility
 }
 
 impl Default for ViewerApp {
@@ -124,6 +136,18 @@ impl Default for ViewerApp {
             last_preload_start: None,
             processed_this_frame: 0,
             image_error: None,
+            // Frame limiter defaults - will be overridden by load_frame_limiter_settings()
+            last_repaint_time: Instant::now(),
+            last_interaction_time: Instant::now(),
+            is_idle: false,
+            max_fps: settings.max_fps,
+            idle_fps_limit: settings.idle_fps_limit,
+            idle_timeout_ms: settings.idle_timeout_ms,
+            unfocused_idle_timeout_ms: settings.unfocused_idle_timeout_ms,
+            unfocused_idle_fps_limit: settings.unfocused_idle_fps_limit,
+            is_animating: false,
+            // Settings window
+            show_settings_menu: false,
         }
     }
 }
@@ -162,7 +186,7 @@ impl ViewerApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
     }
 
-    //Because JV crashed on Bee Movie Script Jpeg!
+    // Because JV crashed on Bee Movie Script Jpeg!
     pub fn has_extreme_aspect_ratio(&self, width: u32, height: u32) -> bool {
         if width == 0 || height == 0 {
             return false;

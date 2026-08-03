@@ -15,9 +15,10 @@ pub enum ViewerCommand {
     JumpToFirst,
     JumpToLast,
     ToggleGifPlay,
-    GifSpeedHalf,    // New: 0.5x speed
-    GifSpeedUp,  // New: 3x speed
+    GifSpeedHalf, // New: 0.5x speed
+    GifSpeedUp,   // New: 3x speed
     GifSpeedReset,
+    Settings,
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +141,11 @@ impl MouseBinding {
 impl Default for InputBindings {
     fn default() -> Self {
         let mut keyboard = HashMap::new();
+
+        keyboard.insert(
+            ViewerCommand::Settings,
+            vec![KeyBinding::plain(egui::Key::Tab)],
+        );
 
         keyboard.insert(
             ViewerCommand::NextImage,
