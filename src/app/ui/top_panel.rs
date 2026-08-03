@@ -1,4 +1,3 @@
-// src/app/ui/top_panel.rs
 use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::shortcuts::ViewerCommand;
@@ -7,17 +6,6 @@ use eframe::egui;
 impl ViewerApp {
     pub fn render_top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("toolbar")
-            .frame(egui::Frame {
-                fill: egui::Color32::from_rgba_premultiplied(30, 30, 40, 240),
-                stroke: egui::Stroke::new(
-                    1.0f32,
-                    egui::Color32::from_rgba_premultiplied(60, 60, 80, 100),
-                ),
-                corner_radius: egui::CornerRadius::ZERO,
-                outer_margin: egui::Margin::ZERO,
-                inner_margin: egui::Margin::symmetric(8, 6),
-                ..Default::default()
-            })
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // ========== LEFT SECTION ==========
@@ -64,8 +52,7 @@ impl ViewerApp {
                             "{}%",
                             (self.zoom * 100.0).round().max(1.0) as i32
                         ))
-                        .size(13.0)
-                        .color(egui::Color32::LIGHT_BLUE),
+                        .size(13.0),
                     );
 
                     if ui
@@ -123,8 +110,7 @@ impl ViewerApp {
                         // Resolution
                         ui.label(
                             egui::RichText::new(format!("{}×{}", width, height))
-                                .size(12.0)
-                                .color(egui::Color32::LIGHT_GRAY),
+                                .size(12.0),
                         );
                         ui.add_space(4.0);
 
@@ -132,32 +118,17 @@ impl ViewerApp {
                         if !file_size_str.is_empty() {
                             ui.label(
                                 egui::RichText::new(file_size_str)
-                                    .size(12.0)
-                                    .color(egui::Color32::from_rgb(150, 200, 150)),
+                                    .size(12.0),
                             );
                             ui.add_space(4.0);
                         }
 
-                        // Aspect ratio - colored pill
+                        // Aspect ratio
                         if let Some(label) = aspect_ratio_str {
-                            let color =
-                                if label.contains("Widescreen") || label.contains("Ultrawide") {
-                                    egui::Color32::from_rgb(100, 180, 255)
-                                } else if label.contains("Cinema") || label.contains("Scope") {
-                                    egui::Color32::from_rgb(255, 180, 100)
-                                } else if label.contains("Square") {
-                                    egui::Color32::from_rgb(150, 200, 150)
-                                } else {
-                                    egui::Color32::LIGHT_BLUE
-                                };
-
-                            ui.colored_label(color, label);
+                            ui.label(egui::RichText::new(label).size(12.0));
                         } else {
                             let ratio_display = AspectRatio::format_as_ratio(width, height);
-                            ui.colored_label(
-                                egui::Color32::from_rgb(255, 200, 100),
-                                format!("{} (Uncommon)", ratio_display),
-                            );
+                            ui.label(egui::RichText::new(format!("{} (Uncommon)", ratio_display)).size(12.0));
                         }
                     }
 
@@ -190,8 +161,7 @@ impl ViewerApp {
                                         gif.get_current_frame_index() + 1,
                                         gif.frame_count()
                                     ))
-                                    .size(12.0)
-                                    .color(egui::Color32::LIGHT_GRAY),
+                                    .size(12.0),
                                 );
 
                                 // Speed controls
@@ -229,8 +199,7 @@ impl ViewerApp {
                                 if self.is_preview {
                                     ui.label(
                                         egui::RichText::new("⏳ Loading...")
-                                            .size(12.0)
-                                            .color(egui::Color32::from_rgb(255, 200, 100)),
+                                            .size(12.0),
                                     );
                                 }
                             }
@@ -273,8 +242,7 @@ impl ViewerApp {
 
                         ui.label(
                             egui::RichText::new("⌨️ Scroll: Navigate • Ctrl+Scroll: Zoom")
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(150, 150, 180)),
+                                .size(11.0),
                         );
                     });
                 });

@@ -4,51 +4,18 @@ use eframe::egui;
 impl ViewerApp {
     pub fn render_settings_menu(&mut self, ctx: &egui::Context) {
         let mut open = self.show_settings_menu;
-        let mut close_requested = false;
+        let close_requested = false;
         
         egui::Window::new("Settings")
-            .title_bar(false)
+            .title_bar(true)
             .collapsible(false)
             .resizable(true)
             .default_size([420.0, 540.0])
             .min_size([350.0, 400.0])
             .max_size([600.0, 750.0])
             .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-10.0, 10.0))
-            .frame(egui::Frame {
-                fill: egui::Color32::from_rgba_premultiplied(35, 35, 45, 240),
-                stroke: egui::Stroke::new(1.0f32, egui::Color32::from_rgba_premultiplied(60, 60, 80, 100)),
-                corner_radius: egui::CornerRadius::same(12),
-                outer_margin: egui::Margin::ZERO,
-                inner_margin: egui::Margin::symmetric(8, 8),
-                ..Default::default()
-            })
             .open(&mut open)
             .show(ctx, |ui| {
-                // ========== CUSTOM TITLE BAR ==========
-                ui.horizontal(|ui| {
-                    ui.add_space(4.0);
-                    ui.heading(egui::RichText::new("⚙️ Settings").size(18.0));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Close button
-                        let close_btn = egui::Button::new("✕")
-                            .fill(egui::Color32::TRANSPARENT)
-                            .frame(false)
-                            .sense(egui::Sense::click());
-                            
-                        if ui
-                            .add(close_btn)
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .clicked()
-                        {
-                            close_requested = true;
-                        }
-                    });
-                });
-                
-                ui.add_space(2.0);
-                ui.separator();
-                ui.add_space(4.0);
-
                 // ========== SCROLLABLE CONTENT ==========
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
@@ -71,10 +38,7 @@ impl ViewerApp {
                                         });
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(
-                                        egui::Color32::GRAY,
-                                        "(Ctrl+Scroll to zoom)"
-                                    );
+                                    ui.label("(Ctrl+Scroll to zoom)");
                                 });
 
                                 ui.add_space(4.0);
@@ -140,7 +104,7 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, format!("({})", radius));
+                                    ui.label(format!("({})", radius));
                                 });
 
                                 ui.add_space(4.0);
@@ -167,7 +131,7 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, format!("({:.2})", factor));
+                                    ui.label(format!("({:.2})", factor));
                                 });
 
                                 ui.add_space(4.0);
@@ -194,7 +158,7 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, format!("({})", tasks));
+                                    ui.label(format!("({})", tasks));
                                 });
 
                                 ui.add_space(4.0);
@@ -220,7 +184,7 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, format!("({} ms)", throttle));
+                                    ui.label(format!("({} ms)", throttle));
                                 });
 
                                 ui.add_space(4.0);
@@ -247,7 +211,7 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, format!("({} ms)", pause));
+                                    ui.label(format!("({} ms)", pause));
                                 });
 
                                 ui.add_space(8.0);
@@ -268,16 +232,12 @@ impl ViewerApp {
                                 
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
-                                    ui.colored_label(
-                                        egui::Color32::LIGHT_BLUE,
-                                        format!("📊 Cache: {}/{} images", cached_count, target_count)
-                                    );
+                                    ui.label(format!("📊 Cache: {}/{} images", cached_count, target_count));
                                 });
                                 
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
                                     ui.add(egui::ProgressBar::new(progress)
-                                        .fill(egui::Color32::from_rgb(80, 150, 255))
                                         .desired_width(200.0));
                                 });
 
@@ -307,10 +267,7 @@ impl ViewerApp {
                                 ui.add_space(4.0);
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
-                                    ui.colored_label(
-                                        egui::Color32::GRAY,
-                                        "Controls how many frames per second the app renders."
-                                    );
+                                    ui.label("Controls how many frames per second the app renders.");
                                 });
                                 ui.add_space(6.0);
 
@@ -338,9 +295,9 @@ impl ViewerApp {
                                     }
                                     ui.add_space(4.0);
                                     if max_fps == 0.0 {
-                                        ui.colored_label(egui::Color32::LIGHT_GREEN, "Unlimited");
+                                        ui.label("Unlimited");
                                     } else {
-                                        ui.colored_label(egui::Color32::LIGHT_BLUE, format!("{} FPS", max_fps));
+                                        ui.label(format!("{} FPS", max_fps));
                                     }
                                 });
 
@@ -370,12 +327,12 @@ impl ViewerApp {
                                     }
                                     ui.add_space(4.0);
                                     if idle_fps == 0.0 {
-                                        ui.colored_label(egui::Color32::LIGHT_GREEN, "Unlimited");
+                                        ui.label("Unlimited");
                                     } else {
-                                        ui.colored_label(egui::Color32::LIGHT_BLUE, format!("{} FPS", idle_fps));
+                                        ui.label(format!("{} FPS", idle_fps));
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, "(when idle)");
+                                    ui.label("(when idle)");
                                 });
 
                                 ui.add_space(4.0);
@@ -403,9 +360,9 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::LIGHT_BLUE, format!("{} ms", timeout));
+                                    ui.label(format!("{} ms", timeout));
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, "(when focused)");
+                                    ui.label("(when focused)");
                                 });
 
                                 ui.add_space(4.0);
@@ -433,9 +390,9 @@ impl ViewerApp {
                                         }
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::LIGHT_BLUE, format!("{} ms", unfocused_timeout));
+                                    ui.label(format!("{} ms", unfocused_timeout));
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, "(when unfocused)");
+                                    ui.label("(when unfocused)");
                                 });
 
                                 ui.add_space(4.0);
@@ -464,19 +421,19 @@ impl ViewerApp {
                                     }
                                     ui.add_space(4.0);
                                     if unfocused_fps == 0.0 {
-                                        ui.colored_label(egui::Color32::LIGHT_GREEN, "Unlimited");
+                                        ui.label("Unlimited");
                                     } else {
-                                        ui.colored_label(egui::Color32::LIGHT_BLUE, format!("{} FPS", unfocused_fps));
+                                        ui.label(format!("{} FPS", unfocused_fps));
                                     }
                                     ui.add_space(4.0);
-                                    ui.colored_label(egui::Color32::GRAY, "(when unfocused)");
+                                    ui.label("(when unfocused)");
                                 });
 
                                 ui.add_space(8.0);
                                 ui.separator();
                                 ui.add_space(8.0);
 
-                                // Show current state with colored indicators
+                                // Show current state
                                 let state_text = if self.is_animating {
                                     "🎬 Animating"
                                 } else if self.b_is_loading {
@@ -485,16 +442,6 @@ impl ViewerApp {
                                     "💤 Idle"
                                 } else {
                                     "🔄 Active"
-                                };
-                                
-                                let state_color = if self.is_animating {
-                                    egui::Color32::from_rgb(100, 255, 150)
-                                } else if self.b_is_loading {
-                                    egui::Color32::from_rgb(255, 200, 100)
-                                } else if self.is_idle {
-                                    egui::Color32::from_rgb(150, 150, 200)
-                                } else {
-                                    egui::Color32::from_rgb(100, 200, 255)
                                 };
                                 
                                 let idle_text = if self.idle_fps_limit == 0.0 {
@@ -511,8 +458,7 @@ impl ViewerApp {
                                 
                                 ui.horizontal(|ui| {
                                     ui.add_space(8.0);
-                                    ui.colored_label(
-                                        state_color,
+                                    ui.label(
                                         format!(
                                             "Current: {} | Idle: {} | {}",
                                             state_text, idle_text, focus_text
@@ -568,7 +514,6 @@ impl ViewerApp {
                                     if ui
                                         .add(egui::Button::new(
                                             egui::RichText::new("⚠️ Reset All Settings to Default")
-                                                .color(egui::Color32::from_rgb(255, 150, 150))
                                                 .size(13.0)
                                         )
                                         .min_size(egui::vec2(220.0, 32.0)))

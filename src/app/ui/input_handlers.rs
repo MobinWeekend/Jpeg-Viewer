@@ -115,34 +115,6 @@ impl ViewerApp {
         egui::Rect::from_center_size(center + self.pan * self.zoom, display_size)
     }
 
-    /// Draw loading overlay for GIF preview
-    pub fn draw_gif_loading_overlay(
-        &self,
-        painter: &egui::Painter,
-        response: &egui::Response,
-    ) {
-        let text = "Loading GIF...".to_string();
-        let font_id = egui::FontId::proportional(20.0);
-        let galley = painter.layout(text, font_id, egui::Color32::WHITE, f32::INFINITY);
-        let rect = galley.rect;
-
-        let bg_rect = rect.expand(15.0);
-        painter.rect_filled(
-            bg_rect,
-            8.0,
-            egui::Color32::from_rgba_premultiplied(0, 0, 0, 200),
-        );
-
-        painter.galley(
-            egui::pos2(
-                response.rect.center().x - rect.width() / 2.0,
-                response.rect.center().y - rect.height() / 2.0,
-            ),
-            galley,
-            egui::Color32::WHITE,
-        );
-    }
-
     /// Draw the welcome/placeholder UI when no image is loaded
     pub fn render_welcome_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let available = ui.available_height();
@@ -198,8 +170,7 @@ impl ViewerApp {
             .resizable(false)
             .anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0.0, -20.0))
             .frame(egui::Frame {
-                fill: egui::Color32::from_rgba_premultiplied(20, 20, 30, 200),
-                stroke: egui::Stroke::new(1.0f32, egui::Color32::from_rgba_premultiplied(60, 60, 80, 80)),
+                fill: egui::Color32::from_rgba_premultiplied(0, 0, 0, 92),
                 corner_radius: egui::CornerRadius::same(8),
                 outer_margin: egui::Margin::ZERO,
                 inner_margin: egui::Margin::symmetric(16, 12),
@@ -223,11 +194,11 @@ impl ViewerApp {
                     for (i, (key, action)) in shortcuts.iter().enumerate() {
                         if i > 0 {
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new("·").color(egui::Color32::DARK_GRAY));
+                            ui.label(egui::RichText::new("·").color(egui::Color32::LIGHT_BLUE));
                             ui.add_space(4.0);
                         }
-                        ui.colored_label(egui::Color32::LIGHT_GRAY, *key);
-                        ui.colored_label(egui::Color32::GRAY, *action);
+                        ui.colored_label(egui::Color32::LIGHT_GREEN, *key);
+                        ui.colored_label(egui::Color32::WHITE, *action);
                     }
                 });
             });
