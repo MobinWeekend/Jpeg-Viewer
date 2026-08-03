@@ -9,5 +9,6 @@ mod update;
 mod ui;
 mod hardcoded_input;
 mod frame_limiter;
+mod aspect_ratio;
 
 pub use types::ViewerApp;
