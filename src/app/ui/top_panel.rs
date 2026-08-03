@@ -57,14 +57,13 @@ impl ViewerApp {
                     } else {
                         "Start Slideshow"
                     };
-                    if ui
+                    let slideshow_button = ui
                         .add(
                             egui::Button::new(egui::RichText::new(slideshow_icon).size(14.0))
                                 .min_size(egui::vec2(32.0, 28.0)),
                         )
-                        .on_hover_text(slideshow_tooltip)
-                        .clicked()
-                    {
+                        .on_hover_text(slideshow_tooltip);
+                    if slideshow_button.clicked() {
                         self.handle_command(ctx, ViewerCommand::ToggleSlideshow);
                     }
 
@@ -73,25 +72,25 @@ impl ViewerApp {
                         let interval_secs = self.slideshow_interval.as_secs_f32();
                         ui.label(egui::RichText::new(format!("{:.1}s", interval_secs)).size(12.0));
 
-                        // Speed controls
-                        if ui
+                        // Speed controls - Slower
+                        let slower_button = ui
                             .add(
-                                egui::Button::new(egui::RichText::new(slideshow_icon).size(14.0))
-                                    .min_size(egui::vec2(32.0, 28.0)),
+                                egui::Button::new(egui::RichText::new("◀◀").size(12.0))
+                                    .min_size(egui::vec2(28.0, 24.0)),
                             )
-                            .on_hover_text(slideshow_tooltip)
-                            .clicked()
-                        {
+                            .on_hover_text("Slower slideshow");
+                        if slower_button.clicked() {
                             self.handle_command(ctx, ViewerCommand::SlideshowSpeedDown);
                         }
-                        if ui
+
+                        // Speed controls - Faster
+                        let faster_button = ui
                             .add(
-                                egui::Button::new(egui::RichText::new(slideshow_icon).size(14.0))
-                                    .min_size(egui::vec2(32.0, 28.0)),
+                                egui::Button::new(egui::RichText::new("▶▶").size(12.0))
+                                    .min_size(egui::vec2(28.0, 24.0)),
                             )
-                            .on_hover_text(slideshow_tooltip)
-                            .clicked()
-                        {
+                            .on_hover_text("Faster slideshow");
+                        if faster_button.clicked() {
                             self.handle_command(ctx, ViewerCommand::SlideshowSpeedUp);
                         }
 
@@ -255,33 +254,47 @@ impl ViewerApp {
                     }
                 }
 
+                // ========== SPACER TO PUSH RIGHT SECTION ==========
+                ui.add_space(8.0);
+
                 // ========== RIGHT SECTION ==========
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Settings button
-                    if ui
+                    // Settings button (far right)
+                    let settings_button = ui
                         .add(
                             egui::Button::new(egui::RichText::new("⚙️").size(16.0))
                                 .min_size(egui::vec2(36.0, 28.0)),
                         )
-                        .clicked()
-                    {
+                        .on_hover_text("Settings");
+                    if settings_button.clicked() {
                         self.toggle_settings_menu();
                     }
                     ui.add_space(4.0);
 
-                    // Fullscreen button
-                    let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                    let fs_text = if is_fullscreen { "⛶" } else { "⛶" };
-                    if ui
+                    // Help button
+                    let help_button = ui
                         .add(
-                            egui::Button::new(egui::RichText::new(fs_text).size(16.0))
+                            egui::Button::new(egui::RichText::new("❓").size(16.0))
                                 .min_size(egui::vec2(36.0, 28.0)),
                         )
-                        .clicked()
-                    {
+                        .on_hover_text("Help - Keyboard shortcuts and features");
+                    if help_button.clicked() {
+                        self.toggle_help_menu();
+                    }
+                    ui.add_space(4.0);
+
+                    // Fullscreen button
+                    let _is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                    let fs_button = ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("⛶").size(16.0))
+                                .min_size(egui::vec2(36.0, 28.0)),
+                        )
+                        .on_hover_text("Toggle Fullscreen");
+                    if fs_button.clicked() {
                         self.toggle_fullscreen(ctx);
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(4.0);
 
                     // Loading indicator
                     if self.b_is_loading_full || self.b_is_loading {
@@ -289,12 +302,14 @@ impl ViewerApp {
                         ui.add_space(4.0);
                     }
 
-                    ui.label(
+                    ui.add_space(8.0);
+
+                    /*ui.label(
                         egui::RichText::new(
                             "⌨️ Scroll: Navigate • Ctrl+Scroll: Zoom • L: Slideshow",
                         )
                         .size(11.0),
-                    );
+                    );*/
                 });
             });
         });

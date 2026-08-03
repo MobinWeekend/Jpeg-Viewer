@@ -91,6 +91,7 @@ pub struct ViewerApp {
     pub slideshow_random: bool,
     pub slideshow_last_advance: Instant,
     pub slideshow_has_advanced: bool,
+    pub show_help_menu: bool,
 }
 
 impl Default for ViewerApp {
@@ -162,6 +163,7 @@ impl Default for ViewerApp {
             slideshow_random: settings.slideshow_random,
             slideshow_last_advance: Instant::now(),
             slideshow_has_advanced: false,
+            show_help_menu: false,
         }
     }
 }

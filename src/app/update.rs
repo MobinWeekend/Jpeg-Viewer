@@ -38,6 +38,11 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // ========== HELP MENU ==========
+        if self.show_help_menu {
+            self.render_help_window(ctx);
+        }
+
         // ========== HARDCODED INPUT HANDLING ==========
         // Mark interaction if any input is processed
         let had_input = ctx.input(|i| {
