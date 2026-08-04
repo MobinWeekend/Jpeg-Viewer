@@ -21,6 +21,7 @@ lru = "0.18.2"  # for LRU cache
 dirs = "6.0.0"
 rand = "0.8" # do not update this one!
 open = "5.0"
+#fontdb = "0.24.0"
 
 [profile.release]
 opt-level = 3

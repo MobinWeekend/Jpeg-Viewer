@@ -188,7 +188,7 @@ impl ViewerApp {
 
                         // ========== ADVANCED SETTINGS ==========
                         ui.collapsing(
-                            egui::RichText::new("⚙️ Advanced").size(15.0),
+                            egui::RichText::new("⚙ Advanced").size(15.0),
                             |ui| {
                                 ui.add_space(4.0);
                                 
@@ -549,13 +549,13 @@ impl ViewerApp {
 
                                 // Show current state
                                 let state_text = if self.is_animating {
-                                    "🎬 Animating"
+                                    "Animating"
                                 } else if self.b_is_loading {
-                                    "⏳ Loading"
+                                    "Loading"
                                 } else if self.is_idle {
-                                    "💤 Idle"
+                                    "Idle"
                                 } else {
-                                    "🔄 Active"
+                                    "Active"
                                 };
                                 
                                 let idle_text = if self.idle_fps_limit == 0.0 {
@@ -624,7 +624,7 @@ impl ViewerApp {
                                     ui.add_space(8.0);
                                     if ui
                                         .add(egui::Button::new(
-                                            egui::RichText::new("⚠️ Reset All Settings to Default")
+                                            egui::RichText::new("⚠ Reset All Settings to Default")
                                                 .size(13.0)
                                         )
                                         .min_size(egui::vec2(220.0, 32.0)))

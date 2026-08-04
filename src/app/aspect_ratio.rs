@@ -89,6 +89,7 @@ impl AspectRatio {
     }
     
     /// Format aspect ratio as a simplified string (e.g., "16:9")
+    #[allow(dead_code)] //This acctually gets used!
     pub fn format_as_ratio(width: u32, height: u32) -> String {
         if width == 0 || height == 0 {
             return "0:0".to_string();

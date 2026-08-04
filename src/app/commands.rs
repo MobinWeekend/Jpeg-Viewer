@@ -40,6 +40,7 @@ impl ViewerApp {
             }
             ViewerCommand::ResetZoom => {
                 self.zoom = 1.0;
+                self.b_zoom_used = true;
             }
             ViewerCommand::MakeFit => {
                 self.b_fit_to_window = true;

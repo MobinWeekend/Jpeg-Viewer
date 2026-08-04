@@ -40,11 +40,11 @@ AVIF, BMP, DDS, EXR, GIF (with speed controls), HDR, ICO, JPEG/JPG, PNG, PNM, QO
 ### Navigation
 | Action | Shortcut |
 |---|---|
-| Previous / Next image | `←` / `→` |
+| Previous / Next image | `◀` / `▶` |
 | Previous / Next image | `A` / `D` |
 | Jump to first image | `Home` |
 | Jump to last image | `End` |
-| Jump to first / last image | `Ctrl+←` / `Ctrl+→` |
+| Jump to first / last image | `Ctrl+◀` / `Ctrl+▶` |
 
 ### Zoom & View
 | Action | Shortcut |
@@ -123,7 +123,7 @@ The slideshow feature allows you to view images automatically with:
 - Adjustable interval (0.5s to 60s)
 - Loop mode to repeat from the beginning
 - Random order for varied viewing
-- Speed controls in the toolbar (`◀◀` for slower, `▶▶` for faster)
+- Speed controls in the toolbar (`↘` for slower, `↗` for faster)
 - Toggle with the `L` key or the slideshow button in the toolbar
 
 ## Frame Limiter

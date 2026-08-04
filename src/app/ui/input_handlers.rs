@@ -178,11 +178,11 @@ impl ViewerApp {
             })
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("⌨️").size(18.0));
+                    ui.label(egui::RichText::new("Keys").size(18.0));
                     ui.add_space(8.0);
                     
                     let shortcuts = [
-                        ("←/→", "Navigate"),
+                        ("◀/▶", "Navigate"),
                         ("Ctrl+O", "Open"),
                         ("F11/F", "Fullscreen"),
                         ("Space", "Play/Pause GIF"),

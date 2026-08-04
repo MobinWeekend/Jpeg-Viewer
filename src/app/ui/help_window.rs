@@ -80,7 +80,7 @@ impl ViewerApp {
                         ui.add_space(12.0);
 
                         // ========== FEATURES ==========
-                        ui.label(egui::RichText::new("✨ Features").size(18.0).strong());
+                        ui.label(egui::RichText::new("Features").size(18.0).strong());
                         ui.add_space(8.0);
                         
                         let features = vec![
@@ -108,17 +108,17 @@ impl ViewerApp {
                         ui.add_space(12.0);
 
                         // ========== KEYBOARD SHORTCUTS ==========
-                        ui.label(egui::RichText::new("⌨️ Keyboard Shortcuts").size(18.0).strong());
+                        ui.label(egui::RichText::new("Keyboard Shortcuts").size(18.0).strong());
                         ui.add_space(8.0);
 
                         // Navigation
                         ui.label(egui::RichText::new("Navigation").size(14.0).strong());
                         ui.add_space(4.0);
-                        Self::render_shortcut_row(ui, "← / →", "Previous / Next image");
+                        Self::render_shortcut_row(ui, "◀ / ▶", "Previous / Next image");
                         Self::render_shortcut_row(ui, "A / D", "Previous / Next image");
                         Self::render_shortcut_row(ui, "Home", "Jump to first image");
                         Self::render_shortcut_row(ui, "End", "Jump to last image");
-                        Self::render_shortcut_row(ui, "Ctrl+← / Ctrl+→", "Jump to first / last image");
+                        Self::render_shortcut_row(ui, "Ctrl+◀ / Ctrl+▶", "Jump to first / last image");
                         
                         ui.add_space(4.0);
 
@@ -177,7 +177,7 @@ impl ViewerApp {
                         ui.add_space(12.0);
 
                         // ========== MOUSE SHORTCUTS ==========
-                        ui.label(egui::RichText::new("🖱️ Mouse Controls").size(18.0).strong());
+                        ui.label(egui::RichText::new("Mouse Controls").size(18.0).strong());
                         ui.add_space(8.0);
 
                         Self::render_mouse_row(ui, "Scroll", "Navigate between images");
@@ -216,7 +216,7 @@ impl ViewerApp {
 
                         // ========== FOOTER ==========
                         ui.vertical_centered(|ui| {
-                            ui.label(egui::RichText::new("Made with ❤️ using Rust and egui").size(12.0));
+                            ui.label(egui::RichText::new("Made with ♥ using Rust and egui").size(12.0));
                         });
 
                         ui.add_space(8.0);

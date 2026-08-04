@@ -14,6 +14,7 @@ impl ViewerApp {
                         egui::Button::new(egui::RichText::new("📂 Open").size(14.0))
                             .min_size(egui::vec2(70.0, 28.0)),
                     )
+                    .on_hover_text("Load an Image")
                     .clicked()
                 {
                     self.handle_command(ctx, ViewerCommand::OpenFile);
@@ -26,6 +27,7 @@ impl ViewerApp {
                         egui::Button::new(egui::RichText::new("◀").size(16.0))
                             .min_size(egui::vec2(32.0, 28.0)),
                     )
+                    .on_hover_text("Previous")
                     .clicked()
                 {
                     self.handle_command(ctx, ViewerCommand::PreviousImage);
@@ -36,6 +38,7 @@ impl ViewerApp {
                         egui::Button::new(egui::RichText::new("▶").size(16.0))
                             .min_size(egui::vec2(32.0, 28.0)),
                     )
+                    .on_hover_text("Next")
                     .clicked()
                 {
                     self.handle_command(ctx, ViewerCommand::NextImage);
@@ -50,7 +53,7 @@ impl ViewerApp {
                     let slideshow_icon = if self.slideshow_enabled {
                         "⏸"
                     } else {
-                        "▶▶"
+                        "🖼"
                     };
                     let slideshow_tooltip = if self.slideshow_enabled {
                         "Stop Slideshow"
@@ -70,12 +73,16 @@ impl ViewerApp {
                     if self.slideshow_enabled {
                         // Show interval timer
                         let interval_secs = self.slideshow_interval.as_secs_f32();
-                        ui.label(egui::RichText::new(format!("{:.1}s", interval_secs)).size(12.0));
+                        let interval_mins = 60.0 / interval_secs;
+                        ui.label(
+                            egui::RichText::new(format!("{:1} Photo per min", interval_mins))
+                                .size(12.0),
+                        );
 
                         // Speed controls - Slower
                         let slower_button = ui
                             .add(
-                                egui::Button::new(egui::RichText::new("◀◀").size(12.0))
+                                egui::Button::new(egui::RichText::new("↘").size(12.0))
                                     .min_size(egui::vec2(28.0, 24.0)),
                             )
                             .on_hover_text("Slower slideshow");
@@ -86,7 +93,7 @@ impl ViewerApp {
                         // Speed controls - Faster
                         let faster_button = ui
                             .add(
-                                egui::Button::new(egui::RichText::new("▶▶").size(12.0))
+                                egui::Button::new(egui::RichText::new("↗").size(12.0))
                                     .min_size(egui::vec2(28.0, 24.0)),
                             )
                             .on_hover_text("Faster slideshow");
@@ -134,23 +141,28 @@ impl ViewerApp {
                     self.handle_command(ctx, ViewerCommand::ZoomOut);
                 }
 
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("⊡").size(14.0))
-                            .min_size(egui::vec2(28.0, 24.0)),
-                    )
-                    .clicked()
-                {
-                    self.handle_command(ctx, ViewerCommand::MakeFit);
-                }
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("1:1").size(14.0))
-                            .min_size(egui::vec2(28.0, 24.0)),
-                    )
-                    .clicked()
-                {
-                    self.handle_command(ctx, ViewerCommand::ResetZoom);
+                if self.b_zoom_used {
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("⊞").size(14.0))
+                                .min_size(egui::vec2(28.0, 24.0)),
+                        )
+                        .on_hover_text("Fit")
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::MakeFit);
+                    }
+                } else {
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("1:1").size(14.0))
+                                .min_size(egui::vec2(28.0, 24.0)),
+                        )
+                        .on_hover_text("Make 1:1 Ratio")
+                        .clicked()
+                    {
+                        self.handle_command(ctx, ViewerCommand::ResetZoom);
+                    }
                 }
 
                 ui.add_space(8.0);
@@ -178,12 +190,15 @@ impl ViewerApp {
 
                     // Aspect ratio
                     if let Some(label) = aspect_ratio_str {
-                        ui.label(egui::RichText::new(label).size(12.0));
-                    } else {
-                        let ratio_display = AspectRatio::format_as_ratio(width, height);
                         ui.label(
-                            egui::RichText::new(format!("{} (Uncommon)", ratio_display)).size(12.0),
+                            egui::RichText::new(label)
+                                .size(14.0)
                         );
+                    } else {
+                        /*let ratio_display = AspectRatio::format_as_ratio(width, height);
+                        ui.label(
+                            egui::RichText::new(format!("{}", ratio_display)).size(14.0),
+                        );*/
                     }
                 }
 
@@ -196,7 +211,15 @@ impl ViewerApp {
                             ui.add_space(8.0);
 
                             // Play/Pause button
-                            let play_text = if gif.is_playing { "⏸" } else { "▶" };
+                            let play_text = if gif.is_playing {
+                                "⏸"
+                            } else {
+                                if gif.speed_multiplier < 0.0 {
+                                    "◀"
+                                } else {
+                                    "▶"
+                                }
+                            };
                             if ui
                                 .add(
                                     egui::Button::new(egui::RichText::new(play_text).size(16.0))
@@ -206,16 +229,6 @@ impl ViewerApp {
                             {
                                 gif.toggle_play();
                             }
-
-                            // Frame counter
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{}/{}",
-                                    gif.get_current_frame_index() + 1,
-                                    gif.frame_count()
-                                ))
-                                .size(12.0),
-                            );
 
                             // Speed controls
                             let speed_text = if gif.speed_multiplier == 1.0 {
@@ -235,20 +248,46 @@ impl ViewerApp {
                             {
                                 // Cycle speeds: 0.5x -> 1x -> 2x -> 3x -> 1x
                                 let current = gif.speed_multiplier;
-                                let next = if current == 0.5 {
-                                    1.0
-                                } else if current == 1.0 {
+                                let next = if current == 1.0 {
                                     2.0
                                 } else if current == 2.0 {
                                     3.0
-                                } else {
+                                } else if current == 3.0 {
                                     0.5
+                                } else {
+                                    1.0
                                 };
                                 gif.set_speed(next);
                             }
 
+                            ui.add(
+                                egui::Slider::new(&mut gif.speed_multiplier, 0.1..=10.0)
+                                    .logarithmic(true)
+                                    //.text("Speed")
+                                    .show_value(false)
+                                    .custom_formatter(|value, _| {
+                                        if (value - 1.0).abs() < 0.01 {
+                                            "1×".to_owned()
+                                        } else if value < 1.0 {
+                                            format!("{:.1}×", value)
+                                        } else {
+                                            format!("{:.0}×", value)
+                                        }
+                                    }),
+                            );
+
+                            // Frame counter
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{}/{}",
+                                    gif.get_current_frame_index() + 1,
+                                    gif.frame_count()
+                                ))
+                                .size(12.0),
+                            );
+
                             if self.is_preview {
-                                ui.label(egui::RichText::new("⏳ Loading...").size(12.0));
+                                ui.label(egui::RichText::new("Loading...").size(12.0));
                             }
                         }
                     }
@@ -262,7 +301,7 @@ impl ViewerApp {
                     // Settings button (far right)
                     let settings_button = ui
                         .add(
-                            egui::Button::new(egui::RichText::new("⚙️").size(16.0))
+                            egui::Button::new(egui::RichText::new("⚙").size(16.0))
                                 .min_size(egui::vec2(36.0, 28.0)),
                         )
                         .on_hover_text("Settings");
@@ -306,7 +345,7 @@ impl ViewerApp {
 
                     /*ui.label(
                         egui::RichText::new(
-                            "⌨️ Scroll: Navigate • Ctrl+Scroll: Zoom • L: Slideshow",
+                            "Scroll: Navigate • Ctrl+Scroll: Zoom • L: Slideshow",
                         )
                         .size(11.0),
                     );*/
