@@ -3,7 +3,10 @@ use eframe::egui;
 
 impl ViewerApp {
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+        // Keep the theme‑aware frame, just remove inner padding
+        let style = ctx.style();
+        let frame = egui::Frame::central_panel(&style).inner_margin(0.0);
+        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             // Check for error first
             let error = self.image_error.clone();
             if let Some(error) = error {
