@@ -1,8 +1,6 @@
 # JPEG Viewer
 
-<img width="802" height="632" alt="image" src="https://github.com/user-attachments/assets/303697e4-b0f5-4f86-8ec4-6b9276a8db0c" />
-
-## Do I look like I know what a JPEG is?!
+<img width="426" height="480" alt="image" src="https://github.com/user-attachments/assets/34beb971-0cb2-42c3-bdf2-f1eca68d4291" />
 
 A GPU-accelerated image viewer written in Rust.
 
@@ -134,3 +132,48 @@ To optimize performance and battery life, JPEG Viewer includes adjustable frame 
 - **Idle FPS**: FPS limit when the app is idle (default: 15 FPS)
 - **Idle Timeout**: Time of inactivity before entering idle mode (default: 2000ms)
 - **Unfocused settings**: Separate FPS and timeout settings when the window is unfocused
+
+
+## Building from Source
+
+### 1. Install Rust
+
+Install Rust and Cargo using **rustup**:
+
+[Install Rustup](https://rustup.rs)
+
+Follow the instructions for your operating system.
+
+### 2. Clone the repository
+
+Clone the repository and enter its directory:
+
+```bash
+git clone https://github.com/MobinWeekend/Jpeg-Viewer.git
+cd Jpeg-Viewer
+```
+
+### 3. Build and run
+
+Open a terminal in the repository directory and run:
+
+```bash
+cargo run --release
+```
+
+That's it! Cargo will download the required dependencies, build the application, and launch it.
+
+### Building without running
+
+If you only want to build the application:
+
+```bash
+cargo build --release
+```
+
+The compiled executable will be located in:
+
+```text
+target/release/
+```
+
