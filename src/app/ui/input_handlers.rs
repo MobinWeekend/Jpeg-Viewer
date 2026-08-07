@@ -183,7 +183,6 @@ impl ViewerApp {
                     
                     let shortcuts = [
                         ("◀/▶", "Navigate"),
-                        ("Ctrl+O", "Open"),
                         ("F11/F", "Fullscreen"),
                         ("Space", "Play/Pause GIF"),
                         ("+/-", "Zoom"),
