@@ -17,9 +17,14 @@ impl ViewerApp {
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
+
+        // Reset preload state – discard all pending tasks and invalidate results.
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
+        self.preload_workers = 0;
+        self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.should_stop_caching = false; // ensure caching is re-enabled
 
         if path.is_dir() {
             self.load_directory(&path);
@@ -125,22 +130,26 @@ impl ViewerApp {
                 self.b_fit_to_window = true;
                 self.image_rect = None;
                 self.b_zoom_used = false;
+
+                // Reset preload state
                 self.image_cache.clear();
                 self.preloading_indices.clear();
                 self.preload_tasks.clear();
+                self.preload_workers = 0;
+                self.preload_generation = self.preload_generation.wrapping_add(1);
+                self.should_stop_caching = false;
             }
             Err(e) => {
                 eprintln!("Failed to move to trash: {}", e);
             }
         }
     }
-    
+
     pub fn load_dropped_files(&mut self, paths: Vec<PathBuf>) {
         if paths.is_empty() {
             return;
         }
 
-        // Reset state
         self.b_zoom_used = false;
         self.b_fit_to_window = true;
         self.image_rect = None;
@@ -151,9 +160,14 @@ impl ViewerApp {
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
+
+        // Reset preload state
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
+        self.preload_workers = 0;
+        self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.should_stop_caching = false;
 
         // Filter to only supported images
         let image_paths: Vec<PathBuf> = paths
@@ -187,9 +201,7 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
-        self.image_cache.clear();
-        self.preloading_indices.clear();
-        self.preload_tasks.clear();
+        // Cache already cleared above; no need to clear again.
 
         println!("Loaded {} dropped image(s)", self.image_entries.len());
     }

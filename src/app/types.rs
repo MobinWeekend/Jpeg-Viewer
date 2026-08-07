@@ -23,12 +23,12 @@ pub struct CachedImage {
     pub texture: egui::TextureHandle,
     pub is_gif: bool,
     pub is_preview: bool,
+    pub index: usize,
 }
 
-// Preload task
+// Preload task - receiver returns (index, result, generation)
 pub struct PreloadTask {
-    pub index: usize,
-    pub receiver: Receiver<Result<LoadedImage, String>>,
+    pub receiver: Receiver<(usize, Result<LoadedImage, String>, u64)>,
 }
 
 pub struct ViewerApp {
@@ -61,6 +61,8 @@ pub struct ViewerApp {
     pub max_cache_size: usize,
     pub preload_tasks: Vec<PreloadTask>,
     pub preloading_indices: std::collections::HashSet<usize>,
+    pub preload_generation: u64,
+    pub preload_workers: usize,
     pub cache_radius: usize,
     pub preload_origin: usize,
     pub delta_threshold: usize,
@@ -70,7 +72,6 @@ pub struct ViewerApp {
     pub cache_delta_factor: f32,
     pub max_cache_task: u8,
     pub last_preload_start: Option<Instant>,
-    pub processed_this_frame: usize,
     pub image_error: Option<String>,
     // Frame limiter fields
     pub last_repaint_time: Instant,
@@ -99,6 +100,8 @@ impl Default for ViewerApp {
         let settings_manager = SettingsManager::new();
         let settings = settings_manager.get().clone();
         let radius = settings.cache_radius.max(1).min(100);
+        let desired_capacity = radius * 2 + 2;
+        let cache_capacity = desired_capacity.max(3);
 
         Self {
             texture: None,
@@ -126,10 +129,12 @@ impl Default for ViewerApp {
             is_gif: false,
             is_preview: false,
             current_image_path: None,
-            image_cache: LruCache::new(NonZeroUsize::new((radius * 2 + 1).max(3)).unwrap()),
-            max_cache_size: radius * 2 + 1,
+            image_cache: LruCache::new(NonZeroUsize::new(cache_capacity).unwrap()),
+            max_cache_size: cache_capacity,
             preload_tasks: Vec::new(),
             preloading_indices: std::collections::HashSet::new(),
+            preload_generation: 0,
+            preload_workers: 0,
             cache_radius: radius,
             preload_origin: 0,
             delta_threshold: ((radius as f32 * settings.cache_delta_factor).round() as usize)
@@ -142,7 +147,6 @@ impl Default for ViewerApp {
             cache_delta_factor: settings_manager.get().cache_delta_factor,
             max_cache_task: settings_manager.get().max_cache_task,
             last_preload_start: None,
-            processed_this_frame: 0,
             image_error: None,
             // Frame limiter defaults - will be overridden by load_frame_limiter_settings()
             last_repaint_time: Instant::now(),
@@ -278,16 +282,13 @@ impl ViewerApp {
         use rand::Rng;
         let new_index = if self.slideshow_random {
             let mut rng = rand::thread_rng();
-
             let mut idx;
             loop {
                 idx = rng.gen_range(0..len);
-
                 if idx != self.current_index || len <= 1 {
                     break;
                 }
             }
-
             idx
         } else {
             (self.current_index + 1) % len
@@ -299,7 +300,6 @@ impl ViewerApp {
         self.gif_animation = None;
         self.is_gif = false;
         self.is_preview = false;
-        // Don't clear texture for slideshow either
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
@@ -308,6 +308,9 @@ impl ViewerApp {
 
         self.load_current_image_with_cache_keep_texture();
         self.update_window_title(&eframe::egui::Context::default());
+
+        // Mark interaction to reset idle timer
+        self.mark_interaction();
     }
 
     pub fn load_slideshow_settings(&mut self) {

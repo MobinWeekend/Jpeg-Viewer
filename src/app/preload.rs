@@ -1,194 +1,206 @@
-//preloading governs the range and tasks and duration for preloading
+// preloading governs the range and tasks and duration for preloading
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
 use crate::image_entry::ImageEntry;
 use eframe::egui;
 use rayon::spawn;
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
 impl ViewerApp {
-    // Helper function to safely get backward index
-    fn get_backward_index(&self, origin: usize, offset: usize, len: usize) -> usize {
+    /// Get the index at a circular offset from origin
+    fn get_circular_index(&self, origin: usize, offset: isize) -> usize {
+        let len = self.image_entries.len();
         if len == 0 {
             return 0;
         }
-        // Use checked_sub to avoid overflow
-        if offset <= len {
-            (origin + len - offset) % len
-        } else {
-            // If offset > len, use modulo first
-            let offset_mod = offset % len;
-            if offset_mod == 0 {
-                origin % len
-            } else {
-                (origin + len - offset_mod) % len
+        ((origin as isize + offset).rem_euclid(len as isize)) as usize
+    }
+
+    /// Build an ordered list of desired indices around the origin.
+    /// Priority: current first, then origin, then alternating ±1, ±2, ...
+    fn ordered_desired_window(&self) -> Vec<usize> {
+        let mut desired = Vec::new();
+        let len = self.image_entries.len();
+        if len == 0 {
+            return desired;
+        }
+
+        // Highest priority: current image
+        desired.push(self.current_index);
+
+        let mut added = HashSet::new();
+        added.insert(self.current_index);
+
+        // Second priority: origin (if different from current)
+        if !added.contains(&self.preload_origin) {
+            desired.push(self.preload_origin);
+            added.insert(self.preload_origin);
+        }
+
+        // Then expand outward from origin: +1, -1, +2, -2, ...
+        for offset in 1..=self.cache_radius as isize {
+            // Forward from origin
+            let idx = self.get_circular_index(self.preload_origin, offset);
+            if !added.contains(&idx) {
+                desired.push(idx);
+                added.insert(idx);
+            }
+
+            // Backward from origin
+            let idx = self.get_circular_index(self.preload_origin, -offset);
+            if !added.contains(&idx) {
+                desired.push(idx);
+                added.insert(idx);
             }
         }
+
+        desired
+    }
+
+    /// Build a set of all indices that should be kept in cache.
+    /// This includes the origin window PLUS the current image.
+    fn desired_set_from_origin(&self) -> HashSet<usize> {
+        let mut desired = HashSet::new();
+        let len = self.image_entries.len();
+        if len == 0 {
+            return desired;
+        }
+
+        // Include all indices within cache_radius of the preload_origin
+        for offset in 0..=self.cache_radius as isize {
+            let idx = self.get_circular_index(self.preload_origin, offset);
+            desired.insert(idx);
+            let idx = self.get_circular_index(self.preload_origin, -offset);
+            desired.insert(idx);
+        }
+
+        // CRITICAL: Always keep the current image, even if outside the origin window
+        desired.insert(self.current_index);
+
+        desired
+    }
+
+    /// Check if we've moved far enough from origin to warrant moving it.
+    /// This now requires the navigation pause timer to have elapsed.
+    fn should_move_origin(&self) -> bool {
+        let len = self.image_entries.len();
+        if len <= 1 {
+            return false;
+        }
+
+        // Don't move the origin while the user is actively navigating.
+        let Some(timer) = self.navigation_timer else {
+            return false;
+        };
+
+        if timer.elapsed() < self.navigation_pause_duration {
+            return false;
+        }
+
+        let diff = (self.current_index as isize - self.preload_origin as isize)
+            .unsigned_abs();
+        let dist = diff.min(len - diff);
+
+        dist >= self.delta_threshold
+    }
+
+    /// Move the preload origin to the current image and invalidate old results.
+    fn move_preload_origin(&mut self) {
+        self.preload_origin = self.current_index;
+        self.navigation_timer = None;
+        // Increment generation to discard stale results.
+        // We do NOT clear preload_tasks or preloading_indices – old workers
+        // are still tracked via preload_workers and remain counted until they finish.
+        self.preload_generation = self.preload_generation.wrapping_add(1);
     }
 
     pub fn preload_adjacent_images(&mut self) {
-        // Check if caching should be stopped
         if self.should_stop_caching {
             return;
         }
 
-        if self.image_entries.is_empty() {
+        if self.image_entries.is_empty() || self.image_entries.len() <= 1 {
             return;
         }
 
-        let len = self.image_entries.len();
-        if len <= 1 {
-            return;
+        // Step 1: Update origin if we've moved past delta and pause timer expired.
+        if self.should_move_origin() {
+            self.move_preload_origin();
         }
 
-        // Throttle: Don't start new preloads too frequently
+        // Step 2: Build the desired window (both ordered and set).
+        let desired_set = self.desired_set_from_origin();
+
+        // Step 3: Enforce cache invariant – remove anything outside the desired set.
+        self.clean_cache_outside_set(&desired_set);
+
+        // Step 4: Start new preload tasks, respecting throttle and worker limit.
         if let Some(last) = self.last_preload_start {
-            if last.elapsed() < Duration::from_millis(50) {
+            if last.elapsed() < Duration::from_millis(30) {
                 return;
             }
         }
 
-        // Reduce concurrency when main image is loading
         let max_concurrent = if self.b_is_loading || self.b_is_loading_full {
-            self.max_cache_task.min(1) // Use only 1 thread
+            self.max_cache_task.min(1)
         } else {
             self.max_cache_task
-        };
+        } as usize;
 
-        // Calculate delta of radius, minimum 1
-        let delta_threshold =
-            ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
-        self.delta_threshold = delta_threshold;
-
-        // Check if user has stopped navigating or gone through the range
-        let should_update_origin = if let Some(timer) = self.navigation_timer {
-            // If user has paused for more than the pause duration, update origin
-            if timer.elapsed() >= self.navigation_pause_duration {
-                true
-            } else {
-                // Check if user has gone through the entire delta range
-                let dist = (self.current_index as i32 - self.preload_origin as i32).abs();
-                dist >= delta_threshold as i32
-            }
-        } else {
-            // First navigation - update origin
-            true
-        };
-
-        if should_update_origin {
-            // Reset the navigation timer
-            self.navigation_timer = None;
-
-            // Update origin to current index
-            self.preload_origin = self.current_index;
-
-            // Only clean cache when cache is full OR we need to make room for new images
-            let cache_is_full = self.image_cache.len() >= self.max_cache_size;
-            let has_new_indices_to_load = self.has_new_indices_in_range();
-
-            if cache_is_full || has_new_indices_to_load {
-                self.clean_cache_outside_radius();
-            }
+        let active_workers = self.preload_workers;
+        if active_workers >= max_concurrent {
+            return;
         }
 
-        // Determine which indices to preload
-        let mut indices_to_preload = Vec::new();
+        let slots = max_concurrent - active_workers;
 
-        // Always preload current image first (highest priority)
-        if !self.preloading_indices.contains(&self.current_index) {
-            indices_to_preload.push(self.current_index);
+        let desired_ordered = self.ordered_desired_window();
+        let mut started = 0;
+
+        for idx in desired_ordered {
+            if started >= slots {
+                break;
+            }
+
+            if self.is_index_cached(idx) {
+                continue;
+            }
+
+            if self.preloading_indices.contains(&idx) {
+                continue;
+            }
+
+            self.start_preload_task(idx);
+            started += 1;
         }
 
-        // Preload delta range around the origin
-        for offset in 1..=delta_threshold {
-            let fwd_idx = (self.preload_origin + offset) % len;
-            if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
-                indices_to_preload.push(fwd_idx);
-            }
-
-            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
-            if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
-                indices_to_preload.push(bwd_idx);
-            }
-        }
-
-        // After current image and delta range are loading,
-        // also preload the rest of the full radius range (lower priority)
-        for offset in (delta_threshold + 1)..=self.cache_radius {
-            let fwd_idx = (self.preload_origin + offset) % len;
-            if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
-                indices_to_preload.push(fwd_idx);
-            }
-
-            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
-            if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
-                indices_to_preload.push(bwd_idx);
-            }
-        }
-
-        // Limit concurrent preloading
-        let current_tasks = self.preload_tasks.len() as u8;
-        let available_slots = max_concurrent.saturating_sub(current_tasks);
-
-        if available_slots > 0 && !indices_to_preload.is_empty() {
-            // Only load a small batch at a time
-            let batch_size = available_slots.min(2);
-            let to_load: Vec<_> = indices_to_preload
-                .into_iter()
-                .take(batch_size as usize)
-                .collect();
-
-            for idx in to_load {
-                self.start_preload_task(idx);
-            }
-
+        if started > 0 {
             self.last_preload_start = Some(Instant::now());
         }
     }
 
-    // Helper function to check if there are new indices in range that need loading
-    fn has_new_indices_in_range(&self) -> bool {
-        let len = self.image_entries.len();
-        if len == 0 {
-            return false;
+    /// Remove cached images that are outside the desired set.
+    /// O(cache_size) because we use the index stored in the cache.
+    fn clean_cache_outside_set(&mut self, desired: &HashSet<usize>) {
+        if self.should_stop_caching {
+            return;
         }
 
-        let delta_threshold =
-            ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+        let mut to_remove = Vec::new();
 
-        // Check delta range first (higher priority)
-        for offset in 1..=delta_threshold {
-            let fwd_idx = (self.preload_origin + offset) % len;
-            if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
-                return true;
-            }
-
-            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
-            if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
-                return true;
+        for (id, cached) in self.image_cache.iter() {
+            if !desired.contains(&cached.index) {
+                to_remove.push(id.clone());
             }
         }
 
-        // Check full radius range (lower priority)
-        for offset in (delta_threshold + 1)..=self.cache_radius {
-            let fwd_idx = (self.preload_origin + offset) % len;
-            if !self.is_index_cached(fwd_idx) && !self.preloading_indices.contains(&fwd_idx) {
-                return true;
-            }
-
-            let bwd_idx = self.get_backward_index(self.preload_origin, offset, len);
-            if !self.is_index_cached(bwd_idx) && !self.preloading_indices.contains(&bwd_idx) {
-                return true;
+        if !to_remove.is_empty() {
+            for id in to_remove {
+                self.image_cache.pop(&id);
             }
         }
-
-        false
-    }
-
-    pub fn reset_navigation_timer(&mut self) {
-        // Reset the timer when user navigates
-        self.navigation_timer = Some(Instant::now());
     }
 
     fn start_preload_task(&mut self, idx: usize) {
@@ -197,8 +209,11 @@ impl ViewerApp {
         }
 
         if let Some(entry) = self.image_entries.get(idx).cloned() {
+            // Mark as loading
             self.preloading_indices.insert(idx);
+            self.preload_workers += 1;
 
+            let generation = self.preload_generation;
             let (tx, rx) = channel();
 
             spawn(move || {
@@ -260,116 +275,76 @@ impl ViewerApp {
                     }
                 };
 
-                let _ = tx.send(result);
+                // Send back (index, result, generation)
+                let _ = tx.send((idx, result, generation));
             });
 
             self.preload_tasks.push(PreloadTask {
-                index: idx,
                 receiver: rx,
             });
         }
     }
 
-    fn clean_cache_outside_radius(&mut self) {
-        if self.should_stop_caching {
-            return;
-        }
-
-        let len = self.image_entries.len();
-        if len == 0 {
-            return;
-        }
-
-        let mut keep_indices = std::collections::HashSet::new();
-
-        // Keep all indices within the full radius
-        for offset in 0..=self.cache_radius {
-            let idx = (self.preload_origin + offset) % len;
-            keep_indices.insert(idx);
-            let idx = self.get_backward_index(self.preload_origin, offset, len);
-            keep_indices.insert(idx);
-        }
-
-        // ALWAYS keep the current image in cache regardless of range
-        keep_indices.insert(self.current_index);
-
-        let mut to_remove = Vec::new();
-        for (id, _) in self.image_cache.iter() {
-            if let Some(index) = self.get_index_from_id(id) {
-                if !keep_indices.contains(&index) {
-                    to_remove.push(id.clone());
-                }
-            }
-        }
-
-        // Only remove if we need to make room
-        if !to_remove.is_empty() {
-            for id in to_remove {
-                self.image_cache.pop(&id);
-            }
-        }
-    }
-
-    fn get_index_from_id(&self, id: &str) -> Option<usize> {
-        for (idx, entry) in self.image_entries.iter().enumerate() {
-            if entry.get_id() == id {
-                return Some(idx);
-            }
-        }
-        None
-    }
-
     pub fn process_preload_tasks(&mut self, ctx: &egui::Context) {
+        // Even if caching is stopped, we still need to process results
+        // to decrement worker counts and clean up.
+        let mut completed = Vec::new();
+        let mut tasks_to_remove = Vec::new();
+
+        for (task_idx, task) in self.preload_tasks.iter_mut().enumerate() {
+            if let Ok((idx, result, generation)) = task.receiver.try_recv() {
+                // Worker finished – account for it.
+                self.preload_workers = self.preload_workers.saturating_sub(1);
+                self.preloading_indices.remove(&idx);
+
+                completed.push((idx, generation, result));
+                tasks_to_remove.push(task_idx);
+            }
+        }
+
+        // Remove completed tasks (reverse order to avoid index shifts).
+        for task_idx in tasks_to_remove.into_iter().rev() {
+            self.preload_tasks.remove(task_idx);
+        }
+
+        // If caching is stopped, don't add anything and just return.
         if self.should_stop_caching {
-            // Clear all pending tasks
-            self.preload_tasks.clear();
-            self.preloading_indices.clear();
+            if !self.preload_tasks.is_empty() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
             return;
         }
 
-        // Process only a limited number of tasks per frame
-        const MAX_PER_FRAME: usize = 1; // Only process 1 task per frame to avoid freezes
-        let mut processed = 0;
+        // Only cache results that are still wanted.
+        let desired_set = self.desired_set_from_origin();
 
-        let mut completed_indices = Vec::new();
-        let mut completed_images = Vec::new();
-
-        for task in &mut self.preload_tasks {
-            if processed >= MAX_PER_FRAME {
-                break;
+        for (idx, generation, result) in completed {
+            // Stale generation – discard.
+            if generation != self.preload_generation {
+                continue;
             }
 
-            if let Ok(result) = task.receiver.try_recv() {
-                if let Ok(loaded_image) = result {
-                    completed_indices.push(task.index);
-                    completed_images.push((task.index, loaded_image));
-                    processed += 1;
-                } else {
-                    // Preload failed, just remove the task
-                    completed_indices.push(task.index);
-                    processed += 1;
-                }
+            // No longer in desired window – discard.
+            if !desired_set.contains(&idx) {
+                continue;
+            }
+
+            if let Ok(loaded_image) = result {
+                self.add_to_cache(ctx, idx, loaded_image);
             }
         }
 
-        self.processed_this_frame = processed;
+        // Re-enforce the cache invariant after insertion.
+        self.clean_cache_outside_set(&desired_set);
 
-        // Remove completed tasks
-        self.preload_tasks
-            .retain(|task| !completed_indices.contains(&task.index));
-
-        for idx in &completed_indices {
-            self.preloading_indices.remove(idx);
+        // If tasks remain, ask for another repaint soon.
+        if !self.preload_tasks.is_empty() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
+    }
 
-        // Add to cache (this creates textures on main thread, one at a time)
-        for (idx, loaded_image) in completed_images {
-            // Use the ctx directly - it's already the correct type
-            self.add_to_cache(ctx, idx, loaded_image);
-        }
-
-        // Don't call preload_adjacent_images() here - let the main update loop handle it
-        // This prevents recursive calls and allows the frame limiter to work properly
+    pub fn reset_navigation_timer(&mut self) {
+        self.navigation_timer = Some(Instant::now());
     }
 
     pub fn update_cache_radius(&mut self, new_radius: usize) {
@@ -379,10 +354,11 @@ impl ViewerApp {
             self.delta_threshold =
                 ((radius as f32 * self.cache_delta_factor).round() as usize).max(1);
 
-            let new_size = (radius * 2 + 1).max(3);
-            self.max_cache_size = new_size;
+            // Maximum cache size = origin window (+1 extra for current image if outside).
+            let desired_capacity = radius * 2 + 2;
+            self.max_cache_size = desired_capacity.max(3);
 
-            if let Some(non_zero) = NonZeroUsize::new(new_size) {
+            if let Some(non_zero) = NonZeroUsize::new(self.max_cache_size) {
                 let mut new_cache = lru::LruCache::new(non_zero);
                 let entries: Vec<(String, CachedImage)> = self
                     .image_cache
@@ -395,13 +371,14 @@ impl ViewerApp {
                 self.image_cache = new_cache;
             }
 
-            self.preload_origin = self.current_index;
-            self.preloading_indices.clear();
-            self.preload_tasks.clear();
+            // Move origin to current and invalidate old results.
+            self.move_preload_origin();
 
-            // Clean cache immediately when radius changes
-            self.clean_cache_outside_radius();
+            // Enforce the new window immediately.
+            let desired_set = self.desired_set_from_origin();
+            self.clean_cache_outside_set(&desired_set);
             self.cache_current_image();
+            self.preload_adjacent_images();
         }
     }
 
@@ -410,11 +387,15 @@ impl ViewerApp {
     }
 
     pub fn stop_caching(&mut self) {
+        // Prevent new tasks from starting.
         self.should_stop_caching = true;
-        // Clear all pending tasks
-        self.preload_tasks.clear();
-        self.preloading_indices.clear();
-        // Clear cache
+        // Invalidate any results that may still arrive.
+        self.preload_generation = self.preload_generation.wrapping_add(1);
+        // Clear the cache.
         self.image_cache.clear();
+        // Note: preload_tasks and preloading_indices are left intact.
+        // The workers will finish, their results will be discarded,
+        // and the worker counts will be correctly decremented.
+        // This ensures we don't lose track of running workers.
     }
 }

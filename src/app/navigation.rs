@@ -15,26 +15,22 @@ impl ViewerApp {
             self.b_fit_to_window = true;
             self.image_rect = None;
             
-            // Don't clear texture here - keep showing the current image
-            // Only clear GIF state that will be replaced
+            // Don't clear texture - keep showing current image
             self.gif_animation = None;
             self.is_gif = false;
             self.is_preview = false;
-            
-            // Clear loading state for new image
             self.full_image_receiver = None;
             self.full_gif_receiver = None;
             self.b_is_loading_full = false;
             self.image_error = None;
             self.receiver = None;
 
-            // Reset navigation timer when user navigates
+            // Reset navigation timer (no direction needed anymore)
             self.reset_navigation_timer();
 
-            // Load the new image in background while keeping current texture
+            // Load new image in background while keeping current texture
             self.load_current_image_with_cache_keep_texture();
             
-            // Update window title with the new index
             self.update_window_title(ctx);
         }
         self.b_zoom_used = false;

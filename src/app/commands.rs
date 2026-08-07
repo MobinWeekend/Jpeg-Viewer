@@ -77,7 +77,6 @@ impl ViewerApp {
                     self.gif_animation = None;
                     self.is_gif = false;
                     self.is_preview = false;
-                    // Don't clear texture - keep showing current until new loads
                     self.full_image_receiver = None;
                     self.full_gif_receiver = None;
                     self.b_is_loading_full = false;
@@ -101,7 +100,6 @@ impl ViewerApp {
                     self.gif_animation = None;
                     self.is_gif = false;
                     self.is_preview = false;
-                    // Don't clear texture - keep showing current until new loads
                     self.full_image_receiver = None;
                     self.full_gif_receiver = None;
                     self.b_is_loading_full = false;

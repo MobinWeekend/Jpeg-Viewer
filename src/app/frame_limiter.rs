@@ -8,19 +8,24 @@ impl ViewerApp {
     pub fn should_request_repaint(&mut self, ctx: &egui::Context) -> bool {
         // Always repaint if we have an animated GIF playing
         if self.is_animating {
-            return true;
+            return self.apply_max_fps_limit();
+        }
+
+        // Slideshow should also respect max_fps
+        if self.slideshow_enabled {
+            return self.apply_max_fps_limit();
         }
 
         // Always repaint if we're loading
         if self.b_is_loading || self.b_is_loading_full {
-            return true;
+            return self.apply_max_fps_limit();
         }
 
         // Always repaint if we have completed preload tasks to process
         if !self.preload_tasks.is_empty() {
             for task in &self.preload_tasks {
                 if let Ok(_) = task.receiver.try_recv() {
-                    return true;
+                    return self.apply_max_fps_limit();
                 }
             }
         }
@@ -73,7 +78,7 @@ impl ViewerApp {
             return self.apply_max_fps_limit();
         }
 
-        // Idle mode - apply appropriate FPS limit based on focus state
+        // Idle mode – apply appropriate FPS limit based on focus state
         if has_focus {
             self.apply_idle_fps_limit()
         } else {
@@ -84,11 +89,10 @@ impl ViewerApp {
     /// Apply maximum FPS limit (if set)
     fn apply_max_fps_limit(&mut self) -> bool {
         if self.max_fps <= 0.0 {
-            // Unlimited FPS - always repaint
+            // Unlimited FPS – always repaint
             return true;
         }
 
-        // Calculate if enough time has passed since last repaint
         let now = Instant::now();
         let frame_time = Duration::from_secs_f32(1.0 / self.max_fps);
         let elapsed = now.duration_since(self.last_repaint_time);
@@ -104,11 +108,10 @@ impl ViewerApp {
     /// Apply idle FPS limit (when focused)
     fn apply_idle_fps_limit(&mut self) -> bool {
         if self.idle_fps_limit <= 0.0 {
-            // Unlimited idle FPS - use max_fps if set, otherwise unlimited
+            // Unlimited idle FPS – use max_fps if set, otherwise unlimited
             return self.apply_max_fps_limit();
         }
 
-        // Calculate if enough time has passed since last repaint
         let now = Instant::now();
         let frame_time = Duration::from_secs_f32(1.0 / self.idle_fps_limit);
         let elapsed = now.duration_since(self.last_repaint_time);
@@ -128,7 +131,6 @@ impl ViewerApp {
             return self.apply_idle_fps_limit();
         }
 
-        // Calculate if enough time has passed since last repaint
         let now = Instant::now();
         let frame_time = Duration::from_secs_f32(1.0 / self.unfocused_idle_fps_limit);
         let elapsed = now.duration_since(self.last_repaint_time);

@@ -30,7 +30,7 @@ impl ViewerApp {
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
         self.receiver = None;
-        
+
         let entry = match self.image_entries.get(self.current_index) {
             Some(entry) => entry.clone(),
             None => {
@@ -67,26 +67,18 @@ impl ViewerApp {
             // For GIFs: First load preview frame immediately, then full GIF in background
             let entry_clone = entry.clone();
             let (preview_tx, preview_rx) = channel();
-            
+
             // Load preview frame immediately
             spawn(move || {
                 let preview = match entry_clone {
-                    ImageEntry::File(path) => {
-                        crate::loader::load_gif_preview(path)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
-                    ImageEntry::Zip(zip) => {
-                        crate::loader::load_zip_gif_preview(zip)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
-                    ImageEntry::S7z(s7z) => {
-                        crate::loader::load_7z_gif_preview(s7z)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
-                    ImageEntry::Rar(rar) => {
-                        crate::loader::load_rar_gif_preview(rar)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
+                    ImageEntry::File(path) => crate::loader::load_gif_preview(path)
+                        .map(|g| LoadedImage::Animated(g, true)),
+                    ImageEntry::Zip(zip) => crate::loader::load_zip_gif_preview(zip)
+                        .map(|g| LoadedImage::Animated(g, true)),
+                    ImageEntry::S7z(s7z) => crate::loader::load_7z_gif_preview(s7z)
+                        .map(|g| LoadedImage::Animated(g, true)),
+                    ImageEntry::Rar(rar) => crate::loader::load_rar_gif_preview(rar)
+                        .map(|g| LoadedImage::Animated(g, true)),
                 };
                 if let Some(img) = preview {
                     let _ = preview_tx.send(Ok(img));
@@ -97,68 +89,54 @@ impl ViewerApp {
 
             // Set up receiver for preview
             self.receiver = Some(preview_rx);
-            
+
             // Start loading full GIF in background
             let entry_clone2 = entry.clone();
             let (full_tx, full_rx) = channel();
             spawn(move || {
-                let full = match entry_clone2 {
-                    ImageEntry::File(path) => {
-                        crate::loader::load_gif(path)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                    ImageEntry::Zip(zip) => {
-                        crate::loader::load_zip_gif(zip)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                    ImageEntry::S7z(s7z) => {
-                        crate::loader::load_7z_gif(s7z)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                    ImageEntry::Rar(rar) => {
-                        crate::loader::load_rar_gif(rar)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                };
+                let full =
+                    match entry_clone2 {
+                        ImageEntry::File(path) => {
+                            crate::loader::load_gif(path).map(|g| LoadedImage::Animated(g, false))
+                        }
+                        ImageEntry::Zip(zip) => crate::loader::load_zip_gif(zip)
+                            .map(|g| LoadedImage::Animated(g, false)),
+                        ImageEntry::S7z(s7z) => {
+                            crate::loader::load_7z_gif(s7z).map(|g| LoadedImage::Animated(g, false))
+                        }
+                        ImageEntry::Rar(rar) => crate::loader::load_rar_gif(rar)
+                            .map(|g| LoadedImage::Animated(g, false)),
+                    };
                 if let Some(img) = full {
                     let _ = full_tx.send(Ok(img));
                 } else {
                     let _ = full_tx.send(Err("Failed to load full GIF".to_string()));
                 }
             });
-            
+
             self.full_gif_receiver = Some(full_rx);
-            
         } else {
             // Non-GIF: load full resolution directly - send Result through channel
             spawn(move || {
                 let result = match entry {
-                    ImageEntry::File(path) => {
-                        match crate::loader::load_full_resolution(path) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
-                    ImageEntry::Zip(zip) => {
-                        match crate::loader::load_zip_image(zip) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
-                    ImageEntry::S7z(s7z) => {
-                        match crate::loader::load_7z_image(s7z) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
-                    ImageEntry::Rar(rar) => {
-                        match crate::loader::load_rar_image(rar) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
+                    ImageEntry::File(path) => match crate::loader::load_full_resolution(path) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
+                    ImageEntry::Zip(zip) => match crate::loader::load_zip_image(zip) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
+                    ImageEntry::S7z(s7z) => match crate::loader::load_7z_image(s7z) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
+                    ImageEntry::Rar(rar) => match crate::loader::load_rar_image(rar) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
                 };
-                
+
                 let _ = tx.send(result);
             });
 
@@ -184,7 +162,7 @@ impl ViewerApp {
             self.image_error = None;
             return;
         }
-        
+
         // Not in cache - load in background but keep current texture
         self.load_current_image_keep_texture();
     }
@@ -200,7 +178,7 @@ impl ViewerApp {
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
         self.receiver = None;
-        
+
         let entry = match self.image_entries.get(self.current_index) {
             Some(entry) => entry.clone(),
             None => {
@@ -237,26 +215,18 @@ impl ViewerApp {
             // For GIFs: First load preview frame immediately, then full GIF in background
             let entry_clone = entry.clone();
             let (preview_tx, preview_rx) = channel();
-            
+
             // Load preview frame immediately
             spawn(move || {
                 let preview = match entry_clone {
-                    ImageEntry::File(path) => {
-                        crate::loader::load_gif_preview(path)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
-                    ImageEntry::Zip(zip) => {
-                        crate::loader::load_zip_gif_preview(zip)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
-                    ImageEntry::S7z(s7z) => {
-                        crate::loader::load_7z_gif_preview(s7z)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
-                    ImageEntry::Rar(rar) => {
-                        crate::loader::load_rar_gif_preview(rar)
-                            .map(|g| LoadedImage::Animated(g, true))
-                    }
+                    ImageEntry::File(path) => crate::loader::load_gif_preview(path)
+                        .map(|g| LoadedImage::Animated(g, true)),
+                    ImageEntry::Zip(zip) => crate::loader::load_zip_gif_preview(zip)
+                        .map(|g| LoadedImage::Animated(g, true)),
+                    ImageEntry::S7z(s7z) => crate::loader::load_7z_gif_preview(s7z)
+                        .map(|g| LoadedImage::Animated(g, true)),
+                    ImageEntry::Rar(rar) => crate::loader::load_rar_gif_preview(rar)
+                        .map(|g| LoadedImage::Animated(g, true)),
                 };
                 if let Some(img) = preview {
                     let _ = preview_tx.send(Ok(img));
@@ -266,68 +236,54 @@ impl ViewerApp {
             });
 
             self.receiver = Some(preview_rx);
-            
+
             // Start loading full GIF in background
             let entry_clone2 = entry.clone();
             let (full_tx, full_rx) = channel();
             spawn(move || {
-                let full = match entry_clone2 {
-                    ImageEntry::File(path) => {
-                        crate::loader::load_gif(path)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                    ImageEntry::Zip(zip) => {
-                        crate::loader::load_zip_gif(zip)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                    ImageEntry::S7z(s7z) => {
-                        crate::loader::load_7z_gif(s7z)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                    ImageEntry::Rar(rar) => {
-                        crate::loader::load_rar_gif(rar)
-                            .map(|g| LoadedImage::Animated(g, false))
-                    }
-                };
+                let full =
+                    match entry_clone2 {
+                        ImageEntry::File(path) => {
+                            crate::loader::load_gif(path).map(|g| LoadedImage::Animated(g, false))
+                        }
+                        ImageEntry::Zip(zip) => crate::loader::load_zip_gif(zip)
+                            .map(|g| LoadedImage::Animated(g, false)),
+                        ImageEntry::S7z(s7z) => {
+                            crate::loader::load_7z_gif(s7z).map(|g| LoadedImage::Animated(g, false))
+                        }
+                        ImageEntry::Rar(rar) => crate::loader::load_rar_gif(rar)
+                            .map(|g| LoadedImage::Animated(g, false)),
+                    };
                 if let Some(img) = full {
                     let _ = full_tx.send(Ok(img));
                 } else {
                     let _ = full_tx.send(Err("Failed to load full GIF".to_string()));
                 }
             });
-            
+
             self.full_gif_receiver = Some(full_rx);
-            
         } else {
             // Non-GIF: load full resolution directly
             spawn(move || {
                 let result = match entry {
-                    ImageEntry::File(path) => {
-                        match crate::loader::load_full_resolution(path) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
-                    ImageEntry::Zip(zip) => {
-                        match crate::loader::load_zip_image(zip) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
-                    ImageEntry::S7z(s7z) => {
-                        match crate::loader::load_7z_image(s7z) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
-                    ImageEntry::Rar(rar) => {
-                        match crate::loader::load_rar_image(rar) {
-                            Ok(img) => Ok(LoadedImage::Static(img)),
-                            Err(err) => Err(err),
-                        }
-                    }
+                    ImageEntry::File(path) => match crate::loader::load_full_resolution(path) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
+                    ImageEntry::Zip(zip) => match crate::loader::load_zip_image(zip) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
+                    ImageEntry::S7z(s7z) => match crate::loader::load_7z_image(s7z) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
+                    ImageEntry::Rar(rar) => match crate::loader::load_rar_image(rar) {
+                        Ok(img) => Ok(LoadedImage::Static(img)),
+                        Err(err) => Err(err),
+                    },
                 };
-                
+
                 let _ = tx.send(result);
             });
 
@@ -349,9 +305,15 @@ impl ViewerApp {
         self.receiver = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
+
+        // Reset preload state – discard all pending tasks and invalidate results.
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
+        self.preload_workers = 0;
+        self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.should_stop_caching = false;
+
         self.load_current_image();
     }
 
@@ -374,8 +336,12 @@ impl ViewerApp {
         self.receiver = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
+        // Reset preload state (already done in set_image_entries, but we repeat for clarity)
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
+        self.preload_workers = 0;
+        self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.should_stop_caching = false;
     }
 }
