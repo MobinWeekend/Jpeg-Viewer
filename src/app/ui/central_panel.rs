@@ -58,14 +58,11 @@ impl ViewerApp {
                 egui::Color32::WHITE,
             );
 
-            // Draw loading indicator overlay for GIF preview
-            if self.is_gif && self.is_preview {
-                // Use the same rect for the overlay
-                painter.rect_filled(
-                    available_rect,
-                    0.0,
-                    egui::Color32::from_rgba_premultiplied(0, 0, 0, 0),
-                );
+            // Draw loading indicator overlay for GIF preview or background loading
+            if self.b_is_loading {
+                // Show a subtle loading indicator overlay
+                Self::draw_loading_overlay(&painter, available_rect, "Loading...");
+            } else if self.is_gif && self.is_preview {
                 Self::draw_loading_overlay(&painter, available_rect, "Loading full GIF...");
             }
 

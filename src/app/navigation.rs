@@ -14,23 +14,25 @@ impl ViewerApp {
             self.current_index = new_index;
             self.b_fit_to_window = true;
             self.image_rect = None;
+            
+            // Don't clear texture here - keep showing the current image
+            // Only clear GIF state that will be replaced
             self.gif_animation = None;
             self.is_gif = false;
             self.is_preview = false;
-            self.texture = None;
+            
+            // Clear loading state for new image
             self.full_image_receiver = None;
             self.full_gif_receiver = None;
             self.b_is_loading_full = false;
-            self.image_error = None; // Clear any previous errors
-            self.receiver = None; // Clear any previous receiver
+            self.image_error = None;
+            self.receiver = None;
 
             // Reset navigation timer when user navigates
             self.reset_navigation_timer();
 
-            self.load_current_image_with_cache();
-            
-            // Preload adjacent images - this will check if origin should update
-            //self.preload_adjacent_images(ctx);
+            // Load the new image in background while keeping current texture
+            self.load_current_image_with_cache_keep_texture();
             
             // Update window title with the new index
             self.update_window_title(ctx);

@@ -53,14 +53,10 @@ impl ViewerApp {
         };
 
         if let Some(cached) = self.image_cache.get(&image_id) {
+            // Replace texture with cached version
             self.texture = Some(cached.texture.clone());
             self.is_gif = cached.is_gif;
             self.is_preview = cached.is_preview;
-
-            if cached.is_gif {
-                return false;
-            }
-
             self.b_fit_to_window = true;
             self.b_is_loading = false;
             return true;

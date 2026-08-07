@@ -299,14 +299,14 @@ impl ViewerApp {
         self.gif_animation = None;
         self.is_gif = false;
         self.is_preview = false;
-        self.texture = None;
+        // Don't clear texture for slideshow either
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
         self.image_error = None;
         self.receiver = None;
 
-        self.load_current_image_with_cache();
+        self.load_current_image_with_cache_keep_texture();
         self.update_window_title(&eframe::egui::Context::default());
     }
 

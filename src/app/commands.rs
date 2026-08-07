@@ -77,11 +77,11 @@ impl ViewerApp {
                     self.gif_animation = None;
                     self.is_gif = false;
                     self.is_preview = false;
-                    self.texture = None;
+                    // Don't clear texture - keep showing current until new loads
                     self.full_image_receiver = None;
                     self.full_gif_receiver = None;
                     self.b_is_loading_full = false;
-                    self.load_current_image_with_cache();
+                    self.load_current_image_with_cache_keep_texture();
                     self.preload_adjacent_images();
                 }
             }
@@ -101,11 +101,11 @@ impl ViewerApp {
                     self.gif_animation = None;
                     self.is_gif = false;
                     self.is_preview = false;
-                    self.texture = None;
+                    // Don't clear texture - keep showing current until new loads
                     self.full_image_receiver = None;
                     self.full_gif_receiver = None;
                     self.b_is_loading_full = false;
-                    self.load_current_image_with_cache();
+                    self.load_current_image_with_cache_keep_texture();
                     self.preload_adjacent_images();
                 }
             }
