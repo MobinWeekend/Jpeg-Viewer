@@ -158,7 +158,8 @@ impl ViewerApp {
 
         // Step 4: Start new preload tasks, respecting throttle and worker limit.
         if let Some(last) = self.last_preload_start {
-            if last.elapsed() < Duration::from_millis(30) {
+            let throttle_ms = self.settings_manager.get().preload_throttle_ms;
+            if last.elapsed() < Duration::from_millis(throttle_ms) {
                 return;
             }
         }

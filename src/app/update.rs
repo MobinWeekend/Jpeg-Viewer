@@ -157,6 +157,23 @@ impl eframe::App for ViewerApp {
                                 self.is_gif = true;
                                 self.is_preview = is_preview;
                                 self.image_error = None;
+
+                                // --- Apply zoom/fit based on first frame ---
+                                if let Some(frame) = self
+                                    .gif_animation
+                                    .as_ref()
+                                    .and_then(|g| g.get_current_frame_ref())
+                                {
+                                    let (width, height) = (frame.width(), frame.height());
+                                    if self.has_extreme_aspect_ratio(width, height) {
+                                        self.b_fit_to_window = false;
+                                        self.zoom = 1.0;
+                                        self.pan = egui::Vec2::ZERO;
+                                        self.b_zoom_used = true;
+                                    } else {
+                                        self.b_fit_to_window = true;
+                                    }
+                                }
                             }
                         }
 

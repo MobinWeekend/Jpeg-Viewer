@@ -39,7 +39,7 @@ impl Default for AppSettings {
             navigation_pause_ms: 1200,
             max_cache_task: 4,
             texture_filter: "linear".to_string(),
-            preload_throttle_ms: 200,
+            preload_throttle_ms: 100,
             max_fps: 0.0,
             idle_fps_limit: 15.0,
             idle_timeout_ms: 2000,
@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(settings.navigation_pause_ms, 1200);
         assert_eq!(settings.max_cache_task, 4);
         assert_eq!(settings.texture_filter, "linear");
-        assert_eq!(settings.preload_throttle_ms, 200);
+        assert_eq!(settings.preload_throttle_ms, 100);
         assert_eq!(settings.max_fps, 0.0);
         assert_eq!(settings.idle_fps_limit, 15.0);
         assert_eq!(settings.idle_timeout_ms, 2000);
