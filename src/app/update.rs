@@ -162,9 +162,6 @@ impl eframe::App for ViewerApp {
 
                         self.b_is_loading = false;
 
-                        // After loading, cache the current image (GIFs will be skipped)
-                        self.cache_current_image();
-
                         // Update window title with current filename
                         self.update_window_title(ctx);
 

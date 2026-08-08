@@ -12,6 +12,7 @@ impl ViewerApp {
 
         if new_index != self.current_index {
             self.current_index = new_index;
+            self.zoom = 1.0;
             self.b_fit_to_window = true;
             self.image_rect = None;
             

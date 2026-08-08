@@ -8,6 +8,8 @@ use std::num::NonZeroUsize;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
+const PRELOAD_TIMEOUT: Duration = Duration::from_secs(15);
+
 impl ViewerApp {
     /// Get the index at a circular offset from origin
     fn get_circular_index(&self, origin: usize, offset: isize) -> usize {
@@ -90,17 +92,7 @@ impl ViewerApp {
             return false;
         }
 
-        // Don't move the origin while the user is actively navigating.
-        let Some(timer) = self.navigation_timer else {
-            return false;
-        };
-
-        if timer.elapsed() < self.navigation_pause_duration {
-            return false;
-        }
-
-        let diff = (self.current_index as isize - self.preload_origin as isize)
-            .unsigned_abs();
+        let diff = (self.current_index as isize - self.preload_origin as isize).unsigned_abs();
         let dist = diff.min(len - diff);
 
         dist >= self.delta_threshold
@@ -116,6 +108,26 @@ impl ViewerApp {
         self.preload_generation = self.preload_generation.wrapping_add(1);
     }
 
+    /// Check whether the entry at the given index is a GIF (should not be cached)
+    fn is_gif_entry(&self, index: usize) -> bool {
+        if let Some(entry) = self.image_entries.get(index) {
+            match entry {
+                ImageEntry::File(path) => {
+                    if let Some(ext) = path.extension() {
+                        ext.eq_ignore_ascii_case("gif")
+                    } else {
+                        false
+                    }
+                }
+                ImageEntry::Zip(zip) => zip.name.to_lowercase().ends_with(".gif"),
+                ImageEntry::S7z(s7z) => s7z.name.to_lowercase().ends_with(".gif"),
+                ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
+            }
+        } else {
+            false
+        }
+    }
+
     pub fn preload_adjacent_images(&mut self) {
         if self.should_stop_caching {
             return;
@@ -125,8 +137,16 @@ impl ViewerApp {
             return;
         }
 
-        // Step 1: Update origin if we've moved past delta and pause timer expired.
-        if self.should_move_origin() {
+        // Step 1: Update origin if we've moved far enough.
+        // If we've moved more than twice the radius, force origin move immediately
+        // (ignore navigation timer to keep up with fast navigation).
+        let len = self.image_entries.len();
+        let diff = (self.current_index as isize - self.preload_origin as isize).unsigned_abs();
+        let dist = diff.min(len - diff);
+
+        if dist >= self.cache_radius * 2 {
+            self.move_preload_origin();
+        } else if self.should_move_origin() {
             self.move_preload_origin();
         }
 
@@ -162,6 +182,11 @@ impl ViewerApp {
         for idx in desired_ordered {
             if started >= slots {
                 break;
+            }
+
+            // Skip GIFs – they are never cached
+            if self.is_gif_entry(idx) {
+                continue;
             }
 
             if self.is_index_cached(idx) {
@@ -281,6 +306,8 @@ impl ViewerApp {
 
             self.preload_tasks.push(PreloadTask {
                 receiver: rx,
+                index: idx,
+                start_time: Instant::now(),
             });
         }
     }
@@ -305,6 +332,20 @@ impl ViewerApp {
         // Remove completed tasks (reverse order to avoid index shifts).
         for task_idx in tasks_to_remove.into_iter().rev() {
             self.preload_tasks.remove(task_idx);
+        }
+
+        // Check for timed-out tasks (stuck workers).
+        let mut timed_out = Vec::new();
+        for (task_idx, task) in self.preload_tasks.iter().enumerate() {
+            if task.start_time.elapsed() > PRELOAD_TIMEOUT {
+                // Task is stuck – force cleanup.
+                timed_out.push(task_idx);
+            }
+        }
+        for task_idx in timed_out.into_iter().rev() {
+            let task = self.preload_tasks.remove(task_idx);
+            self.preload_workers = self.preload_workers.saturating_sub(1);
+            self.preloading_indices.remove(&task.index);
         }
 
         // If caching is stopped, don't add anything and just return.

@@ -29,6 +29,8 @@ pub struct CachedImage {
 // Preload task - receiver returns (index, result, generation)
 pub struct PreloadTask {
     pub receiver: Receiver<(usize, Result<LoadedImage, String>, u64)>,
+    pub index: usize,
+    pub start_time: std::time::Instant,
 }
 
 pub struct ViewerApp {

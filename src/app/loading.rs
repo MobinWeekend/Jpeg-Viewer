@@ -295,7 +295,8 @@ impl ViewerApp {
         self.image_entries = entries;
         self.current_index = current_index;
         self.preload_origin = current_index;
-        self.delta_threshold = ((self.cache_radius as f32 * 3.0 / 5.0).round() as usize).max(1);
+        // Use the user-configurable cache_delta_factor instead of hardcoded 3/5
+        self.delta_threshold = ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
         self.b_fit_to_window = true;
         self.gif_animation = None;
         self.is_gif = false;
