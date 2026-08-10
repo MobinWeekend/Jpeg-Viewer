@@ -124,10 +124,6 @@ impl eframe::App for ViewerApp {
                                         pixel_count / 1_000_000
                                     );
 
-                                    // Check for extreme aspect ratio BEFORE creating virtual texture
-                                    let extreme_ratio =
-                                        self.has_extreme_aspect_ratio(width, height);
-
                                     // Create virtual texture
                                     let vt = VirtualTexture::new(img);
 
@@ -154,21 +150,6 @@ impl eframe::App for ViewerApp {
                                     self.b_is_loading_full = false;
                                     self.image_error = None;
                                     self.b_is_loading = false;
-
-                                    // Apply extreme aspect ratio handling
-                                    if extreme_ratio {
-                                        // For extreme ratios, don't fit to window - show at 1:1
-                                        self.b_fit_to_window = false;
-                                        self.zoom = 1.0;
-                                        self.pan = egui::Vec2::ZERO;
-                                        self.b_zoom_used = true;
-                                        println!(
-                                            "Extreme aspect ratio detected: {}x{}, using 1:1 zoom",
-                                            width, height
-                                        );
-                                    } else {
-                                        self.b_fit_to_window = true;
-                                    }
 
                                     ctx.request_repaint();
                                 } else {
@@ -200,16 +181,7 @@ impl eframe::App for ViewerApp {
                                     self.image_error = None;
                                     self.virtual_texture = None;
                                     self.virtual_texture_loading = false;
-
-                                    if self.has_extreme_aspect_ratio(width, height) {
-                                        self.b_fit_to_window = false;
-                                        self.zoom = 1.0;
-                                        self.pan = egui::Vec2::ZERO;
-                                        self.pan = egui::Vec2::new(0.0, -(height as f32 / 2.0));
-                                        self.b_zoom_used = true;
-                                    } else {
-                                        self.b_fit_to_window = true;
-                                    }
+                                    self.b_fit_to_window = true;
                                 }
                             }
                             super::types::LoadedImage::Animated(gif, is_preview) => {
@@ -219,22 +191,7 @@ impl eframe::App for ViewerApp {
                                 self.image_error = None;
                                 self.virtual_texture = None;
                                 self.virtual_texture_loading = false;
-
-                                if let Some(frame) = self
-                                    .gif_animation
-                                    .as_ref()
-                                    .and_then(|g| g.get_current_frame_ref())
-                                {
-                                    let (width, height) = (frame.width(), frame.height());
-                                    if self.has_extreme_aspect_ratio(width, height) {
-                                        self.b_fit_to_window = false;
-                                        self.zoom = 1.0;
-                                        self.pan = egui::Vec2::ZERO;
-                                        self.b_zoom_used = true;
-                                    } else {
-                                        self.b_fit_to_window = true;
-                                    }
-                                }
+                                self.b_fit_to_window = true;
                             }
                         }
 
@@ -279,21 +236,7 @@ impl eframe::App for ViewerApp {
                             self.virtual_texture = Some(vt);
                             self.virtual_texture_loading = false;
                             self.vt_progress = None;
-
-                            // If we have an extreme aspect ratio, ensure zoom is 1:1
-                            if let Some(vt) = &self.virtual_texture {
-                                let (w, h) = vt.dimensions();
-                                if self.has_extreme_aspect_ratio(w, h) {
-                                    self.b_fit_to_window = false;
-                                    self.zoom = 1.0;
-                                    self.pan = egui::Vec2::ZERO;
-                                    self.b_zoom_used = true;
-                                } else {
-                                    // Reset fit to window for normal images
-                                    self.b_fit_to_window = true;
-                                }
-                            }
-
+                            self.b_fit_to_window = true;
                             ctx.request_repaint();
                             println!("Virtual texture ready!");
                         }

@@ -42,7 +42,7 @@ pub fn load_full_resolution(path: PathBuf) -> Result<DynamicImage, String> {
     let (width, height) = img.dimensions();
     let pixel_count = width as u64 * height as u64;
     
-    // If the image is huge, we'll use virtual texturing - no need to check size here
+    // If the image is large, we'll use virtual texturing - no need to check size here
     let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
         || width > MAX_GPU_TEXTURE_SIZE
         || height > MAX_GPU_TEXTURE_SIZE;

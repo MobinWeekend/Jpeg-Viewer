@@ -80,19 +80,20 @@ impl ViewerApp {
             // Only apply fit if ratio is >= 0.1 (not extreme aspect ratio)
             ratio >= 0.1
         };
-
+        let zoom_x = available.x / texture_size.x;
+        let zoom_y = available.y / texture_size.y;
         if should_fit {
-            let zoom_x = available.x / texture_size.x;
-            let zoom_y = available.y / texture_size.y;
             let fit_zoom = zoom_x.min(zoom_y).min(1.0);
             self.zoom = fit_zoom;
             self.pan = egui::Vec2::ZERO;
-            true // Applied fit
+            true // Applied fit all sides
         } else {
-            // For extreme ratios, ensure zoom is 1.0
-            self.zoom = 1.0;
-            self.pan = egui::Vec2::ZERO;
-            false // Didn't apply fit, used 1.0 zoom
+            // For extreme ratios
+            let max_fit_zoom = zoom_x.max(zoom_y).min(1.0);
+            self.zoom = max_fit_zoom;
+            let snap_to_top= (texture_size.y / 2.0) + (36.0 - (available.y / 2.0)) / max_fit_zoom;
+            self.pan = egui::Vec2::new(0.0, snap_to_top);
+            false // fit to one side
         }
     }
 

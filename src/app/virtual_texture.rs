@@ -57,7 +57,8 @@ impl VirtualTexture {
     /// This is fast - it just stores the image and marks it as not ready.
     pub fn new(img: DynamicImage) -> Self {
         let (width, height) = img.dimensions();
-        let tile_size = 256;
+        let tile_size = 512;
+        // tile size should be adjustable later 128,256,512
 
         // Count total tiles
         let tiles_x = (width + tile_size - 1) / tile_size;

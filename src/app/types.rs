@@ -1,9 +1,9 @@
+use super::virtual_texture::PreparationProgress;
 use crate::app::virtual_texture::VirtualTexture;
 use crate::gif_animation::GifAnimation;
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
 use crate::shortcuts::InputBindings;
-use super::virtual_texture::PreparationProgress;
 use eframe::egui;
 use image::DynamicImage;
 use lru::LruCache;
@@ -223,23 +223,6 @@ impl ViewerApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
     }
 
-    // Because JV crashed on Bee Movie Script Jpeg!
-    pub fn has_extreme_aspect_ratio(&self, width: u32, height: u32) -> bool {
-        if width == 0 || height == 0 {
-            return false;
-        }
-
-        // Calculate ratio (smaller / larger)
-        let ratio = if width > height {
-            height as f32 / width as f32
-        } else {
-            width as f32 / height as f32
-        };
-
-        // If ratio is less than 0.1 (very tall or very wide)
-        ratio < 0.1
-    }
-
     pub fn get_texture_options(&self) -> egui::TextureOptions {
         let settings = self.settings_manager.get();
         match settings.texture_filter.as_str() {
@@ -334,5 +317,23 @@ impl ViewerApp {
         self.slideshow_interval = Duration::from_millis(settings.slideshow_interval_ms);
         self.slideshow_loop = settings.slideshow_loop;
         self.slideshow_random = settings.slideshow_random;
+    }
+
+    // Extreme aspect ratio detection (too thin or thick)
+    // === Ease of reading the Bee Movie Script with Jpeg_viewer! ===
+    pub fn _has_extreme_aspect_ratio(&self, width: u32, height: u32) -> bool {
+        if width == 0 || height == 0 {
+            return false;
+        }
+
+        // Calculate ratio (smaller / larger)
+        let ratio = if width > height {
+            height as f32 / width as f32
+        } else {
+            width as f32 / height as f32
+        };
+
+        // If ratio is less than 0.1 (very tall or very wide)
+        ratio < 0.1
     }
 }
