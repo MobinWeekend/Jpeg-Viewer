@@ -3,7 +3,6 @@ use eframe::egui;
 
 impl ViewerApp {
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
-        // Keep the theme‑aware frame, just remove inner padding
         let style = ctx.style();
         let frame = egui::Frame::central_panel(&style).inner_margin(0.0);
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
@@ -14,17 +13,111 @@ impl ViewerApp {
                 return;
             }
 
-            // Update fit-to-window if needed
-            if self.b_fit_to_window {
-                if let Some(texture) = &self.texture {
-                    let available = ui.available_size();
-                    self.calculate_fit_zoom(texture.size_vec2(), available);
-                    self.b_fit_to_window = false;
+            // ---------- VIRTUAL TEXTURE LOADING STATE ----------
+            // Check if virtual texture is loading in background
+            if self.virtual_texture_loading {
+                let (total_tiles, prepared_tiles, progress_percent, is_extreme) = {
+                    if let Some(ref progress) = self.vt_progress {
+                        let total = self.vt_total_tiles;
+                        let prepared = progress.prepared_tiles;
+                        let progress_val = if total > 0 {
+                            prepared as f32 / total as f32
+                        } else {
+                            0.0
+                        };
+
+                        // Check if this is an extreme aspect ratio
+                        // b_fit_to_window will be false and b_zoom_used true for extreme ratios
+                        let extreme = !self.b_fit_to_window && self.b_zoom_used;
+                        (total, prepared, progress_val, extreme)
+                    } else {
+                        (0, 0, 0.0, false)
+                    }
+                };
+
+                let message = if total_tiles > 0 && prepared_tiles > 0 {
+                    format!(
+                        "Loading large image... ({}/{})",
+                        prepared_tiles, total_tiles
+                    )
+                } else {
+                    "Loading large image...".to_string()
+                };
+
+                let center = ui.available_rect_before_wrap().center();
+                let rect = Self::loading_content_rect(center);
+                let _response = ui.allocate_rect(rect, egui::Sense::hover());
+
+                let painter = ui.painter();
+
+                // Draw loading background
+                painter.rect_filled(rect, 12.0, ui.style().visuals.panel_fill);
+
+                // Draw loading content with progress
+                Self::draw_loading_content_with_progress(
+                    &painter,
+                    rect.center(),
+                    &message,
+                    progress_percent,
+                    ui.style(),
+                );
+
+                // Draw progress bar
+                if total_tiles > 0 && progress_percent > 0.0 {
+                    let bar_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.center().x, rect.center().y + 60.0),
+                        egui::vec2(200.0, 8.0),
+                    );
+                    painter.rect_filled(
+                        bar_rect,
+                        4.0,
+                        ui.style().visuals.widgets.noninteractive.bg_fill,
+                    );
+                    let fill_rect = egui::Rect::from_min_size(
+                        egui::pos2(bar_rect.min.x, bar_rect.min.y),
+                        egui::vec2(bar_rect.width() * progress_percent, bar_rect.height()),
+                    );
+                    painter.rect_filled(fill_rect, 4.0, ui.style().visuals.widgets.active.bg_fill);
+
+                    let percent = (progress_percent * 100.0) as u32;
+                    let font_id = egui::FontId::proportional(12.0);
+                    let text_color = ui.style().visuals.text_color();
+                    let galley =
+                        painter.layout(format!("{}%", percent), font_id, text_color, f32::INFINITY);
+                    painter.galley(
+                        egui::pos2(
+                            rect.center().x - galley.rect.width() / 2.0,
+                            bar_rect.max.y + 6.0,
+                        ),
+                        galley,
+                        text_color,
+                    );
+
+                    // Show extreme aspect ratio indicator
+                    if is_extreme {
+                        let font_id = egui::FontId::proportional(12.0);
+                        let text_color = ui.style().visuals.text_color();
+                        let galley = painter.layout(
+                            "📐 Extreme aspect ratio - showing at 1:1".to_string(),
+                            font_id,
+                            text_color,
+                            f32::INFINITY,
+                        );
+                        painter.galley(
+                            egui::pos2(
+                                rect.center().x - galley.rect.width() / 2.0,
+                                bar_rect.max.y + 24.0,
+                            ),
+                            galley,
+                            text_color,
+                        );
+                    }
                 }
+                return;
             }
 
-            // Handle loading states when no texture is available
-            if self.texture.is_none() {
+            // Handle loading states when no texture and no virtual texture
+            if self.texture.is_none() && self.virtual_texture.is_none() {
                 if self.b_is_loading {
                     let msg = if self.is_gif {
                         "Loading GIF..."
@@ -40,45 +133,257 @@ impl ViewerApp {
                 return;
             }
 
-            // Get the available rect once
+            // Get the available rect
             let available_rect = ui.available_rect_before_wrap();
             let center = available_rect.center();
 
-            // Render the image
-            let texture = self.texture.as_ref().unwrap();
-            let texture_size = texture.size_vec2();
-            let image_rect = self.get_image_rect(texture_size, center);
+            // ---------- VIRTUAL TEXTURE RENDERING ----------
+            if self.virtual_texture.is_some() {
+                let vt = self.virtual_texture.as_mut().unwrap();
 
-            // Allocate space for interaction using the same rect
+                // Check if virtual texture is ready
+                if !vt.is_ready() {
+                    let (total_tiles, prepared_tiles, progress_percent) = {
+                        let total = vt.total_tiles();
+                        let prepared = vt.prepared_tiles_count();
+                        let progress = vt.preparation_progress();
+                        (total, prepared, progress)
+                    };
+
+                    // Check if this is an extreme aspect ratio
+                    let is_extreme = !self.b_fit_to_window && self.b_zoom_used;
+
+                    let message = if total_tiles > 0 && prepared_tiles > 0 {
+                        format!(
+                            "Loading large image... ({}/{})",
+                            prepared_tiles, total_tiles
+                        )
+                    } else {
+                        "Loading large image...".to_string()
+                    };
+
+                    let center = ui.available_rect_before_wrap().center();
+                    let rect = Self::loading_content_rect(center);
+                    let _response = ui.allocate_rect(rect, egui::Sense::hover());
+
+                    let painter = ui.painter();
+
+                    painter.rect_filled(rect, 12.0, ui.style().visuals.panel_fill);
+                    Self::draw_loading_content_with_progress(
+                        &painter,
+                        rect.center(),
+                        &message,
+                        progress_percent,
+                        ui.style(),
+                    );
+
+                    if total_tiles > 0 && progress_percent > 0.0 {
+                        let bar_rect = egui::Rect::from_center_size(
+                            egui::pos2(rect.center().x, rect.center().y + 60.0),
+                            egui::vec2(200.0, 8.0),
+                        );
+                        painter.rect_filled(
+                            bar_rect,
+                            4.0,
+                            ui.style().visuals.widgets.noninteractive.bg_fill,
+                        );
+                        let fill_rect = egui::Rect::from_min_size(
+                            egui::pos2(bar_rect.min.x, bar_rect.min.y),
+                            egui::vec2(bar_rect.width() * progress_percent, bar_rect.height()),
+                        );
+                        painter.rect_filled(
+                            fill_rect,
+                            4.0,
+                            ui.style().visuals.widgets.active.bg_fill,
+                        );
+
+                        let percent = (progress_percent * 100.0) as u32;
+                        let font_id = egui::FontId::proportional(12.0);
+                        let text_color = ui.style().visuals.text_color();
+                        let galley = painter.layout(
+                            format!("{}%", percent),
+                            font_id,
+                            text_color,
+                            f32::INFINITY,
+                        );
+                        painter.galley(
+                            egui::pos2(
+                                rect.center().x - galley.rect.width() / 2.0,
+                                bar_rect.max.y + 6.0,
+                            ),
+                            galley,
+                            text_color,
+                        );
+
+                        // Show extreme aspect ratio indicator
+                        if is_extreme {
+                            let font_id = egui::FontId::proportional(12.0);
+                            let text_color = ui.style().visuals.text_color();
+                            let galley = painter.layout(
+                                "📐 Extreme aspect ratio - showing at 1:1".to_string(),
+                                font_id,
+                                text_color,
+                                f32::INFINITY,
+                            );
+                            painter.galley(
+                                egui::pos2(
+                                    rect.center().x - galley.rect.width() / 2.0,
+                                    bar_rect.max.y + 24.0,
+                                ),
+                                galley,
+                                text_color,
+                            );
+                        }
+                    }
+                    return;
+                }
+
+                // Update fit-to-window if needed for virtual texture
+                if self.b_fit_to_window {
+                    let (w, h) = vt.dimensions();
+                    let available = ui.available_size();
+                    if w > 0 && h > 0 {
+                        let zoom_x = available.x / w as f32;
+                        let zoom_y = available.y / h as f32;
+                        let fit_zoom = zoom_x.min(zoom_y).min(1.0);
+                        self.zoom = fit_zoom;
+                        self.pan = egui::Vec2::ZERO;
+                    }
+                    self.b_fit_to_window = false;
+                }
+
+                // IMPORTANT: Get the filter BEFORE borrowing vt mutably
+                let filter = self.get_texture_options().minification;
+
+                // Now borrow vt mutably and set the filter
+                let vt = self.virtual_texture.as_mut().unwrap();
+                vt.set_texture_filter(filter, ctx);
+
+                // Render using virtual texture
+                let viewport_size = ui.available_size();
+
+                // Create the painter and immediately use it in a limited scope
+                {
+                    let painter = ui.painter();
+                    vt.render(ctx, &painter, self.zoom, self.pan, viewport_size);
+                }
+
+                // Allocate the same rect for interaction (drag/pan)
+                let response = ui.allocate_rect(available_rect, egui::Sense::drag());
+
+                self.handle_image_mouse_input(ctx, &response);
+
+                // Show image counter
+                if !self.image_entries.is_empty() {
+                    self.render_image_counter(ui);
+                }
+
+                // Show loading indicator overlay if still loading
+                if self.b_is_loading {
+                    let painter = ui.painter();
+                    Self::draw_loading_overlay(&painter, available_rect, "Loading...");
+                }
+                return;
+            }
+
+            // ---------- NORMAL TEXTURE RENDERING ----------
+            // Use a block to limit the borrow of texture
+            let (texture_size, texture_id) = {
+                if let Some(texture) = &self.texture {
+                    (texture.size_vec2(), texture.id())
+                } else {
+                    // No texture available
+                    ui.centered_and_justified(|ui| {
+                        ui.label(egui::RichText::new("No image loaded").size(24.0));
+                    });
+                    return;
+                }
+            };
+
+            // Now texture is dropped and we can mutably borrow self
+            if self.b_fit_to_window {
+                let available = ui.available_size();
+                self.calculate_fit_zoom(texture_size, available);
+                self.b_fit_to_window = false;
+            }
+
+            let image_rect = self.get_image_rect(texture_size, center);
             let response = ui.allocate_rect(available_rect, egui::Sense::drag());
 
-            // Paint the image
             let painter = ui.painter();
             painter.image(
-                texture.id(),
+                texture_id,
                 image_rect,
                 egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
                 egui::Color32::WHITE,
             );
 
-            // Draw loading indicator overlay for GIF preview or background loading
             if self.b_is_loading {
-                // Show a subtle loading indicator overlay
+                let painter = ui.painter();
                 Self::draw_loading_overlay(&painter, available_rect, "Loading...");
             } else if self.is_gif && self.is_preview {
+                let painter = ui.painter();
                 Self::draw_loading_overlay(&painter, available_rect, "Loading full GIF...");
             }
 
-            // Handle mouse input
             self.handle_image_mouse_input(ctx, &response);
 
-            // Show image counter
             if !self.image_entries.is_empty() {
                 self.render_image_counter(ui);
             }
         });
     }
 
+    // New helper: Draw loading content with progress bar
+    fn draw_loading_content_with_progress(
+        painter: &egui::Painter,
+        center: egui::Pos2,
+        message: &str,
+        _progress: f32,
+        style: &egui::Style,
+    ) {
+        const SPINNER_SIZE: f32 = 48.0;
+        const TEXT_HEIGHT: f32 = 24.0;
+        const PROGRESS_HEIGHT: f32 = 40.0;
+
+        // Spinner
+        let time = painter.ctx().input(|i| i.time);
+        let angle = (time * 3.0) as f32;
+        let radius = SPINNER_SIZE * 0.35;
+        let segments = 8;
+        let spinner_center = egui::pos2(
+            center.x,
+            center.y - (TEXT_HEIGHT / 2.0 + 8.0) - PROGRESS_HEIGHT / 2.0,
+        );
+
+        for i in 0..segments {
+            let angle_offset = (i as f32 / segments as f32) * std::f32::consts::TAU;
+            let alpha = ((0.3 + 0.7 * ((time as f32 * 2.0 + angle_offset).sin() * 0.5 + 0.5))
+                * 255.0) as u8;
+            let x = spinner_center.x + radius * (angle + angle_offset).cos();
+            let y = spinner_center.y + radius * (angle + angle_offset).sin();
+            let size = 6.0;
+
+            painter.rect_filled(
+                egui::Rect::from_center_size(egui::pos2(x, y), egui::vec2(size, size)),
+                3.0,
+                egui::Color32::from_rgba_premultiplied(100, 150, 255, alpha),
+            );
+        }
+
+        // Text
+        let font_id = egui::FontId::proportional(18.0);
+        let text_color = style.visuals.text_color();
+        let galley = painter.layout(message.to_string(), font_id, text_color, f32::INFINITY);
+
+        let text_pos = egui::pos2(
+            center.x - galley.rect.width() / 2.0,
+            center.y + SPINNER_SIZE / 2.0 + 8.0 - PROGRESS_HEIGHT / 2.0,
+        );
+        painter.galley(text_pos, galley, text_color);
+    }
+
+    // ... rest of helper functions (render_error_ui, render_loading_ui, etc.) ...
     fn render_error_ui(&mut self, ui: &mut egui::Ui, error: &str) {
         ui.centered_and_justified(|ui| {
             ui.add_space(40.0);
@@ -129,7 +434,6 @@ impl ViewerApp {
         Self::draw_loading_content(&painter, rect.center(), message, ui.style());
     }
 
-    /// Draw loading overlay directly with painter (no UI allocation)
     fn draw_loading_overlay(painter: &egui::Painter, rect: egui::Rect, message: &str) {
         let center = rect.center();
         let content_rect = Self::loading_content_rect(center);
@@ -138,18 +442,16 @@ impl ViewerApp {
         Self::draw_loading_content(painter, center, message, &painter.ctx().style());
     }
 
-    /// Get the rect for loading content
     fn loading_content_rect(center: egui::Pos2) -> egui::Rect {
         const SPINNER_SIZE: f32 = 48.0;
         const TEXT_HEIGHT: f32 = 24.0;
         const PADDING: f32 = 32.0;
-        const CONTENT_WIDTH: f32 = 200.0;
+        const CONTENT_WIDTH: f32 = 300.0;
 
-        let content_height = SPINNER_SIZE + 16.0 + TEXT_HEIGHT + PADDING * 2.0;
+        let content_height = SPINNER_SIZE + 16.0 + TEXT_HEIGHT + 40.0 + PADDING * 2.0;
         egui::Rect::from_center_size(center, egui::vec2(CONTENT_WIDTH, content_height))
     }
 
-    /// Draw the loading spinner and text (shared between UI and overlay)
     fn draw_loading_content(
         painter: &egui::Painter,
         center: egui::Pos2,
@@ -159,7 +461,6 @@ impl ViewerApp {
         const SPINNER_SIZE: f32 = 48.0;
         const TEXT_HEIGHT: f32 = 24.0;
 
-        // Spinner
         let time = painter.ctx().input(|i| i.time);
         let angle = (time * 3.0) as f32;
         let radius = SPINNER_SIZE * 0.35;
@@ -181,14 +482,13 @@ impl ViewerApp {
             );
         }
 
-        // Text
         let font_id = egui::FontId::proportional(18.0);
         let text_color = style.visuals.text_color();
         let galley = painter.layout(message.to_string(), font_id, text_color, f32::INFINITY);
 
         let text_pos = egui::pos2(
             center.x - galley.rect.width() / 2.0,
-            center.y + SPINNER_SIZE / 2.0 + 16.0 - (TEXT_HEIGHT / 2.0 + 8.0),
+            center.y + SPINNER_SIZE / 2.0 + 8.0,
         );
         painter.galley(text_pos, galley, text_color);
     }
@@ -212,7 +512,6 @@ impl ViewerApp {
             rect.bottom() - 40.0,
         );
 
-        // Background pill
         let bg_rect = galley
             .rect
             .translate(egui::Vec2::new(pos.x, pos.y))

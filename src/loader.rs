@@ -10,6 +10,10 @@ use zip::ZipArchive;
 use sevenz_rust2::{ArchiveReader, Password};
 use unrar::Archive as RarArchive;
 
+// Constants matching those in virtual_texture.rs
+pub const MAX_GPU_TEXTURE_SIZE: u32 = 16384;
+pub const LARGE_IMAGE_THRESHOLD: u64 = 50_000_000;
+
 // ========== Image Loading ==========
 
 // Load full resolution image - returns Result with error message
@@ -34,15 +38,24 @@ pub fn load_full_resolution(path: PathBuf) -> Result<DynamicImage, String> {
     
     img.apply_orientation(orientation);
     
-    // Check for extreme dimensions that would crash egui
+    // Check for extreme dimensions - but ONLY if they would be too large for virtual texture
     let (width, height) = img.dimensions();
-    const MAX_TEXTURE_SIZE: u32 = 32768;
+    let pixel_count = width as u64 * height as u64;
     
-    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-        return Err(format!(
-            "Image too large: {}x{}\nMaximum supported size: {}x{}",
-            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
-        ));
+    // If the image is huge, we'll use virtual texturing - no need to check size here
+    let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
+        || width > MAX_GPU_TEXTURE_SIZE
+        || height > MAX_GPU_TEXTURE_SIZE;
+    
+    if !use_virtual {
+        // Only check size for images that won't use virtual texturing
+        const MAX_TEXTURE_SIZE: u32 = 32768;
+        if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+            return Err(format!(
+                "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+            ));
+        }
     }
     
     Ok(img)
@@ -86,14 +99,21 @@ pub fn load_zip_image(image: ArchiveImage) -> Result<DynamicImage, String> {
     let img = image::load_from_memory(&bytes)
         .map_err(|e| format!("Failed to decode image: {}", e))?;
     
-    // Check size
+    // Check size - but only if not using virtual texture
     let (width, height) = img.dimensions();
-    const MAX_TEXTURE_SIZE: u32 = 32768;
-    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-        return Err(format!(
-            "Image too large: {}x{}\nMaximum supported size: {}x{}",
-            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
-        ));
+    let pixel_count = width as u64 * height as u64;
+    let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
+        || width > MAX_GPU_TEXTURE_SIZE
+        || height > MAX_GPU_TEXTURE_SIZE;
+    
+    if !use_virtual {
+        const MAX_TEXTURE_SIZE: u32 = 32768;
+        if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+            return Err(format!(
+                "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+            ));
+        }
     }
     
     Ok(img)
@@ -129,14 +149,21 @@ pub fn load_7z_image(image: S7ArchiveImage) -> Result<DynamicImage, String> {
     let img = image::load_from_memory(&bytes)
         .map_err(|e| format!("Failed to decode image: {}", e))?;
     
-    // Check size
+    // Check size - but only if not using virtual texture
     let (width, height) = img.dimensions();
-    const MAX_TEXTURE_SIZE: u32 = 32768;
-    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-        return Err(format!(
-            "Image too large: {}x{}\nMaximum supported size: {}x{}",
-            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
-        ));
+    let pixel_count = width as u64 * height as u64;
+    let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
+        || width > MAX_GPU_TEXTURE_SIZE
+        || height > MAX_GPU_TEXTURE_SIZE;
+    
+    if !use_virtual {
+        const MAX_TEXTURE_SIZE: u32 = 32768;
+        if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+            return Err(format!(
+                "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+            ));
+        }
     }
     
     Ok(img)
@@ -174,14 +201,21 @@ pub fn load_rar_image(image: RarArchiveImage) -> Result<DynamicImage, String> {
             let img = image::load_from_memory(&bytes)
                 .map_err(|e| format!("Failed to decode image: {}", e))?;
             
-            // Check size
+            // Check size - but only if not using virtual texture
             let (width, height) = img.dimensions();
-            const MAX_TEXTURE_SIZE: u32 = 32768;
-            if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-                return Err(format!(
-                    "Image too large: {}x{}\nMaximum supported size: {}x{}",
-                    width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
-                ));
+            let pixel_count = width as u64 * height as u64;
+            let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
+                || width > MAX_GPU_TEXTURE_SIZE
+                || height > MAX_GPU_TEXTURE_SIZE;
+            
+            if !use_virtual {
+                const MAX_TEXTURE_SIZE: u32 = 32768;
+                if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
+                    return Err(format!(
+                        "Image too large: {}x{}\nMaximum supported size: {}x{}",
+                        width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
+                    ));
+                }
             }
             
             return Ok(img);

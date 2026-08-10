@@ -1,7 +1,9 @@
+use crate::app::virtual_texture::VirtualTexture;
 use crate::gif_animation::GifAnimation;
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
 use crate::shortcuts::InputBindings;
+use super::virtual_texture::PreparationProgress;
 use eframe::egui;
 use image::DynamicImage;
 use lru::LruCache;
@@ -95,6 +97,12 @@ pub struct ViewerApp {
     pub slideshow_last_advance: Instant,
     pub slideshow_has_advanced: bool,
     pub show_help_menu: bool,
+    pub virtual_texture: Option<VirtualTexture>,
+    pub virtual_texture_loading: bool,
+    pub virtual_texture_thread: Option<std::thread::JoinHandle<VirtualTexture>>,
+    // Store progress separately so we can show it even when vt is moved
+    pub vt_progress: Option<PreparationProgress>,
+    pub vt_total_tiles: usize,
 }
 
 impl Default for ViewerApp {
@@ -170,6 +178,11 @@ impl Default for ViewerApp {
             slideshow_last_advance: Instant::now(),
             slideshow_has_advanced: false,
             show_help_menu: false,
+            virtual_texture: None,
+            virtual_texture_loading: false,
+            virtual_texture_thread: None,
+            vt_progress: None,
+            vt_total_tiles: 0,
         }
     }
 }

@@ -10,5 +10,6 @@ mod ui;
 mod hardcoded_input;
 mod frame_limiter;
 mod aspect_ratio;
+mod virtual_texture;
 
 pub use types::ViewerApp;
