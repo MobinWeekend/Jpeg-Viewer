@@ -47,15 +47,12 @@ impl ViewerApp {
                 self.b_zoom_used = false;
             }
             ViewerCommand::OpenFile => {
-                // Stop slideshow when opening a file
-                if self.slideshow_enabled {
-                    self.slideshow_enabled = false;
-                    let _ = self.settings_manager.update(|settings| {
-                        settings.slideshow_enabled = false;
-                    });
-                    self.update_window_title(ctx);
-                }
+                self.update_window_title(ctx);
                 self.open_file_dialog();
+            }
+            ViewerCommand::OpenFolder => {
+                self.update_window_title(ctx);
+                self.open_folder_dialog();
             }
             ViewerCommand::ToggleFullscreen => {
                 self.toggle_fullscreen(ctx);

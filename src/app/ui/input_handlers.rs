@@ -5,11 +5,7 @@ use eframe::egui;
 
 impl ViewerApp {
     /// Handle mouse input on the image response
-    pub fn handle_image_mouse_input(
-        &mut self,
-        ctx: &egui::Context,
-        response: &egui::Response,
-    ) {
+    pub fn handle_image_mouse_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
         // Handle mouse commands (click bindings)
         for command in handle_mouse(
             ctx,
@@ -34,8 +30,7 @@ impl ViewerApp {
         }
 
         let mid_dragging = ctx.input(|i| {
-            i.pointer.button_down(egui::PointerButton::Middle)
-                && i.pointer.delta().length() > 0.0
+            i.pointer.button_down(egui::PointerButton::Middle) && i.pointer.delta().length() > 0.0
         });
 
         if mid_dragging {
@@ -72,11 +67,7 @@ impl ViewerApp {
     }
 
     /// Calculate the fit zoom for the image
-    pub fn calculate_fit_zoom(
-        &mut self,
-        texture_size: egui::Vec2,
-        available: egui::Vec2,
-    ) -> bool {
+    pub fn calculate_fit_zoom(&mut self, texture_size: egui::Vec2, available: egui::Vec2) -> bool {
         // Check if we should actually apply fit
         let should_fit = {
             let width = texture_size.x;
@@ -106,11 +97,7 @@ impl ViewerApp {
     }
 
     /// Get the image rectangle centered in available space
-    pub fn get_image_rect(
-        &self,
-        texture_size: egui::Vec2,
-        center: egui::Pos2,
-    ) -> egui::Rect {
+    pub fn get_image_rect(&self, texture_size: egui::Vec2, center: egui::Pos2) -> egui::Rect {
         let display_size = texture_size * self.zoom;
         egui::Rect::from_center_size(center + self.pan * self.zoom, display_size)
     }
@@ -119,6 +106,13 @@ impl ViewerApp {
     pub fn render_welcome_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let available = ui.available_height();
         let content_height = 256.0 + 16.0 + 60.0;
+
+        // Detect double-click on the welcome area
+        let rect = ui.available_rect_before_wrap();
+        let response = ui.interact(rect, ui.id(), egui::Sense::click());
+        if response.double_clicked() {
+            self.handle_command(ctx, ViewerCommand::OpenFile);
+        }
 
         ui.add_space((available - content_height).max(0.0) * 0.5);
 
@@ -147,17 +141,14 @@ impl ViewerApp {
                             self.handle_command(ctx, ViewerCommand::OpenFile);
                         }
                         ui.label(
-                            egui::RichText::new(" or drag and drop a photo, folder ")
-                                .size(24.0),
+                            egui::RichText::new(" or drag and drop a photo, folder ").size(24.0),
                         );
                     });
                 },
             );
             ui.label(
-                egui::RichText::new(
-                    "or a .zip, .7z, or .rar archive containing your photos.",
-                )
-                .size(24.0),
+                egui::RichText::new("or a .zip, .7z, or .rar archive containing your photos.")
+                    .size(24.0),
             );
         });
     }
@@ -180,7 +171,7 @@ impl ViewerApp {
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("Keys").size(18.0));
                     ui.add_space(8.0);
-                    
+
                     let shortcuts = [
                         ("◀/▶", "Navigate"),
                         ("F11/F", "Fullscreen"),
@@ -189,7 +180,7 @@ impl ViewerApp {
                         ("Home/End", "First/Last"),
                         ("Tab", "Settings"),
                     ];
-                    
+
                     for (i, (key, action)) in shortcuts.iter().enumerate() {
                         if i > 0 {
                             ui.add_space(4.0);

@@ -11,6 +11,7 @@ pub enum ViewerCommand {
     ResetZoom,
     MakeFit,
     OpenFile,
+    OpenFolder,
     ToggleFullscreen,
     JumpToFirst,
     JumpToLast,
@@ -67,6 +68,14 @@ impl KeyBinding {
             key,
             ctrl: Some(true),
             shift: Some(false),
+            alt: Some(false),
+        }
+    }
+    pub fn ctrl_shift(key: egui::Key) -> Self {
+        Self {
+            key,
+            ctrl: Some(true),
+            shift: Some(true),
             alt: Some(false),
         }
     }
@@ -193,6 +202,10 @@ impl Default for InputBindings {
         keyboard.insert(
             ViewerCommand::OpenFile,
             vec![KeyBinding::ctrl(egui::Key::O)],
+        );
+        keyboard.insert(
+            ViewerCommand::OpenFolder,
+            vec![KeyBinding::ctrl_shift(egui::Key::O)],
         );
 
         keyboard.insert(

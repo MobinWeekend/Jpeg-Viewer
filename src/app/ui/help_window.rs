@@ -162,7 +162,8 @@ impl ViewerApp {
                         // File Management
                         ui.label(egui::RichText::new("File Management").size(14.0).strong());
                         ui.add_space(4.0);
-                        Self::render_shortcut_row(ui, "Ctrl+O", "Open file/folder dialog");
+                        Self::render_shortcut_row(ui, "Ctrl+O", "Open file dialog");
+                        Self::render_shortcut_row(ui, "Ctrl+Shift+O", "Open folder dialog");
                         Self::render_shortcut_row(ui, "Delete", "Move current image to trash");
 
                         ui.add_space(4.0);

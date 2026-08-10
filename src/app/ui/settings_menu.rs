@@ -14,7 +14,7 @@ impl ViewerApp {
             .default_size([420.0, 620.0])
             .min_size([350.0, 450.0])
             .max_size([600.0, 800.0])
-            .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-10.0, 10.0))
+            .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-10.0, 42.0))
             .open(&mut open)
             .show(ctx, |ui| {
                 // ========== SCROLLABLE CONTENT ==========

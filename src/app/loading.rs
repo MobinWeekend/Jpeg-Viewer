@@ -328,21 +328,5 @@ impl ViewerApp {
         let entries = files.into_iter().map(ImageEntry::File).collect();
 
         self.set_image_entries(entries, 0);
-        self.zoom = 1.0;
-        self.gif_animation = None;
-        self.is_gif = false;
-        self.is_preview = false;
-        self.texture = None;
-        self.image_error = None;
-        self.receiver = None;
-        self.full_image_receiver = None;
-        self.full_gif_receiver = None;
-        // Reset preload state (already done in set_image_entries, but we repeat for clarity)
-        self.image_cache.clear();
-        self.preloading_indices.clear();
-        self.preload_tasks.clear();
-        self.preload_workers = 0;
-        self.preload_generation = self.preload_generation.wrapping_add(1);
-        self.should_stop_caching = false;
     }
 }

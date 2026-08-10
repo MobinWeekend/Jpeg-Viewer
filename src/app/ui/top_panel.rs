@@ -11,14 +11,31 @@ impl ViewerApp {
                 // Open button with icon
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("📂 Open").size(14.0))
+                        egui::Button::new(egui::RichText::new("📂 Open File").size(14.0))
                             .min_size(egui::vec2(70.0, 28.0)),
                     )
-                    .on_hover_text("Load an Image")
+                    .on_hover_text("Load an Image or Archive")
                     .clicked()
                 {
                     self.handle_command(ctx, ViewerCommand::OpenFile);
                 }
+                ui.add_space(4.0);
+
+                // Folder button
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new("📁 Folder").size(14.0))
+                            .min_size(egui::vec2(70.0, 28.0)),
+                    )
+                    .on_hover_text("Open a Folder of Images")
+                    .clicked()
+                {
+                    self.handle_command(ctx, ViewerCommand::OpenFolder);
+                }
+                ui.add_space(4.0);
+
+                // Navigation buttons
+                // ... rest of the toolbar
                 ui.add_space(4.0);
 
                 // Navigation buttons
@@ -62,7 +79,7 @@ impl ViewerApp {
                     };
                     let slideshow_button = ui
                         .add(
-                            egui::Button::new(egui::RichText::new(slideshow_icon).size(14.0))
+                            egui::Button::new(egui::RichText::new(slideshow_icon).size(24.0))
                                 .min_size(egui::vec2(32.0, 28.0)),
                         )
                         .on_hover_text(slideshow_tooltip);
@@ -82,7 +99,7 @@ impl ViewerApp {
                         // Speed controls - Slower
                         let slower_button = ui
                             .add(
-                                egui::Button::new(egui::RichText::new("↘").size(12.0))
+                                egui::Button::new(egui::RichText::new("↘").size(24.0))
                                     .min_size(egui::vec2(28.0, 24.0)),
                             )
                             .on_hover_text("Slower slideshow");
@@ -93,7 +110,7 @@ impl ViewerApp {
                         // Speed controls - Faster
                         let faster_button = ui
                             .add(
-                                egui::Button::new(egui::RichText::new("↗").size(12.0))
+                                egui::Button::new(egui::RichText::new("↗").size(24.0))
                                     .min_size(egui::vec2(28.0, 24.0)),
                             )
                             .on_hover_text("Faster slideshow");
@@ -103,7 +120,7 @@ impl ViewerApp {
 
                         // Random indicator
                         if self.slideshow_random {
-                            ui.label(egui::RichText::new("🎲").size(12.0));
+                            ui.label(egui::RichText::new("Random").size(12.0));
                         }
                     }
 
@@ -123,7 +140,7 @@ impl ViewerApp {
 
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("+").size(16.0))
+                        egui::Button::new(egui::RichText::new("+").size(20.0))
                             .min_size(egui::vec2(24.0, 24.0)),
                     )
                     .clicked()
@@ -133,7 +150,7 @@ impl ViewerApp {
 
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("−").size(16.0))
+                        egui::Button::new(egui::RichText::new("−").size(20.0))
                             .min_size(egui::vec2(24.0, 24.0)),
                     )
                     .clicked()
@@ -190,10 +207,7 @@ impl ViewerApp {
 
                     // Aspect ratio
                     if let Some(label) = aspect_ratio_str {
-                        ui.label(
-                            egui::RichText::new(label)
-                                .size(14.0)
-                        );
+                        ui.label(egui::RichText::new(label).size(14.0));
                     } else {
                         /*let ratio_display = AspectRatio::format_as_ratio(width, height);
                         ui.label(

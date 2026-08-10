@@ -29,13 +29,15 @@ impl ViewerApp {
         self.handle_delete_key(ctx);
 
         // Mouse buttons
-        for command in handle_mouse(
-            ctx,
-            &self.input_bindings,
-            ctx.is_pointer_over_area(),
-            self.b_ctrl_invert,
-        ) {
-            self.handle_command(ctx, command);
+        if !self.show_settings_menu && !self.show_help_menu {
+            for command in handle_mouse(
+                ctx,
+                &self.input_bindings,
+                ctx.is_pointer_over_area(),
+                self.b_ctrl_invert,
+            ) {
+                self.handle_command(ctx, command);
+            }
         }
 
         // Drag & drop

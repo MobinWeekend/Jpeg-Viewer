@@ -76,7 +76,8 @@ AVIF, BMP, DDS, EXR, GIF (with speed controls), HDR, ICO, JPEG/JPG, PNG, PNM, QO
 ### File Management
 | Action | Shortcut |
 |---|---|
-| Open file/folder dialog | `Ctrl+O` |
+| Open file dialog | `Ctrl+O` |
+| Open folder dialog | `Ctrl+Shift+O` |
 | Move current image to trash | `Delete` |
 
 ### General

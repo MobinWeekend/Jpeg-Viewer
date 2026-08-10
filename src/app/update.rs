@@ -205,6 +205,7 @@ impl eframe::App for ViewerApp {
                                         self.b_fit_to_window = false;
                                         self.zoom = 1.0;
                                         self.pan = egui::Vec2::ZERO;
+                                        self.pan = egui::Vec2::new(0.0, -(height as f32 / 2.0));
                                         self.b_zoom_used = true;
                                     } else {
                                         self.b_fit_to_window = true;

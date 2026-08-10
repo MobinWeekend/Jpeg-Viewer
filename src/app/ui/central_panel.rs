@@ -98,7 +98,7 @@ impl ViewerApp {
                         let font_id = egui::FontId::proportional(12.0);
                         let text_color = ui.style().visuals.text_color();
                         let galley = painter.layout(
-                            "📐 Extreme aspect ratio - showing at 1:1".to_string(),
+                            "Extreme aspect ratio - showing at 1:1".to_string(),
                             font_id,
                             text_color,
                             f32::INFINITY,
@@ -155,11 +155,11 @@ impl ViewerApp {
 
                     let message = if total_tiles > 0 && prepared_tiles > 0 {
                         format!(
-                            "Loading large image... ({}/{})",
+                            "Loading huge image... ({}/{})",
                             prepared_tiles, total_tiles
                         )
                     } else {
-                        "Loading large image...".to_string()
+                        "Loading huge image...".to_string()
                     };
 
                     let center = ui.available_rect_before_wrap().center();

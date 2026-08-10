@@ -50,15 +50,32 @@ impl ViewerApp {
         }
     }
 
+    fn stop_slideshow(&mut self) {
+        if self.slideshow_enabled {
+            self.slideshow_enabled = false;
+            let _ = self.settings_manager.update(|settings| {
+                settings.slideshow_enabled = false;
+            });
+        }
+    }
+
     pub fn open_file_dialog(&mut self) {
+        // Stop slideshow when opening a file
+        self.stop_slideshow();
         let mut extensions = Vec::new();
         extensions.extend_from_slice(IMAGE_EXT);
         extensions.extend_from_slice(ARCHIVE_EXT);
-
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Images and Archives", &extensions)
-            .pick_file()
-        {
+        // Create the dialog with file picker
+        let dialog = rfd::FileDialog::new().add_filter("Images and Archives", &extensions);
+        if let Some(path) = dialog.clone().pick_file() {
+            self.open_path(path);
+            return;
+        }
+    }
+    pub fn open_folder_dialog(&mut self) {
+        // Stop slideshow when opening a folder
+        self.stop_slideshow();
+        if let Some(path) = rfd::FileDialog::new().pick_folder() {
             self.open_path(path);
         }
     }
