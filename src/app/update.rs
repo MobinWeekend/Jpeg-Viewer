@@ -1,5 +1,3 @@
-// src/app/update.rs
-
 use super::types::ViewerApp;
 use super::virtual_texture::VirtualTexture;
 use eframe::egui;
@@ -11,15 +9,22 @@ use super::virtual_texture::{LARGE_IMAGE_THRESHOLD, MAX_GPU_TEXTURE_SIZE};
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+
         // Initialize logo texture
         if self.logo_texture.is_none() {
-            let image = image::load_from_memory(include_bytes!("../../assets/icon.ico"))
-                .unwrap()
-                .into_rgba8();
-
-            let size = [image.width() as usize, image.height() as usize];
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-            self.logo_texture = Some(ctx.load_texture("logo", color_image, Default::default()));
+            match image::load_from_memory(include_bytes!("../../assets/icon.ico")) {
+                Ok(img) => {
+                    let image = img.into_rgba8();
+                    let size = [image.width() as usize, image.height() as usize];
+                    let color_image =
+                        egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+                    self.logo_texture =
+                        Some(ctx.load_texture("logo", color_image, Default::default()));
+                }
+                Err(e) => {
+                    eprintln!("Failed to load logo icon: {}. Using fallback.", e);
+                }
+            }
         }
 
         // Load frame limiter settings on first run
@@ -32,15 +37,12 @@ impl eframe::App for ViewerApp {
             self.load_slideshow_settings();
         }
 
-        // Handle startup fullscreen
-        static mut STARTUP_FULLSCREEN_SET: bool = false;
-        unsafe {
-            if !STARTUP_FULLSCREEN_SET {
-                STARTUP_FULLSCREEN_SET = true;
-                let settings = self.settings_manager.get();
-                if settings.start_fullscreen {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
-                }
+        // ========== STARTUP FULLSCREEN ==========
+        if !self.startup_fullscreen_handled {
+            self.startup_fullscreen_handled = true;
+            let settings = self.settings_manager.get();
+            if settings.start_fullscreen {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
             }
         }
 

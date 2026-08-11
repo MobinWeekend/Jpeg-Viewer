@@ -113,6 +113,7 @@ pub struct ViewerApp {
     pub vt_progress: Option<PreparationProgress>,
     pub vt_total_tiles: usize,
     pub file_type_detection: Option<FileTypeDetection>,
+    pub startup_fullscreen_handled: bool,
 }
 
 impl Default for ViewerApp {
@@ -195,6 +196,7 @@ impl Default for ViewerApp {
             vt_progress: None,
             vt_total_tiles: 0,
             file_type_detection: None,
+            startup_fullscreen_handled: false,
         }
     }
 }
