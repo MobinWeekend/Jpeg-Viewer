@@ -109,19 +109,49 @@ impl ViewerApp {
     }
 
     /// Check whether the entry at the given index is a GIF (should not be cached)
+    /// Check whether the entry at the given index is actually a GIF (by content)
     fn is_gif_entry(&self, index: usize) -> bool {
         if let Some(entry) = self.image_entries.get(index) {
+            // Check the actual content, not the extension
             match entry {
                 ImageEntry::File(path) => {
-                    if let Some(ext) = path.extension() {
-                        ext.eq_ignore_ascii_case("gif")
-                    } else {
-                        false
+                    // Read first few bytes to check magic number
+                    if let Ok(file) = std::fs::File::open(path) {
+                        use std::io::Read;
+                        let mut header = [0u8; 6];
+                        if let Ok(_reader) =
+                            std::io::BufReader::new(file).read_exact(&mut header)
+                        {
+                            return &header[0..6] == b"GIF87a" || &header[0..6] == b"GIF89a";
+                        }
                     }
+                    false
                 }
-                ImageEntry::Zip(zip) => zip.name.to_lowercase().ends_with(".gif"),
-                ImageEntry::S7z(s7z) => s7z.name.to_lowercase().ends_with(".gif"),
-                ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
+                ImageEntry::Zip(zip) => {
+                    // For zip entries, we need to read the content
+                    if let Ok(file) = std::fs::File::open(&zip.archive_path) {
+                        if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                            if let Ok(mut entry) = archive.by_index(zip.entry_index) {
+                                use std::io::Read;
+                                let mut header = [0u8; 6];
+                                if entry.read_exact(&mut header).is_ok() {
+                                    return &header[0..6] == b"GIF87a"
+                                        || &header[0..6] == b"GIF89a";
+                                }
+                            }
+                        }
+                    }
+                    false
+                }
+                ImageEntry::S7z(s7z) => {
+                    // For 7z, check if the name suggests GIF (can't easily check content without full extraction)
+                    // But we can check the extension as a hint for 7z since content inspection is expensive
+                    s7z.name.to_lowercase().ends_with(".gif")
+                }
+                ImageEntry::Rar(rar) => {
+                    // For RAR, same as 7z
+                    rar.name.to_lowercase().ends_with(".gif")
+                }
             }
         } else {
             false

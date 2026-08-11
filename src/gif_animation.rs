@@ -4,9 +4,9 @@ use std::time::{Duration, Instant};
 #[derive(Clone)]
 pub struct GifAnimation {
     frames: Vec<RgbaImage>,
-    delays: Vec<Duration>,
-    current_frame: usize,
-    last_update: Instant,
+    pub delays: Vec<Duration>,
+    pub current_frame: usize,
+    pub last_update: Instant,
     pub is_playing: bool,
     pub speed_multiplier: f32,
 }
@@ -86,7 +86,9 @@ impl GifAnimation {
         self.frames = full_gif.frames;
         self.delays = full_gif.delays;
         self.current_frame = 0;
+        // IMPORTANT: Reset the timer to NOW so animation starts immediately
         self.last_update = Instant::now();
+        // Start playing automatically
         self.is_playing = true;
         self.speed_multiplier = full_gif.speed_multiplier;
     }
@@ -96,12 +98,14 @@ impl GifAnimation {
             return None;
         }
         
-        if self.is_playing {
+        // If we have more than 1 frame and we're playing, advance the frame
+        if self.is_playing && self.frames.len() > 1 {
             let elapsed = self.last_update.elapsed();
             let current_delay = self.delays[self.current_frame];
             
+            // Apply speed multiplier
             let adjusted_delay = if self.speed_multiplier > 0.0 {
-                current_delay.mul_f32(1.0 / self.speed_multiplier)
+                Duration::from_micros((current_delay.as_micros() as f32 / self.speed_multiplier) as u64)
             } else {
                 current_delay
             };

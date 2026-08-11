@@ -11,5 +11,6 @@ mod hardcoded_input;
 mod frame_limiter;
 mod aspect_ratio;
 mod virtual_texture;
+mod file_detection;
 
 pub use types::ViewerApp;

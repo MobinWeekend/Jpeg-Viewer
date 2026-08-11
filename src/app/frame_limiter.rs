@@ -6,6 +6,10 @@ use super::types::ViewerApp;
 impl ViewerApp {
     /// Check if we should request a repaint based on idle state and FPS limit
     pub fn should_request_repaint(&mut self, ctx: &egui::Context) -> bool {
+        // Always repaint if we're loading a full GIF
+        if self.full_gif_loading {
+            return self.apply_max_fps_limit();
+        }
         // Always repaint if we have an animated GIF playing
         if self.is_animating {
             return self.apply_max_fps_limit();

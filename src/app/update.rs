@@ -1,3 +1,5 @@
+// src/app/update.rs
+
 use super::types::ViewerApp;
 use super::virtual_texture::VirtualTexture;
 use eframe::egui;
@@ -102,7 +104,7 @@ impl eframe::App for ViewerApp {
                 match result {
                     Ok(loaded_image) => {
                         self.add_to_cache(ctx, self.current_index, loaded_image.clone());
-
+                        let mut should_spawn_full_gif = false;
                         match loaded_image {
                             super::types::LoadedImage::Static(img) => {
                                 let (width, height) = img.dimensions();
@@ -151,6 +153,9 @@ impl eframe::App for ViewerApp {
                                     self.image_error = None;
                                     self.b_is_loading = false;
 
+                                    // Detect file type (even if using virtual texture)
+                                    self.detect_current_file_type();
+
                                     ctx.request_repaint();
                                 } else {
                                     // Normal upload for small images
@@ -162,6 +167,7 @@ impl eframe::App for ViewerApp {
                                             "Image too large: {}x{}\nMaximum supported size: {}x{}",
                                             width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
                                         ));
+                                        self.detect_current_file_type();
                                         ctx.request_repaint();
                                         return;
                                     }
@@ -182,6 +188,9 @@ impl eframe::App for ViewerApp {
                                     self.virtual_texture = None;
                                     self.virtual_texture_loading = false;
                                     self.b_fit_to_window = true;
+
+                                    // Detect file type after successful load
+                                    self.detect_current_file_type();
                                 }
                             }
                             super::types::LoadedImage::Animated(gif, is_preview) => {
@@ -192,13 +201,37 @@ impl eframe::App for ViewerApp {
                                 self.virtual_texture = None;
                                 self.virtual_texture_loading = false;
                                 self.b_fit_to_window = true;
+
+                                // Detect file type after GIF load
+                                self.detect_current_file_type();
+
+                                // Spawn full GIF loading if this is a preview
+                                if is_preview {
+                                    println!(
+                                        "GIF preview loaded, will spawn full GIF load after loading flag clears"
+                                    );
+                                    should_spawn_full_gif = true;
+                                } else {
+                                    println!(
+                                        "Full GIF loaded directly ({} frames)",
+                                        self.gif_animation
+                                            .as_ref()
+                                            .map(|g| g.frame_count())
+                                            .unwrap_or(0)
+                                    );
+                                }
                             }
                         }
-
-                        self.b_is_loading = false;
+                        self.b_is_loading = false; // NOW clear the loading flag
                         self.update_window_title(ctx);
                         self.preload_adjacent_images();
                         self.mark_interaction();
+
+                        // Now spawn the full GIF loading if needed
+                        if should_spawn_full_gif {
+                            println!("Spawning full GIF load now...");
+                            self.spawn_full_gif_loading();
+                        }
                     }
                     Err(error) => {
                         self.b_is_loading = false;
@@ -209,6 +242,10 @@ impl eframe::App for ViewerApp {
                         self.is_preview = false;
                         self.virtual_texture = None;
                         self.virtual_texture_loading = false;
+
+                        // Detect file type even on error (so we can suggest rename)
+                        self.detect_current_file_type();
+
                         eprintln!(
                             "Error loading image: {}",
                             self.image_error.as_ref().unwrap()
@@ -237,6 +274,10 @@ impl eframe::App for ViewerApp {
                             self.virtual_texture_loading = false;
                             self.vt_progress = None;
                             self.b_fit_to_window = true;
+
+                            // Detect file type when virtual texture becomes ready
+                            self.detect_current_file_type();
+
                             ctx.request_repaint();
                             println!("Virtual texture ready!");
                         }
@@ -245,6 +286,7 @@ impl eframe::App for ViewerApp {
                             self.virtual_texture_loading = false;
                             self.vt_progress = None;
                             self.image_error = Some("Failed to prepare large image".to_string());
+                            self.detect_current_file_type();
                         }
                     }
                 } else {
@@ -270,6 +312,10 @@ impl eframe::App for ViewerApp {
                     self.b_fit_to_window = true;
                     self.full_image_receiver = None;
                     self.cache_current_image();
+
+                    // Detect file type after full image upgrade
+                    self.detect_current_file_type();
+
                     self.update_window_title(ctx);
                     self.mark_interaction();
                 } else {
@@ -280,25 +326,76 @@ impl eframe::App for ViewerApp {
 
         // ========== FULL GIF UPGRADE ==========
         if let Some(rx) = &self.full_gif_receiver {
-            if let Ok(result) = rx.try_recv() {
-                self.full_gif_receiver = None;
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.full_gif_receiver = None;
+                    self.full_gif_loading = false;
+                    match result {
+                        Ok(loaded_image) => {
+                            if self.is_gif && self.is_preview {
+                                if let super::types::LoadedImage::Animated(full_gif, _) =
+                                    loaded_image
+                                {
+                                    let frame_count = full_gif.frame_count();
+                                    println!(
+                                        "Full GIF loaded with {} frames, upgrading...",
+                                        frame_count
+                                    );
 
-                match result {
-                    Ok(loaded_image) => {
-                        if let Some(gif) = &mut self.gif_animation {
-                            if let super::types::LoadedImage::Animated(full_gif, _) = loaded_image {
-                                gif.upgrade_to_full(full_gif);
-                                self.is_preview = false;
-                                self.update_window_title(ctx);
-                                self.update_gif_texture(ctx);
-                                self.mark_interaction();
+                                    if let Some(mut gif) = self.gif_animation.take() {
+                                        gif.upgrade_to_full(full_gif);
+                                        gif.is_playing = true;
+                                        gif.last_update = Instant::now();
+                                        self.gif_animation = Some(gif);
+                                    }
+
+                                    self.is_preview = false;
+                                    self.update_window_title(ctx);
+                                    self.update_gif_texture(ctx);
+                                    self.detect_current_file_type();
+                                    self.mark_interaction();
+
+                                    if let Some(gif) = &self.gif_animation {
+                                        println!(
+                                            "GIF upgraded! {} frames, playing: {}",
+                                            gif.frame_count(),
+                                            gif.is_playing
+                                        );
+                                    }
+
+                                    ctx.request_repaint();
+                                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                                }
+                            } else {
+                                println!("Full GIF loaded but preview not showing");
                             }
                         }
-                    }
-                    Err(error) => {
-                        eprintln!("Failed to load full GIF: {}", error);
+                        Err(error) => {
+                            eprintln!("Failed to load full GIF: {}", error);
+                            self.is_preview = false;
+                        }
                     }
                 }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(50));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.full_gif_receiver = None;
+                    self.full_gif_loading = false;
+                    eprintln!("Full GIF loading task was cancelled");
+                }
+            }
+        } else if self.full_gif_loading {
+            self.full_gif_loading = false;
+            eprintln!("Full GIF loading flag was stuck - resetting");
+        }
+
+        // Cancel loading if we navigated away
+        if !self.is_gif || !self.is_preview {
+            if self.full_gif_loading || self.full_gif_receiver.is_some() {
+                self.full_gif_receiver = None;
+                self.full_gif_loading = false;
+                println!("Cancelled full GIF loading - no longer viewing a GIF preview");
             }
         }
 
@@ -360,7 +457,6 @@ impl eframe::App for ViewerApp {
 
 impl Drop for ViewerApp {
     fn drop(&mut self) {
-        // Wait for virtual texture background thread to finish
         if let Some(handle) = self.virtual_texture_thread.take() {
             let _ = handle.join();
         }
@@ -381,8 +477,20 @@ impl ViewerApp {
 
                 self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
 
-                if gif.is_playing {
-                    ctx.request_repaint();
+                if gif.is_playing && gif.is_animated() {
+                    let current_delay = if gif.current_frame < gif.delays.len() {
+                        gif.delays[gif.current_frame]
+                    } else {
+                        std::time::Duration::from_millis(100)
+                    };
+                    let adjusted_delay = if gif.speed_multiplier > 0.0 {
+                        std::time::Duration::from_micros(
+                            (current_delay.as_micros() as f32 / gif.speed_multiplier) as u64,
+                        )
+                    } else {
+                        current_delay
+                    };
+                    ctx.request_repaint_after(adjusted_delay);
                 }
             }
         }

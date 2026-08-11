@@ -28,6 +28,13 @@ pub struct CachedImage {
     pub index: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct FileTypeDetection {
+    pub detected_extension: String,
+    pub current_extension: Option<String>,
+    pub mismatch: bool,
+}
+
 // Preload task - receiver returns (index, result, generation)
 pub struct PreloadTask {
     pub receiver: Receiver<(usize, Result<LoadedImage, String>, u64)>,
@@ -41,6 +48,7 @@ pub struct ViewerApp {
     pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
     pub full_image_receiver: Option<Receiver<DynamicImage>>,
     pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>,
+    pub full_gif_loading: bool,
     pub zoom: f32,
     pub pan: egui::Vec2,
     pub current_directory: Option<PathBuf>,
@@ -103,6 +111,7 @@ pub struct ViewerApp {
     // Store progress separately so we can show it even when vt is moved
     pub vt_progress: Option<PreparationProgress>,
     pub vt_total_tiles: usize,
+    pub file_type_detection: Option<FileTypeDetection>,
 }
 
 impl Default for ViewerApp {
@@ -119,6 +128,7 @@ impl Default for ViewerApp {
             receiver: None,
             full_image_receiver: None,
             full_gif_receiver: None,
+            full_gif_loading: false,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
             current_directory: None,
@@ -183,6 +193,7 @@ impl Default for ViewerApp {
             virtual_texture_thread: None,
             vt_progress: None,
             vt_total_tiles: 0,
+            file_type_detection: None,
         }
     }
 }
@@ -335,5 +346,70 @@ impl ViewerApp {
 
         // If ratio is less than 0.1 (very tall or very wide)
         ratio < 0.1
+    }
+
+    /// Spawn a background task to load the full GIF (all frames)
+    pub fn spawn_full_gif_loading(&mut self) {
+        println!(
+            "[spawn_full_gif_loading] called: is_gif={}, is_preview={}, has_receiver={}, b_is_loading={}",
+            self.is_gif,
+            self.is_preview,
+            self.full_gif_receiver.is_some(),
+            self.b_is_loading
+        );
+
+        if !self.is_gif || !self.is_preview || self.full_gif_receiver.is_some() || self.b_is_loading
+        {
+            println!("[spawn_full_gif_loading] skipping - conditions not met");
+            return;
+        }
+
+        if let Some(entry) = self.image_entries.get(self.current_index).cloned() {
+            use rayon::spawn;
+            use std::sync::mpsc::channel;
+
+            let (tx, rx) = channel();
+            self.full_gif_receiver = Some(rx);
+            self.full_gif_loading = true;
+
+            println!(
+                "[spawn_full_gif_loading] spawning task for index {}",
+                self.current_index
+            );
+
+            spawn(move || {
+                println!(
+                    "[spawn_full_gif_loading] task started, about to call load_entry_content_full_gif"
+                );
+                let result =
+                    std::panic::catch_unwind(|| super::loading::load_entry_content_full_gif(entry));
+                match result {
+                    Ok(Ok(loaded_image)) => {
+                        println!("[spawn_full_gif_loading] load_entry_content_full_gif succeeded");
+                        let _ = tx.send(Ok(loaded_image));
+                    }
+                    Ok(Err(e)) => {
+                        eprintln!(
+                            "[spawn_full_gif_loading] load_entry_content_full_gif error: {}",
+                            e
+                        );
+                        let _ = tx.send(Err(e));
+                    }
+                    Err(panic) => {
+                        eprintln!(
+                            "[spawn_full_gif_loading] PANIC in full GIF loader: {:?}",
+                            panic
+                        );
+                        let _ = tx.send(Err("Panic in full GIF loader".to_string()));
+                    }
+                }
+                println!("[spawn_full_gif_loading] task finished");
+            });
+        } else {
+            println!(
+                "[spawn_full_gif_loading] no entry found for index {}",
+                self.current_index
+            );
+        }
     }
 }

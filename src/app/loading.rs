@@ -49,99 +49,14 @@ impl ViewerApp {
         self.b_fit_to_window = true;
         let (tx, rx) = channel();
 
-        // Check if this is a GIF
-        let is_gif = match &entry {
-            ImageEntry::File(path) => {
-                if let Some(ext) = path.extension() {
-                    ext.eq_ignore_ascii_case("gif")
-                } else {
-                    false
-                }
-            }
-            ImageEntry::Zip(zip) => zip.name.to_lowercase().ends_with(".gif"),
-            ImageEntry::S7z(s7z) => s7z.name.to_lowercase().ends_with(".gif"),
-            ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
-        };
+        // Load using content detection - no extension-based branching
+        let entry_clone = entry.clone();
+        spawn(move || {
+            let result = load_entry_content(entry_clone);
+            let _ = tx.send(result);
+        });
 
-        if is_gif {
-            // For GIFs: First load preview frame immediately, then full GIF in background
-            let entry_clone = entry.clone();
-            let (preview_tx, preview_rx) = channel();
-
-            // Load preview frame immediately
-            spawn(move || {
-                let preview = match entry_clone {
-                    ImageEntry::File(path) => crate::loader::load_gif_preview(path)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                    ImageEntry::Zip(zip) => crate::loader::load_zip_gif_preview(zip)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                    ImageEntry::S7z(s7z) => crate::loader::load_7z_gif_preview(s7z)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                    ImageEntry::Rar(rar) => crate::loader::load_rar_gif_preview(rar)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                };
-                if let Some(img) = preview {
-                    let _ = preview_tx.send(Ok(img));
-                } else {
-                    let _ = preview_tx.send(Err("Failed to load GIF preview".to_string()));
-                }
-            });
-
-            // Set up receiver for preview
-            self.receiver = Some(preview_rx);
-
-            // Start loading full GIF in background
-            let entry_clone2 = entry.clone();
-            let (full_tx, full_rx) = channel();
-            spawn(move || {
-                let full =
-                    match entry_clone2 {
-                        ImageEntry::File(path) => {
-                            crate::loader::load_gif(path).map(|g| LoadedImage::Animated(g, false))
-                        }
-                        ImageEntry::Zip(zip) => crate::loader::load_zip_gif(zip)
-                            .map(|g| LoadedImage::Animated(g, false)),
-                        ImageEntry::S7z(s7z) => {
-                            crate::loader::load_7z_gif(s7z).map(|g| LoadedImage::Animated(g, false))
-                        }
-                        ImageEntry::Rar(rar) => crate::loader::load_rar_gif(rar)
-                            .map(|g| LoadedImage::Animated(g, false)),
-                    };
-                if let Some(img) = full {
-                    let _ = full_tx.send(Ok(img));
-                } else {
-                    let _ = full_tx.send(Err("Failed to load full GIF".to_string()));
-                }
-            });
-
-            self.full_gif_receiver = Some(full_rx);
-        } else {
-            // Non-GIF: load full resolution directly - send Result through channel
-            spawn(move || {
-                let result = match entry {
-                    ImageEntry::File(path) => match crate::loader::load_full_resolution(path) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                    ImageEntry::Zip(zip) => match crate::loader::load_zip_image(zip) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                    ImageEntry::S7z(s7z) => match crate::loader::load_7z_image(s7z) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                    ImageEntry::Rar(rar) => match crate::loader::load_rar_image(rar) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                };
-
-                let _ = tx.send(result);
-            });
-
-            self.receiver = Some(rx);
-        }
+        self.receiver = Some(rx);
     }
 
     /// Load from cache and clear texture if not found (used for initial load)
@@ -197,98 +112,14 @@ impl ViewerApp {
         self.b_fit_to_window = true;
         let (tx, rx) = channel();
 
-        // Check if this is a GIF
-        let is_gif = match &entry {
-            ImageEntry::File(path) => {
-                if let Some(ext) = path.extension() {
-                    ext.eq_ignore_ascii_case("gif")
-                } else {
-                    false
-                }
-            }
-            ImageEntry::Zip(zip) => zip.name.to_lowercase().ends_with(".gif"),
-            ImageEntry::S7z(s7z) => s7z.name.to_lowercase().ends_with(".gif"),
-            ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
-        };
+        // Load using content detection - no extension-based branching
+        let entry_clone = entry.clone();
+        spawn(move || {
+            let result = load_entry_content(entry_clone);
+            let _ = tx.send(result);
+        });
 
-        if is_gif {
-            // For GIFs: First load preview frame immediately, then full GIF in background
-            let entry_clone = entry.clone();
-            let (preview_tx, preview_rx) = channel();
-
-            // Load preview frame immediately
-            spawn(move || {
-                let preview = match entry_clone {
-                    ImageEntry::File(path) => crate::loader::load_gif_preview(path)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                    ImageEntry::Zip(zip) => crate::loader::load_zip_gif_preview(zip)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                    ImageEntry::S7z(s7z) => crate::loader::load_7z_gif_preview(s7z)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                    ImageEntry::Rar(rar) => crate::loader::load_rar_gif_preview(rar)
-                        .map(|g| LoadedImage::Animated(g, true)),
-                };
-                if let Some(img) = preview {
-                    let _ = preview_tx.send(Ok(img));
-                } else {
-                    let _ = preview_tx.send(Err("Failed to load GIF preview".to_string()));
-                }
-            });
-
-            self.receiver = Some(preview_rx);
-
-            // Start loading full GIF in background
-            let entry_clone2 = entry.clone();
-            let (full_tx, full_rx) = channel();
-            spawn(move || {
-                let full =
-                    match entry_clone2 {
-                        ImageEntry::File(path) => {
-                            crate::loader::load_gif(path).map(|g| LoadedImage::Animated(g, false))
-                        }
-                        ImageEntry::Zip(zip) => crate::loader::load_zip_gif(zip)
-                            .map(|g| LoadedImage::Animated(g, false)),
-                        ImageEntry::S7z(s7z) => {
-                            crate::loader::load_7z_gif(s7z).map(|g| LoadedImage::Animated(g, false))
-                        }
-                        ImageEntry::Rar(rar) => crate::loader::load_rar_gif(rar)
-                            .map(|g| LoadedImage::Animated(g, false)),
-                    };
-                if let Some(img) = full {
-                    let _ = full_tx.send(Ok(img));
-                } else {
-                    let _ = full_tx.send(Err("Failed to load full GIF".to_string()));
-                }
-            });
-
-            self.full_gif_receiver = Some(full_rx);
-        } else {
-            // Non-GIF: load full resolution directly
-            spawn(move || {
-                let result = match entry {
-                    ImageEntry::File(path) => match crate::loader::load_full_resolution(path) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                    ImageEntry::Zip(zip) => match crate::loader::load_zip_image(zip) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                    ImageEntry::S7z(s7z) => match crate::loader::load_7z_image(s7z) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                    ImageEntry::Rar(rar) => match crate::loader::load_rar_image(rar) {
-                        Ok(img) => Ok(LoadedImage::Static(img)),
-                        Err(err) => Err(err),
-                    },
-                };
-
-                let _ = tx.send(result);
-            });
-
-            self.receiver = Some(rx);
-        }
+        self.receiver = Some(rx);
     }
 
     pub fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
@@ -296,7 +127,8 @@ impl ViewerApp {
         self.current_index = current_index;
         self.preload_origin = current_index;
         // Use the user-configurable cache_delta_factor instead of hardcoded 3/5
-        self.delta_threshold = ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+        self.delta_threshold =
+            ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
         self.b_fit_to_window = true;
         self.gif_animation = None;
         self.is_gif = false;
@@ -315,6 +147,9 @@ impl ViewerApp {
         self.preload_generation = self.preload_generation.wrapping_add(1);
         self.should_stop_caching = false;
 
+        // Detect file type early (so we have it even if loading fails)
+        self.detect_current_file_type();
+
         self.load_current_image();
     }
 
@@ -329,4 +164,179 @@ impl ViewerApp {
 
         self.set_image_entries(entries, 0);
     }
+}
+
+/// Load entry content with automatic content detection
+/// This function detects the actual content type by magic bytes, not by extension
+fn load_entry_content(entry: ImageEntry) -> Result<LoadedImage, String> {
+    match entry {
+        ImageEntry::File(path) => {
+            // Read the file bytes
+            let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+            // Detect by content using magic bytes
+            load_bytes_with_detection(bytes, Some(&path))
+        }
+        ImageEntry::Zip(zip) => {
+            // Read from zip archive
+            let file = std::fs::File::open(&zip.archive_path)
+                .map_err(|e| format!("Failed to open archive: {}", e))?;
+            let mut archive =
+                zip::ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
+            let mut entry = archive
+                .by_index(zip.entry_index)
+                .map_err(|e| format!("Failed to read entry: {}", e))?;
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes)
+                .map_err(|e| format!("Failed to read data: {}", e))?;
+
+            let path_hint = std::path::Path::new(&zip.name);
+            load_bytes_with_detection(bytes, Some(path_hint))
+        }
+        ImageEntry::S7z(s7z) => {
+            // Read from 7z archive
+            let mut reader = sevenz_rust2::ArchiveReader::open(
+                &s7z.archive_path,
+                sevenz_rust2::Password::empty(),
+            )
+            .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
+            let bytes = reader
+                .read_file(&s7z.name)
+                .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
+
+            let path_hint = std::path::Path::new(&s7z.name);
+            load_bytes_with_detection(bytes, Some(path_hint))
+        }
+        ImageEntry::Rar(rar) => {
+            // Read from RAR archive
+            let archive = unrar::Archive::new(&rar.archive_path)
+                .open_for_processing()
+                .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
+            let mut archive = archive;
+            loop {
+                let header = archive
+                    .read_header()
+                    .map_err(|e| format!("Failed to read RAR header: {}", e))?
+                    .ok_or_else(|| format!("File not found in archive: {}", rar.name))?;
+                let filename = header.entry().filename.to_string_lossy().to_string();
+                if filename == rar.name {
+                    let (bytes, _) = header
+                        .read()
+                        .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
+                    let path_hint = std::path::Path::new(&rar.name);
+                    return load_bytes_with_detection(bytes, Some(path_hint));
+                }
+                archive = header
+                    .skip()
+                    .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+            }
+        }
+    }
+}
+
+/// Load bytes with automatic content detection
+/// First tries GIF (by magic bytes), then falls back to static image loading
+fn load_bytes_with_detection(
+    bytes: Vec<u8>,
+    path_hint: Option<&std::path::Path>,
+) -> Result<LoadedImage, String> {
+    // Check if it's a GIF by magic number (GIF87a or GIF89a)
+    let is_gif = bytes.len() >= 6 && (&bytes[0..6] == b"GIF87a" || &bytes[0..6] == b"GIF89a");
+
+    if is_gif {
+        // Try to load as GIF preview first
+        if let Ok(gif) = crate::gif_animation::GifAnimation::from_bytes_preview(&bytes) {
+            return Ok(LoadedImage::Animated(gif, true));
+        }
+        // If GIF loading fails, try as static (maybe corrupted GIF that's actually another format)
+        // Fall through to static loading
+    }
+
+    // Try to load as static image
+    match crate::loader::load_image_from_bytes(&bytes, path_hint) {
+        Ok(img) => Ok(LoadedImage::Static(img)),
+        Err(e) => {
+            // If we already tried GIF and it worked, use that
+            // If we got here, either it wasn't a GIF or GIF loading failed
+            if is_gif {
+                // Try one more time with full GIF loading
+                if let Ok(gif) = crate::gif_animation::GifAnimation::from_bytes(&bytes) {
+                    return Ok(LoadedImage::Animated(gif, false));
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+// Load entry content as full GIF (all frames) - used for upgrading from preview
+/// Load entry content as full GIF (all frames) - used for upgrading from preview
+pub fn load_entry_content_full_gif(entry: ImageEntry) -> Result<LoadedImage, String> {
+    println!("[FULL GIF] Starting load_entry_content_full_gif");
+    let result = match entry {
+        ImageEntry::File(path) => {
+            println!("[FULL GIF] File variant, path: {:?}", path);
+            let bytes = std::fs::read(&path)
+                .map_err(|e| {
+                    eprintln!("[FULL GIF] Read error: {}", e);
+                    format!("Failed to read file: {}", e)
+                })?;
+            println!("[FULL GIF] Read {} bytes from file", bytes.len());
+            let gif = crate::gif_animation::GifAnimation::from_bytes(&bytes)?;
+            println!("[FULL GIF] Decoded {} frames from file", gif.frame_count());
+            Ok(LoadedImage::Animated(gif, false))
+        }
+        ImageEntry::Zip(zip) => {
+            println!("[FULL GIF] ZIP variant, name: {}", zip.name);
+            let file = std::fs::File::open(&zip.archive_path)
+                .map_err(|e| format!("Failed to open archive: {}", e))?;
+            let mut archive = zip::ZipArchive::new(file)
+                .map_err(|e| format!("Failed to read archive: {}", e))?;
+            let mut entry = archive.by_index(zip.entry_index)
+                .map_err(|e| format!("Failed to read entry: {}", e))?;
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes)
+                .map_err(|e| format!("Failed to read data: {}", e))?;
+            println!("[FULL GIF] Read {} bytes from ZIP", bytes.len());
+            let gif = crate::gif_animation::GifAnimation::from_bytes(&bytes)?;
+            println!("[FULL GIF] Decoded {} frames from ZIP", gif.frame_count());
+            Ok(LoadedImage::Animated(gif, false))
+        }
+        ImageEntry::S7z(s7z) => {
+            println!("[FULL GIF] 7z variant, name: {}", s7z.name);
+            let mut reader = sevenz_rust2::ArchiveReader::open(&s7z.archive_path, sevenz_rust2::Password::empty())
+                .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
+            let bytes = reader.read_file(&s7z.name)
+                .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
+            println!("[FULL GIF] Read {} bytes from 7z", bytes.len());
+            let gif = crate::gif_animation::GifAnimation::from_bytes(&bytes)?;
+            println!("[FULL GIF] Decoded {} frames from 7z", gif.frame_count());
+            Ok(LoadedImage::Animated(gif, false))
+        }
+        ImageEntry::Rar(rar) => {
+            println!("[FULL GIF] RAR variant, name: {}", rar.name);
+            let archive = unrar::Archive::new(&rar.archive_path)
+                .open_for_processing()
+                .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
+            let mut archive = archive;
+            loop {
+                let header = archive.read_header()
+                    .map_err(|e| format!("Failed to read RAR header: {}", e))?
+                    .ok_or_else(|| format!("File not found in archive: {}", rar.name))?;
+                let filename = header.entry().filename.to_string_lossy().to_string();
+                if filename == rar.name {
+                    let (bytes, _) = header.read()
+                        .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
+                    println!("[FULL GIF] Read {} bytes from RAR", bytes.len());
+                    let gif = crate::gif_animation::GifAnimation::from_bytes(&bytes)?;
+                    println!("[FULL GIF] Decoded {} frames from RAR", gif.frame_count());
+                    return Ok(LoadedImage::Animated(gif, false));
+                }
+                archive = header.skip()
+                    .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+            }
+        }
+    };
+    println!("[FULL GIF] load_entry_content_full_gif returning result");
+    result
 }

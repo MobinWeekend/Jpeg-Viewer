@@ -1,5 +1,5 @@
+// src/app/cache.rs
 use super::types::{CachedImage, LoadedImage, ViewerApp};
-use crate::image_entry::ImageEntry;
 use eframe::egui;
 
 impl ViewerApp {
@@ -27,71 +27,51 @@ impl ViewerApp {
     }
 
     pub fn load_from_cache(&mut self, index: usize) -> bool {
-        // Check if this is a GIF - we don't cache GIFs
-        if let Some(entry) = self.image_entries.get(index) {
-            let is_gif = match entry {
-                ImageEntry::File(path) => {
-                    if let Some(ext) = path.extension() {
-                        ext.eq_ignore_ascii_case("gif")
-                    } else {
-                        false
-                    }
-                }
-                ImageEntry::Zip(zip) => zip.name.to_lowercase().ends_with(".gif"),
-                ImageEntry::S7z(s7z) => s7z.name.to_lowercase().ends_with(".gif"),
-                ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
-            };
-
-            // GIFs are not cached - return false to force loading
-            if is_gif {
-                return false;
-            }
-        }
-
-        // Get the image ID once and store it
         let image_id = match self.get_image_id(index) {
             Some(id) => id,
             None => return false,
         };
 
-        // Check if the image is in cache
         if let Some(cached) = self.image_cache.get(&image_id) {
-            // Check if the index matches
             if cached.index != index {
-                // Index mismatch - need to update it
                 let cached_clone = cached.clone();
-                
-                // Remove the old entry
                 self.image_cache.pop(&image_id);
-                
-                // Re-insert with correct index
                 let updated = CachedImage {
                     index,
                     ..cached_clone
                 };
                 self.image_cache.put(image_id.clone(), updated);
-                
-                // Now get the updated entry
                 if let Some(updated_cached) = self.image_cache.get(&image_id) {
                     self.texture = Some(updated_cached.texture.clone());
                     self.is_gif = updated_cached.is_gif;
                     self.is_preview = updated_cached.is_preview;
                     self.b_fit_to_window = true;
                     self.b_is_loading = false;
+                    self.detect_current_file_type();
                     return true;
                 }
                 return false;
             }
-            
-            // Index matches - use it directly
             self.texture = Some(cached.texture.clone());
             self.is_gif = cached.is_gif;
             self.is_preview = cached.is_preview;
             self.b_fit_to_window = true;
             self.b_is_loading = false;
+            self.detect_current_file_type();
             return true;
         }
         false
+    }
+
+    pub fn is_index_cached(&self, index: usize) -> bool {
+        if index >= self.image_entries.len() {
+            return false;
+        }
+        if let Some(image_id) = self.get_image_id(index) {
+            self.image_cache.contains(&image_id)
+        } else {
+            false
+        }
     }
 
     pub fn add_to_cache(&mut self, ctx: &egui::Context, index: usize, loaded_image: LoadedImage) {
@@ -165,39 +145,6 @@ impl ViewerApp {
                 index,
             };
             self.image_cache.put(image_id, cached);
-        }
-    }
-
-    pub fn is_index_cached(&self, index: usize) -> bool {
-        // Safety check: ensure index is valid
-        if index >= self.image_entries.len() {
-            return false;
-        }
-
-        // GIFs are never cached
-        if let Some(entry) = self.image_entries.get(index) {
-            let is_gif = match entry {
-                ImageEntry::File(path) => {
-                    if let Some(ext) = path.extension() {
-                        ext.eq_ignore_ascii_case("gif")
-                    } else {
-                        false
-                    }
-                }
-                ImageEntry::Zip(zip) => zip.name.to_lowercase().ends_with(".gif"),
-                ImageEntry::S7z(s7z) => s7z.name.to_lowercase().ends_with(".gif"),
-                ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
-            };
-
-            if is_gif {
-                return false;
-            }
-        }
-
-        if let Some(image_id) = self.get_image_id(index) {
-            self.image_cache.contains(&image_id)
-        } else {
-            false
         }
     }
 }

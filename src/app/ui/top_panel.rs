@@ -365,6 +365,33 @@ impl ViewerApp {
                     );*/
                 });
             });
+            let rename_suggestion = self
+                .file_type_detection
+                .as_ref()
+                .filter(|detection| detection.mismatch)
+                .map(|detection| {
+                    let current = detection
+                        .current_extension
+                        .as_deref()
+                        .unwrap_or("(none)")
+                        .to_string();
+
+                    let suggested = detection.detected_extension.clone();
+
+                    (current, suggested)
+                });
+
+            if let Some((current, suggested)) = rename_suggestion {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("⚠").color(egui::Color32::YELLOW).size(24.0));
+                    ui.label(format!("Detected .{} (current: .{})", suggested, current));
+                    let rename_btn =
+                        ui.button(egui::RichText::new(" Rename ").color(egui::Color32::LIGHT_GREEN).size(14.0));
+                    if rename_btn.clicked() {
+                        self.apply_rename_suggestion();
+                    }
+                });
+            }
         });
     }
 
