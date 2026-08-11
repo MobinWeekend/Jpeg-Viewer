@@ -1,7 +1,7 @@
 use crate::gif_animation::GifAnimation;
 use crate::helpers::is_supported_image;
 use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
-use image::{DynamicImage, ImageFormat, ImageReader};
+use image::{DynamicImage, ImageDecoder, ImageReader};
 use sevenz_rust2::{ArchiveReader, Password};
 use std::fs;
 use std::fs::File;
@@ -10,72 +10,44 @@ use std::path::{Path, PathBuf};
 use unrar::Archive as RarArchive;
 use zip::ZipArchive;
 
-// Constants for virtual texturing
-//pub const MAX_GPU_TEXTURE_SIZE: u32 = 16384;
-//pub const LARGE_IMAGE_THRESHOLD: u64 = 50_000_000;
-
-// ========== Helper: map extension to ImageFormat (EXCLUDING EXR) ==========
-fn ext_to_format(ext: &str) -> Option<ImageFormat> {
-    match ext.to_lowercase().as_str() {
-        "png" => Some(ImageFormat::Png),
-        "jpg" | "jpeg" => Some(ImageFormat::Jpeg),
-        "gif" => Some(ImageFormat::Gif),
-        "webp" => Some(ImageFormat::WebP),
-        "bmp" => Some(ImageFormat::Bmp),
-        "tiff" => Some(ImageFormat::Tiff),
-        "tga" => Some(ImageFormat::Tga),
-        "ico" => Some(ImageFormat::Ico),
-        "avif" => Some(ImageFormat::Avif),
-        "hdr" => Some(ImageFormat::Hdr),
-        "pnm" => Some(ImageFormat::Pnm),
-        "qoi" => Some(ImageFormat::Qoi),
-        "dds" => Some(ImageFormat::Dds),
-        _ => None,
-    }
-}
-
-/// Load image from bytes using built‑in detection first, then fallback to infer.
-/// The `path_hint` is only used as a last resort fallback for the extension.
-pub fn load_image_from_bytes(bytes: &[u8], path_hint: Option<&Path>) -> Result<DynamicImage, String> {
-    // 1. Try the image crate's own detection (works for most formats)
-    if let Ok(img) = image::load_from_memory(bytes) {
-        return Ok(img);
-    }
-
-    // 2. Fallback: use infer to detect format and decode with explicit format
-    //    Note: infer::get is a function that takes a &[u8] and returns Option<Type>
-    if let Some(kind) = infer::get(bytes) {
-        if let Some(format) = ext_to_format(kind.extension()) {
-            // ImageReader::with_format is an associated function, not a method
-            let reader = ImageReader::with_format(Cursor::new(bytes), format);
-            if let Ok(img) = reader.decode() {
-                return Ok(img);
-            }
-        }
-    }
-
-    // 3. Last resort: try using the extension from the path hint (if any)
-    if let Some(hint) = path_hint {
-        if let Some(ext) = hint.extension().and_then(|e| e.to_str()) {
-            if let Some(format) = ext_to_format(ext) {
-                let reader = ImageReader::with_format(Cursor::new(bytes), format);
-                if let Ok(img) = reader.decode() {
-                    return Ok(img);
-                }
-            }
-        }
-    }
-
-    Err("The image format could not be determined".to_string())
-}
-
 // ========== Image Loading ==========
 
+/// Load image from bytes with automatic format detection and EXIF orientation correction
+pub fn load_image_from_bytes(bytes: &[u8], _path_hint: Option<&Path>) -> Result<DynamicImage, String> {
+    // Use ImageReader to detect format and get decoder with orientation metadata
+    let cursor = Cursor::new(bytes);
+    let reader = ImageReader::new(cursor)
+        .with_guessed_format()
+        .map_err(|e| format!("Failed to guess image format: {}", e))?;
+
+    // Get the decoder to access orientation metadata
+    let mut decoder = reader
+        .into_decoder()
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+
+    // Read orientation from EXIF metadata (if present and readable)
+    // orientation() returns Result<Orientation, ImageError>
+    let orientation = decoder.orientation().ok();
+
+    // Decode the image
+    let mut image = DynamicImage::from_decoder(decoder)
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
+
+    // Apply EXIF orientation if present (rotations/flips)
+    if let Some(orientation) = orientation {
+        image.apply_orientation(orientation);
+    }
+
+    Ok(image)
+}
+
+/// Load full resolution image from a file path
 pub fn load_full_resolution(path: PathBuf) -> Result<DynamicImage, String> {
     let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
     load_image_from_bytes(&bytes, Some(&path))
 }
 
+/// Load GIF preview (first frame only)
 pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
     fs::read(&path)
         .ok()
@@ -84,11 +56,12 @@ pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
 
 // ========== Archive Loading ==========
 
+/// Load image from ZIP archive
 pub fn load_zip_image(image: ArchiveImage) -> Result<DynamicImage, String> {
-    let file =
-        File::open(&image.archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
-    let mut archive =
-        ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
+    let file = File::open(&image.archive_path)
+        .map_err(|e| format!("Failed to open archive: {}", e))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("Failed to read archive: {}", e))?;
     let mut entry = archive
         .by_index(image.entry_index)
         .map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -96,10 +69,10 @@ pub fn load_zip_image(image: ArchiveImage) -> Result<DynamicImage, String> {
     entry
         .read_to_end(&mut bytes)
         .map_err(|e| format!("Failed to read data: {}", e))?;
-    let path_hint = Path::new(&image.name);
-    load_image_from_bytes(&bytes, Some(path_hint))
+    load_image_from_bytes(&bytes, Some(Path::new(&image.name)))
 }
 
+/// Load GIF preview from ZIP archive
 pub fn load_zip_gif_preview(image: ArchiveImage) -> Option<GifAnimation> {
     let file = File::open(&image.archive_path).ok()?;
     let mut archive = ZipArchive::new(file).ok()?;
@@ -109,26 +82,24 @@ pub fn load_zip_gif_preview(image: ArchiveImage) -> Option<GifAnimation> {
     GifAnimation::from_bytes_preview(&bytes).ok()
 }
 
-// ========== 7z Archive Loading ==========
-
+/// Load image from 7z archive
 pub fn load_7z_image(image: S7ArchiveImage) -> Result<DynamicImage, String> {
     let mut reader = ArchiveReader::open(&image.archive_path, Password::empty())
         .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
     let bytes = reader
         .read_file(&image.name)
         .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
-    let path_hint = Path::new(&image.name);
-    load_image_from_bytes(&bytes, Some(path_hint))
+    load_image_from_bytes(&bytes, Some(Path::new(&image.name)))
 }
 
+/// Load GIF preview from 7z archive
 pub fn load_7z_gif_preview(image: S7ArchiveImage) -> Option<GifAnimation> {
     let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
     let bytes = reader.read_file(&image.name).ok()?;
     GifAnimation::from_bytes_preview(&bytes).ok()
 }
 
-// ========== RAR Archive Loading ==========
-
+/// Load image from RAR archive
 pub fn load_rar_image(image: RarArchiveImage) -> Result<DynamicImage, String> {
     let archive = RarArchive::new(&image.archive_path)
         .open_for_processing()
@@ -144,8 +115,7 @@ pub fn load_rar_image(image: RarArchiveImage) -> Result<DynamicImage, String> {
             let (bytes, _) = header
                 .read()
                 .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
-            let path_hint = Path::new(&image.name);
-            return load_image_from_bytes(&bytes, Some(path_hint));
+            return load_image_from_bytes(&bytes, Some(Path::new(&image.name)));
         }
         archive = header
             .skip()
@@ -153,6 +123,7 @@ pub fn load_rar_image(image: RarArchiveImage) -> Result<DynamicImage, String> {
     }
 }
 
+/// Load GIF preview from RAR archive
 pub fn load_rar_gif_preview(image: RarArchiveImage) -> Option<GifAnimation> {
     let archive = RarArchive::new(&image.archive_path)
         .open_for_processing()
@@ -171,6 +142,7 @@ pub fn load_rar_gif_preview(image: RarArchiveImage) -> Option<GifAnimation> {
 
 // ========== Directory Loading ==========
 
+/// Load all supported images from a directory, sorted naturally
 pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(path)
         .ok()
