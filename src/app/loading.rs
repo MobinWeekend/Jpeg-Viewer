@@ -126,7 +126,6 @@ impl ViewerApp {
         self.image_entries = entries;
         self.current_index = current_index;
         self.preload_origin = current_index;
-        // Use the user-configurable cache_delta_factor instead of hardcoded 3/5
         self.delta_threshold =
             ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
         self.b_fit_to_window = true;
@@ -146,6 +145,7 @@ impl ViewerApp {
         self.preload_workers = 0;
         self.preload_generation = self.preload_generation.wrapping_add(1);
         self.should_stop_caching = false;
+        self.file_type_detection = None; // Clear file extension detection
 
         // Detect file type early (so we have it even if loading fails)
         self.detect_current_file_type();

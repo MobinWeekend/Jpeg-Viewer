@@ -17,6 +17,7 @@ impl ViewerApp {
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.b_is_loading_full = false;
+        self.file_type_detection = None; // Clear file extension detection
 
         // Reset preload state – discard all pending tasks and invalidate results.
         self.image_cache.clear();
@@ -155,6 +156,7 @@ impl ViewerApp {
                 self.preload_workers = 0;
                 self.preload_generation = self.preload_generation.wrapping_add(1);
                 self.should_stop_caching = false;
+                self.file_type_detection = None; // Clear file extension detection
             }
             Err(e) => {
                 eprintln!("Failed to move to trash: {}", e);
@@ -185,6 +187,7 @@ impl ViewerApp {
         self.preload_workers = 0;
         self.preload_generation = self.preload_generation.wrapping_add(1);
         self.should_stop_caching = false;
+        self.file_type_detection = None; // Clear file extension detection
 
         // Filter to only supported images
         let image_paths: Vec<PathBuf> = paths

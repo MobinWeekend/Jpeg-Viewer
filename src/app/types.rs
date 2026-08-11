@@ -19,13 +19,14 @@ pub enum LoadedImage {
     Animated(GifAnimation, bool),
 }
 
-// Cached image data - add Clone derive
+// Cached image data
 #[derive(Clone)]
 pub struct CachedImage {
     pub texture: egui::TextureHandle,
     pub is_gif: bool,
     pub is_preview: bool,
     pub index: usize,
+    pub file_type_detection: Option<FileTypeDetection>, // Store detection with cached image
 }
 
 #[derive(Clone, Debug)]

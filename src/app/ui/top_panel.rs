@@ -365,6 +365,9 @@ impl ViewerApp {
                     );*/
                 });
             });
+
+            // ========== RENAME SUGGESTION WARNING ==========
+            // Show if detection exists and there's a mismatch
             let rename_suggestion = self
                 .file_type_detection
                 .as_ref()
@@ -375,20 +378,28 @@ impl ViewerApp {
                         .as_deref()
                         .unwrap_or("(none)")
                         .to_string();
-
                     let suggested = detection.detected_extension.clone();
-
                     (current, suggested)
                 });
 
             if let Some((current, suggested)) = rename_suggestion {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("⚠").color(egui::Color32::YELLOW).size(24.0));
+                    ui.label(
+                        egui::RichText::new("⚠")
+                            .color(egui::Color32::YELLOW)
+                            .size(24.0),
+                    );
                     ui.label(format!("Detected .{} (current: .{})", suggested, current));
-                    let rename_btn =
-                        ui.button(egui::RichText::new(" Rename ").color(egui::Color32::LIGHT_GREEN).size(14.0));
+                    let rename_btn = ui.button(
+                        egui::RichText::new(" Rename ")
+                            .color(egui::Color32::LIGHT_GREEN)
+                            .size(14.0),
+                    );
                     if rename_btn.clicked() {
                         self.apply_rename_suggestion();
+                        self.image_cache.clear();
+                        self.preloading_indices.clear();
+                        self.preload_tasks.clear();
                     }
                 });
             }

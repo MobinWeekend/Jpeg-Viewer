@@ -20,6 +20,7 @@ impl ViewerApp {
                     is_gif: self.is_gif,
                     is_preview: self.is_preview,
                     index: self.current_index,
+                    file_type_detection: self.file_type_detection.clone(), // Store detection
                 };
                 self.image_cache.put(image_id, cached);
             }
@@ -47,7 +48,11 @@ impl ViewerApp {
                     self.is_preview = updated_cached.is_preview;
                     self.b_fit_to_window = true;
                     self.b_is_loading = false;
-                    self.detect_current_file_type();
+                    
+                    // Restore file type detection from cache
+                    self.file_type_detection = updated_cached.file_type_detection.clone();
+                    
+                    self.detect_current_file_type(); // Verify/update detection
                     return true;
                 }
                 return false;
@@ -57,7 +62,11 @@ impl ViewerApp {
             self.is_preview = cached.is_preview;
             self.b_fit_to_window = true;
             self.b_is_loading = false;
-            self.detect_current_file_type();
+            
+            // Restore file type detection from cache
+            self.file_type_detection = cached.file_type_detection.clone();
+            
+            self.detect_current_file_type(); // Verify/update detection
             return true;
         }
         false
@@ -138,11 +147,20 @@ impl ViewerApp {
         };
 
         if let Some(texture) = texture {
+            // Get the current file type detection for this image
+            let detection = if index == self.current_index {
+                self.file_type_detection.clone()
+            } else {
+                // For preloaded images, we don't have detection yet - it will be set when loaded
+                None
+            };
+            
             let cached = CachedImage {
                 texture,
                 is_gif: matches!(loaded_image, LoadedImage::Animated(_, _)),
                 is_preview: matches!(loaded_image, LoadedImage::Animated(_, true)),
                 index,
+                file_type_detection: detection,
             };
             self.image_cache.put(image_id, cached);
         }

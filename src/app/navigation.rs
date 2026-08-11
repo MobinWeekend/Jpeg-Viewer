@@ -11,12 +11,13 @@ impl ViewerApp {
         let new_index = (self.current_index as i32 + direction).rem_euclid(len as i32) as usize;
 
         if new_index != self.current_index {
+            // Clear file type detection BEFORE changing the image
+            self.file_type_detection = None;
             self.current_index = new_index;
             self.zoom = 1.0;
             self.b_fit_to_window = true;
             self.image_rect = None;
-            
-            // Don't clear texture - keep showing current image
+            // Don't clear texture - keep showing current image, clearing the image every time causes flashing of screen when cycling fast
             self.gif_animation = None;
             self.is_gif = false;
             self.is_preview = false;
@@ -26,12 +27,15 @@ impl ViewerApp {
             self.image_error = None;
             self.receiver = None;
 
+            // Clear file type detection when navigating to a new image
+            self.file_type_detection = None;
+
             // Reset navigation timer (no direction needed anymore)
             self.reset_navigation_timer();
 
             // Load new image in background while keeping current texture
             self.load_current_image_with_cache_keep_texture();
-            
+
             self.update_window_title(ctx);
         }
         self.b_zoom_used = false;

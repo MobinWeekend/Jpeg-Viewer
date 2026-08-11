@@ -101,8 +101,12 @@ impl eframe::App for ViewerApp {
             if let Ok(result) = rx.try_recv() {
                 self.receiver = None;
 
+                // Clear old file type detection before loading new image
+                self.file_type_detection = None;
+
                 match result {
                     Ok(loaded_image) => {
+                        self.detect_current_file_type();
                         self.add_to_cache(ctx, self.current_index, loaded_image.clone());
                         let mut should_spawn_full_gif = false;
                         match loaded_image {
@@ -234,6 +238,7 @@ impl eframe::App for ViewerApp {
                         }
                     }
                     Err(error) => {
+                        self.detect_current_file_type();
                         self.b_is_loading = false;
                         self.texture = None;
                         self.image_error = Some(error);
@@ -332,6 +337,7 @@ impl eframe::App for ViewerApp {
                     self.full_gif_loading = false;
                     match result {
                         Ok(loaded_image) => {
+                            self.detect_current_file_type();
                             if self.is_gif && self.is_preview {
                                 if let super::types::LoadedImage::Animated(full_gif, _) =
                                     loaded_image
@@ -371,6 +377,7 @@ impl eframe::App for ViewerApp {
                             }
                         }
                         Err(error) => {
+                            self.detect_current_file_type();
                             eprintln!("Failed to load full GIF: {}", error);
                             self.is_preview = false;
                         }
