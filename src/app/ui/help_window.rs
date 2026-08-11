@@ -96,6 +96,8 @@ impl ViewerApp {
                             "• Archive scanning without extracting files",
                             "• Delete images to trash/recycle bin",
                             "• Adjustable frame limiter for optimal performance and battery life",
+                            "• Automatic file type detection and rename suggestion",
+                            "• Support for extremely large images using tiled virtual texturing",
                         ];
                         
                         for feature in features {
@@ -204,6 +206,8 @@ impl ViewerApp {
                             "• GIFs load a preview frame first, then the full animation in the background",
                             "• Use the settings menu to customize keyboard shortcuts and performance",
                             "• Start the app with an image path as an argument: jpeg_viewer image.jpg",
+                            "• If the app detects a mismatch between file extension and actual content, a rename suggestion will appear in the toolbar.",
+                            "• Very large images are rendered using tiled virtual textures for smooth performance.",
                         ];
 
                         for tip in tips {

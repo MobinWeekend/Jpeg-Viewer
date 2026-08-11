@@ -23,6 +23,9 @@ More formats, improvements, and features are coming as the project continues to 
 - **Drag and drop** support for images, folders, and archives
 - **Trash/Recycle Bin integration** for deleting images
 - **Adjustable frame limiter** for optimal performance and battery life
+- **File type detection**: Automatically detects if the file extension matches the actual content and offers to rename.
+- **Large image support**: Handles extremely large images (multi‑gigapixel) using tiled virtual texturing.
+- **Aspect ratio labeling**: Displays common aspect ratio names (e.g., 16:9, 4:3, CinemaScope) for quick reference.
 
 ## Supported Formats
 
@@ -105,6 +108,8 @@ AVIF, BMP, DDS, EXR, GIF (with speed controls), HDR, ICO, JPEG/JPG, PNG, PNM, QO
 - GIFs load a preview frame first, then the full animation in the background
 - Use the settings menu to customize performance and behavior
 - Start the app with an image path as an argument: `jpeg_viewer image.jpg`
+- If the app detects a mismatch between file extension and actual content, a rename suggestion will appear in the toolbar
+- Very large images are rendered using tiled virtual textures for smooth performance
 
 ## Caching & Performance
 
