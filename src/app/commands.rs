@@ -1,4 +1,4 @@
-use super::types::{ViewerApp, LoadingState};
+use super::types::ViewerApp;
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
 use std::time::Instant;
@@ -63,45 +63,28 @@ impl ViewerApp {
                     // Stop slideshow when jumping
                     if self.slideshow_enabled {
                         self.slideshow_enabled = false;
+
                         let _ = self.settings_manager.update(|settings| {
                             settings.slideshow_enabled = false;
                         });
-                        self.update_window_title(ctx);
                     }
-                    self.current_index = 0;
-                    self.b_fit_to_window = true;
-                    self.image_rect = None;
-                    self.gif_animation = None;
-                    self.is_gif = false;
-                    self.is_preview = false;
-                    self.full_image_receiver = None;
-                    self.full_gif_receiver = None;
-                    self.set_loading_state(LoadingState::Idle);
-                    self.load_current_image_with_cache_keep_texture();
-                    self.preload_adjacent_images();
+
+                    self.navigate_to_index(ctx, 0);
                 }
             }
+
             ViewerCommand::JumpToLast => {
                 if !self.image_entries.is_empty() {
                     // Stop slideshow when jumping
                     if self.slideshow_enabled {
                         self.slideshow_enabled = false;
+
                         let _ = self.settings_manager.update(|settings| {
                             settings.slideshow_enabled = false;
                         });
-                        self.update_window_title(ctx);
                     }
-                    self.current_index = self.image_entries.len() - 1;
-                    self.b_fit_to_window = true;
-                    self.image_rect = None;
-                    self.gif_animation = None;
-                    self.is_gif = false;
-                    self.is_preview = false;
-                    self.full_image_receiver = None;
-                    self.full_gif_receiver = None;
-                    self.set_loading_state(LoadingState::Idle);
-                    self.load_current_image_with_cache_keep_texture();
-                    self.preload_adjacent_images();
+
+                    self.navigate_to_index(ctx, self.image_entries.len() - 1);
                 }
             }
             ViewerCommand::ToggleGifPlay => {

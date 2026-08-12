@@ -1,4 +1,5 @@
 use crate::app::types::ViewerApp;
+use crate::image_entry::ImageEntry;
 use eframe::egui;
 use std::time::Duration;
 
@@ -22,6 +23,180 @@ impl ViewerApp {
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
                         ui.add_space(4.0);
+
+                        // ========== FILE INFO ==========
+                        ui.collapsing(egui::RichText::new("📂 File Info").size(15.0), |ui| {
+                            ui.add_space(4.0);
+
+                            let Some(entry) = self.image_entries.get(self.current_index) else {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(8.0);
+                                    ui.label(egui::RichText::new("No image loaded").strong());
+                                });
+                                return;
+                            };
+
+                            // Get information based on the ImageEntry variant.
+                            let (file_name, location, file_size) = match entry {
+                                ImageEntry::File(path) => {
+                                    let file_name = path
+                                        .file_name()
+                                        .unwrap_or_default()
+                                        .to_string_lossy()
+                                        .to_string();
+
+                                    let file_size = match std::fs::metadata(path) {
+                                        Ok(metadata) => {
+                                            let bytes = metadata.len();
+
+                                            if bytes < 1024 {
+                                                format!("{} B", bytes)
+                                            } else if bytes < 1024 * 1024 {
+                                                format!("{:.1} KB", bytes as f64 / 1024.0)
+                                            } else if bytes < 1024 * 1024 * 1024 {
+                                                format!(
+                                                    "{:.1} MB",
+                                                    bytes as f64 / (1024.0 * 1024.0)
+                                                )
+                                            } else {
+                                                format!(
+                                                    "{:.2} GB",
+                                                    bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+                                                )
+                                            }
+                                        }
+                                        Err(_) => "N/A".to_string(),
+                                    };
+
+                                    (file_name, path.clone(), file_size)
+                                }
+
+                                ImageEntry::Zip(zip) => {
+                                    let file_size = std::fs::metadata(&zip.archive_path)
+                                        .map(|metadata| {
+                                            let bytes = metadata.len();
+
+                                            if bytes < 1024 {
+                                                format!("{} B", bytes)
+                                            } else if bytes < 1024 * 1024 {
+                                                format!("{:.1} KB", bytes as f64 / 1024.0)
+                                            } else if bytes < 1024 * 1024 * 1024 {
+                                                format!(
+                                                    "{:.1} MB",
+                                                    bytes as f64 / (1024.0 * 1024.0)
+                                                )
+                                            } else {
+                                                format!(
+                                                    "{:.2} GB",
+                                                    bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+                                                )
+                                            }
+                                        })
+                                        .unwrap_or_else(|_| "N/A".to_string());
+
+                                    (zip.name.clone(), zip.archive_path.clone(), file_size)
+                                }
+
+                                ImageEntry::S7z(s7z) => {
+                                    let file_size = std::fs::metadata(&s7z.archive_path)
+                                        .map(|metadata| {
+                                            let bytes = metadata.len();
+
+                                            if bytes < 1024 {
+                                                format!("{} B", bytes)
+                                            } else if bytes < 1024 * 1024 {
+                                                format!("{:.1} KB", bytes as f64 / 1024.0)
+                                            } else if bytes < 1024 * 1024 * 1024 {
+                                                format!(
+                                                    "{:.1} MB",
+                                                    bytes as f64 / (1024.0 * 1024.0)
+                                                )
+                                            } else {
+                                                format!(
+                                                    "{:.2} GB",
+                                                    bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+                                                )
+                                            }
+                                        })
+                                        .unwrap_or_else(|_| "N/A".to_string());
+
+                                    (s7z.name.clone(), s7z.archive_path.clone(), file_size)
+                                }
+
+                                ImageEntry::Rar(rar) => {
+                                    let file_size = std::fs::metadata(&rar.archive_path)
+                                        .map(|metadata| {
+                                            let bytes = metadata.len();
+
+                                            if bytes < 1024 {
+                                                format!("{} B", bytes)
+                                            } else if bytes < 1024 * 1024 {
+                                                format!("{:.1} KB", bytes as f64 / 1024.0)
+                                            } else if bytes < 1024 * 1024 * 1024 {
+                                                format!(
+                                                    "{:.1} MB",
+                                                    bytes as f64 / (1024.0 * 1024.0)
+                                                )
+                                            } else {
+                                                format!(
+                                                    "{:.2} GB",
+                                                    bytes as f64 / (1024.0 * 1024.0 * 1024.0)
+                                                )
+                                            }
+                                        })
+                                        .unwrap_or_else(|_| "N/A".to_string());
+
+                                    (rar.name.clone(), rar.archive_path.clone(), file_size)
+                                }
+                            };
+
+                            // File name
+                            ui.horizontal_wrapped(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("File:").strong());
+                                ui.add_space(8.0);
+                                ui.label(&file_name);
+                            });
+
+                            ui.add_space(4.0);
+
+                            // Size
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("Size:").strong());
+                                ui.add_space(8.0);
+                                ui.label(&file_size);
+                            });
+
+                            ui.add_space(4.0);
+
+                            // Path
+                            let path_display = location.display().to_string();
+
+                            ui.horizontal_wrapped(|ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("Path:").strong());
+                                ui.add_space(8.0);
+                                ui.label(
+                                    egui::RichText::new(&path_display)
+                                        .color(egui::Color32::LIGHT_GRAY)
+                                        .monospace(),
+                                );
+                            });
+
+                            ui.add_space(4.0);
+
+                            // Copy path
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+
+                                if ui.button("📋 Copy Path").clicked() {
+                                    ui.ctx().copy_text(path_display.clone());
+                                }
+                            });
+
+                            ui.add_space(4.0);
+                        });
 
                         // ========== GENERAL SETTINGS ==========
                         ui.collapsing(egui::RichText::new("📋 General").size(15.0), |ui| {

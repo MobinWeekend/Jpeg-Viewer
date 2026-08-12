@@ -13,7 +13,10 @@ use zip::ZipArchive;
 // ========== Image Loading ==========
 
 /// Load image from bytes with automatic format detection and EXIF orientation correction
-pub fn load_image_from_bytes(bytes: &[u8], _path_hint: Option<&Path>) -> Result<DynamicImage, String> {
+pub fn load_image_from_bytes(
+    bytes: &[u8],
+    _path_hint: Option<&Path>,
+) -> Result<DynamicImage, String> {
     // Use ImageReader to detect format and get decoder with orientation metadata
     let cursor = Cursor::new(bytes);
     let reader = ImageReader::new(cursor)
@@ -58,10 +61,10 @@ pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
 
 /// Load image from ZIP archive
 pub fn load_zip_image(image: ArchiveImage) -> Result<DynamicImage, String> {
-    let file = File::open(&image.archive_path)
-        .map_err(|e| format!("Failed to open archive: {}", e))?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    let file =
+        File::open(&image.archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
     let mut entry = archive
         .by_index(image.entry_index)
         .map_err(|e| format!("Failed to read entry: {}", e))?;
@@ -162,11 +165,33 @@ pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
         })
         .collect();
 
-    files.sort_by(|a, b| {
+    #[cfg(target_os = "windows")]
+    fn compare_filenames(a: &Path, b: &Path) -> std::cmp::Ordering {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::Win32::UI::Shell::StrCmpLogicalW;
+        use windows::core::PCWSTR;
+
+        let a_name = a.file_name().unwrap_or_default();
+        let b_name = b.file_name().unwrap_or_default();
+
+        let a_wide: Vec<u16> = a_name.encode_wide().chain(std::iter::once(0)).collect();
+
+        let b_wide: Vec<u16> = b_name.encode_wide().chain(std::iter::once(0)).collect();
+
+        let result = unsafe { StrCmpLogicalW(PCWSTR(a_wide.as_ptr()), PCWSTR(b_wide.as_ptr())) };
+
+        result.cmp(&0)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn compare_filenames(a: &Path, b: &Path) -> std::cmp::Ordering {
         let a_name = a.file_name().unwrap_or_default().to_string_lossy();
         let b_name = b.file_name().unwrap_or_default().to_string_lossy();
-        natord::compare(&a_name.to_lowercase(), &b_name.to_lowercase())
-    });
 
+        natord::compare(&a_name.to_lowercase(), &b_name.to_lowercase())
+    }
+
+    //Apply the sorting
+    files.sort_by(|a, b| compare_filenames(a.as_path(), b.as_path()));
     files
 }
