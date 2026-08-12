@@ -119,7 +119,7 @@ impl ViewerApp {
                 }
 
                 // Render using virtual texture
-                let viewport_size = ui.available_size();
+                let available_rect  = ui.available_rect_before_wrap();
 
                 // Create the painter and immediately use it in a limited scope
                 let texture_options = self.get_texture_options();
@@ -132,7 +132,7 @@ impl ViewerApp {
                         &painter,
                         self.zoom,
                         self.pan,
-                        viewport_size,
+                        available_rect,
                         texture_options,
                     );
                 }

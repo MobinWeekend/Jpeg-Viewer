@@ -1,5 +1,5 @@
-// src/app/cache.rs
 use super::types::{CachedImage, LoadedImage, ViewerApp};
+use super::virtual_texture::MAX_GPU_TEXTURE_SIZE;
 use eframe::egui;
 use image::GenericImageView;
 
@@ -96,12 +96,15 @@ impl ViewerApp {
         // Skip caching if the image would be handled by virtual texturing
         if let LoadedImage::Static(img) = &loaded_image {
             let (width, height) = img.dimensions();
-            let pixel_count = width as u64 * height as u64;
             let settings = self.settings_manager.get();
             let threshold = settings.virtual_texture_threshold;
-            // Also use the hard‑coded LARGE_IMAGE_THRESHOLD if you want
-            use super::virtual_texture::LARGE_IMAGE_THRESHOLD;
-            if width > threshold || height > threshold || pixel_count > LARGE_IMAGE_THRESHOLD {
+            let use_virtual = width > threshold
+                || height > threshold
+                || width > MAX_GPU_TEXTURE_SIZE
+                || height > MAX_GPU_TEXTURE_SIZE;
+
+            if use_virtual {
+                // Large image – return pending virtual texture
                 return; // skip caching for large images
             }
         }
@@ -125,14 +128,12 @@ impl ViewerApp {
                 // Size validation - skip caching if too large
                 let settings = self.settings_manager.get();
                 let threshold = settings.virtual_texture_threshold;
-                use super::virtual_texture::{LARGE_IMAGE_THRESHOLD, MAX_GPU_TEXTURE_SIZE};
 
-                if width > threshold || height > threshold || width > MAX_GPU_TEXTURE_SIZE || height > MAX_GPU_TEXTURE_SIZE {
-                    return;
-                }
-
-                let pixels = width as u64 * height as u64;
-                if pixels > LARGE_IMAGE_THRESHOLD {
+                if width > threshold
+                    || height > threshold
+                    || width > MAX_GPU_TEXTURE_SIZE
+                    || height > MAX_GPU_TEXTURE_SIZE
+                {
                     return;
                 }
 
@@ -149,11 +150,7 @@ impl ViewerApp {
                 if let Some(frame) = frame {
                     let size = [frame.width() as usize, frame.height() as usize];
                     let color = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
-                    Some(ctx.load_texture(
-                        &format!("cache_{}", image_id),
-                        color,
-                        options,
-                    ))
+                    Some(ctx.load_texture(&format!("cache_{}", image_id), color, options))
                 } else {
                     None
                 }

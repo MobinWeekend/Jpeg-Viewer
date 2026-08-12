@@ -1,13 +1,11 @@
 // src/app/virtual_texture.rs
 
-use eframe::egui::self;
+use eframe::egui;
 use image::{DynamicImage, GenericImageView, RgbaImage};
 use std::sync::{Arc, Mutex};
 
 /// Maximum texture size that can be safely uploaded to the GPU. HARD LIMIT!
 pub const MAX_GPU_TEXTURE_SIZE: u32 = 16384;
-/// Pixel count threshold above which we always use virtual texturing. HARD LIMIT
-pub const LARGE_IMAGE_THRESHOLD: u64 = 50_000_000;
 
 /// Progress tracking structure - thread-safe
 #[derive(Clone, Debug)]
@@ -88,11 +86,11 @@ impl VirtualTexture {
 
         let (w, h) = (self.width, self.height);
         let tile_size = self.tile_size;
-        
+
         // Take ownership of the image
         let img = self.full_image.take().expect("Image already taken");
         let rgba = img.to_rgba8();
-        
+
         let mut tiles = Vec::new();
         let tiles_x = (w + tile_size - 1) / tile_size;
         let tiles_y = (h + tile_size - 1) / tile_size;
@@ -130,7 +128,7 @@ impl VirtualTexture {
                 });
 
                 prepared += 1;
-                
+
                 // Update progress every few tiles to avoid locking too often
                 if prepared % 10 == 0 || prepared == total_tiles {
                     let mut progress = self.progress.lock().unwrap();
@@ -178,7 +176,6 @@ impl VirtualTexture {
         progress.prepared_tiles
     }
 
-
     /// Upload a single tile's texture.
     fn upload_tile(tile: &mut Tile, ctx: &egui::Context, options: egui::TextureOptions) {
         if tile.dirty || tile.texture.is_none() {
@@ -200,7 +197,15 @@ impl VirtualTexture {
     }
 
     /// Render the visible tiles using the given painter.
-    pub fn render(&mut self, ctx: &egui::Context, painter: &egui::Painter, zoom: f32, pan: egui::Vec2, viewport_size: egui::Vec2, options: egui::TextureOptions) {
+    pub fn render(
+        &mut self,
+        ctx: &egui::Context,
+        painter: &egui::Painter,
+        zoom: f32,
+        pan: egui::Vec2,
+        rect: egui::Rect,
+        options: egui::TextureOptions,
+    ) {
         if !self.is_ready {
             return;
         }
@@ -208,15 +213,13 @@ impl VirtualTexture {
         let img_w = self.width as f32;
         let img_h = self.height as f32;
 
-        // Compute visible rectangle in image coordinates.
-        let center = viewport_size / 2.0;
-        let rect_center = center + pan * zoom;
+        let rect_center = rect.center() + pan * zoom;
 
         let inv_zoom = 1.0 / zoom;
-        let left_img = (0.0 - rect_center.x) * inv_zoom + img_w / 2.0;
-        let right_img = (viewport_size.x - rect_center.x) * inv_zoom + img_w / 2.0;
-        let top_img = (0.0 - rect_center.y) * inv_zoom + img_h / 2.0;
-        let bottom_img = (viewport_size.y - rect_center.y) * inv_zoom + img_h / 2.0;
+        let left_img = (rect.min.x - rect_center.x) * inv_zoom + img_w / 2.0;
+        let right_img = (rect.max.x - rect_center.x) * inv_zoom + img_w / 2.0;
+        let top_img = (rect.min.y - rect_center.y) * inv_zoom + img_h / 2.0;
+        let bottom_img = (rect.max.y - rect_center.y) * inv_zoom + img_h / 2.0;
 
         let left = left_img.clamp(0.0, img_w);
         let right = right_img.clamp(0.0, img_w);
@@ -236,7 +239,11 @@ impl VirtualTexture {
                 if gx < 0 || gy < 0 {
                     continue;
                 }
-                if let Some(tile) = self.tiles.iter_mut().find(|t| t.grid_x == gx as u32 && t.grid_y == gy as u32) {
+                if let Some(tile) = self
+                    .tiles
+                    .iter_mut()
+                    .find(|t| t.grid_x == gx as u32 && t.grid_y == gy as u32)
+                {
                     Self::upload_tile(tile, ctx, options);
 
                     // Compute screen rect for this tile.
@@ -244,12 +251,12 @@ impl VirtualTexture {
                     let tile_y = gy as f32 * tile_size_f;
                     let tile_w = tile.image.width() as f32;
                     let tile_h = tile.image.height() as f32;
-                    
+
                     let screen_x = rect_center.x + (tile_x - img_w / 2.0) * zoom;
                     let screen_y = rect_center.y + (tile_y - img_h / 2.0) * zoom;
                     let screen_w = tile_w * zoom;
                     let screen_h = tile_h * zoom;
-                    
+
                     let screen_rect = egui::Rect::from_min_size(
                         egui::pos2(screen_x, screen_y),
                         egui::vec2(screen_w, screen_h),

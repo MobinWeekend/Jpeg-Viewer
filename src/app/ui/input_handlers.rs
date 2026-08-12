@@ -91,7 +91,7 @@ impl ViewerApp {
             // For extreme ratios
             let max_fit_zoom = zoom_x.max(zoom_y).min(1.0);
             self.zoom = max_fit_zoom;
-            let snap_to_top= (texture_size.y / 2.0) + (36.0 - (available.y / 2.0)) / max_fit_zoom;
+            let snap_to_top= (texture_size.y / 2.0) - (available.y / 2.0) / max_fit_zoom;
             self.pan = egui::Vec2::new(0.0, snap_to_top);
             false // fit to one side
         }

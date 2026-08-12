@@ -53,8 +53,8 @@ impl Default for AppSettings {
             slideshow_loop: true,
             slideshow_random: false,
             start_fullscreen: false,
-            virtual_texture_threshold: 6000,
-            tile_size: 512,
+            virtual_texture_threshold: 8192,
+            tile_size: 1024,
         }
     }
 }

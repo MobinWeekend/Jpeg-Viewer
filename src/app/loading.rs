@@ -1,5 +1,5 @@
 use super::types::{LoadedImage, LoadingState, ViewerApp};
-use super::virtual_texture::{LARGE_IMAGE_THRESHOLD, MAX_GPU_TEXTURE_SIZE};
+use super::virtual_texture::MAX_GPU_TEXTURE_SIZE;
 use crate::image_entry::ImageEntry;
 use image::ImageReader;
 use rayon::spawn;
@@ -269,10 +269,8 @@ fn load_bytes_with_detection(
     let reader_result = ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format();
     if let Ok(reader) = reader_result {
         if let Ok((width, height)) = reader.into_dimensions() {
-            let pixel_count = width as u64 * height as u64;
             // Check if we should use virtual texturing
-            let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
-                || width > threshold
+            let use_virtual = width > threshold
                 || height > threshold
                 || width > MAX_GPU_TEXTURE_SIZE
                 || height > MAX_GPU_TEXTURE_SIZE;

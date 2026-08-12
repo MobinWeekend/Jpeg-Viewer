@@ -1,4 +1,4 @@
-use super::types::{LoadingState, ViewerApp};
+use super::types::ViewerApp;
 use eframe::egui;
 
 impl ViewerApp {
@@ -42,7 +42,6 @@ impl ViewerApp {
             self.load_current_image_with_cache_keep_texture();
             ctx.request_repaint();
             self.update_window_title(ctx);
-            self.set_loading_state(LoadingState::Idle);
         }
         self.b_zoom_used = false;
     }

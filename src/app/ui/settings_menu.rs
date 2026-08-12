@@ -210,7 +210,7 @@ impl ViewerApp {
 
                             // ===== VT SETTINGS =====
                             ui.label(
-                                egui::RichText::new("Virtual texture Settings")
+                                egui::RichText::new("⚙ Virtual texture Settings")
                                     .size(13.0)
                                     .strong(),
                             );
@@ -227,13 +227,19 @@ impl ViewerApp {
                                         ui.selectable_value(&mut tile, 256, "256px");
                                         ui.selectable_value(&mut tile, 512, "512px");
                                         ui.selectable_value(&mut tile, 1024, "1024px");
+                                        ui.selectable_value(&mut tile, 2048, "2048px");
                                     });
                                 if tile != self.settings_manager.get().tile_size {
                                     let _ = self.settings_manager.update(|settings| {
                                         settings.tile_size = tile;
                                     });
-                                    // reload the current image if it's virtual
+                                    // reload the current image if i
                                     if !self.image_entries.is_empty() {
+                                        // Force reload of virtual texture
+                                        self.virtual_texture = None;
+                                        self.vt_progress = None;
+                                        self.vt_total_tiles = 0;
+                                        self.virtual_texture_thread = None;
                                         self.load_current_image_with_cache();
                                     }
                                 }
@@ -259,6 +265,11 @@ impl ViewerApp {
                                         });
                                         // Reload current image if virtual texturing is used
                                         if !self.image_entries.is_empty() {
+                                            // Force reload of virtual texture
+                                            self.virtual_texture = None;
+                                            self.vt_progress = None;
+                                            self.vt_total_tiles = 0;
+                                            self.virtual_texture_thread = None;
                                             self.load_current_image_with_cache();
                                         }
                                     }
