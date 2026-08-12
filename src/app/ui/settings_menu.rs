@@ -76,6 +76,11 @@ impl ViewerApp {
                                         settings.texture_filter = filter.clone();
                                     });
                                     if !self.image_entries.is_empty() {
+                                        // Force reload of virtual texture if present
+                                        self.virtual_texture = None;
+                                        self.vt_progress = None;
+                                        self.vt_total_tiles = 0;
+                                        self.virtual_texture_thread = None;
                                         self.load_current_image_with_cache();
                                     }
                                 }
@@ -203,6 +208,65 @@ impl ViewerApp {
                         ui.collapsing(egui::RichText::new("⚙ Advanced").size(15.0), |ui| {
                             ui.add_space(4.0);
 
+                            // ===== VT SETTINGS =====
+                            ui.label(
+                                egui::RichText::new("Virtual texture Settings")
+                                    .size(13.0)
+                                    .strong(),
+                            );
+
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.label("Tile Size:");
+                                ui.add_space(8.0);
+                                let mut tile = self.settings_manager.get().tile_size;
+                                egui::ComboBox::from_label("")
+                                    .selected_text(format!("{}px", tile))
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut tile, 128, "128px");
+                                        ui.selectable_value(&mut tile, 256, "256px");
+                                        ui.selectable_value(&mut tile, 512, "512px");
+                                        ui.selectable_value(&mut tile, 1024, "1024px");
+                                    });
+                                if tile != self.settings_manager.get().tile_size {
+                                    let _ = self.settings_manager.update(|settings| {
+                                        settings.tile_size = tile;
+                                    });
+                                    // reload the current image if it's virtual
+                                    if !self.image_entries.is_empty() {
+                                        self.load_current_image_with_cache();
+                                    }
+                                }
+                            });
+
+                            ui.add_space(4.0);
+
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.label("VT Threshold:");
+                                ui.add_space(8.0);
+                                let mut threshold =
+                                    self.settings_manager.get().virtual_texture_threshold;
+                                if ui
+                                    .add(egui::Slider::new(&mut threshold, 4096..=16384).text("px"))
+                                    .changed()
+                                {
+                                    if threshold
+                                        != self.settings_manager.get().virtual_texture_threshold
+                                    {
+                                        let _ = self.settings_manager.update(|settings| {
+                                            settings.virtual_texture_threshold = threshold;
+                                        });
+                                        // Reload current image if virtual texturing is used
+                                        if !self.image_entries.is_empty() {
+                                            self.load_current_image_with_cache();
+                                        }
+                                    }
+                                }
+                            });
+
+                            ui.add_space(4.0);
+
                             // ===== CACHE SETTINGS =====
                             ui.label(egui::RichText::new("💾 Cache Settings").size(13.0).strong());
                             ui.add_space(4.0);
@@ -226,7 +290,7 @@ impl ViewerApp {
                                         let _ = self.settings_manager.update(|settings| {
                                             settings.cache_radius = radius;
                                         });
-                                        if !self.image_entries.is_empty() && !self.b_is_loading {
+                                        if !self.image_entries.is_empty() && !self.is_loading() {
                                             self.preload_adjacent_images();
                                         }
                                     }
@@ -561,7 +625,7 @@ impl ViewerApp {
                             // Show current state
                             let state_text = if self.is_animating {
                                 "Animating"
-                            } else if self.b_is_loading {
+                            } else if self.is_loading() {
                                 "Loading"
                             } else if self.is_idle {
                                 "Idle"

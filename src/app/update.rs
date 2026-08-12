@@ -1,15 +1,11 @@
-use super::types::ViewerApp;
+use super::types::{LoadingState, ViewerApp};
 use super::virtual_texture::VirtualTexture;
 use eframe::egui;
 use image::GenericImageView;
 use std::time::Instant;
 
-// Constants for deciding when to use virtual texturing.
-use super::virtual_texture::{LARGE_IMAGE_THRESHOLD, MAX_GPU_TEXTURE_SIZE};
-
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-
         // Initialize logo texture
         if self.logo_texture.is_none() {
             match image::load_from_memory(include_bytes!("../../assets/icon.ico")) {
@@ -77,7 +73,7 @@ impl eframe::App for ViewerApp {
         self.set_animating(is_animating);
 
         // ========== SLIDESHOW LOGIC ==========
-        if self.slideshow_enabled && !self.image_entries.is_empty() && !self.b_is_loading {
+        if self.slideshow_enabled && !self.image_entries.is_empty() && !self.is_loading() {
             let elapsed = self.slideshow_last_advance.elapsed();
             if elapsed >= self.slideshow_interval {
                 if self.slideshow_loop || self.current_index < self.image_entries.len() - 1 {
@@ -113,91 +109,27 @@ impl eframe::App for ViewerApp {
                         let mut should_spawn_full_gif = false;
                         match loaded_image {
                             super::types::LoadedImage::Static(img) => {
+                                // This is a small image – upload directly
                                 let (width, height) = img.dimensions();
-                                let pixel_count = width as u64 * height as u64;
+                                let rgba = img.to_rgba8();
+                                let size = [width as usize, height as usize];
+                                let color =
+                                    egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                                let options = self.get_texture_options();
+                                self.texture = Some(ctx.load_texture("image", color, options));
+                                self.gif_animation = None;
+                                self.is_gif = false;
+                                self.is_preview = false;
+                                self.image_error = None;
+                                self.virtual_texture = None;
+                                self.vt_progress = None;
+                                self.vt_total_tiles = 0;
+                                self.b_fit_to_window = true;
+                                ctx.request_repaint();
+                                self.set_loading_state(LoadingState::Idle);
 
-                                // Check if we should use virtual texturing
-                                let use_virtual = pixel_count > LARGE_IMAGE_THRESHOLD
-                                    || width > MAX_GPU_TEXTURE_SIZE
-                                    || height > MAX_GPU_TEXTURE_SIZE
-                                    || width > 16384
-                                    || height > 16384;
-
-                                if use_virtual {
-                                    // Use virtual texture for large images
-                                    println!(
-                                        "Using virtual texture for {}x{} ({} MP)",
-                                        width,
-                                        height,
-                                        pixel_count / 1_000_000
-                                    );
-
-                                    // Create virtual texture
-                                    let vt = VirtualTexture::new(img);
-
-                                    // Store progress info before moving vt
-                                    let progress = vt.progress_ref().lock().unwrap().clone();
-                                    self.vt_progress = Some(progress);
-                                    self.vt_total_tiles = vt.total_tiles();
-
-                                    // Set loading state
-                                    self.virtual_texture_loading = true;
-
-                                    // Spawn background thread to prepare tiles
-                                    let handle = std::thread::spawn(move || {
-                                        let mut vt_clone = vt;
-                                        vt_clone.prepare();
-                                        vt_clone
-                                    });
-                                    self.virtual_texture_thread = Some(handle);
-
-                                    self.texture = None;
-                                    self.gif_animation = None;
-                                    self.is_gif = false;
-                                    self.is_preview = false;
-                                    self.b_is_loading_full = false;
-                                    self.image_error = None;
-                                    self.b_is_loading = false;
-
-                                    // Detect file type (even if using virtual texture)
-                                    self.detect_current_file_type();
-
-                                    ctx.request_repaint();
-                                } else {
-                                    // Normal upload for small images
-                                    const MAX_TEXTURE_SIZE: u32 = 32768;
-                                    if width > MAX_TEXTURE_SIZE || height > MAX_TEXTURE_SIZE {
-                                        self.b_is_loading = false;
-                                        self.texture = None;
-                                        self.image_error = Some(format!(
-                                            "Image too large: {}x{}\nMaximum supported size: {}x{}",
-                                            width, height, MAX_TEXTURE_SIZE, MAX_TEXTURE_SIZE
-                                        ));
-                                        self.detect_current_file_type();
-                                        ctx.request_repaint();
-                                        return;
-                                    }
-
-                                    let rgba = img.to_rgba8();
-                                    let size = [width as usize, height as usize];
-                                    let color = egui::ColorImage::from_rgba_unmultiplied(
-                                        size,
-                                        rgba.as_raw(),
-                                    );
-                                    let options = self.get_texture_options();
-                                    self.texture = Some(ctx.load_texture("image", color, options));
-                                    self.gif_animation = None;
-                                    self.is_gif = false;
-                                    self.is_preview = false;
-                                    self.b_is_loading_full = false;
-                                    self.image_error = None;
-                                    self.virtual_texture = None;
-                                    self.virtual_texture_loading = false;
-                                    self.b_fit_to_window = true;
-
-                                    // Detect file type after successful load
-                                    self.detect_current_file_type();
-                                }
+                                // Detect file type after successful load
+                                self.detect_current_file_type();
                             }
                             super::types::LoadedImage::Animated(gif, is_preview) => {
                                 self.gif_animation = Some(gif);
@@ -205,9 +137,8 @@ impl eframe::App for ViewerApp {
                                 self.is_preview = is_preview;
                                 self.image_error = None;
                                 self.virtual_texture = None;
-                                self.virtual_texture_loading = false;
                                 self.b_fit_to_window = true;
-
+                                self.set_loading_state(LoadingState::Idle);
                                 // Detect file type after GIF load
                                 self.detect_current_file_type();
 
@@ -227,8 +158,46 @@ impl eframe::App for ViewerApp {
                                     );
                                 }
                             }
+                            super::types::LoadedImage::VirtualPending(bytes, width, height) => {
+                                // Large image – start virtual texture loading
+                                println!(
+                                    "VirtualPending: {}x{} ({} MP)",
+                                    width,
+                                    height,
+                                    (width as u64 * height as u64) / 1_000_000
+                                );
+
+                                self.set_loading_state(LoadingState::VirtualTextureLoading);
+
+                                // Clear old state
+                                self.texture = None;
+                                self.gif_animation = None;
+                                self.is_gif = false;
+                                self.is_preview = false;
+                                self.image_error = None;
+
+                                let tile_size = self.settings_manager.get().tile_size;
+
+                                // Spawn thread to decode and prepare virtual texture
+                                let handle = std::thread::spawn(move || {
+                                    // Decode the bytes
+                                    let img = crate::loader::load_image_from_bytes(&bytes, None)
+                                        .expect("Failed to decode image"); // better error handling later
+                                    // Create and prepare virtual texture
+                                    let mut vt = VirtualTexture::new(img, tile_size);
+                                    vt.prepare();
+                                    vt
+                                });
+                                self.virtual_texture_thread = Some(handle);
+
+                                // We don't have progress yet; will be set when thread finishes
+                                self.vt_progress = None;
+                                self.vt_total_tiles = 0;
+
+                                self.detect_current_file_type();
+                                ctx.request_repaint();
+                            }
                         }
-                        self.b_is_loading = false; // NOW clear the loading flag
                         self.update_window_title(ctx);
                         self.preload_adjacent_images();
                         self.mark_interaction();
@@ -237,18 +206,18 @@ impl eframe::App for ViewerApp {
                         if should_spawn_full_gif {
                             println!("Spawning full GIF load now...");
                             self.spawn_full_gif_loading();
+                            self.set_loading_state(LoadingState::LoadingFullGif);
                         }
                     }
                     Err(error) => {
                         self.detect_current_file_type();
-                        self.b_is_loading = false;
                         self.texture = None;
                         self.image_error = Some(error);
                         self.gif_animation = None;
                         self.is_gif = false;
                         self.is_preview = false;
                         self.virtual_texture = None;
-                        self.virtual_texture_loading = false;
+                        self.set_loading_state(LoadingState::Idle);
 
                         // Detect file type even on error (so we can suggest rename)
                         self.detect_current_file_type();
@@ -264,12 +233,14 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== CHECK VIRTUAL TEXTURE BACKGROUND LOADING ==========
-        if self.virtual_texture_loading {
+        if self.is_loading_virtual() {
             // Update progress from the stored progress if available
             if let Some(vt) = &self.virtual_texture {
                 let progress = vt.progress_ref().lock().unwrap().clone();
                 self.vt_progress = Some(progress);
                 self.vt_total_tiles = vt.total_tiles();
+                ctx.request_repaint();
+                self.mark_interaction();
             }
 
             if let Some(handle) = self.virtual_texture_thread.take() {
@@ -278,7 +249,6 @@ impl eframe::App for ViewerApp {
                     match handle.join() {
                         Ok(vt) => {
                             self.virtual_texture = Some(vt);
-                            self.virtual_texture_loading = false;
                             self.vt_progress = None;
                             self.b_fit_to_window = true;
 
@@ -287,13 +257,14 @@ impl eframe::App for ViewerApp {
 
                             ctx.request_repaint();
                             println!("Virtual texture ready!");
+                            self.set_loading_state(LoadingState::Idle);
                         }
                         Err(e) => {
                             eprintln!("Failed to prepare virtual texture: {:?}", e);
-                            self.virtual_texture_loading = false;
                             self.vt_progress = None;
                             self.image_error = Some("Failed to prepare large image".to_string());
                             self.detect_current_file_type();
+                            self.set_loading_state(LoadingState::Idle);
                         }
                     }
                 } else {
@@ -308,13 +279,12 @@ impl eframe::App for ViewerApp {
         // ========== FULL IMAGE LOADING (non-GIF) ==========
         if let Some(rx) = &self.full_image_receiver {
             if let Ok(full_image) = rx.try_recv() {
-                if !self.b_is_loading && self.texture.is_some() {
+                if !self.is_loading() && self.texture.is_some() {
                     let rgba = full_image.to_rgba8();
                     let size = [rgba.width() as usize, rgba.height() as usize];
                     let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
                     let options = self.get_texture_options();
                     self.texture = Some(ctx.load_texture("image_full", color, options));
-                    self.b_is_loading_full = false;
                     self.is_preview = false;
                     self.b_fit_to_window = true;
                     self.full_image_receiver = None;
@@ -325,6 +295,9 @@ impl eframe::App for ViewerApp {
 
                     self.update_window_title(ctx);
                     self.mark_interaction();
+                    // flag here
+                    ctx.request_repaint();
+                    self.set_loading_state(LoadingState::Idle);
                 } else {
                     self.full_image_receiver = None;
                 }
@@ -336,7 +309,6 @@ impl eframe::App for ViewerApp {
             match rx.try_recv() {
                 Ok(result) => {
                     self.full_gif_receiver = None;
-                    self.full_gif_loading = false;
                     match result {
                         Ok(loaded_image) => {
                             self.detect_current_file_type();
@@ -362,6 +334,7 @@ impl eframe::App for ViewerApp {
                                     self.update_gif_texture(ctx);
                                     self.detect_current_file_type();
                                     self.mark_interaction();
+                                    self.set_loading_state(LoadingState::Idle);
 
                                     if let Some(gif) = &self.gif_animation {
                                         println!(
@@ -390,20 +363,16 @@ impl eframe::App for ViewerApp {
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.full_gif_receiver = None;
-                    self.full_gif_loading = false;
                     eprintln!("Full GIF loading task was cancelled");
                 }
             }
-        } else if self.full_gif_loading {
-            self.full_gif_loading = false;
-            eprintln!("Full GIF loading flag was stuck - resetting");
         }
 
-        // Cancel loading if we navigated away
+        // Cancel loading if we navigated away from a GIF preview
         if !self.is_gif || !self.is_preview {
-            if self.full_gif_loading || self.full_gif_receiver.is_some() {
+            if self.full_gif_receiver.is_some() {
                 self.full_gif_receiver = None;
-                self.full_gif_loading = false;
+                self.set_loading_state(LoadingState::Idle);
                 println!("Cancelled full GIF loading - no longer viewing a GIF preview");
             }
         }
@@ -414,7 +383,7 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== PRELOAD ==========
-        if !self.image_entries.is_empty() && !self.b_is_loading && self.image_error.is_none() {
+        if !self.image_entries.is_empty() && !self.is_loading() && self.image_error.is_none() {
             self.preload_adjacent_images();
         }
 
@@ -422,7 +391,7 @@ impl eframe::App for ViewerApp {
         self.render_top_panel(ctx);
         self.render_central_panel(ctx);
 
-        if self.texture.is_none() && !self.b_is_loading && self.image_entries.is_empty() {
+        if self.texture.is_none() && !self.is_loading() && self.image_entries.is_empty() {
             self.render_shortcut_help(ctx);
         }
 

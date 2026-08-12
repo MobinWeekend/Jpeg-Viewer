@@ -1,4 +1,4 @@
-use crate::app::types::ViewerApp;
+use crate::app::types::{LoadingState, ViewerApp};
 use eframe::egui;
 
 impl ViewerApp {
@@ -15,7 +15,7 @@ impl ViewerApp {
 
             // ---------- VIRTUAL TEXTURE LOADING STATE ----------
             // Check if virtual texture is loading in background
-            if self.virtual_texture_loading {
+            if self.is_loading_virtual() {
                 let (total_tiles, prepared_tiles, progress_percent, is_extreme) = {
                     if let Some(ref progress) = self.vt_progress {
                         let total = self.vt_total_tiles;
@@ -48,26 +48,36 @@ impl ViewerApp {
                 return;
             }
 
-            // Handle loading states when no texture and no virtual texture
-            if self.texture.is_none() && self.virtual_texture.is_none() {
-                if self.b_is_loading {
-                    let msg = if self.is_gif {
-                        "Loading GIF..."
-                    } else {
-                        "Loading image..."
-                    };
-                    self.render_loading_ui(ui, msg, None, false);
-                } else if self.image_entries.is_empty() {
-                    self.render_welcome_ui(ctx, ui);
-                } else if self.is_gif {
-                    self.render_loading_ui(ui, "Loading GIF frame...", None, false);
-                }
-                return;
-            }
-
             // Get the available rect
             let available_rect = ui.available_rect_before_wrap();
             let center = available_rect.center();
+
+            if self.texture.is_none() && self.virtual_texture.is_none() {
+                // Handle loading states when no texture and no virtual texture
+                if self.is_loading() {
+                    let painter = ui.painter();
+                    let message = match self.loading_state {
+                        LoadingState::LoadingFullGif => "Loading full GIF...",
+                        LoadingState::VirtualTextureLoading => "Loading large image...",
+                        _ => "Loading...",
+                    };
+                    Self::draw_loading_overlay(&painter, available_rect, message);
+                    return;
+                }
+                let error = self.image_error.clone();
+                if let Some(error) = error {
+                    self.render_error_ui(ui, &error);
+                    return;
+                }
+                if self.image_entries.is_empty() {
+                    self.render_welcome_ui(ctx, ui);
+                    return;
+                } else if self.is_gif {
+                    self.render_loading_ui(ui, "Loading GIF frame...", None, false);
+                    return;
+                }
+                return;
+            }
 
             // ---------- VIRTUAL TEXTURE RENDERING ----------
             if self.virtual_texture.is_some() {
@@ -108,20 +118,23 @@ impl ViewerApp {
                     self.b_fit_to_window = false;
                 }
 
-                // IMPORTANT: Get the filter BEFORE borrowing vt mutably
-                let filter = self.get_texture_options().minification;
-
-                // Now borrow vt mutably and set the filter
-                let vt = self.virtual_texture.as_mut().unwrap();
-                vt.set_texture_filter(filter, ctx);
-
                 // Render using virtual texture
                 let viewport_size = ui.available_size();
 
                 // Create the painter and immediately use it in a limited scope
-                {
+                let texture_options = self.get_texture_options();
+
+                if let Some(vt) = &mut self.virtual_texture {
                     let painter = ui.painter();
-                    vt.render(ctx, &painter, self.zoom, self.pan, viewport_size);
+
+                    vt.render(
+                        ctx,
+                        &painter,
+                        self.zoom,
+                        self.pan,
+                        viewport_size,
+                        texture_options,
+                    );
                 }
 
                 // Allocate the same rect for interaction (drag/pan)
@@ -135,7 +148,7 @@ impl ViewerApp {
                 }
 
                 // Show loading indicator overlay if still loading
-                if self.b_is_loading {
+                if self.is_loading() {
                     let painter = ui.painter();
                     Self::draw_loading_overlay(&painter, available_rect, "Loading...");
                 }
@@ -173,12 +186,15 @@ impl ViewerApp {
                 egui::Color32::WHITE,
             );
 
-            if self.b_is_loading {
+            // In render_central_panel(), after the image is rendered:
+            if self.is_loading() {
                 let painter = ui.painter();
-                Self::draw_loading_overlay(&painter, available_rect, "Loading...");
-            } else if self.is_gif && self.is_preview {
-                let painter = ui.painter();
-                Self::draw_loading_overlay(&painter, available_rect, "Loading full GIF...");
+                let message = match self.loading_state {
+                    LoadingState::LoadingFullGif => "Loading full GIF...",
+                    LoadingState::VirtualTextureLoading => "Loading large image...",
+                    _ => "Loading...",
+                };
+                Self::draw_loading_overlay(&painter, available_rect, message);
             }
 
             self.handle_image_mouse_input(ctx, &response);

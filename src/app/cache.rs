@@ -1,6 +1,7 @@
 // src/app/cache.rs
 use super::types::{CachedImage, LoadedImage, ViewerApp};
 use eframe::egui;
+use image::GenericImageView;
 
 impl ViewerApp {
     pub fn get_image_id(&self, index: usize) -> Option<String> {
@@ -33,7 +34,7 @@ impl ViewerApp {
             None => return false,
         };
 
-        if let Some(cached) = self.image_cache.get(&image_id) {
+        if let Some(cached) = self.image_cache.get(&image_id).cloned() {
             if cached.index != index {
                 let cached_clone = cached.clone();
                 self.image_cache.pop(&image_id);
@@ -42,30 +43,28 @@ impl ViewerApp {
                     ..cached_clone
                 };
                 self.image_cache.put(image_id.clone(), updated);
-                if let Some(updated_cached) = self.image_cache.get(&image_id) {
+                if let Some(updated_cached) = self.image_cache.get(&image_id).cloned() {
                     self.texture = Some(updated_cached.texture.clone());
                     self.is_gif = updated_cached.is_gif;
                     self.is_preview = updated_cached.is_preview;
                     self.b_fit_to_window = true;
-                    self.b_is_loading = false;
-                    
+
                     // Restore file type detection from cache
                     self.file_type_detection = updated_cached.file_type_detection.clone();
-                    
+
                     self.detect_current_file_type(); // Verify/update detection
                     return true;
                 }
                 return false;
             }
-            self.texture = Some(cached.texture.clone());
+            self.texture = Some(cached.texture);
             self.is_gif = cached.is_gif;
             self.is_preview = cached.is_preview;
             self.b_fit_to_window = true;
-            self.b_is_loading = false;
-            
+
             // Restore file type detection from cache
             self.file_type_detection = cached.file_type_detection.clone();
-            
+
             self.detect_current_file_type(); // Verify/update detection
             return true;
         }
@@ -94,6 +93,19 @@ impl ViewerApp {
             return;
         }
 
+        // Skip caching if the image would be handled by virtual texturing
+        if let LoadedImage::Static(img) = &loaded_image {
+            let (width, height) = img.dimensions();
+            let pixel_count = width as u64 * height as u64;
+            let settings = self.settings_manager.get();
+            let threshold = settings.virtual_texture_threshold;
+            // Also use the hard‑coded LARGE_IMAGE_THRESHOLD if you want
+            use super::virtual_texture::LARGE_IMAGE_THRESHOLD;
+            if width > threshold || height > threshold || pixel_count > LARGE_IMAGE_THRESHOLD {
+                return; // skip caching for large images
+            }
+        }
+
         let image_id = match self.get_image_id(index) {
             Some(id) => id,
             None => return,
@@ -110,16 +122,17 @@ impl ViewerApp {
                 let width = rgba.width();
                 let height = rgba.height();
 
-                // Add size validation - skip caching if too large
-                const MAX_CACHE_SIZE: u32 = 18000;
-                const MAX_CACHE_PIXELS: u64 = 250_000_000;
+                // Size validation - skip caching if too large
+                let settings = self.settings_manager.get();
+                let threshold = settings.virtual_texture_threshold;
+                use super::virtual_texture::{LARGE_IMAGE_THRESHOLD, MAX_GPU_TEXTURE_SIZE};
 
-                if width > MAX_CACHE_SIZE || height > MAX_CACHE_SIZE {
+                if width > threshold || height > threshold || width > MAX_GPU_TEXTURE_SIZE || height > MAX_GPU_TEXTURE_SIZE {
                     return;
                 }
 
                 let pixels = width as u64 * height as u64;
-                if pixels > MAX_CACHE_PIXELS {
+                if pixels > LARGE_IMAGE_THRESHOLD {
                     return;
                 }
 
@@ -132,18 +145,20 @@ impl ViewerApp {
             LoadedImage::Animated(gif, _) => {
                 // This shouldn't be reached since we skip GIFs above
                 let frame = gif.get_current_frame_ref();
+                let options = self.get_texture_options();
                 if let Some(frame) = frame {
                     let size = [frame.width() as usize, frame.height() as usize];
                     let color = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
                     Some(ctx.load_texture(
                         &format!("cache_{}", image_id),
                         color,
-                        Default::default(),
+                        options,
                     ))
                 } else {
                     None
                 }
             }
+            LoadedImage::VirtualPending(_, _, _) => None,
         };
 
         if let Some(texture) = texture {
@@ -154,7 +169,7 @@ impl ViewerApp {
                 // For preloaded images, we don't have detection yet - it will be set when loaded
                 None
             };
-            
+
             let cached = CachedImage {
                 texture,
                 is_gif: matches!(loaded_image, LoadedImage::Animated(_, _)),

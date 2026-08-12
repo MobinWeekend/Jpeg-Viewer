@@ -1,4 +1,4 @@
-use super::types::ViewerApp;
+use super::types::{ViewerApp, LoadingState};
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
 use std::time::Instant;
@@ -76,7 +76,7 @@ impl ViewerApp {
                     self.is_preview = false;
                     self.full_image_receiver = None;
                     self.full_gif_receiver = None;
-                    self.b_is_loading_full = false;
+                    self.set_loading_state(LoadingState::Idle);
                     self.load_current_image_with_cache_keep_texture();
                     self.preload_adjacent_images();
                 }
@@ -99,7 +99,7 @@ impl ViewerApp {
                     self.is_preview = false;
                     self.full_image_receiver = None;
                     self.full_gif_receiver = None;
-                    self.b_is_loading_full = false;
+                    self.set_loading_state(LoadingState::Idle);
                     self.load_current_image_with_cache_keep_texture();
                     self.preload_adjacent_images();
                 }

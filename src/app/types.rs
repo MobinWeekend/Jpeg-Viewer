@@ -1,4 +1,5 @@
 use super::virtual_texture::PreparationProgress;
+use crate::app::types::LoadingState::Idle;
 use crate::app::virtual_texture::VirtualTexture;
 use crate::gif_animation::GifAnimation;
 use crate::image_entry::ImageEntry;
@@ -17,6 +18,7 @@ use std::time::{Duration, Instant};
 pub enum LoadedImage {
     Static(DynamicImage),
     Animated(GifAnimation, bool),
+    VirtualPending(Vec<u8>, u32, u32), // raw bytes, width, height
 }
 
 // Cached image data
@@ -43,20 +45,25 @@ pub struct PreloadTask {
     pub start_time: std::time::Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadingState {
+    Idle,
+    Loading,
+    LoadingFullGif,
+    VirtualTextureLoading,
+}
+
 pub struct ViewerApp {
     pub texture: Option<egui::TextureHandle>,
     pub gif_animation: Option<GifAnimation>,
     pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
     pub full_image_receiver: Option<Receiver<DynamicImage>>,
     pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>,
-    pub full_gif_loading: bool,
     pub zoom: f32,
     pub pan: egui::Vec2,
     pub current_directory: Option<PathBuf>,
     pub image_entries: Vec<ImageEntry>,
     pub current_index: usize,
-    pub b_is_loading: bool,
-    pub b_is_loading_full: bool,
     pub b_fit_to_window: bool,
     pub image_rect: Option<egui::Rect>,
     pub last_window_size: Option<egui::Vec2>,
@@ -107,13 +114,13 @@ pub struct ViewerApp {
     pub slideshow_has_advanced: bool,
     pub show_help_menu: bool,
     pub virtual_texture: Option<VirtualTexture>,
-    pub virtual_texture_loading: bool,
     pub virtual_texture_thread: Option<std::thread::JoinHandle<VirtualTexture>>,
     // Store progress separately so we can show it even when vt is moved
     pub vt_progress: Option<PreparationProgress>,
     pub vt_total_tiles: usize,
     pub file_type_detection: Option<FileTypeDetection>,
     pub startup_fullscreen_handled: bool,
+    pub loading_state: LoadingState,
 }
 
 impl Default for ViewerApp {
@@ -130,13 +137,10 @@ impl Default for ViewerApp {
             receiver: None,
             full_image_receiver: None,
             full_gif_receiver: None,
-            full_gif_loading: false,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
             current_directory: None,
             current_index: 0,
-            b_is_loading: false,
-            b_is_loading_full: false,
             b_fit_to_window: false,
             image_rect: None,
             last_window_size: None,
@@ -191,17 +195,34 @@ impl Default for ViewerApp {
             slideshow_has_advanced: false,
             show_help_menu: false,
             virtual_texture: None,
-            virtual_texture_loading: false,
             virtual_texture_thread: None,
             vt_progress: None,
             vt_total_tiles: 0,
             file_type_detection: None,
             startup_fullscreen_handled: false,
+            loading_state: Idle,
         }
     }
 }
 
 impl ViewerApp {
+    pub fn set_loading_state(&mut self, state: LoadingState) {
+        self.loading_state = state;
+    }
+
+    pub fn is_loading(&self) -> bool {
+        matches!(
+            self.loading_state,
+            LoadingState::Loading
+                | LoadingState::LoadingFullGif
+                | LoadingState::VirtualTextureLoading
+        )
+    }
+
+    pub fn is_loading_virtual(&self) -> bool {
+        matches!(self.loading_state, LoadingState::VirtualTextureLoading)
+    }
+
     pub fn get_current_filename(&self) -> String {
         if let Some(entry) = self.image_entries.get(self.current_index) {
             match entry {
@@ -314,7 +335,6 @@ impl ViewerApp {
         self.is_preview = false;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
-        self.b_is_loading_full = false;
         self.image_error = None;
         self.receiver = None;
 
@@ -354,15 +374,19 @@ impl ViewerApp {
     /// Spawn a background task to load the full GIF (all frames)
     pub fn spawn_full_gif_loading(&mut self) {
         println!(
-            "[spawn_full_gif_loading] called: is_gif={}, is_preview={}, has_receiver={}, b_is_loading={}",
+            "[spawn_full_gif_loading] called: is_gif={}, is_preview={}, has_receiver={}, is_loading={}",
             self.is_gif,
             self.is_preview,
             self.full_gif_receiver.is_some(),
-            self.b_is_loading
+            self.is_loading(),
         );
+        
+        if !self.is_gif || !self.is_preview {
+            println!("[spawn_full_gif_loading] Not a GIF preview, skipping");
+            return;
+        }
 
-        if !self.is_gif || !self.is_preview || self.full_gif_receiver.is_some() || self.b_is_loading
-        {
+        if self.full_gif_receiver.is_some() || self.is_loading() {
             println!("[spawn_full_gif_loading] skipping - conditions not met");
             return;
         }
@@ -373,7 +397,7 @@ impl ViewerApp {
 
             let (tx, rx) = channel();
             self.full_gif_receiver = Some(rx);
-            self.full_gif_loading = true;
+            self.set_loading_state(LoadingState::LoadingFullGif);
 
             println!(
                 "[spawn_full_gif_loading] spawning task for index {}",

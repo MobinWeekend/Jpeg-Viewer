@@ -1,12 +1,12 @@
 // src/app/virtual_texture.rs
 
-use eframe::egui;
+use eframe::egui::self;
 use image::{DynamicImage, GenericImageView, RgbaImage};
 use std::sync::{Arc, Mutex};
 
-/// Maximum texture size that can be safely uploaded to the GPU.
+/// Maximum texture size that can be safely uploaded to the GPU. HARD LIMIT!
 pub const MAX_GPU_TEXTURE_SIZE: u32 = 16384;
-/// Pixel count threshold above which we always use virtual texturing.
+/// Pixel count threshold above which we always use virtual texturing. HARD LIMIT
 pub const LARGE_IMAGE_THRESHOLD: u64 = 50_000_000;
 
 /// Progress tracking structure - thread-safe
@@ -46,7 +46,6 @@ pub struct VirtualTexture {
     height: u32,
     tile_size: u32,
     tiles: Vec<Tile>,
-    texture_filter: egui::TextureFilter,
     is_ready: bool,
     // Progress tracking - shared with background thread
     pub progress: Arc<Mutex<PreparationProgress>>,
@@ -55,11 +54,8 @@ pub struct VirtualTexture {
 impl VirtualTexture {
     /// Create a new virtual texture from a loaded image.
     /// This is fast - it just stores the image and marks it as not ready.
-    pub fn new(img: DynamicImage) -> Self {
+    pub fn new(img: DynamicImage, tile_size: u32) -> Self {
         let (width, height) = img.dimensions();
-        let tile_size = 512;
-        // tile size should be adjustable later 128,256,512
-
         // Count total tiles
         let tiles_x = (width + tile_size - 1) / tile_size;
         let tiles_y = (height + tile_size - 1) / tile_size;
@@ -78,7 +74,6 @@ impl VirtualTexture {
             height,
             tile_size,
             tiles: Vec::new(),
-            texture_filter: egui::TextureFilter::Linear,
             is_ready: false,
             progress,
         }
@@ -183,18 +178,9 @@ impl VirtualTexture {
         progress.prepared_tiles
     }
 
-    /// Update the texture filter.
-    pub fn set_texture_filter(&mut self, filter: egui::TextureFilter, _ctx: &egui::Context) {
-        if self.texture_filter != filter && self.is_ready {
-            self.texture_filter = filter;
-            for tile in &mut self.tiles {
-                tile.dirty = true;
-            }
-        }
-    }
 
     /// Upload a single tile's texture.
-    fn upload_tile(tile: &mut Tile, ctx: &egui::Context, filter: egui::TextureFilter) {
+    fn upload_tile(tile: &mut Tile, ctx: &egui::Context, options: egui::TextureOptions) {
         if tile.dirty || tile.texture.is_none() {
             let rgba = &*tile.image;
             let width = rgba.width();
@@ -203,12 +189,6 @@ impl VirtualTexture {
                 [width as usize, height as usize],
                 rgba.as_raw(),
             );
-            let options = egui::TextureOptions {
-                magnification: filter,
-                minification: filter,
-                mipmap_mode: None,
-                ..Default::default()
-            };
             let texture = ctx.load_texture(
                 &format!("tile_{}_{}", tile.grid_x, tile.grid_y),
                 color_image,
@@ -220,7 +200,7 @@ impl VirtualTexture {
     }
 
     /// Render the visible tiles using the given painter.
-    pub fn render(&mut self, ctx: &egui::Context, painter: &egui::Painter, zoom: f32, pan: egui::Vec2, viewport_size: egui::Vec2) {
+    pub fn render(&mut self, ctx: &egui::Context, painter: &egui::Painter, zoom: f32, pan: egui::Vec2, viewport_size: egui::Vec2, options: egui::TextureOptions) {
         if !self.is_ready {
             return;
         }
@@ -257,7 +237,7 @@ impl VirtualTexture {
                     continue;
                 }
                 if let Some(tile) = self.tiles.iter_mut().find(|t| t.grid_x == gx as u32 && t.grid_y == gy as u32) {
-                    Self::upload_tile(tile, ctx, self.texture_filter);
+                    Self::upload_tile(tile, ctx, options);
 
                     // Compute screen rect for this tile.
                     let tile_x = gx as f32 * tile_size_f;

@@ -194,7 +194,7 @@ impl ViewerApp {
             }
         }
 
-        let max_concurrent = if self.b_is_loading || self.b_is_loading_full {
+        let max_concurrent = if self.is_loading() {
             self.max_cache_task.min(1)
         } else {
             self.max_cache_task

@@ -1,4 +1,4 @@
-use super::types::ViewerApp;
+use super::types::{LoadingState, ViewerApp};
 use eframe::egui;
 
 impl ViewerApp {
@@ -23,9 +23,14 @@ impl ViewerApp {
             self.is_preview = false;
             self.full_image_receiver = None;
             self.full_gif_receiver = None;
-            self.b_is_loading_full = false;
             self.image_error = None;
             self.receiver = None;
+            self.virtual_texture = None;
+            self.vt_progress = None;
+            self.vt_total_tiles = 0;
+
+            // Make sure that navigation is not blocked by vt loading
+            self.virtual_texture_thread = None;
 
             // Clear file type detection when navigating to a new image
             self.file_type_detection = None;
@@ -35,8 +40,9 @@ impl ViewerApp {
 
             // Load new image in background while keeping current texture
             self.load_current_image_with_cache_keep_texture();
-
+            ctx.request_repaint();
             self.update_window_title(ctx);
+            self.set_loading_state(LoadingState::Idle);
         }
         self.b_zoom_used = false;
     }

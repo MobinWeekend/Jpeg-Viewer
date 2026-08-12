@@ -1,4 +1,4 @@
-use super::types::ViewerApp;
+use super::types::{ViewerApp, LoadingState};
 use crate::archive::{scan_7z, scan_rar, scan_zip};
 use crate::helpers::{ARCHIVE_EXT, IMAGE_EXT, get_extension, is_supported_image};
 use crate::image_entry::ImageEntry;
@@ -16,8 +16,8 @@ impl ViewerApp {
         self.texture = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
-        self.b_is_loading_full = false;
         self.file_type_detection = None; // Clear file extension detection
+        self.set_loading_state(LoadingState::Idle);
 
         // Reset preload state – discard all pending tasks and invalidate results.
         self.image_cache.clear();
@@ -178,7 +178,7 @@ impl ViewerApp {
         self.texture = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
-        self.b_is_loading_full = false;
+        self.set_loading_state(LoadingState::Idle);
 
         // Reset preload state
         self.image_cache.clear();

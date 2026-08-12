@@ -26,6 +26,9 @@ pub struct AppSettings {
     pub slideshow_random: bool,
     // Startup settings
     pub start_fullscreen: bool,
+    // virtual texture
+    pub virtual_texture_threshold: u32,
+    pub tile_size: u32,
 }
 
 impl Default for AppSettings {
@@ -50,6 +53,8 @@ impl Default for AppSettings {
             slideshow_loop: true,
             slideshow_random: false,
             start_fullscreen: false,
+            virtual_texture_threshold: 6000,
+            tile_size: 512,
         }
     }
 }
@@ -229,6 +234,22 @@ impl SettingsManager {
                     if let Some(value) = section.get("start_fullscreen") {
                         settings.start_fullscreen = Self::parse_bool(value);
                     }
+                    // Read virtual_texture_threshold
+                    if let Some(value) = section.get("virtual_texture_threshold") {
+                        if let Ok(v) = value.parse::<u32>() {
+                            if (1024..=16384).contains(&v) {
+                                settings.virtual_texture_threshold = v;
+                            }
+                        }
+                    }
+                    // Read tile_size
+                    if let Some(value) = section.get("tile_size") {
+                        if let Ok(v) = value.parse::<u32>() {
+                            if [128, 256, 512].contains(&v) {
+                                settings.tile_size = v;
+                            }
+                        }
+                    }
                 }
 
                 settings
@@ -294,11 +315,47 @@ impl SettingsManager {
         );
 
         // Slideshow settings
-        section.set("slideshow_enabled", if settings.slideshow_enabled { "true" } else { "false" });
-        section.set("slideshow_interval_ms", settings.slideshow_interval_ms.to_string());
-        section.set("slideshow_loop", if settings.slideshow_loop { "true" } else { "false" });
-        section.set("slideshow_random", if settings.slideshow_random { "true" } else { "false" });
-        section.set("start_fullscreen", if settings.start_fullscreen { "true" } else { "false" });
+        section.set(
+            "slideshow_enabled",
+            if settings.slideshow_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "slideshow_interval_ms",
+            settings.slideshow_interval_ms.to_string(),
+        );
+        section.set(
+            "slideshow_loop",
+            if settings.slideshow_loop {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "slideshow_random",
+            if settings.slideshow_random {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "start_fullscreen",
+            if settings.start_fullscreen {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "virtual_texture_threshold",
+            settings.virtual_texture_threshold.to_string(),
+        );
+        section.set("tile_size", settings.tile_size.to_string());
 
         // Write the file
         conf.write_to_file(path)

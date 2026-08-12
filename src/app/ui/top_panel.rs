@@ -187,11 +187,18 @@ impl ViewerApp {
                 ui.add_space(8.0);
 
                 // ========== IMAGE INFO ==========
-                if let Some(texture) = &self.texture {
+                let (width, height) = if let Some(vt) = &self.virtual_texture {
+                    // Virtual texture: get dimensions directly
+                    let (w, h) = vt.dimensions();
+                    (w, h)
+                } else if let Some(texture) = &self.texture {
                     let size = texture.size_vec2();
-                    let width = size.x as u32;
-                    let height = size.y as u32;
+                    (size.x as u32, size.y as u32)
+                } else {
+                    (0, 0)
+                };
 
+                if width > 0 && height > 0 {
                     let file_size_str = self.get_file_size_string();
                     let aspect_ratio_str = AspectRatio::get_label(width, height);
 
@@ -208,11 +215,6 @@ impl ViewerApp {
                     // Aspect ratio
                     if let Some(label) = aspect_ratio_str {
                         ui.label(egui::RichText::new(label).size(14.0));
-                    } else {
-                        /*let ratio_display = AspectRatio::format_as_ratio(width, height);
-                        ui.label(
-                            egui::RichText::new(format!("{}", ratio_display)).size(14.0),
-                        );*/
                     }
                 }
 
@@ -350,7 +352,7 @@ impl ViewerApp {
                     ui.add_space(4.0);
 
                     // Loading indicator
-                    if self.b_is_loading_full || self.b_is_loading {
+                    if self.is_loading() {
                         ui.add(egui::Spinner::new());
                         ui.add_space(4.0);
                     }
