@@ -15,8 +15,7 @@ impl ViewerApp {
 
         let len = self.image_entries.len();
 
-        let new_index = (self.current_index as i32 + direction)
-            .rem_euclid(len as i32) as usize;
+        let new_index = (self.current_index as i32 + direction).rem_euclid(len as i32) as usize;
 
         self.navigate_to_index(ctx, new_index);
     }
@@ -39,10 +38,6 @@ impl ViewerApp {
         if new_index == self.current_index {
             return;
         }
-
-        // Clear file type detection before changing image
-        self.file_type_detection = None;
-
         // Change image
         self.current_index = new_index;
 
@@ -80,6 +75,11 @@ impl ViewerApp {
         // Load the new image while keeping the old texture visible.
         // This prevents flashing when navigating quickly.
         self.load_current_image_with_cache_keep_texture();
+
+        // Invalidate all previous async results (including detection)
+        self.preload_generation = self.preload_generation.wrapping_add(1);
+        // Clear file type detection before changing image
+        self.set_file_type_detection(None);
 
         // Update UI
         ctx.request_repaint();

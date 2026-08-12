@@ -36,6 +36,8 @@ pub struct FileTypeDetection {
     pub detected_extension: String,
     pub current_extension: Option<String>,
     pub mismatch: bool,
+    pub index: usize,    // which image this belongs to
+    pub generation: u64, // which navigation round
 }
 
 // Preload task - receiver returns (index, result, generation)
@@ -380,7 +382,7 @@ impl ViewerApp {
             self.full_gif_receiver.is_some(),
             self.is_loading(),
         );
-        
+
         if !self.is_gif || !self.is_preview {
             println!("[spawn_full_gif_loading] Not a GIF preview, skipping");
             return;

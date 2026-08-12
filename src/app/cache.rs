@@ -36,23 +36,21 @@ impl ViewerApp {
 
         if let Some(cached) = self.image_cache.get(&image_id).cloned() {
             if cached.index != index {
-                let cached_clone = cached.clone();
+                let mut updated_cached = cached.clone();
+                updated_cached.index = index;
+                if let Some(detection) = &mut updated_cached.file_type_detection {
+                    detection.index = index;
+                }
                 self.image_cache.pop(&image_id);
-                let updated = CachedImage {
-                    index,
-                    ..cached_clone
-                };
-                self.image_cache.put(image_id.clone(), updated);
+                self.image_cache.put(image_id.clone(), updated_cached);
                 if let Some(updated_cached) = self.image_cache.get(&image_id).cloned() {
                     self.texture = Some(updated_cached.texture.clone());
                     self.is_gif = updated_cached.is_gif;
                     self.is_preview = updated_cached.is_preview;
                     self.b_fit_to_window = true;
-
                     // Restore file type detection from cache
                     self.file_type_detection = updated_cached.file_type_detection.clone();
-
-                    self.detect_current_file_type(); // Verify/update detection
+                    //self.detect_current_file_type(); // Verify/update detection
                     return true;
                 }
                 return false;
@@ -65,7 +63,7 @@ impl ViewerApp {
             // Restore file type detection from cache
             self.file_type_detection = cached.file_type_detection.clone();
 
-            self.detect_current_file_type(); // Verify/update detection
+            //self.detect_current_file_type(); // Verify/update detection
             return true;
         }
         false
@@ -83,14 +81,23 @@ impl ViewerApp {
     }
 
     pub fn add_to_cache(&mut self, ctx: &egui::Context, index: usize, loaded_image: LoadedImage) {
+        // Safety check: ensure index is valid
+        if index >= self.image_entries.len() {
+            return;
+        }
+
         // Don't cache GIFs
         if matches!(loaded_image, LoadedImage::Animated(_, _)) {
             return;
         }
 
-        // Safety check: ensure index is valid
-        if index >= self.image_entries.len() {
-            return;
+        if index == self.current_index {
+            if let Some(detection) = &self.file_type_detection {
+                if detection.mismatch {
+                    // Don't cache files with wrong extension – they need fresh detection every time.
+                    return;
+                }
+            }
         }
 
         // Skip caching if the image would be handled by virtual texturing

@@ -16,7 +16,7 @@ impl ViewerApp {
         self.texture = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
-        self.file_type_detection = None; // Clear file extension detection
+        self.set_file_type_detection(None); // Clear file extension detection
         self.set_loading_state(LoadingState::Idle);
 
         // Reset preload state – discard all pending tasks and invalidate results.
@@ -187,7 +187,7 @@ impl ViewerApp {
         self.preload_workers = 0;
         self.preload_generation = self.preload_generation.wrapping_add(1);
         self.should_stop_caching = false;
-        self.file_type_detection = None; // Clear file extension detection
+        self.set_file_type_detection(None); // Clear file extension detection
 
         // Filter to only supported images
         let image_paths: Vec<PathBuf> = paths
