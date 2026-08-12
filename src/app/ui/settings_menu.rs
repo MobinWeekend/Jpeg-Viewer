@@ -24,6 +24,26 @@ impl ViewerApp {
                     .show(ui, |ui| {
                         ui.add_space(4.0);
 
+                        ui.horizontal(|ui| {
+                            ui.add_space(8.0);
+                            if ui
+                                .button("📋 Copy Image")
+                                .on_hover_text("Shortcut: Ctrl+C")
+                                .clicked()
+                            {
+                                self.copy_image_to_clipboard();
+                            }
+                            ui.add_space(8.0);
+                            if ui
+                                .button("📋 Copy Path")
+                                .on_hover_text("Shortcut: Ctrl+Shift+C")
+                                .clicked()
+                            {
+                                self.copy_path_to_clipboard();
+                            }
+                        });
+
+                        ui.add_space(4.0);
                         // ========== FILE INFO ==========
                         ui.collapsing(egui::RichText::new("📂 File Info").size(15.0), |ui| {
                             ui.add_space(4.0);
@@ -182,17 +202,6 @@ impl ViewerApp {
                                         .color(egui::Color32::LIGHT_GRAY)
                                         .monospace(),
                                 );
-                            });
-
-                            ui.add_space(4.0);
-
-                            // Copy path
-                            ui.horizontal(|ui| {
-                                ui.add_space(8.0);
-
-                                if ui.button("📋 Copy Path").clicked() {
-                                    ui.ctx().copy_text(path_display.clone());
-                                }
                             });
 
                             ui.add_space(4.0);

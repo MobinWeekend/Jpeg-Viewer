@@ -1,7 +1,8 @@
-use super::types::{ViewerApp, LoadingState};
+use super::types::{LoadingState, ViewerApp};
 use crate::archive::{scan_7z, scan_rar, scan_zip};
 use crate::helpers::{ARCHIVE_EXT, IMAGE_EXT, get_extension, is_supported_image};
 use crate::image_entry::ImageEntry;
+use arboard::Clipboard;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -87,14 +88,24 @@ impl ViewerApp {
     }
 
     pub fn save_window_state(&mut self, ctx: &egui::Context) {
-        if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
-            let pos = [rect.min.x, rect.min.y];
-            let size = [rect.width(), rect.height()];
+        // Get the outer position (top‑left corner of the whole window)
+        // and the inner size (client/content area).
+        let (pos, size) = ctx.input(|i| {
+            let outer_pos = i.viewport().outer_rect.map(|rect| rect.min);
+            let inner_size = i.viewport().inner_rect.map(|rect| rect.size());
+            (outer_pos, inner_size)
+        });
 
-            let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-            if !is_fullscreen && size[0] > 100.0 && size[1] > 100.0 {
-                if let Err(e) = self.settings_manager.update_window_state(pos, size) {
-                    eprintln!("Failed to save window state: {}", e);
+        // Only save if both are available and not fullscreen.
+        let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        if !is_fullscreen {
+            if let (Some(pos), Some(size)) = (pos, size) {
+                if size.x > 100.0 && size.y > 100.0 {
+                    let pos_arr = [pos.x, pos.y];
+                    let size_arr = [size.x, size.y];
+                    if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr) {
+                        eprintln!("Failed to save window state: {}", e);
+                    }
                 }
             }
         }
@@ -224,5 +235,77 @@ impl ViewerApp {
         // Cache already cleared above; no need to clear again.
 
         println!("Loaded {} dropped image(s)", self.image_entries.len());
+    }
+
+    pub fn copy_path_to_clipboard(&self) {
+        if let Some(path) = &self.current_image_path {
+            let path_str = path.display().to_string();
+
+            let mut clipboard = Clipboard::new().expect("Failed to open clipboard");
+
+            println!("Copied path: {}", path_str);
+
+            if let Err(e) = clipboard.set_text(path_str) {
+                eprintln!("Failed to copy path to clipboard: {}", e);
+            }
+        } else {
+            println!("No image path to copy");
+        }
+    }
+
+    pub fn copy_image_to_clipboard(&mut self) {
+        // Get the current image.
+        let image = if let Some(path) = &self.current_image_path {
+            match crate::loader::load_full_resolution(path.clone()) {
+                Ok(img) => img,
+                Err(e) => {
+                    eprintln!("Failed to load image for clipboard: {}", e);
+                    return;
+                }
+            }
+        } else if let Some(gif) = &self.gif_animation {
+            match gif.get_current_frame_ref() {
+                Some(frame) => image::DynamicImage::ImageRgba8(frame.clone()),
+                None => {
+                    eprintln!("GIF has no current frame");
+                    return;
+                }
+            }
+        } else {
+            println!("No image to copy");
+            return;
+        };
+
+        // Convert to RGBA8.
+        //
+        // arboard expects raw RGBA pixels, so there is no need
+        // to encode the image to PNG ourselves.
+        let rgba = image.to_rgba8();
+
+        let width = rgba.width() as usize;
+        let height = rgba.height() as usize;
+
+        let mut clipboard = match Clipboard::new() {
+            Ok(clipboard) => clipboard,
+            Err(e) => {
+                eprintln!("Failed to open clipboard: {}", e);
+                return;
+            }
+        };
+
+        let image_data = arboard::ImageData {
+            width,
+            height,
+            bytes: rgba.into_raw().into(),
+        };
+
+        match clipboard.set_image(image_data) {
+            Ok(_) => {
+                println!("Image copied to clipboard");
+            }
+            Err(e) => {
+                eprintln!("Failed to copy image to clipboard: {}", e);
+            }
+        }
     }
 }

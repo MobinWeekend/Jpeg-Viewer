@@ -20,6 +20,8 @@ pub enum ViewerCommand {
     GifSpeedUp,
     GifSpeedReset,
     Settings,
+    CopyPath,
+    CopyImage,
     // Slideshow commands
     ToggleSlideshow,
     SlideshowSpeedUp,
@@ -247,6 +249,14 @@ impl Default for InputBindings {
         keyboard.insert(
             ViewerCommand::SlideshowSpeedDown,
             vec![KeyBinding::plain(egui::Key::Comma)], // < for slower
+        );
+        keyboard.insert(
+            ViewerCommand::CopyPath,
+            vec![KeyBinding::ctrl_shift(egui::Key::C)],
+        );
+        keyboard.insert(
+            ViewerCommand::CopyImage,
+            vec![KeyBinding::ctrl(egui::Key::C)],
         );
 
         let mut mouse = HashMap::new();

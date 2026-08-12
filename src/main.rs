@@ -30,12 +30,10 @@ fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default().with_icon(icon);
 
     if let Some(pos) = app_settings.window_pos {
-        // Use with_position with outer position
         viewport = viewport.with_position(pos);
     }
 
     if let Some(size) = app_settings.window_size {
-        // Use with_inner_size for the content area
         viewport = viewport.with_inner_size(size);
     }
 
@@ -47,7 +45,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "JPEG Viewer",
         options,
-                    
         Box::new(|_cc| {
             /*
             // Set the default font to the system's default sans-serif font
@@ -107,7 +104,6 @@ fn main() -> eframe::Result<()> {
 
             cc.egui_ctx.set_fonts(fonts);
             */
-
 
             let mut app = ViewerApp::default();
 

@@ -21,6 +21,7 @@ dirs = "6.0.0"
 rand = "0.8" # do not update this one!
 open = "5.4.1"
 infer = "0.22.0"
+arboard = "3.4"
 #fontdb = "0.24.0"
 
 [profile.release]

@@ -72,7 +72,6 @@ impl ViewerApp {
                     self.navigate_to_index(ctx, 0);
                 }
             }
-
             ViewerCommand::JumpToLast => {
                 if !self.image_entries.is_empty() {
                     // Stop slideshow when jumping
@@ -124,6 +123,12 @@ impl ViewerApp {
             }
             ViewerCommand::SlideshowSpeedDown => {
                 self.slideshow_speed_down();
+            }
+            ViewerCommand::CopyPath => {
+                self.copy_path_to_clipboard();
+            }
+            ViewerCommand::CopyImage => {
+                self.copy_image_to_clipboard();
             }
         }
     }
