@@ -34,37 +34,64 @@ impl ViewerApp {
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
                                 
+                                // Theme-aware link colors
+                                let dark_mode = ui.visuals().dark_mode;
+
+                                let instagram_color = if dark_mode {
+                                    egui::Color32::from_rgb(255, 90, 140)
+                                } else {
+                                    egui::Color32::from_rgb(190, 45, 105)
+                                };
+
+                                let x_color = if dark_mode {
+                                    egui::Color32::from_rgb(220, 220, 220)
+                                } else {
+                                    egui::Color32::from_rgb(60, 60, 60)
+                                };
+
+                                let github_color = if dark_mode {
+                                    egui::Color32::from_rgb(130, 180, 230)
+                                } else {
+                                    egui::Color32::from_rgb(55, 105, 160)
+                                };
+
                                 // Instagram
                                 let instagram_text = egui::RichText::new("📸  Instagram")
                                     .size(13.0)
-                                    .color(egui::Color32::from_rgb(225, 48, 108));
+                                    .color(instagram_color);
+
                                 let instagram_link = ui.link(instagram_text);
+
                                 if instagram_link.clicked() {
                                     if let Err(err) = open::that("https://instagram.com/artofweekend") {
                                         eprintln!("Failed to open Instagram: {}", err);
                                     }
                                 }
-                                
+
                                 ui.add_space(16.0);
-                                
+
                                 // X (Twitter)
                                 let x_text = egui::RichText::new("🐦  X (Twitter)")
                                     .size(13.0)
-                                    .color(egui::Color32::WHITE);
+                                    .color(x_color);
+
                                 let x_link = ui.link(x_text);
+
                                 if x_link.clicked() {
                                     if let Err(err) = open::that("https://x.com/artofweekend") {
                                         eprintln!("Failed to open X: {}", err);
                                     }
                                 }
-                                
+
                                 ui.add_space(16.0);
-                                
+
                                 // GitHub
                                 let github_text = egui::RichText::new("💻  GitHub")
                                     .size(13.0)
-                                    .color(egui::Color32::from_rgb(130, 180, 230));
+                                    .color(github_color);
+
                                 let github_link = ui.link(github_text);
+
                                 if github_link.clicked() {
                                     if let Err(err) = open::that("https://github.com/MobinWeekend/Jpeg-Viewer") {
                                         eprintln!("Failed to open GitHub: {}", err);
@@ -167,6 +194,8 @@ impl ViewerApp {
                         Self::render_shortcut_row(ui, "Ctrl+O", "Open file dialog");
                         Self::render_shortcut_row(ui, "Ctrl+Shift+O", "Open folder dialog");
                         Self::render_shortcut_row(ui, "Delete", "Move current image to trash");
+                        Self::render_shortcut_row(ui, "Ctrl+C", "Copy image to clipboard");
+                        Self::render_shortcut_row(ui, "Ctrl+Shift+C", "Copy file path to clipboard");
 
                         ui.add_space(4.0);
 

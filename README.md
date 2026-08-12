@@ -82,6 +82,8 @@ AVIF, BMP, DDS, EXR, GIF (with speed controls), HDR, ICO, JPEG/JPG, PNG, PNM, QO
 | Open file dialog | `Ctrl+O` |
 | Open folder dialog | `Ctrl+Shift+O` |
 | Move current image to trash | `Delete` |
+| Copy image to clipboard | `Ctrl+C` |
+| Copy image path to clipboard | `Ctrl+Shift+C` |
 
 ### General
 | Action | Shortcut |

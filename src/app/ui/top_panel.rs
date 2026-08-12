@@ -395,7 +395,7 @@ impl ViewerApp {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("⚠")
-                            .color(egui::Color32::YELLOW)
+                            .color(egui::Color32::RED)
                             .size(24.0),
                     );
 
