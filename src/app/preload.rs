@@ -1,6 +1,13 @@
 // preloading governs the range and tasks and duration for preloading
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
 use crate::image_entry::ImageEntry;
+use crate::gif::detection::is_gif_entry;
+use crate::gif::loader::{
+    load_gif_preview_from_path,
+    load_gif_preview_from_zip,
+    load_gif_preview_from_7z,
+    load_gif_preview_from_rar,
+};
 use eframe::egui;
 use rayon::spawn;
 use std::collections::HashSet;
@@ -108,56 +115,6 @@ impl ViewerApp {
         self.preload_generation = self.preload_generation.wrapping_add(1);
     }
 
-    /// Check whether the entry at the given index is a GIF (should not be cached)
-    /// Check whether the entry at the given index is actually a GIF (by content)
-    fn is_gif_entry(&self, index: usize) -> bool {
-        if let Some(entry) = self.image_entries.get(index) {
-            // Check the actual content, not the extension
-            match entry {
-                ImageEntry::File(path) => {
-                    // Read first few bytes to check magic number
-                    if let Ok(file) = std::fs::File::open(path) {
-                        use std::io::Read;
-                        let mut header = [0u8; 6];
-                        if let Ok(_reader) =
-                            std::io::BufReader::new(file).read_exact(&mut header)
-                        {
-                            return &header[0..6] == b"GIF87a" || &header[0..6] == b"GIF89a";
-                        }
-                    }
-                    false
-                }
-                ImageEntry::Zip(zip) => {
-                    // For zip entries, we need to read the content
-                    if let Ok(file) = std::fs::File::open(&zip.archive_path) {
-                        if let Ok(mut archive) = zip::ZipArchive::new(file) {
-                            if let Ok(mut entry) = archive.by_index(zip.entry_index) {
-                                use std::io::Read;
-                                let mut header = [0u8; 6];
-                                if entry.read_exact(&mut header).is_ok() {
-                                    return &header[0..6] == b"GIF87a"
-                                        || &header[0..6] == b"GIF89a";
-                                }
-                            }
-                        }
-                    }
-                    false
-                }
-                ImageEntry::S7z(s7z) => {
-                    // For 7z, check if the name suggests GIF (can't easily check content without full extraction)
-                    // But we can check the extension as a hint for 7z since content inspection is expensive
-                    s7z.name.to_lowercase().ends_with(".gif")
-                }
-                ImageEntry::Rar(rar) => {
-                    // For RAR, same as 7z
-                    rar.name.to_lowercase().ends_with(".gif")
-                }
-            }
-        } else {
-            false
-        }
-    }
-
     pub fn preload_adjacent_images(&mut self) {
         if self.should_stop_caching {
             return;
@@ -216,8 +173,10 @@ impl ViewerApp {
             }
 
             // Skip GIFs – they are never cached
-            if self.is_gif_entry(idx) {
-                continue;
+            if let Some(entry) = self.image_entries.get(idx) {
+                if is_gif_entry(entry) {
+                    continue;
+                }
             }
 
             if self.is_index_cached(idx) {
@@ -277,7 +236,7 @@ impl ViewerApp {
                     ImageEntry::File(path) => {
                         if let Some(ext) = path.extension() {
                             if ext.eq_ignore_ascii_case("gif") {
-                                crate::loader::load_gif_preview(path)
+                                load_gif_preview_from_path(path)
                                     .map(|g| LoadedImage::Animated(g, true))
                                     .ok_or_else(|| "Failed to load GIF preview".to_string())
                             } else {
@@ -295,7 +254,7 @@ impl ViewerApp {
                     }
                     ImageEntry::Zip(zip) => {
                         if zip.name.to_lowercase().ends_with(".gif") {
-                            crate::loader::load_zip_gif_preview(zip)
+                            load_gif_preview_from_zip(zip)
                                 .map(|g| LoadedImage::Animated(g, true))
                                 .ok_or_else(|| "Failed to load GIF preview from ZIP".to_string())
                         } else {
@@ -307,7 +266,7 @@ impl ViewerApp {
                     }
                     ImageEntry::S7z(s7z) => {
                         if s7z.name.to_lowercase().ends_with(".gif") {
-                            crate::loader::load_7z_gif_preview(s7z)
+                            load_gif_preview_from_7z(s7z)
                                 .map(|g| LoadedImage::Animated(g, true))
                                 .ok_or_else(|| "Failed to load GIF preview from 7z".to_string())
                         } else {
@@ -319,7 +278,7 @@ impl ViewerApp {
                     }
                     ImageEntry::Rar(rar) => {
                         if rar.name.to_lowercase().ends_with(".gif") {
-                            crate::loader::load_rar_gif_preview(rar)
+                            load_gif_preview_from_rar(rar)
                                 .map(|g| LoadedImage::Animated(g, true))
                                 .ok_or_else(|| "Failed to load GIF preview from RAR".to_string())
                         } else {

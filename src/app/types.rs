@@ -1,7 +1,7 @@
 use super::virtual_texture::PreparationProgress;
 use crate::app::types::LoadingState::Idle;
 use crate::app::virtual_texture::VirtualTexture;
-use crate::gif_animation::GifAnimation;
+use crate::gif::animation::GifAnimation;
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
 use crate::shortcuts::InputBindings;
@@ -408,18 +408,20 @@ impl ViewerApp {
 
             spawn(move || {
                 println!(
-                    "[spawn_full_gif_loading] task started, about to call load_entry_content_full_gif"
+                    "[spawn_full_gif_loading] task started, about to call load_full_gif_from_entry"
                 );
-                let result =
-                    std::panic::catch_unwind(|| super::loading::load_entry_content_full_gif(entry));
+                let result = std::panic::catch_unwind(|| {
+                    crate::gif::loader::load_full_gif_from_entry(entry)
+                        .map(|gif| LoadedImage::Animated(gif, false))
+                });
                 match result {
                     Ok(Ok(loaded_image)) => {
-                        println!("[spawn_full_gif_loading] load_entry_content_full_gif succeeded");
+                        println!("[spawn_full_gif_loading] load_full_gif_from_entry succeeded");
                         let _ = tx.send(Ok(loaded_image));
                     }
                     Ok(Err(e)) => {
                         eprintln!(
-                            "[spawn_full_gif_loading] load_entry_content_full_gif error: {}",
+                            "[spawn_full_gif_loading] load_full_gif_from_entry error: {}",
                             e
                         );
                         let _ = tx.send(Err(e));

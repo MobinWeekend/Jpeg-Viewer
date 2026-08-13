@@ -1,4 +1,3 @@
-use crate::gif_animation::GifAnimation;
 use crate::helpers::is_supported_image;
 use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
 use image::{DynamicImage, ImageDecoder, ImageReader};
@@ -50,13 +49,6 @@ pub fn load_full_resolution(path: PathBuf) -> Result<DynamicImage, String> {
     load_image_from_bytes(&bytes, Some(&path))
 }
 
-/// Load GIF preview (first frame only)
-pub fn load_gif_preview(path: PathBuf) -> Option<GifAnimation> {
-    fs::read(&path)
-        .ok()
-        .and_then(|data| GifAnimation::from_bytes_preview(&data).ok())
-}
-
 // ========== Archive Loading ==========
 
 /// Load image from ZIP archive
@@ -75,16 +67,6 @@ pub fn load_zip_image(image: ArchiveImage) -> Result<DynamicImage, String> {
     load_image_from_bytes(&bytes, Some(Path::new(&image.name)))
 }
 
-/// Load GIF preview from ZIP archive
-pub fn load_zip_gif_preview(image: ArchiveImage) -> Option<GifAnimation> {
-    let file = File::open(&image.archive_path).ok()?;
-    let mut archive = ZipArchive::new(file).ok()?;
-    let mut entry = archive.by_index(image.entry_index).ok()?;
-    let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).ok()?;
-    GifAnimation::from_bytes_preview(&bytes).ok()
-}
-
 /// Load image from 7z archive
 pub fn load_7z_image(image: S7ArchiveImage) -> Result<DynamicImage, String> {
     let mut reader = ArchiveReader::open(&image.archive_path, Password::empty())
@@ -93,13 +75,6 @@ pub fn load_7z_image(image: S7ArchiveImage) -> Result<DynamicImage, String> {
         .read_file(&image.name)
         .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
     load_image_from_bytes(&bytes, Some(Path::new(&image.name)))
-}
-
-/// Load GIF preview from 7z archive
-pub fn load_7z_gif_preview(image: S7ArchiveImage) -> Option<GifAnimation> {
-    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
-    let bytes = reader.read_file(&image.name).ok()?;
-    GifAnimation::from_bytes_preview(&bytes).ok()
 }
 
 /// Load image from RAR archive
@@ -123,23 +98,6 @@ pub fn load_rar_image(image: RarArchiveImage) -> Result<DynamicImage, String> {
         archive = header
             .skip()
             .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
-    }
-}
-
-/// Load GIF preview from RAR archive
-pub fn load_rar_gif_preview(image: RarArchiveImage) -> Option<GifAnimation> {
-    let archive = RarArchive::new(&image.archive_path)
-        .open_for_processing()
-        .ok()?;
-    let mut archive = archive;
-    loop {
-        let header = archive.read_header().ok()??;
-        let filename = header.entry().filename.to_string_lossy().to_string();
-        if filename == image.name {
-            let (bytes, _) = header.read().ok()?;
-            return GifAnimation::from_bytes_preview(&bytes).ok();
-        }
-        archive = header.skip().ok()?;
     }
 }
 

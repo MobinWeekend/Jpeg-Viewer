@@ -2,7 +2,7 @@
 
 mod app;
 mod archive;
-mod gif_animation;
+mod gif;
 mod helpers;
 mod image_entry;
 mod loader;
