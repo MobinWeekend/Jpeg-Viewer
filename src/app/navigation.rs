@@ -42,7 +42,6 @@ impl ViewerApp {
         self.current_index = new_index;
 
         // Reset image view
-        self.zoom = 1.0;
         self.b_fit_to_window = true;
         self.image_rect = None;
         self.b_zoom_used = false;
