@@ -123,6 +123,7 @@ pub struct ViewerApp {
     pub file_type_detection: Option<FileTypeDetection>,
     pub startup_fullscreen_handled: bool,
     pub loading_state: LoadingState,
+    pub dialog_open: bool,
 }
 
 impl Default for ViewerApp {
@@ -203,6 +204,7 @@ impl Default for ViewerApp {
             file_type_detection: None,
             startup_fullscreen_handled: false,
             loading_state: Idle,
+            dialog_open: false,
         }
     }
 }

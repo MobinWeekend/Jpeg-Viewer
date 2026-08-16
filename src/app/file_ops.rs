@@ -69,15 +69,23 @@ impl ViewerApp {
         extensions.extend_from_slice(ARCHIVE_EXT);
         // Create the dialog with file picker
         let dialog = rfd::FileDialog::new().add_filter("Images and Archives", &extensions);
-        if let Some(path) = dialog.clone().pick_file() {
+
+        self.dialog_open = true;
+        let path = dialog.clone().pick_file();
+        self.dialog_open = false;
+
+        if let Some(path) = path {
             self.open_path(path);
-            return;
         }
     }
     pub fn open_folder_dialog(&mut self) {
-        // Stop slideshow when opening a folder
         self.stop_slideshow();
-        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+
+        self.dialog_open = true;
+        let path = rfd::FileDialog::new().pick_folder();
+        self.dialog_open = false;
+
+        if let Some(path) = path {
             self.open_path(path);
         }
     }

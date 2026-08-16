@@ -83,6 +83,10 @@ impl ViewerApp {
 
     /// Handle drag and drop of files
     fn handle_drag_drop(&mut self, ctx: &egui::Context) {
+        // If a file/folder dialog is open, ignore any drop events
+        if self.dialog_open {
+            return;
+        }
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
 
         if dropped_files.is_empty() {
