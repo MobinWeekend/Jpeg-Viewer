@@ -2,13 +2,21 @@
 
 use eframe::egui;
 use image::{DynamicImage, GenericImageView, RgbaImage};
-use std::sync::{Arc, Mutex};
+use rayon::prelude::*;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::Arc;
 
-/// Maximum texture size that can be safely uploaded to the GPU. HARD LIMIT!
-pub const MAX_GPU_TEXTURE_SIZE: u32 = 16384;
+/// Maximum tile size that this application will generate.
+pub const MAX_TILE_SIZE: u32 = 16384;
 
-/// Progress tracking structure - thread-safe
-#[derive(Clone, Debug)]
+// Atomic state constants
+const STATE_NOT_STARTED: u8 = 0;
+const STATE_PREPARING: u8 = 1;
+const STATE_COMPLETE: u8 = 2;
+
+/// Snapshot of preparation progress.
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct PreparationProgress {
     pub total_tiles: usize,
     pub prepared_tiles: usize,
@@ -27,159 +35,144 @@ impl Default for PreparationProgress {
     }
 }
 
-/// A tile from the image.
-#[derive(Clone)]
+/// A single tile – owned image data and optional GPU texture.
 struct Tile {
-    pub grid_x: u32,
-    pub grid_y: u32,
-    pub image: Arc<RgbaImage>,
-    pub texture: Option<egui::TextureHandle>,
-    pub dirty: bool,
+    grid_x: u32,
+    grid_y: u32,
+    image: RgbaImage,
+    texture: Option<egui::TextureHandle>,
 }
 
 /// Virtual texture manager – holds the full image and generates tiles on demand.
 pub struct VirtualTexture {
+    id: usize,
     full_image: Option<DynamicImage>,
     width: u32,
     height: u32,
     tile_size: u32,
+    tiles_x: usize,
+    tiles_y: usize,
+    total_tiles: usize,
     tiles: Vec<Tile>,
-    is_ready: bool,
-    // Progress tracking - shared with background thread
-    pub progress: Arc<Mutex<PreparationProgress>>,
+    // Atomic progress – shared with Rayon workers.
+    prepared_tiles: Arc<AtomicUsize>,
+    state: AtomicU8,
 }
 
 impl VirtualTexture {
-    /// Create a new virtual texture from a loaded image.
-    /// This is fast - it just stores the image and marks it as not ready.
     pub fn new(img: DynamicImage, tile_size: u32) -> Self {
-        let (width, height) = img.dimensions();
-        // Count total tiles
-        let tiles_x = (width + tile_size - 1) / tile_size;
-        let tiles_y = (height + tile_size - 1) / tile_size;
-        let total_tiles = (tiles_x * tiles_y) as usize;
+        assert!(
+            tile_size > 0 && tile_size <= MAX_TILE_SIZE,
+            "Invalid virtual texture tile size"
+        );
 
-        let progress = Arc::new(Mutex::new(PreparationProgress {
-            total_tiles,
-            prepared_tiles: 0,
-            is_preparing: false,
-            is_complete: false,
-        }));
+        let (width, height) = img.dimensions();
+        let tiles_x = (width as usize).div_ceil(tile_size as usize);
+        let tiles_y = (height as usize).div_ceil(tile_size as usize);
+        let total_tiles = tiles_x * tiles_y;
+
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
 
         Self {
+            id,
             full_image: Some(img),
             width,
             height,
             tile_size,
+            tiles_x,
+            tiles_y,
+            total_tiles,
             tiles: Vec::new(),
-            is_ready: false,
-            progress,
+            prepared_tiles: Arc::new(AtomicUsize::new(0)),
+            state: AtomicU8::new(STATE_NOT_STARTED),
         }
     }
 
-    /// Prepare the virtual texture (split into tiles).
-    /// This runs in a background thread and updates progress.
+    /// Synchronous tile preparation – call off the UI thread.
     pub fn prepare(&mut self) {
-        if self.is_ready {
+        if self.state.load(Ordering::Acquire) == STATE_COMPLETE {
             return;
         }
 
-        let (w, h) = (self.width, self.height);
-        let tile_size = self.tile_size;
-
-        // Take ownership of the image
-        let img = self.full_image.take().expect("Image already taken");
+        let img = self
+            .full_image
+            .take()
+            .expect("VirtualTexture::prepare called without source image");
         let rgba = img.to_rgba8();
 
-        let mut tiles = Vec::new();
-        let tiles_x = (w + tile_size - 1) / tile_size;
-        let tiles_y = (h + tile_size - 1) / tile_size;
+        let w = self.width;
+        let h = self.height;
+        let tile_size = self.tile_size;
+        let tiles_x = self.tiles_x;
+        //let tiles_y = self.tiles_y;
+        let total_tiles = self.total_tiles;
 
-        // Update progress: preparing started
-        {
-            let mut progress = self.progress.lock().unwrap();
-            progress.is_preparing = true;
-        }
+        // Reset progress and mark as preparing.
+        self.prepared_tiles.store(0, Ordering::Relaxed);
+        self.state.store(STATE_PREPARING, Ordering::Release);
 
-        let total_tiles = (tiles_x * tiles_y) as usize;
-        let mut prepared = 0;
+        // Share the atomic counter with Rayon.
+        let prepared_tiles = Arc::clone(&self.prepared_tiles);
 
-        for ty in 0..tiles_y {
-            for tx in 0..tiles_x {
-                let x = tx * tile_size;
-                let y = ty * tile_size;
+        let tiles: Vec<Tile> = (0..total_tiles)
+            .into_par_iter()
+            .map(|index| {
+                let tx = index % tiles_x;
+                let ty = index / tiles_x;
+                let x = (tx * tile_size as usize) as u32;
+                let y = (ty * tile_size as usize) as u32;
                 let tile_w = (x + tile_size).min(w) - x;
                 let tile_h = (y + tile_size).min(h) - y;
 
-                let mut tile_data = RgbaImage::new(tile_w, tile_h);
-                for py in 0..tile_h {
-                    for px in 0..tile_w {
-                        let src_pixel = rgba.get_pixel((x + px) as u32, (y + py) as u32);
-                        tile_data.put_pixel(px, py, *src_pixel);
-                    }
-                }
+                let sub_image = image::imageops::crop_imm(&rgba, x, y, tile_w, tile_h);
+                let tile_data = sub_image.to_image();
 
-                tiles.push(Tile {
-                    grid_x: tx,
-                    grid_y: ty,
-                    image: Arc::new(tile_data),
+                // Increment prepared count.
+                prepared_tiles.fetch_add(1, Ordering::Relaxed);
+
+                Tile {
+                    grid_x: tx as u32,
+                    grid_y: ty as u32,
+                    image: tile_data,
                     texture: None,
-                    dirty: true,
-                });
-
-                prepared += 1;
-
-                // Update progress every few tiles to avoid locking too often
-                if prepared % 10 == 0 || prepared == total_tiles {
-                    let mut progress = self.progress.lock().unwrap();
-                    progress.prepared_tiles = prepared;
-                    progress.total_tiles = total_tiles;
                 }
-            }
-        }
+            })
+            .collect();
 
         self.tiles = tiles;
-        self.is_ready = true;
+        self.state.store(STATE_COMPLETE, Ordering::Release);
+    }
 
-        // Mark progress as complete
-        {
-            let mut progress = self.progress.lock().unwrap();
-            progress.prepared_tiles = total_tiles;
-            progress.is_preparing = false;
-            progress.is_complete = true;
+    /// Returns a snapshot of the current preparation progress.
+    pub fn progress(&self) -> PreparationProgress {
+        PreparationProgress {
+            total_tiles: self.total_tiles,
+            prepared_tiles: self.prepared_tiles.load(Ordering::Relaxed),
+            is_preparing: self.state.load(Ordering::Acquire) == STATE_PREPARING,
+            is_complete: self.state.load(Ordering::Acquire) == STATE_COMPLETE,
         }
     }
 
     /// Check if the virtual texture is ready.
     pub fn is_ready(&self) -> bool {
-        self.is_ready
+        self.state.load(Ordering::Acquire) == STATE_COMPLETE
     }
 
-    /// Get preparation progress (0.0 to 1.0)
-    pub fn preparation_progress(&self) -> f32 {
-        let progress = self.progress.lock().unwrap();
-        if progress.total_tiles == 0 {
-            return 0.0;
-        }
-        progress.prepared_tiles as f32 / progress.total_tiles as f32
-    }
-
-    /// Get total tiles count
+    /// Total number of tiles.
     pub fn total_tiles(&self) -> usize {
-        let progress = self.progress.lock().unwrap();
-        progress.total_tiles
+        self.total_tiles
     }
 
-    /// Get prepared tiles count
+    /// Number of prepared tiles.
     pub fn prepared_tiles_count(&self) -> usize {
-        let progress = self.progress.lock().unwrap();
-        progress.prepared_tiles
+        self.prepared_tiles.load(Ordering::Relaxed)
     }
 
-    /// Upload a single tile's texture.
-    fn upload_tile(tile: &mut Tile, ctx: &egui::Context, options: egui::TextureOptions) {
-        if tile.dirty || tile.texture.is_none() {
-            let rgba = &*tile.image;
+    /// Upload a single tile's texture (if not already uploaded).
+    fn upload_tile(tile: &mut Tile, ctx: &egui::Context, options: egui::TextureOptions, id: usize) {
+        if tile.texture.is_none() {
+            let rgba = &tile.image;
             let width = rgba.width();
             let height = rgba.height();
             let color_image = egui::ColorImage::from_rgba_unmultiplied(
@@ -187,16 +180,17 @@ impl VirtualTexture {
                 rgba.as_raw(),
             );
             let texture = ctx.load_texture(
-                &format!("tile_{}_{}", tile.grid_x, tile.grid_y),
+                &format!("vt_{}_tile_{}_{}", id, tile.grid_x, tile.grid_y),
                 color_image,
                 options,
             );
             tile.texture = Some(texture);
-            tile.dirty = false;
         }
     }
 
     /// Render the visible tiles using the given painter.
+    ///
+    /// Adds a 1‑tile prefetch margin to reduce stutter during panning.
     pub fn render(
         &mut self,
         ctx: &egui::Context,
@@ -206,9 +200,13 @@ impl VirtualTexture {
         rect: egui::Rect,
         options: egui::TextureOptions,
     ) {
-        if !self.is_ready {
+        if !self.is_ready() {
             return;
         }
+
+        debug_assert!(zoom > 0.0, "zoom must be positive");
+
+        const PREFETCH: i32 = 1;
 
         let img_w = self.width as f32;
         let img_h = self.height as f32;
@@ -226,27 +224,26 @@ impl VirtualTexture {
         let top = top_img.clamp(0.0, img_h);
         let bottom = bottom_img.clamp(0.0, img_h);
 
-        // Determine tile grid range.
         let tile_size_f = self.tile_size as f32;
-        let start_gx = (left / tile_size_f).floor() as i32;
-        let end_gx = (right / tile_size_f).ceil() as i32;
-        let start_gy = (top / tile_size_f).floor() as i32;
-        let end_gy = (bottom / tile_size_f).ceil() as i32;
+        let mut start_gx = (left / tile_size_f).floor() as i32 - PREFETCH;
+        let mut end_gx = (right / tile_size_f).ceil() as i32 + PREFETCH;
+        let mut start_gy = (top / tile_size_f).floor() as i32 - PREFETCH;
+        let mut end_gy = (bottom / tile_size_f).ceil() as i32 + PREFETCH;
 
-        // Render visible tiles
-        for gy in start_gy..=end_gy {
-            for gx in start_gx..=end_gx {
-                if gx < 0 || gy < 0 {
-                    continue;
-                }
-                if let Some(tile) = self
-                    .tiles
-                    .iter_mut()
-                    .find(|t| t.grid_x == gx as u32 && t.grid_y == gy as u32)
-                {
-                    Self::upload_tile(tile, ctx, options);
+        let tiles_x = self.tiles_x as i32;
+        let tiles_y = self.tiles_y as i32;
 
-                    // Compute screen rect for this tile.
+        start_gx = start_gx.max(0);
+        end_gx = end_gx.min(tiles_x);
+        start_gy = start_gy.max(0);
+        end_gy = end_gy.min(tiles_y);
+
+        for gy in start_gy..end_gy {
+            for gx in start_gx..end_gx {
+                let idx = (gy * tiles_x + gx) as usize;
+                if let Some(tile) = self.tiles.get_mut(idx) {
+                    Self::upload_tile(tile, ctx, options, self.id);
+
                     let tile_x = gx as f32 * tile_size_f;
                     let tile_y = gy as f32 * tile_size_f;
                     let tile_w = tile.image.width() as f32;
@@ -278,10 +275,5 @@ impl VirtualTexture {
     /// Get the dimensions of the image.
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
-    }
-
-    /// Get a reference to the progress (for UI)
-    pub fn progress_ref(&self) -> &Arc<Mutex<PreparationProgress>> {
-        &self.progress
     }
 }

@@ -1,5 +1,5 @@
 use super::types::{LoadedImage, LoadingState, ViewerApp};
-use super::virtual_texture::MAX_GPU_TEXTURE_SIZE;
+use super::virtual_texture::MAX_TILE_SIZE;
 use crate::image_entry::ImageEntry;
 use crate::gif::detection::is_gif_bytes;
 use rayon::spawn;
@@ -271,8 +271,8 @@ fn load_bytes_with_detection(
         if let Ok((width, height)) = reader.into_dimensions() {
             let use_virtual = width > threshold
                 || height > threshold
-                || width > MAX_GPU_TEXTURE_SIZE
-                || height > MAX_GPU_TEXTURE_SIZE;
+                || width > MAX_TILE_SIZE
+                || height > MAX_TILE_SIZE;
             if use_virtual {
                 return Ok(LoadedImage::VirtualPending(bytes, width, height));
             }

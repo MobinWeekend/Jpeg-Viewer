@@ -1,5 +1,5 @@
 use super::types::{CachedImage, LoadedImage, ViewerApp};
-use super::virtual_texture::MAX_GPU_TEXTURE_SIZE;
+use super::virtual_texture::MAX_TILE_SIZE;
 use eframe::egui;
 use image::GenericImageView;
 
@@ -107,8 +107,8 @@ impl ViewerApp {
             let threshold = settings.virtual_texture_threshold;
             let use_virtual = width > threshold
                 || height > threshold
-                || width > MAX_GPU_TEXTURE_SIZE
-                || height > MAX_GPU_TEXTURE_SIZE;
+                || width > MAX_TILE_SIZE
+                || height > MAX_TILE_SIZE;
 
             if use_virtual {
                 // Large image – return pending virtual texture
@@ -138,8 +138,8 @@ impl ViewerApp {
 
                 if width > threshold
                     || height > threshold
-                    || width > MAX_GPU_TEXTURE_SIZE
-                    || height > MAX_GPU_TEXTURE_SIZE
+                    || width > MAX_TILE_SIZE
+                    || height > MAX_TILE_SIZE
                 {
                     return;
                 }

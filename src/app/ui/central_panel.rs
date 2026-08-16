@@ -85,11 +85,12 @@ impl ViewerApp {
 
                 // Check if virtual texture is ready
                 if !vt.is_ready() {
-                    let (total_tiles, prepared_tiles, progress_percent) = {
-                        let total = vt.total_tiles();
-                        let prepared = vt.prepared_tiles_count();
-                        let progress = vt.preparation_progress();
-                        (total, prepared, progress)
+                    let total_tiles = vt.total_tiles();
+                    let prepared_tiles = vt.prepared_tiles_count();
+                    let progress_percent = if total_tiles > 0 {
+                        prepared_tiles as f32 / total_tiles as f32
+                    } else {
+                        0.0
                     };
 
                     // Check if this is an extreme aspect ratio
@@ -119,7 +120,7 @@ impl ViewerApp {
                 }
 
                 // Render using virtual texture
-                let available_rect  = ui.available_rect_before_wrap();
+                let available_rect = ui.available_rect_before_wrap();
 
                 // Create the painter and immediately use it in a limited scope
                 let texture_options = self.get_texture_options();

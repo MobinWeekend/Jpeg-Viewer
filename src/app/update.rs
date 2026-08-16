@@ -236,7 +236,7 @@ impl eframe::App for ViewerApp {
         if self.is_loading_virtual() {
             // Update progress from the stored progress if available
             if let Some(vt) = &self.virtual_texture {
-                let progress = vt.progress_ref().lock().unwrap().clone();
+                let progress = vt.progress();
                 self.vt_progress = Some(progress);
                 self.vt_total_tiles = vt.total_tiles();
                 ctx.request_repaint();
