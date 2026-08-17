@@ -20,6 +20,7 @@ pub enum ViewerCommand {
     GifSpeedUp,
     GifSpeedReset,
     Settings,
+    Help,
     CopyPath,
     CopyImage,
     // Slideshow commands
@@ -157,6 +158,10 @@ impl Default for InputBindings {
         keyboard.insert(
             ViewerCommand::Settings,
             vec![KeyBinding::plain(egui::Key::Tab)],
+        );
+        keyboard.insert(
+            ViewerCommand::Help,
+            vec![KeyBinding::plain(egui::Key::F1)],
         );
 
         keyboard.insert(

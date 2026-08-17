@@ -27,7 +27,9 @@ fn main() -> eframe::Result<()> {
         height: icon_height,
     };
 
-    let mut viewport = egui::ViewportBuilder::default().with_icon(icon);
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_icon(icon)
+        .with_min_inner_size(egui::vec2(600.0, 600.0));
 
     if let Some(pos) = app_settings.window_pos {
         viewport = viewport.with_position(pos);

@@ -139,7 +139,7 @@ impl ViewerApp {
                 }
 
                 // Allocate the same rect for interaction (drag/pan)
-                let response = ui.allocate_rect(available_rect, egui::Sense::drag());
+                let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
                 self.handle_image_mouse_input(ctx, &response);
 
@@ -177,7 +177,7 @@ impl ViewerApp {
             }
 
             let image_rect = self.get_image_rect(texture_size, center);
-            let response = ui.allocate_rect(available_rect, egui::Sense::drag());
+            let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
             let painter = ui.painter();
             painter.image(

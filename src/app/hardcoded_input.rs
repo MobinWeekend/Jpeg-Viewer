@@ -4,7 +4,74 @@ use eframe::egui;
 use std::path::PathBuf;
 
 impl ViewerApp {
-    /// Handle all hardcoded input events (keyboard, mouse, drag & drop)
+    // Handle all hardcoded input events (keyboard, mouse, drag & drop)
+
+    // Handle mouse input on the image response.
+    pub fn handle_image_mouse_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
+        if !response.hovered() {
+            return;
+        }
+
+        let (alt, ctrl) = ctx.input(|i| (i.modifiers.alt, i.modifiers.ctrl));
+
+        // CTRL + LEFT DRAG -> RESIZE WINDOW
+        // BeginResize expects the LEFT mouse button to be the
+        // button that initiated the resize.
+        if ctrl && response.drag_started_by(egui::PointerButton::Primary) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(
+                egui::viewport::ResizeDirection::SouthEast,
+            ));
+
+            ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+            return;
+        }
+
+        // ALT + LEFT DRAG -> MOVE WINDOW
+        if alt && response.drag_started_by(egui::PointerButton::Primary) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            return;
+        }
+
+        // Alt/Ctrl are reserved for window operations.
+        if alt || ctrl {
+            return;
+        }
+
+        // NORMAL MOUSE BINDINGS
+        for command in handle_mouse(
+            ctx,
+            &self.input_bindings,
+            response.hovered(),
+            self.b_ctrl_invert,
+        ) {
+            self.handle_command(ctx, command);
+        }
+
+        let (left_down, right_down, delta) = ctx.input(|i| {
+            (
+                i.pointer.button_down(egui::PointerButton::Primary),
+                i.pointer.button_down(egui::PointerButton::Secondary),
+                i.pointer.delta(),
+            )
+        });
+
+        // RIGHT DRAG -> ZOOM
+        if right_down && response.dragged_by(egui::PointerButton::Secondary) {
+            self.zoom = (self.zoom - delta.y * 0.005).clamp(0.005, 50.0);
+            self.b_zoom_used = true;
+
+            ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            return;
+        }
+
+        // LEFT DRAG -> PAN
+        if left_down && response.dragged_by(egui::PointerButton::Primary) {
+            self.pan += delta / self.zoom;
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+    }
+
     pub fn handle_input(&mut self, ctx: &egui::Context) {
         // Mark interaction if any input occurs
         let has_input = ctx.input(|i| {

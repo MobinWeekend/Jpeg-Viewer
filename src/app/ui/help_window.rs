@@ -10,7 +10,7 @@ impl ViewerApp {
             .title_bar(true)
             .collapsible(false)
             .resizable(true)
-            .default_size([520.0, 580.0])
+            .default_size([512.0, 512.0])
             .min_size([400.0, 400.0])
             .max_size([700.0, 800.0])
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -110,20 +110,21 @@ impl ViewerApp {
                         ui.label(egui::RichText::new("Features").size(18.0).strong());
                         ui.add_space(8.0);
                         
+                        // some feel stupid to boast about and considering I want the user to quickly see the keyboard shortcuts, I commented most out :)
                         let features = vec![
                             "• View images from your computer, folders, and archives (.zip, .7z, .rar)",
                             "• Support for all major image formats (JPEG, PNG, GIF, WebP, BMP, TIFF, and more)",
                             "• Full GIF animation support with playback controls and speed adjustment",
-                            "• Slideshow mode with adjustable timing, loop, and random order options",
+                            //"• Slideshow mode with adjustable timing, loop, and random order options",
                             "• Smart image caching for smooth navigation through large image collections",
-                            "• Preloading of adjacent images for instant switching",
-                            "• Zoom, pan, and fit-to-window controls",
-                            "• Fullscreen mode for distraction-free viewing",
-                            "• Drag and drop support for images and folders",
+                            //"• Preloading of adjacent images for instant switching",
+                            //"• Zoom, pan, and fit-to-window controls",
+                            //"• Fullscreen mode for distraction-free viewing",
+                            //"• Drag and drop support for images and folders",
                             "• Archive scanning without extracting files",
-                            "• Delete images to trash/recycle bin",
-                            "• Adjustable frame limiter for optimal performance and battery life",
-                            "• Automatic file type detection and rename suggestion",
+                            //"• Delete images to trash/recycle bin",
+                            //"• Adjustable frame limiter for optimal performance and battery life",
+                            //"• Automatic file type detection and rename suggestion",
                             "• Support for extremely large images using tiled virtual texturing",
                         ];
                         
@@ -219,6 +220,8 @@ impl ViewerApp {
                         Self::render_mouse_row(ui, "Double-click Left", "Open file dialog (on empty screen)");
                         Self::render_mouse_row(ui, "Double-click Middle", "Toggle fullscreen");
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
+                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window");
+                        Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window");
 
                         ui.add_space(12.0);
                         ui.separator();

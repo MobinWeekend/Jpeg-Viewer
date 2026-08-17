@@ -253,15 +253,52 @@ impl ViewerApp {
             }
         }
     }
-    /*
-    /// Update the file type detection in the cache for the current image
-    /// Call this whenever file_type_detection is updated:
-    pub fn update_cache_detection(&mut self) {
-        if let Some(image_id) = self.get_image_id(self.current_index) {
-            if let Some(cached) = self.image_cache.get_mut(&image_id) {
-                cached.file_type_detection = self.file_type_detection.clone();
+
+    /// Get file size as a formatted string
+    pub fn get_file_size_string(&self) -> String {
+        if let Some(path) = &self.current_image_path {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                return Self::format_file_size(metadata.len());
             }
         }
+
+        // For archive images, try to get size from the entry
+        if let Some(entry) = self.image_entries.get(self.current_index) {
+            match entry {
+                crate::image_entry::ImageEntry::Zip(zip) => {
+                    if let Ok(file) = std::fs::File::open(&zip.archive_path) {
+                        if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                            if let Ok(entry) = archive.by_index(zip.entry_index) {
+                                return Self::format_file_size(entry.size());
+                            }
+                        }
+                    }
+                }
+                crate::image_entry::ImageEntry::S7z(_) | crate::image_entry::ImageEntry::Rar(_) => {
+                    // 7z and RAR don't provide easy size info without reading the file
+                }
+                _ => {}
+            }
+        }
+
+        String::new()
     }
-     */
+
+    /// Format file size in human-readable format
+    fn format_file_size(bytes: u64) -> String {
+        const KB: u64 = 1024;
+        const MB: u64 = 1024 * KB;
+        const GB: u64 = 1024 * MB;
+
+        if bytes >= GB {
+            format!("{:.1} GB", bytes as f64 / GB as f64)
+        } else if bytes >= MB {
+            format!("{:.1} MB", bytes as f64 / MB as f64)
+        } else if bytes >= KB {
+            format!("{:.1} KB", bytes as f64 / KB as f64)
+        } else {
+            format!("{} B", bytes)
+        }
+    }
+    
 }

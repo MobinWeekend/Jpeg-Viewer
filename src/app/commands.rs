@@ -109,6 +109,9 @@ impl ViewerApp {
             ViewerCommand::Settings => {
                 self.toggle_settings_menu();
             }
+            ViewerCommand::Help => {
+                self.toggle_help_menu();
+            }
             ViewerCommand::ToggleSlideshow => {
                 self.toggle_slideshow();
                 if self.slideshow_enabled {

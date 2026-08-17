@@ -83,5 +83,7 @@ impl ViewerApp {
         // Update UI
         ctx.request_repaint();
         self.update_window_title(ctx);
+        // just in case!
+        self.load_frame_limiter_settings();
     }
 }
