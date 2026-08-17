@@ -143,11 +143,6 @@ impl ViewerApp {
 
                 self.handle_image_mouse_input(ctx, &response);
 
-                // Show image counter
-                if !self.image_entries.is_empty() {
-                    self.render_image_counter(ui);
-                }
-
                 // Show loading indicator overlay if still loading
                 if self.is_loading() {
                     let painter = ui.painter();
@@ -197,12 +192,7 @@ impl ViewerApp {
                 };
                 Self::draw_loading_overlay(&painter, available_rect, message);
             }
-
             self.handle_image_mouse_input(ctx, &response);
-
-            if !self.image_entries.is_empty() {
-                self.render_image_counter(ui);
-            }
         });
     }
 
@@ -389,7 +379,7 @@ impl ViewerApp {
         egui::Rect::from_center_size(center, egui::vec2(CONTENT_WIDTH, CONTENT_HEIGHT))
     }
 
-    // ... rest of helper functions (render_error_ui, render_welcome_ui, render_image_counter, etc.) ...
+    // ... rest of helper functions (render_error_ui, render_welcome_ui, etc.) ...
     fn render_error_ui(&mut self, ui: &mut egui::Ui, error: &str) {
         ui.centered_and_justified(|ui| {
             ui.add_space(40.0);
@@ -429,35 +419,5 @@ impl ViewerApp {
                 }
             });
         });
-    }
-
-    // Note: render_welcome_ui is not shown; keep your existing implementation.
-
-    fn render_image_counter(&self, ui: &mut egui::Ui) {
-        let total = self.image_entries.len();
-        if total == 0 {
-            return;
-        }
-
-        let text = format!("{}/{}", self.current_index + 1, total);
-        let font_id = egui::FontId::proportional(14.0);
-        let text_color = ui.style().visuals.text_color();
-        let galley = ui
-            .painter()
-            .layout(text, font_id, text_color, f32::INFINITY);
-
-        let rect = ui.available_rect_before_wrap();
-        let pos = egui::pos2(
-            rect.right() - galley.rect.width() - 20.0,
-            rect.bottom() - 40.0,
-        );
-
-        let bg_rect = galley
-            .rect
-            .translate(egui::Vec2::new(pos.x, pos.y))
-            .expand(10.0);
-        ui.painter()
-            .rect_filled(bg_rect, 20.0, ui.style().visuals.panel_fill);
-        ui.painter().galley(pos, galley, text_color);
     }
 }

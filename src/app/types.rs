@@ -124,6 +124,7 @@ pub struct ViewerApp {
     pub startup_fullscreen_handled: bool,
     pub loading_state: LoadingState,
     pub dialog_open: bool,
+    pub hamburger_menu_open: bool,
 }
 
 impl Default for ViewerApp {
@@ -205,6 +206,7 @@ impl Default for ViewerApp {
             startup_fullscreen_handled: false,
             loading_state: Idle,
             dialog_open: false,
+            hamburger_menu_open: false,
         }
     }
 }

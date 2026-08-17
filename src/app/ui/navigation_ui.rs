@@ -6,31 +6,10 @@ use eframe::egui;
 impl ViewerApp {
     // Render all navigation-related controls.
     // Individual sections can also be called separately when needed.
-    pub fn navigation_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        self.navigation_buttons_ui(ctx, ui);
-        self.separator_ui(ui);
-
-        self.slideshow_ui(ctx, ui);
-        self.separator_ui(ui);
-
-        self.zoom_ui(ctx, ui);
-        self.separator_ui(ui);
-
-        self.image_info_ui(ui);
-        self.separator_ui(ui);
-
-        self.gif_controls_ui(ui);
-    }
-
-    fn separator_ui(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(8.0);
-    }
 
     // NAVIGATION BUTTONS
     /// Previous and next image buttons.
-    pub fn navigation_buttons_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("◀").size(16.0))
@@ -41,7 +20,8 @@ impl ViewerApp {
         {
             self.handle_command(ctx, ViewerCommand::PreviousImage);
         }
-
+    }
+    pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("▶").size(16.0))
@@ -317,6 +297,21 @@ impl ViewerApp {
 
         if self.is_preview {
             ui.label(egui::RichText::new("Loading...").size(12.0));
+        }
+    }
+
+    // Fullscreen
+    pub fn fullscreen_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new("⛶").size(14.0))
+                    .min_size(egui::vec2(24.0, 24.0)),
+            )
+            .on_hover_text("Toggle Fullscreen")
+            .clicked()
+        {
+            self.toggle_fullscreen(ctx);
+            self.hamburger_menu_open = false;
         }
     }
 }
