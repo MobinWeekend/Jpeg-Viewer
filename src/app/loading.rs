@@ -1,5 +1,5 @@
 use super::types::{LoadedImage, LoadingState, ViewerApp};
-use super::virtual_texture::MAX_TILE_SIZE;
+use crate::app::constants::MAX_TILE_SIZE;
 use crate::image_entry::ImageEntry;
 use crate::gif::detection::is_gif_bytes;
 use rayon::spawn;

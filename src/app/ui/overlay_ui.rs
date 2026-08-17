@@ -1,3 +1,4 @@
+use crate::app::constants::OVERLAY_HIDE_DELAY;
 use crate::app::types::ViewerApp;
 use eframe::egui;
 
@@ -5,6 +6,46 @@ const TOOLBAR_BG_ALPHA: u8 = 217;
 const MENU_OFFSET: f32 = 8.0;
 
 impl ViewerApp {
+    pub fn update_overlay_visibility(&mut self, ctx: &egui::Context) {
+        if self.image_entries.is_empty() {
+            return;
+        }
+
+        let (window_focused, mouse_over_window) = ctx.input(|i| {
+            (
+                i.viewport().focused.unwrap_or(false),
+                i.pointer.hover_pos().is_some(),
+            )
+        });
+
+        if !window_focused || !mouse_over_window {
+            self.set_overlay_visible(ctx, false);
+            ctx.set_cursor_icon(egui::CursorIcon::Default);
+            return;
+        }
+
+        let mouse_over_ui = ctx.is_pointer_over_area();
+        let elapsed = self.last_interaction_time.elapsed();
+
+        let should_hide =
+            !mouse_over_ui && !self.hamburger_menu_open && elapsed >= OVERLAY_HIDE_DELAY;
+
+        if should_hide {
+            self.set_overlay_visible(ctx, false);
+            ctx.set_cursor_icon(egui::CursorIcon::None);
+        } else {
+            self.set_overlay_visible(ctx, true);
+            ctx.set_cursor_icon(egui::CursorIcon::Default);
+        }
+    }
+
+    fn set_overlay_visible(&mut self, ctx: &egui::Context, visible: bool) {
+        if self.overlay_visible != visible {
+            self.overlay_visible = visible;
+            ctx.request_repaint();
+        }
+    }
+
     pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
         let panel_color = ctx.style().visuals.panel_fill;
 
@@ -22,11 +63,7 @@ impl ViewerApp {
     }
 
     /// Create a foreground overlay area at the given anchor and offset.
-    fn overlay_area(
-        id: &'static str,
-        anchor: egui::Align2,
-        offset: egui::Vec2,
-    ) -> egui::Area {
+    fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
         egui::Area::new(egui::Id::new(id))
             .order(egui::Order::Foreground)
             .anchor(anchor, offset)
@@ -47,6 +84,9 @@ impl ViewerApp {
     }
 
     pub fn render_overlay_ui(&mut self, ctx: &egui::Context) {
+        if !self.overlay_visible {
+            return;
+        }
         // HAMBURGER BUTTON
         Self::overlay_area(
             "hamburger_button",
@@ -176,10 +216,7 @@ impl ViewerApp {
                                 .size(24.0),
                         );
 
-                        ui.label(format!(
-                            "Detected .{} (current: .{})",
-                            suggested, current
-                        ));
+                        ui.label(format!("Detected .{} (current: .{})", suggested, current));
 
                         let rename_btn = ui.button(
                             egui::RichText::new(" Rename ")

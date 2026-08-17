@@ -34,8 +34,17 @@ impl ViewerApp {
         }
 
         // Alt/Ctrl are reserved for window operations.
+        // ctrl + wheel bypass
         if alt || ctrl {
-            return;
+            let modified_wheel = ctx.input(|i| {
+                i.events
+                    .iter()
+                    .any(|event| matches!(event, egui::Event::MouseWheel { .. }))
+            });
+
+            if !modified_wheel {
+                return;
+            }
         }
 
         // NORMAL MOUSE BINDINGS
@@ -43,6 +52,7 @@ impl ViewerApp {
             ctx,
             &self.input_bindings,
             response.hovered(),
+            ctx.is_pointer_over_area(),
             self.b_ctrl_invert,
         ) {
             self.handle_command(ctx, command);
@@ -83,7 +93,15 @@ impl ViewerApp {
 
         if has_input {
             self.mark_interaction();
+
+            if !self.overlay_visible {
+                self.overlay_visible = true;
+                ctx.request_repaint();
+            }
         }
+
+        self.update_overlay_visibility(ctx);
+
         // Handle Escape key for fullscreen toggle / close
         self.handle_escape_key(ctx);
 
@@ -94,18 +112,6 @@ impl ViewerApp {
 
         // Delete key handling
         self.handle_delete_key(ctx);
-
-        // Mouse buttons
-        if !self.show_settings_menu && !self.show_help_menu {
-            for command in handle_mouse(
-                ctx,
-                &self.input_bindings,
-                ctx.is_pointer_over_area(),
-                self.b_ctrl_invert,
-            ) {
-                self.handle_command(ctx, command);
-            }
-        }
 
         // Drag & drop
         self.handle_drag_drop(ctx);

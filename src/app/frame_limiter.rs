@@ -4,11 +4,38 @@ use eframe::egui;
 use std::time::{Duration, Instant};
 
 use super::types::ViewerApp;
+use crate::app::constants::OVERLAY_HIDE_DELAY;
 
 /// FPS limit applied while an image is loading (capped at 60).
 const LOADING_FPS: f32 = 60.0;
 
 impl ViewerApp {
+    fn schedule_timed_updates(&self, ctx: &egui::Context) {
+        self.handle_slideshow_repaint(ctx);
+        self.handle_overlay_repaint(ctx);
+    }
+    fn handle_slideshow_repaint(&self, ctx: &egui::Context) {
+        if !self.slideshow_enabled || self.image_entries.is_empty() || self.is_loading() {
+            return;
+        }
+
+        let elapsed = self.slideshow_last_advance.elapsed();
+
+        let remaining = self.slideshow_interval.saturating_sub(elapsed);
+
+        ctx.request_repaint_after(remaining);
+    }
+    fn handle_overlay_repaint(&self, ctx: &egui::Context) {
+        if !self.overlay_visible || self.hamburger_menu_open || self.image_entries.is_empty() {
+            return;
+        }
+
+        let elapsed = self.last_interaction_time.elapsed();
+
+        if elapsed < OVERLAY_HIDE_DELAY {
+            ctx.request_repaint_after(OVERLAY_HIDE_DELAY - elapsed);
+        }
+    }
     // ===== Core FPS limiter =====
 
     /// Returns `true` if a repaint should be requested, based on the given
@@ -50,9 +77,7 @@ impl ViewerApp {
     /// If `unfocused_idle_fps_limit` is not positive or is `NaN`,
     /// it falls back to the regular idle FPS.
     fn apply_unfocused_idle_fps_limit(&mut self) -> bool {
-        if !self.unfocused_idle_fps_limit.is_finite()
-            || self.unfocused_idle_fps_limit <= 0.0
-        {
+        if !self.unfocused_idle_fps_limit.is_finite() || self.unfocused_idle_fps_limit <= 0.0 {
             self.apply_idle_fps_limit()
         } else {
             self.apply_fps_limit(self.unfocused_idle_fps_limit)
@@ -71,28 +96,38 @@ impl ViewerApp {
     /// 3. User interaction → max FPS
     /// 4. Idle → appropriate idle FPS (focused or unfocused)
     pub fn should_request_repaint(&mut self, ctx: &egui::Context) -> bool {
-        // 1. Animated or slideshow → max FPS
-        if self.is_animating || self.slideshow_enabled {
+        self.schedule_timed_updates(ctx);
+
+        // 1. Animated GIF → max FPS
+        if self.is_animating {
             return self.apply_max_fps_limit();
         }
 
-        // 2. Loading → fixed 60 FPS (smooth progress)
+        // 2. Slideshow → only wake up when the next slide is due.
+        if self.slideshow_enabled {
+            self.handle_slideshow_repaint(ctx);
+        }
+
+        // 3. Overlay → wake up when the auto-hide timeout expires.
+        self.handle_overlay_repaint(ctx);
+
+        // 4. Loading → fixed 60 FPS.
         if self.is_loading() {
             return self.apply_fps_limit(LOADING_FPS);
         }
 
-        // 3. Capture input state once
+        // 5. Capture input state once.
         let (has_input, has_key_down, has_focus) = self.get_input_state(ctx);
 
-        // 4. Interaction → wake up and use max FPS
+        // 6. Interaction → max FPS.
         if self.handle_interaction(has_input, has_key_down, has_focus) {
             return self.apply_max_fps_limit();
         }
 
-        // 5. Update idle state based on timeouts and focus
+        // 7. Update idle state.
         self.update_idle_state(has_focus);
 
-        // 6. If idle, apply the appropriate idle FPS; otherwise max FPS
+        // 8. Normal idle FPS.
         if self.is_idle {
             self.apply_idle_limit_based_on_focus(has_focus)
         } else {
@@ -126,12 +161,7 @@ impl ViewerApp {
     /// Keyboard input is allowed to wake the viewer even when egui reports the
     /// viewport as unfocused – this ensures shortcuts like navigation work
     /// without requiring a mouse click to regain focus.
-    fn handle_interaction(
-        &mut self,
-        has_input: bool,
-        has_key_down: bool,
-        has_focus: bool,
-    ) -> bool {
+    fn handle_interaction(&mut self, has_input: bool, has_key_down: bool, has_focus: bool) -> bool {
         if has_input && (has_focus || has_key_down) {
             self.last_interaction_time = Instant::now();
             self.is_idle = false;

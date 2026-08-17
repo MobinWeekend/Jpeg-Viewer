@@ -125,6 +125,7 @@ pub struct ViewerApp {
     pub loading_state: LoadingState,
     pub dialog_open: bool,
     pub hamburger_menu_open: bool,
+    pub overlay_visible: bool,
 }
 
 impl Default for ViewerApp {
@@ -207,6 +208,7 @@ impl Default for ViewerApp {
             loading_state: Idle,
             dialog_open: false,
             hamburger_menu_open: false,
+            overlay_visible: true,
         }
     }
 }
@@ -310,45 +312,6 @@ impl ViewerApp {
         let _ = self.settings_manager.update(|settings| {
             settings.slideshow_interval_ms = new_interval.min(60000);
         });
-    }
-
-    pub fn advance_slideshow(&mut self) {
-        if self.image_entries.is_empty() {
-            return;
-        }
-
-        let len = self.image_entries.len();
-        use rand::Rng;
-        let new_index = if self.slideshow_random {
-            let mut rng = rand::thread_rng();
-            let mut idx;
-            loop {
-                idx = rng.gen_range(0..len);
-                if idx != self.current_index || len <= 1 {
-                    break;
-                }
-            }
-            idx
-        } else {
-            (self.current_index + 1) % len
-        };
-
-        self.current_index = new_index;
-        self.b_fit_to_window = true;
-        self.image_rect = None;
-        self.gif_animation = None;
-        self.is_gif = false;
-        self.is_preview = false;
-        self.full_image_receiver = None;
-        self.full_gif_receiver = None;
-        self.image_error = None;
-        self.receiver = None;
-
-        self.load_current_image_with_cache_keep_texture();
-        self.update_window_title(&eframe::egui::Context::default());
-
-        // Mark interaction to reset idle timer
-        self.mark_interaction();
     }
 
     pub fn load_slideshow_settings(&mut self) {

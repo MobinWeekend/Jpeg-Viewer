@@ -1,5 +1,5 @@
 use super::types::{CachedImage, LoadedImage, ViewerApp};
-use super::virtual_texture::MAX_TILE_SIZE;
+use crate::app::constants::MAX_TILE_SIZE;
 use eframe::egui;
 use image::GenericImageView;
 

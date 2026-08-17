@@ -77,7 +77,7 @@ impl eframe::App for ViewerApp {
             let elapsed = self.slideshow_last_advance.elapsed();
             if elapsed >= self.slideshow_interval {
                 if self.slideshow_loop || self.current_index < self.image_entries.len() - 1 {
-                    self.advance_slideshow();
+                    self.advance_slideshow(ctx);
                     self.slideshow_last_advance = Instant::now();
                     self.slideshow_has_advanced = true;
                     ctx.request_repaint();

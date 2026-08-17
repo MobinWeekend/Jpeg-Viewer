@@ -31,6 +31,7 @@ pub enum ViewerCommand {
 
 #[derive(Debug, Clone)]
 pub enum MouseAction {
+    Click,
     DoubleClick,
 }
 
@@ -122,6 +123,7 @@ impl MouseBinding {
     }
     pub fn matches(&self, input: &egui::InputState) -> bool {
         let clicked = match self.action {
+            MouseAction::Click => input.pointer.button_clicked(self.button),
             MouseAction::DoubleClick => input.pointer.button_double_clicked(self.button),
         };
 
@@ -270,7 +272,7 @@ impl Default for InputBindings {
             ViewerCommand::ToggleFullscreen,
             vec![MouseBinding::plain(
                 egui::PointerButton::Middle,
-                MouseAction::DoubleClick,
+                MouseAction::Click,
             )],
         );
 
@@ -326,10 +328,15 @@ pub fn handle_keyboard(ctx: &egui::Context, bindings: &InputBindings) -> Vec<Vie
     commands
 }
 
+const MOUSE_COMMANDS_ALLOWED_OVER_UI: &[ViewerCommand] = &[
+    ViewerCommand::ToggleFullscreen,
+];
+
 pub fn handle_mouse(
     ctx: &egui::Context,
     bindings: &InputBindings,
     mouse_over: bool,
+    over_ui: bool,
     b_ctrl_invert: bool,
 ) -> Vec<ViewerCommand> {
     let mut commands = Vec::new();
@@ -340,13 +347,20 @@ pub fn handle_mouse(
 
     ctx.input(|input| {
         for (command, bindings) in &bindings.mouse {
+            // When over UI, only allow whitelisted commands.
+            if over_ui && !MOUSE_COMMANDS_ALLOWED_OVER_UI.contains(command) {
+                continue;
+            }
+
             if bindings.iter().any(|binding| binding.matches(input)) {
                 commands.push(*command);
             }
         }
+
         let scroll = input.raw_scroll_delta.y;
 
-        if scroll != 0.0 {
+        // Don't allow image scrolling/zooming while over UI.
+        if scroll != 0.0 && !over_ui {
             let ctrl = input.modifiers.ctrl;
             let zooming = (!b_ctrl_invert && ctrl) || (b_ctrl_invert && !ctrl);
 

@@ -5,9 +5,7 @@ use image::{DynamicImage, GenericImageView, RgbaImage};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
-
-/// Maximum tile size that this application will generate.
-pub const MAX_TILE_SIZE: u32 = 16384;
+use crate::app::constants::MAX_TILE_SIZE;
 
 // Atomic state constants
 const STATE_NOT_STARTED: u8 = 0;

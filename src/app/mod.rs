@@ -13,4 +13,6 @@ mod aspect_ratio;
 mod virtual_texture;
 mod file_detection;
 
+pub mod constants;
+
 pub use types::ViewerApp;

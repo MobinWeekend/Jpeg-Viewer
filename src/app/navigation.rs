@@ -86,4 +86,34 @@ impl ViewerApp {
         // just in case!
         self.load_frame_limiter_settings();
     }
+
+    pub fn advance_slideshow(&mut self, ctx: &egui::Context) {
+        if self.image_entries.is_empty() {
+            return;
+        }
+
+        let len = self.image_entries.len();
+
+        let new_index = if self.slideshow_random {
+            use rand::Rng;
+
+            let mut rng = rand::thread_rng();
+
+            if len <= 1 {
+                self.current_index
+            } else {
+                loop {
+                    let index = rng.gen_range(0..len);
+
+                    if index != self.current_index {
+                        break index;
+                    }
+                }
+            }
+        } else {
+            (self.current_index + 1) % len
+        };
+
+        self.navigate_to_index(ctx, new_index);
+    }
 }
