@@ -93,6 +93,7 @@ impl ViewerApp {
 
     pub fn toggle_fullscreen(&self, ctx: &egui::Context) {
         let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_fullscreen));
     }
 

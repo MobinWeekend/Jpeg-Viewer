@@ -248,11 +248,12 @@ impl ViewerApp {
         }
     }
 
-    pub fn update_window_title(&self, ctx: &egui::Context) {
+    pub fn window_title(&self) -> String {
         let filename = self.get_current_filename();
         let total = self.image_entries.len();
         let slideshow_indicator = if self.slideshow_enabled { " ▶" } else { "" };
-        let title = if total > 0 {
+
+        if total > 0 {
             format!(
                 "{}{} ({}/{}) - JPEG Viewer",
                 filename,
@@ -262,8 +263,10 @@ impl ViewerApp {
             )
         } else {
             "JPEG Viewer".to_string()
-        };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
+    }
+    pub fn update_window_title(&self, ctx: &egui::Context) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title()));
     }
 
     pub fn get_texture_options(&self) -> egui::TextureOptions {

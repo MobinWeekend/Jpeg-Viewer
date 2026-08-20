@@ -12,10 +12,10 @@ impl ViewerApp {
             .title_bar(true)
             .collapsible(false)
             .resizable(true)
-            .default_size([420.0, 620.0])
+            .default_size([420.0, 600.0])
             .min_size([350.0, 450.0])
-            .max_size([600.0, 800.0])
-            .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-10.0, 42.0))
+            .max_size([600.0, 900.0])
+            .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0.0, 42.0))
             .open(&mut open)
             .show(ctx, |ui| {
                 // ========== SCROLLABLE CONTENT ==========
@@ -854,6 +854,22 @@ impl ViewerApp {
                             ui.add_space(8.0);
 
                             // ===== WINDOW SETTINGS =====
+
+                            // Titlebar
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                let mut show_titlebar = self.settings_manager.get().show_titlebar;
+                                if ui.checkbox(&mut show_titlebar, "Show Title Bar - WIP").changed() {
+                                    let _ = self.settings_manager.update(|settings| {
+                                        settings.show_titlebar = show_titlebar;
+                                    });
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(
+                                        show_titlebar,
+                                    ));
+                                }
+                            });
+
+                            // Rest of the window settings
                             ui.label(egui::RichText::new("🪟 Window").size(13.0).strong());
                             ui.add_space(4.0);
 

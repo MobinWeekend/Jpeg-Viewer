@@ -29,6 +29,7 @@ pub struct AppSettings {
     // virtual texture
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
+    pub show_titlebar: bool,
 }
 
 impl Default for AppSettings {
@@ -55,6 +56,7 @@ impl Default for AppSettings {
             start_fullscreen: false,
             virtual_texture_threshold: 8192,
             tile_size: 1024,
+            show_titlebar: true,
         }
     }
 }
@@ -62,7 +64,7 @@ impl Default for AppSettings {
 /// Manages loading and saving settings to an INI file
 pub struct SettingsManager {
     path: PathBuf,
-    settings: AppSettings,
+    pub settings: AppSettings,
 }
 
 impl SettingsManager {
@@ -250,6 +252,10 @@ impl SettingsManager {
                             }
                         }
                     }
+                    // Titlebar visibility
+                    if let Some(value) = section.get("show_titlebar") {
+                        settings.show_titlebar = Self::parse_bool(value);
+                    }
                 }
 
                 settings
@@ -356,6 +362,14 @@ impl SettingsManager {
             settings.virtual_texture_threshold.to_string(),
         );
         section.set("tile_size", settings.tile_size.to_string());
+        section.set(
+            "show_titlebar",
+            if settings.show_titlebar {
+                "true"
+            } else {
+                "false"
+            },
+        );
 
         // Write the file
         conf.write_to_file(path)
