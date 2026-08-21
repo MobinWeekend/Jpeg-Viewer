@@ -1,81 +1,62 @@
-// src/app/frame_limiter.rs
-
 use eframe::egui;
 use std::time::{Duration, Instant};
 
 use super::types::ViewerApp;
 use crate::app::constants::OVERLAY_HIDE_DELAY;
 
-/// FPS limit applied while an image is loading (capped at 60).
 const LOADING_FPS: f32 = 60.0;
 
 impl ViewerApp {
-    fn schedule_timed_updates(&self, ctx: &egui::Context) {
+    // ─── Scheduled repaints ──────────────────────────────────────
+
+    fn schedule_timed_repaints(&self, ctx: &egui::Context) {
         self.handle_slideshow_repaint(ctx);
         self.handle_overlay_repaint(ctx);
     }
+
     fn handle_slideshow_repaint(&self, ctx: &egui::Context) {
         if !self.slideshow_enabled || self.image_entries.is_empty() || self.is_loading() {
             return;
         }
-
         let elapsed = self.slideshow_last_advance.elapsed();
-
         let remaining = self.slideshow_interval.saturating_sub(elapsed);
-
         ctx.request_repaint_after(remaining);
     }
+
     fn handle_overlay_repaint(&self, ctx: &egui::Context) {
         if !self.overlay_visible || self.hamburger_menu_open || self.image_entries.is_empty() {
             return;
         }
-
         let elapsed = self.last_interaction_time.elapsed();
-
         if elapsed < OVERLAY_HIDE_DELAY {
             ctx.request_repaint_after(OVERLAY_HIDE_DELAY - elapsed);
         }
     }
-    // ===== Core FPS limiter =====
 
-    /// Returns `true` if a repaint should be requested, based on the given
-    /// target FPS.
-    ///
-    /// # Semantics for `fps`:
-    /// - `fps <= 0.0` or `NaN` → unlimited (always returns `true`)
-    /// - otherwise, limits to the given frames per second.
+    // ─── FPS limiter core ────────────────────────────────────────
+
     fn apply_fps_limit(&mut self, fps: f32) -> bool {
         if !fps.is_finite() || fps <= 0.0 {
             return true;
         }
-
         let now = Instant::now();
         let frame_time = Duration::from_secs_f32(1.0 / fps);
-
-        if now.duration_since(self.last_frame_request_time) >= frame_time {
-            self.last_frame_request_time = now;
+        if now.duration_since(self.last_repaint_time) >= frame_time {
+            self.last_repaint_time = now;
             true
         } else {
             false
         }
     }
 
-    // ===== Wrappers for specific policies =====
-
-    /// User‑configured maximum FPS.
     fn apply_max_fps_limit(&mut self) -> bool {
         self.apply_fps_limit(self.max_fps)
     }
 
-    /// FPS when the window is focused and idle.
     fn apply_idle_fps_limit(&mut self) -> bool {
         self.apply_fps_limit(self.idle_fps_limit)
     }
 
-    /// FPS when the window is unfocused and idle.
-    ///
-    /// If `unfocused_idle_fps_limit` is not positive or is `NaN`,
-    /// it falls back to the regular idle FPS.
     fn apply_unfocused_idle_fps_limit(&mut self) -> bool {
         if !self.unfocused_idle_fps_limit.is_finite() || self.unfocused_idle_fps_limit <= 0.0 {
             self.apply_idle_fps_limit()
@@ -84,50 +65,38 @@ impl ViewerApp {
         }
     }
 
-    // ===== Main repaint decision =====
+    // ─── Main repaint decision ────────────────────────────────────
 
-    /// Determines whether a repaint should be requested.
-    ///
-    /// This is the single entry point for the frame limiter. It evaluates
-    /// priorities in order:
-    ///
-    /// 1. Animated content (GIF) or slideshow → max FPS
-    /// 2. Loading → fixed 60 FPS
-    /// 3. User interaction → max FPS
-    /// 4. Idle → appropriate idle FPS (focused or unfocused)
     pub fn should_request_repaint(&mut self, ctx: &egui::Context) -> bool {
-        self.schedule_timed_updates(ctx);
+        self.schedule_timed_repaints(ctx);
 
         // 1. Animated GIF → max FPS
         if self.is_animating {
             return self.apply_max_fps_limit();
         }
 
-        // 2. Slideshow → only wake up when the next slide is due.
-        if self.slideshow_enabled {
-            self.handle_slideshow_repaint(ctx);
-        }
-
-        // 3. Overlay → wake up when the auto-hide timeout expires.
-        self.handle_overlay_repaint(ctx);
-
-        // 4. Loading → fixed 60 FPS.
+        // 2. Loading → capped 60 FPS, but respect global max_fps if set
         if self.is_loading() {
-            return self.apply_fps_limit(LOADING_FPS);
+            let loading_fps = if self.max_fps > 0.0 && self.max_fps < LOADING_FPS {
+                self.max_fps
+            } else {
+                LOADING_FPS
+            };
+            return self.apply_fps_limit(loading_fps);
         }
 
-        // 5. Capture input state once.
+        // 3. Capture input state
         let (has_input, has_key_down, has_focus) = self.get_input_state(ctx);
 
-        // 6. Interaction → max FPS.
+        // 4. Interaction → max FPS
         if self.handle_interaction(has_input, has_key_down, has_focus) {
             return self.apply_max_fps_limit();
         }
 
-        // 7. Update idle state.
+        // 5. Update idle state
         self.update_idle_state(has_focus);
 
-        // 8. Normal idle FPS.
+        // 6. Idle → appropriate idle FPS
         if self.is_idle {
             self.apply_idle_limit_based_on_focus(has_focus)
         } else {
@@ -135,34 +104,36 @@ impl ViewerApp {
         }
     }
 
-    // ===== Helpers =====
+    // ─── Helpers ──────────────────────────────────────────────────
 
-    /// Queries egui for active input, key‑down state, and focus.
-    ///
-    /// This bundles three related queries into one closure to avoid
-    /// repeated calls to `ctx.input()`.
     fn get_input_state(&self, ctx: &egui::Context) -> (bool, bool, bool) {
         ctx.input(|i| {
+            let has_focus = i.viewport().focused.unwrap_or(false);
             let has_key_down = !i.keys_down.is_empty();
 
-            let has_input = i.pointer.any_down()
-                || i.pointer.delta() != egui::Vec2::ZERO
-                || has_key_down
-                || i.raw_scroll_delta != egui::Vec2::ZERO;
+            // Pointer input only counts while our window is focused.
+            // Mouse movement outside the window cannot wake the FPS limiter.
+            let has_pointer_input = has_focus
+                && (i.pointer.any_down()
+                    || i.pointer.delta() != egui::Vec2::ZERO
+                    || i.raw_scroll_delta != egui::Vec2::ZERO);
 
-            let has_focus = i.viewport().focused.unwrap_or(false);
-
-            (has_input, has_key_down, has_focus)
+            (has_pointer_input, has_key_down, has_focus)
         })
     }
 
-    /// Processes interaction and returns `true` if the UI should stay at max FPS.
-    ///
-    /// Keyboard input is allowed to wake the viewer even when egui reports the
-    /// viewport as unfocused – this ensures shortcuts like navigation work
-    /// without requiring a mouse click to regain focus.
-    fn handle_interaction(&mut self, has_input: bool, has_key_down: bool, has_focus: bool) -> bool {
-        if has_input && (has_focus || has_key_down) {
+    fn handle_interaction(
+        &mut self,
+        has_pointer_input: bool,
+        has_key_down: bool,
+        has_focus: bool,
+    ) -> bool {
+        // Pointer interaction only counts when the window is focused.
+        // Keyboard input can still wake the viewer even when unfocused.
+        let is_pointer_interaction = has_focus && has_pointer_input;
+        let is_keyboard_interaction = has_key_down;
+
+        if is_pointer_interaction || is_keyboard_interaction {
             self.last_interaction_time = Instant::now();
             self.is_idle = false;
             true
@@ -171,10 +142,9 @@ impl ViewerApp {
         }
     }
 
-    /// Updates `self.is_idle` based on the time since the last interaction
-    /// and the relevant timeout for the current focus state.
     fn update_idle_state(&mut self, has_focus: bool) {
         let now = Instant::now();
+
         let timeout = if has_focus {
             Duration::from_millis(self.idle_timeout_ms)
         } else {
@@ -184,7 +154,6 @@ impl ViewerApp {
         self.is_idle = now.duration_since(self.last_interaction_time) >= timeout;
     }
 
-    /// Applies the appropriate idle FPS limit (focused or unfocused).
     fn apply_idle_limit_based_on_focus(&mut self, has_focus: bool) -> bool {
         if has_focus {
             self.apply_idle_fps_limit()
@@ -193,18 +162,13 @@ impl ViewerApp {
         }
     }
 
-    // ===== Public API for external state changes =====
+    // ─── Public API ──────────────────────────────────────────────
 
-    /// Marks an explicit interaction (e.g., from outside input handling).
     pub fn mark_interaction(&mut self) {
         self.last_interaction_time = Instant::now();
         self.is_idle = false;
     }
 
-    /// Sets whether the current content is animated (GIF playing).
-    ///
-    /// When animation starts, we treat it as interaction to immediately
-    /// switch to max FPS.
     pub fn set_animating(&mut self, animating: bool) {
         if animating != self.is_animating {
             self.is_animating = animating;
@@ -215,7 +179,6 @@ impl ViewerApp {
         }
     }
 
-    /// Loads frame‑limiter settings from the settings manager.
     pub fn load_frame_limiter_settings(&mut self) {
         let settings = self.settings_manager.get();
         self.max_fps = settings.max_fps;

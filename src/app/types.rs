@@ -96,7 +96,7 @@ pub struct ViewerApp {
     pub last_preload_start: Option<Instant>,
     pub image_error: Option<String>,
     // Frame limiter fields
-    pub last_frame_request_time: Instant,
+    pub last_repaint_time: Instant,
     pub last_interaction_time: Instant,
     pub is_idle: bool,
     pub max_fps: f32,
@@ -182,7 +182,7 @@ impl Default for ViewerApp {
             last_preload_start: None,
             image_error: None,
             // Frame limiter defaults - will be overridden by load_frame_limiter_settings()
-            last_frame_request_time: Instant::now(),
+            last_repaint_time: Instant::now(),
             last_interaction_time: Instant::now(),
             is_idle: false,
             max_fps: settings.max_fps,
