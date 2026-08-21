@@ -6,6 +6,21 @@ use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // ========== UPDATE CURRENT FPS (throttled to 0.5s) ==========
+        let now = std::time::Instant::now();
+        // Compute time since last frame
+        let delta = now - self.last_frame_request_time;
+        if delta.as_secs_f32() > 0.001 {
+            let instant_fps = 1.0 / delta.as_secs_f32();
+            // Exponential moving average (10% new, 90% old)
+            let smoothed = self.current_fps * 0.9 + instant_fps * 0.1;
+            // Only store the smoothed value if at least 500ms have passed
+            if now - self.last_fps_update >= std::time::Duration::from_millis(500) {
+                self.current_fps = smoothed;
+                self.last_fps_update = now;
+            }
+        }
+
         // Initialize logo texture
         if self.logo_texture.is_none() {
             match image::load_from_memory(include_bytes!("../../assets/icon.ico")) {
@@ -396,7 +411,7 @@ impl eframe::App for ViewerApp {
         }
 
         if self.show_settings_menu {
-            self.render_settings_menu(ctx);
+            crate::app::ui::render_settings_menu(self, ctx);
         }
 
         // ========== FRAME LIMITER ==========

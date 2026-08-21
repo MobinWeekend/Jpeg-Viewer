@@ -77,7 +77,7 @@ impl ViewerApp {
                     .on_hover_text("Settings")
                     .clicked()
                 {
-                    self.toggle_settings_menu();
+                    crate::app::ui::toggle_settings_menu(self);
                     self.hamburger_menu_open = false;
                 }
 

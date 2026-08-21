@@ -107,7 +107,7 @@ impl ViewerApp {
                 }
             }
             ViewerCommand::Settings => {
-                self.toggle_settings_menu();
+                crate::app::ui::render_settings_menu(self, ctx);
             }
             ViewerCommand::Help => {
                 self.toggle_help_menu();

@@ -126,6 +126,8 @@ pub struct ViewerApp {
     pub dialog_open: bool,
     pub hamburger_menu_open: bool,
     pub overlay_visible: bool,
+    pub current_fps: f32,  // Smoothed current FPS
+    pub last_fps_update: std::time::Instant,
 }
 
 impl Default for ViewerApp {
@@ -209,6 +211,8 @@ impl Default for ViewerApp {
             dialog_open: false,
             hamburger_menu_open: false,
             overlay_visible: true,
+            current_fps: 0.0,
+            last_fps_update: std::time::Instant::now(),
         }
     }
 }
