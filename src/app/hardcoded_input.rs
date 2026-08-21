@@ -100,7 +100,7 @@ impl ViewerApp {
             }
         }
 
-        self.update_overlay_visibility(ctx);
+        crate::app::ui::update_overlay_visibility(self, ctx);
 
         // Handle Escape key for fullscreen toggle / close
         self.handle_escape_key(ctx);

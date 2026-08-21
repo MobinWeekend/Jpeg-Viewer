@@ -1,4 +1,5 @@
 use crate::app::types::ViewerApp;
+use crate::app::ui::toolbar_frame;
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
 
@@ -31,7 +32,7 @@ impl ViewerApp {
             return;
         }
 
-        Self::toolbar_frame(ctx).show(ui, |ui| {
+        toolbar_frame(ctx).show(ui, |ui| {
             ui.vertical(|ui| {
                 // Open File
                 if ui
