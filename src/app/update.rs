@@ -61,19 +61,6 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== HARDCODED INPUT HANDLING ==========
-        let had_input = ctx.input(|i| {
-            i.pointer.any_down()
-                || i.pointer.delta().length() > 0.0
-                || !i.keys_down.is_empty()
-                || i.raw_scroll_delta != egui::Vec2::ZERO
-        });
-
-        let has_focus = ctx.input(|i| i.viewport().focused).unwrap_or(false);
-
-        if had_input && (has_focus || ctx.input(|i| !i.keys_down.is_empty())) {
-            self.mark_interaction();
-        }
-
         self.handle_input(ctx);
         self.handle_window_resize(ctx);
 
@@ -411,9 +398,9 @@ impl eframe::App for ViewerApp {
         if self.show_settings_menu {
             crate::app::ui::render_settings_menu(self, ctx);
         }
-
+        
         // ========== FRAME LIMITER ==========
-        if self.should_request_repaint(ctx) {
+        if self.should_request_repaint(ctx) || self.preload_working || self.is_loading() {
             ctx.request_repaint();
         }
 

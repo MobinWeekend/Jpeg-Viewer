@@ -117,7 +117,6 @@ impl ViewerApp {
                 if self.slideshow_enabled {
                     // Reset timer when starting slideshow
                     self.slideshow_last_advance = Instant::now();
-                    ctx.request_repaint();
                 }
                 self.update_window_title(ctx);
             }

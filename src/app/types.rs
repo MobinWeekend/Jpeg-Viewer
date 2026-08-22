@@ -85,6 +85,7 @@ pub struct ViewerApp {
     pub preloading_indices: std::collections::HashSet<usize>,
     pub preload_generation: u64,
     pub preload_workers: usize,
+    pub preload_working: bool,
     pub cache_radius: usize,
     pub preload_origin: usize,
     pub delta_threshold: usize,
@@ -168,6 +169,7 @@ impl Default for ViewerApp {
             preloading_indices: std::collections::HashSet::new(),
             preload_generation: 0,
             preload_workers: 0,
+            preload_working: false,
             cache_radius: radius,
             preload_origin: 0,
             delta_threshold: ((radius as f32 * settings.cache_delta_factor).round() as usize)

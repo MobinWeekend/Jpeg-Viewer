@@ -4,8 +4,6 @@ use std::time::{Duration, Instant};
 use super::types::ViewerApp;
 use crate::app::constants::OVERLAY_HIDE_DELAY;
 
-const LOADING_FPS: f32 = 60.0;
-
 impl ViewerApp {
     // ─── Scheduled repaints ──────────────────────────────────────
 
@@ -73,16 +71,6 @@ impl ViewerApp {
         // 1. Animated GIF → max FPS
         if self.is_animating {
             return self.apply_max_fps_limit();
-        }
-
-        // 2. Loading → capped 60 FPS, but respect global max_fps if set
-        if self.is_loading() {
-            let loading_fps = if self.max_fps > 0.0 && self.max_fps < LOADING_FPS {
-                self.max_fps
-            } else {
-                LOADING_FPS
-            };
-            return self.apply_fps_limit(loading_fps);
         }
 
         // 3. Capture input state

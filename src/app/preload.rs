@@ -1,13 +1,11 @@
 // preloading governs the range and tasks and duration for preloading
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
-use crate::image_entry::ImageEntry;
 use crate::gif::detection::is_gif_entry;
 use crate::gif::loader::{
-    load_gif_preview_from_path,
+    load_gif_preview_from_7z, load_gif_preview_from_path, load_gif_preview_from_rar,
     load_gif_preview_from_zip,
-    load_gif_preview_from_7z,
-    load_gif_preview_from_rar,
 };
+use crate::image_entry::ImageEntry;
 use eframe::egui;
 use rayon::spawn;
 use std::collections::HashSet;
@@ -115,18 +113,40 @@ impl ViewerApp {
         self.preload_generation = self.preload_generation.wrapping_add(1);
     }
 
+    /// Returns true if every non‑GIF image in the desired window is already cached.
+    fn is_cache_filled(&self) -> bool {
+        let desired = self.desired_set_from_origin();
+        desired.iter().all(|idx| {
+            if let Some(entry) = self.image_entries.get(*idx) {
+                if is_gif_entry(entry) {
+                    return true; // GIFs are never cached → treat as filled
+                }
+            }
+            self.is_index_cached(*idx)
+        })
+    }
+
+    /// Returns true if there are still pending preload tasks.
+    fn has_preload_tasks(&self) -> bool {
+        !self.preload_tasks.is_empty()
+    }
+
+    /// Updates the `preload_working` flag based on cache fill state and pending tasks.
+    fn update_preload_working(&mut self) {
+        self.preload_working = !self.is_cache_filled() || self.has_preload_tasks();
+    }
+
     pub fn preload_adjacent_images(&mut self) {
         if self.should_stop_caching {
             return;
         }
 
         if self.image_entries.is_empty() || self.image_entries.len() <= 1 {
+            self.preload_working = false;
             return;
         }
 
         // Step 1: Update origin if we've moved far enough.
-        // If we've moved more than twice the radius, force origin move immediately
-        // (ignore navigation timer to keep up with fast navigation).
         let len = self.image_entries.len();
         let diff = (self.current_index as isize - self.preload_origin as isize).unsigned_abs();
         let dist = diff.min(len - diff);
@@ -147,6 +167,7 @@ impl ViewerApp {
         if let Some(last) = self.last_preload_start {
             let throttle_ms = self.settings_manager.get().preload_throttle_ms;
             if last.elapsed() < Duration::from_millis(throttle_ms) {
+                self.update_preload_working(); // state may have changed due to origin move
                 return;
             }
         }
@@ -159,11 +180,11 @@ impl ViewerApp {
 
         let active_workers = self.preload_workers;
         if active_workers >= max_concurrent {
+            self.update_preload_working();
             return;
         }
 
         let slots = max_concurrent - active_workers;
-
         let desired_ordered = self.ordered_desired_window();
         let mut started = 0;
 
@@ -194,6 +215,9 @@ impl ViewerApp {
         if started > 0 {
             self.last_preload_start = Some(Instant::now());
         }
+
+        // Update working state after attempting to start tasks.
+        self.update_preload_working();
     }
 
     /// Remove cached images that are outside the desired set.
@@ -222,6 +246,7 @@ impl ViewerApp {
         if self.should_stop_caching {
             return;
         }
+        self.preload_working = true;
 
         if let Some(entry) = self.image_entries.get(idx).cloned() {
             // Mark as loading
@@ -310,7 +335,6 @@ impl ViewerApp {
 
         for (task_idx, task) in self.preload_tasks.iter_mut().enumerate() {
             if let Ok((idx, result, generation)) = task.receiver.try_recv() {
-                // Worker finished – account for it.
                 self.preload_workers = self.preload_workers.saturating_sub(1);
                 self.preloading_indices.remove(&idx);
 
@@ -328,7 +352,6 @@ impl ViewerApp {
         let mut timed_out = Vec::new();
         for (task_idx, task) in self.preload_tasks.iter().enumerate() {
             if task.start_time.elapsed() > PRELOAD_TIMEOUT {
-                // Task is stuck – force cleanup.
                 timed_out.push(task_idx);
             }
         }
@@ -368,8 +391,11 @@ impl ViewerApp {
         // Re-enforce the cache invariant after insertion.
         self.clean_cache_outside_set(&desired_set);
 
-        // If tasks remain, ask for another repaint soon.
-        if !self.preload_tasks.is_empty() {
+        // Update working state: is the cache full? Are there tasks still running?
+        self.update_preload_working();
+
+        // Keep the pipeline alive if work remains.
+        if self.preload_working {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
     }
@@ -428,5 +454,6 @@ impl ViewerApp {
         // The workers will finish, their results will be discarded,
         // and the worker counts will be correctly decremented.
         // This ensures we don't lose track of running workers.
+        self.preload_working = false; // no more repaint request
     }
 }

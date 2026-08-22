@@ -96,7 +96,7 @@ impl ViewerApp {
 
             if !self.overlay_visible {
                 self.overlay_visible = true;
-                ctx.request_repaint();
+                ctx.request_repaint(); // make sure the the overlay is shown
             }
         }
 
