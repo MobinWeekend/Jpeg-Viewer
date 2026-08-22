@@ -239,7 +239,7 @@ impl eframe::App for ViewerApp {
                 let progress = vt.progress();
                 self.vt_progress = Some(progress);
                 self.vt_total_tiles = vt.total_tiles();
-                ctx.request_repaint();
+                ctx.request_repaint_after(std::time::Duration::from_millis(500));
                 self.mark_interaction();
             }
 
@@ -255,7 +255,7 @@ impl eframe::App for ViewerApp {
                             // Detect file type when virtual texture becomes ready
                             self.detect_current_file_type();
 
-                            ctx.request_repaint();
+                            ctx.request_repaint_after(std::time::Duration::from_millis(50));
                             println!("Virtual texture ready!");
                             self.set_loading_state(LoadingState::Idle);
                         }
@@ -271,7 +271,7 @@ impl eframe::App for ViewerApp {
                     // Put the handle back - still running
                     self.virtual_texture_thread = Some(handle);
                     // Request repaint to update progress bar
-                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                    ctx.request_repaint_after(std::time::Duration::from_millis(500));
                 }
             }
         }
@@ -344,7 +344,6 @@ impl eframe::App for ViewerApp {
                                         );
                                     }
 
-                                    ctx.request_repaint();
                                     ctx.request_repaint_after(std::time::Duration::from_millis(16));
                                 }
                             } else {
