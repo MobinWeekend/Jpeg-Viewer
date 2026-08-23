@@ -1,11 +1,11 @@
 use super::types::{LoadedImage, LoadingState, ViewerApp};
 use crate::app::constants::MAX_TILE_SIZE;
-use crate::image_entry::ImageEntry;
 use crate::gif::detection::is_gif_bytes;
+use crate::image_entry::ImageEntry;
 use rayon::spawn;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
-use std::io::Read;
 
 impl ViewerApp {
     pub fn load_image(&mut self, path: PathBuf) {
@@ -182,7 +182,6 @@ impl ViewerApp {
     }
 }
 
-
 /// Load entry content with automatic content detection, passing threshold and tile_size.
 /// Load entry content with automatic content detection.
 fn load_entry_content(
@@ -198,12 +197,14 @@ fn load_entry_content(
         ImageEntry::Zip(zip) => {
             let file = std::fs::File::open(&zip.archive_path)
                 .map_err(|e| format!("Failed to open archive: {}", e))?;
-            let mut archive = zip::ZipArchive::new(file)
-                .map_err(|e| format!("Failed to read archive: {}", e))?;
-            let mut entry = archive.by_index(zip.entry_index)
+            let mut archive =
+                zip::ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
+            let mut entry = archive
+                .by_index(zip.entry_index)
                 .map_err(|e| format!("Failed to read entry: {}", e))?;
             let mut bytes = Vec::new();
-            entry.read_to_end(&mut bytes)
+            entry
+                .read_to_end(&mut bytes)
                 .map_err(|e| format!("Failed to read data: {}", e))?;
             let path_hint = std::path::Path::new(&zip.name);
             load_bytes_with_detection(bytes, Some(path_hint), threshold, tile_size)
@@ -214,7 +215,8 @@ fn load_entry_content(
                 sevenz_rust2::Password::empty(),
             )
             .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
-            let bytes = reader.read_file(&s7z.name)
+            let bytes = reader
+                .read_file(&s7z.name)
                 .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
             let path_hint = std::path::Path::new(&s7z.name);
             load_bytes_with_detection(bytes, Some(path_hint), threshold, tile_size)
@@ -225,17 +227,20 @@ fn load_entry_content(
                 .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
             let mut archive = archive;
             loop {
-                let header = archive.read_header()
+                let header = archive
+                    .read_header()
                     .map_err(|e| format!("Failed to read RAR header: {}", e))?
                     .ok_or_else(|| format!("File not found in archive: {}", rar.name))?;
                 let filename = header.entry().filename.to_string_lossy().to_string();
                 if filename == rar.name {
-                    let (bytes, _) = header.read()
+                    let (bytes, _) = header
+                        .read()
                         .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
                     let path_hint = std::path::Path::new(&rar.name);
                     return load_bytes_with_detection(bytes, Some(path_hint), threshold, tile_size);
                 }
-                archive = header.skip()
+                archive = header
+                    .skip()
                     .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
             }
         }
@@ -243,9 +248,9 @@ fn load_entry_content(
 }
 
 /// Load bytes with automatic content detection.
+/// VT detection - Virtual Texture detection
 /// First tries GIF, then checks dimensions to decide virtual vs normal.
-
-fn load_bytes_with_detection(
+pub fn load_bytes_with_detection(
     bytes: Vec<u8>,
     path_hint: Option<&std::path::Path>,
     threshold: u32,
@@ -254,34 +259,28 @@ fn load_bytes_with_detection(
     let is_gif = is_gif_bytes(&bytes);
 
     if is_gif {
-        // Try preview first
         if let Ok(gif) = crate::gif::animation::GifAnimation::from_bytes_preview(&bytes) {
             return Ok(LoadedImage::Animated(gif, true));
         }
-        // Fallback to full GIF (rare)
+
         if let Ok(gif) = crate::gif::animation::GifAnimation::from_bytes(&bytes) {
             return Ok(LoadedImage::Animated(gif, false));
         }
-        // If both fail, continue as static (may still be a corrupt GIF)
     }
 
-    // For non-GIF images, check dimensions
-    let reader_result = image::ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format();
-    if let Ok(reader) = reader_result {
+    let threshold = threshold.min(MAX_TILE_SIZE);
+
+    let reader = image::ImageReader::new(std::io::Cursor::new(&bytes)).with_guessed_format();
+
+    if let Ok(reader) = reader {
         if let Ok((width, height)) = reader.into_dimensions() {
-            let use_virtual = width > threshold
-                || height > threshold
-                || width > MAX_TILE_SIZE
-                || height > MAX_TILE_SIZE;
-            if use_virtual {
+            if threshold > 0 && (width >= threshold || height >= threshold) {
                 return Ok(LoadedImage::VirtualPending(bytes, width, height));
             }
         }
     }
 
-    match crate::loader::load_image_from_bytes(&bytes, path_hint) {
-        Ok(img) => Ok(LoadedImage::Static(img)),
-        Err(e) => Err(e),
-    }
+    crate::loader::load_image_from_bytes(&bytes, path_hint)
+        .map(LoadedImage::Static)
+        .map_err(|e| e.to_string())
 }
-

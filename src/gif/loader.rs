@@ -3,17 +3,18 @@ use crate::image_entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveIma
 use sevenz_rust2::{ArchiveReader, Password};
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+//use std::path::PathBuf;
 use unrar::Archive as RarArchive;
 use zip::ZipArchive;
 
 // ---------- Preview loaders ----------
-
+/*
 pub fn load_gif_preview_from_path(path: PathBuf) -> Option<GifAnimation> {
     std::fs::read(&path)
         .ok()
         .and_then(|data| GifAnimation::from_bytes_preview(&data).ok())
 }
+ */
 
 pub fn load_gif_preview_from_zip(image: ArchiveImage) -> Option<GifAnimation> {
     let file = File::open(&image.archive_path).ok()?;
@@ -49,13 +50,14 @@ pub fn load_gif_preview_from_rar(image: RarArchiveImage) -> Option<GifAnimation>
 // ---------- Full GIF loader (from ImageEntry) ----------
 // This was load_entry_content_full_gif in loading.rs
 
-pub fn load_full_gif_from_entry(entry: ImageEntry) -> Result<super::animation::GifAnimation, String> {
+pub fn load_full_gif_from_entry(
+    entry: ImageEntry,
+) -> Result<super::animation::GifAnimation, String> {
     println!("[FULL GIF] Starting load_full_gif_from_entry");
     let result = match entry {
         ImageEntry::File(path) => {
             println!("[FULL GIF] File variant, path: {:?}", path);
-            let bytes = std::fs::read(&path)
-                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
             println!("[FULL GIF] Read {} bytes from file", bytes.len());
             let gif = GifAnimation::from_bytes(&bytes)?;
             println!("[FULL GIF] Decoded {} frames", gif.frame_count());
@@ -65,12 +67,14 @@ pub fn load_full_gif_from_entry(entry: ImageEntry) -> Result<super::animation::G
             println!("[FULL GIF] ZIP variant, name: {}", zip.name);
             let file = File::open(&zip.archive_path)
                 .map_err(|e| format!("Failed to open archive: {}", e))?;
-            let mut archive = ZipArchive::new(file)
-                .map_err(|e| format!("Failed to read archive: {}", e))?;
-            let mut entry = archive.by_index(zip.entry_index)
+            let mut archive =
+                ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
+            let mut entry = archive
+                .by_index(zip.entry_index)
                 .map_err(|e| format!("Failed to read entry: {}", e))?;
             let mut bytes = Vec::new();
-            entry.read_to_end(&mut bytes)
+            entry
+                .read_to_end(&mut bytes)
                 .map_err(|e| format!("Failed to read data: {}", e))?;
             println!("[FULL GIF] Read {} bytes from ZIP", bytes.len());
             let gif = GifAnimation::from_bytes(&bytes)?;
@@ -81,7 +85,8 @@ pub fn load_full_gif_from_entry(entry: ImageEntry) -> Result<super::animation::G
             println!("[FULL GIF] 7z variant, name: {}", s7z.name);
             let mut reader = ArchiveReader::open(&s7z.archive_path, Password::empty())
                 .map_err(|e| format!("Failed to open 7z archive: {}", e))?;
-            let bytes = reader.read_file(&s7z.name)
+            let bytes = reader
+                .read_file(&s7z.name)
                 .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
             println!("[FULL GIF] Read {} bytes from 7z", bytes.len());
             let gif = GifAnimation::from_bytes(&bytes)?;
@@ -95,19 +100,22 @@ pub fn load_full_gif_from_entry(entry: ImageEntry) -> Result<super::animation::G
                 .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
             let mut archive = archive;
             loop {
-                let header = archive.read_header()
+                let header = archive
+                    .read_header()
                     .map_err(|e| format!("Failed to read RAR header: {}", e))?
                     .ok_or_else(|| format!("File not found in archive: {}", rar.name))?;
                 let filename = header.entry().filename.to_string_lossy().to_string();
                 if filename == rar.name {
-                    let (bytes, _) = header.read()
+                    let (bytes, _) = header
+                        .read()
                         .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
                     println!("[FULL GIF] Read {} bytes from RAR", bytes.len());
                     let gif = GifAnimation::from_bytes(&bytes)?;
                     println!("[FULL GIF] Decoded {} frames from RAR", gif.frame_count());
                     return Ok(gif);
                 }
-                archive = header.skip()
+                archive = header
+                    .skip()
                     .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
             }
         }

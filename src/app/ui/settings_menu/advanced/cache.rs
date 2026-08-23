@@ -151,29 +151,51 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
 
 fn render_cache_progress(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let total_images = app.image_entries.len();
-    let cached_count = app.image_cache.len();
     let cache_range = app.get_cache_range();
     let target_count = (cache_range * 2 + 1).min(total_images);
+
+    let cached_count = app.preload_cached_count().min(target_count);
+    let skipped_count = app.preload_skipped_count().min(target_count);
+
+    // Both cached and skipped entries count as completed preload work.
+    let completed_count = (cached_count + skipped_count).min(target_count);
+
     let progress = if target_count > 0 {
-        cached_count as f32 / target_count as f32
+        completed_count as f32 / target_count as f32
     } else {
         0.0
     };
 
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        ui.label(format!(
-            "📊 Cache: {}/{} images",
-            cached_count, target_count
-        ));
+
+        if skipped_count > 0 {
+            ui.label(format!(
+                "📊 Cache: {}/{} images ({} skipped)",
+                completed_count, target_count, skipped_count
+            ));
+        } else {
+            ui.label(format!(
+                "📊 Cache: {}/{} images",
+                completed_count, target_count
+            ));
+        }
     });
+
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        ui.add(egui::ProgressBar::new(progress).desired_width(200.0));
+
+        ui.add(
+            egui::ProgressBar::new(progress)
+                .desired_width(200.0)
+                .text(format!("{}/{}", completed_count, target_count)),
+        );
+
         ui.add_space(8.0);
+
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("🗑️ Clear Cache").size(13.0))
+                egui::Button::new(egui::RichText::new("Clear Cache").size(13.0))
                     .min_size(egui::vec2(100.0, 28.0)),
             )
             .clicked()
@@ -183,6 +205,7 @@ fn render_cache_progress(app: &mut ViewerApp, ui: &mut egui::Ui) {
             app.preload_tasks.clear();
         }
     });
+
     ui.add_space(8.0);
     ui.separator();
     ui.add_space(8.0);

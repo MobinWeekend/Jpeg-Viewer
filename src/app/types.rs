@@ -8,6 +8,7 @@ use crate::shortcuts::InputBindings;
 use eframe::egui;
 use image::DynamicImage;
 use lru::LruCache;
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -127,8 +128,9 @@ pub struct ViewerApp {
     pub dialog_open: bool,
     pub hamburger_menu_open: bool,
     pub overlay_visible: bool,
-    pub current_fps: f32,  // Smoothed current FPS
+    pub current_fps: f32, // Smoothed current FPS
     pub last_fps_update: std::time::Instant,
+    pub preload_skipped: HashSet<usize>, // used to show how skipped cache
 }
 
 impl Default for ViewerApp {
@@ -215,6 +217,7 @@ impl Default for ViewerApp {
             overlay_visible: true,
             current_fps: 0.0,
             last_fps_update: std::time::Instant::now(),
+            preload_skipped: HashSet::new(),
         }
     }
 }
