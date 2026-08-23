@@ -81,7 +81,7 @@ impl ViewerApp {
         self.set_file_type_detection(None);
 
         // Update UI
-        ctx.request_repaint_after(std::time::Duration::from_millis(50));
+        ctx.request_repaint_after(std::time::Duration::from_millis(32));
         self.update_window_title(ctx);
         // just in case!
         self.load_frame_limiter_settings();

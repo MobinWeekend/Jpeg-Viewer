@@ -61,7 +61,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         }
         ui.add_space(4.0);
         if app.idle_fps_limit == 0.0 {
-            ui.label("Unlimited");
+            ui.label("Stop frame draw");
         } else {
             ui.label(format!(""));
         }
@@ -72,7 +72,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     // Idle Timeout
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        ui.label("Idle Timeout:");
+        ui.label("Idle Timeout (ms):");
         ui.add_space(8.0);
         if ui
             .add(
@@ -95,7 +95,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     // Unfocused Timeout
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        ui.label("Unfocused Timeout:");
+        ui.label("Unfocused Timeout (ms):");
         ui.add_space(8.0);
         if ui
             .add(
@@ -137,7 +137,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         }
         ui.add_space(4.0);
         if app.unfocused_idle_fps_limit == 0.0 {
-            ui.label("Unlimited");
+            ui.label("Stop frame draw");
         } else {
             ui.label(format!(""));
         }

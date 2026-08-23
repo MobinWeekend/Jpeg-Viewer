@@ -239,7 +239,7 @@ impl eframe::App for ViewerApp {
                 let progress = vt.progress();
                 self.vt_progress = Some(progress);
                 self.vt_total_tiles = vt.total_tiles();
-                ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                ctx.request_repaint_after(std::time::Duration::from_millis(160));
                 self.mark_interaction();
             }
 
@@ -255,7 +255,7 @@ impl eframe::App for ViewerApp {
                             // Detect file type when virtual texture becomes ready
                             self.detect_current_file_type();
 
-                            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+                            ctx.request_repaint_after(std::time::Duration::from_millis(80));
                             println!("Virtual texture ready!");
                             self.set_loading_state(LoadingState::Idle);
                         }
@@ -271,7 +271,7 @@ impl eframe::App for ViewerApp {
                     // Put the handle back - still running
                     self.virtual_texture_thread = Some(handle);
                     // Request repaint to update progress bar
-                    ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                    ctx.request_repaint_after(std::time::Duration::from_millis(160));
                 }
             }
         }
@@ -358,7 +358,7 @@ impl eframe::App for ViewerApp {
                     }
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    ctx.request_repaint_after(std::time::Duration::from_millis(50));
+                    ctx.request_repaint_after(std::time::Duration::from_millis(32));
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.full_gif_receiver = None;
@@ -397,9 +397,10 @@ impl eframe::App for ViewerApp {
         if self.show_settings_menu {
             crate::app::ui::render_settings_menu(self, ctx);
         }
-        
+
         // ========== FRAME LIMITER ==========
-        if self.should_request_repaint(ctx) || self.preload_working || self.is_loading() {
+        self.schedule_repaint(ctx);
+        if self.preload_working || self.is_loading() {
             ctx.request_repaint();
         }
 
