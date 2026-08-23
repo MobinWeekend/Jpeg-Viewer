@@ -314,4 +314,32 @@ impl ViewerApp {
             self.hamburger_menu_open = false;
         }
     }
+
+    // Toggle whether the application window stays above all other windows.
+    pub fn pin_window_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let (icon, tooltip, color) = if self.window_always_on_top {
+            ("📌", "Unpin Window", egui::Color32::LIGHT_BLUE)
+        } else {
+            ("📌", "Pin Window to Top", egui::Color32::GRAY)
+        };
+
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new(icon).size(14.0).color(color))
+                    .min_size(egui::vec2(24.0, 24.0)),
+            )
+            .on_hover_text(tooltip)
+            .clicked()
+        {
+            self.window_always_on_top = !self.window_always_on_top;
+
+            let window_level = if self.window_always_on_top {
+                egui::WindowLevel::AlwaysOnTop
+            } else {
+                egui::WindowLevel::Normal
+            };
+
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(window_level));
+        }
+    }
 }

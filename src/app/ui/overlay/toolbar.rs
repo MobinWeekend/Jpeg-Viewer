@@ -30,20 +30,25 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_y: f3
         return;
     }
 
-    overlay_area("toolbar_top_center", egui::Align2::CENTER_TOP, egui::vec2(0.0, offset_y))
-        .show(ctx, |ui| {
-            render_toolbar_ui(app, ctx, ui, |this, ui| {
-                this.zoom_ui(ctx, ui);
-                this.fullscreen_ui(ctx, ui);
-                separator(ui);
-                this.image_info_ui(ui);
+    overlay_area(
+        "toolbar_top_center",
+        egui::Align2::CENTER_TOP,
+        egui::vec2(0.0, offset_y),
+    )
+    .show(ctx, |ui| {
+        render_toolbar_ui(app, ctx, ui, |this, ui| {
+            this.zoom_ui(ctx, ui);
+            this.fullscreen_ui(ctx, ui);
+            this.pin_window_ui(ctx, ui);
+            separator(ui);
+            this.image_info_ui(ui);
 
-                if this.is_gif {
-                    separator(ui);
-                    this.gif_controls_ui(ui);
-                }
-            });
+            if this.is_gif {
+                separator(ui);
+                this.gif_controls_ui(ui);
+            }
         });
+    });
 }
 
 pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
@@ -51,14 +56,18 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
-    overlay_area("toolbar_bot_center", egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -MENU_OFFSET))
-        .show(ctx, |ui| {
-            render_toolbar_ui(app, ctx, ui, |this, ui| {
-                this.navigation_previous_ui(ctx, ui);
-                this.slideshow_ui(ctx, ui);
-                this.navigation_next_ui(ctx, ui);
-            });
+    overlay_area(
+        "toolbar_bot_center",
+        egui::Align2::CENTER_BOTTOM,
+        egui::vec2(0.0, -MENU_OFFSET),
+    )
+    .show(ctx, |ui| {
+        render_toolbar_ui(app, ctx, ui, |this, ui| {
+            this.navigation_previous_ui(ctx, ui);
+            this.slideshow_ui(ctx, ui);
+            this.navigation_next_ui(ctx, ui);
         });
+    });
 }
 
 pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
@@ -66,12 +75,16 @@ pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
-    overlay_area("toolbar_bot_right", egui::Align2::RIGHT_BOTTOM, egui::vec2(-MENU_OFFSET, -MENU_OFFSET))
-        .show(ctx, |ui| {
-            render_toolbar_ui(app, ctx, ui, |this, ui| {
-                render_image_counter(this, ui);
-            });
+    overlay_area(
+        "toolbar_bot_right",
+        egui::Align2::RIGHT_BOTTOM,
+        egui::vec2(-MENU_OFFSET, -MENU_OFFSET),
+    )
+    .show(ctx, |ui| {
+        render_toolbar_ui(app, ctx, ui, |this, ui| {
+            render_image_counter(this, ui);
         });
+    });
 }
 
 fn render_toolbar_ui(

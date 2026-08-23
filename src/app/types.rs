@@ -131,6 +131,7 @@ pub struct ViewerApp {
     pub current_fps: f32, // Smoothed current FPS
     pub last_fps_update: std::time::Instant,
     pub preload_skipped: HashSet<usize>, // used to show how skipped cache
+    pub window_always_on_top: bool,
 }
 
 impl Default for ViewerApp {
@@ -218,6 +219,7 @@ impl Default for ViewerApp {
             current_fps: 0.0,
             last_fps_update: std::time::Instant::now(),
             preload_skipped: HashSet::new(),
+            window_always_on_top: false,
         }
     }
 }
