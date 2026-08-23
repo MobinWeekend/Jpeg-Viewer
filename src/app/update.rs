@@ -6,6 +6,8 @@ use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // Indexing process so ui would load fast
+        self.process_indexing();
         // ========== UPDATE CURRENT FPS (throttled to 0.5s) ==========
         let now = std::time::Instant::now();
         // Use last_repaint_time to compute delta

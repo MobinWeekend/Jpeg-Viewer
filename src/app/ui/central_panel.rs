@@ -57,6 +57,7 @@ impl ViewerApp {
                 if self.is_loading() {
                     let painter = ui.painter();
                     let message = match self.loading_state {
+                        LoadingState::Indexing => "Indexing...",
                         LoadingState::LoadingFullGif => "Loading full GIF...",
                         LoadingState::VirtualTextureLoading => "Loading large image...",
                         _ => "Loading...",
