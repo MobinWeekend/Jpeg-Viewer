@@ -103,14 +103,20 @@ impl ViewerApp {
     }
 
     // ZOOM
-
     /// Zoom percentage, zoom buttons and fit/reset button.
-    pub fn zoom_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        ui.label(
-            egui::RichText::new(format!("{}%", (self.zoom * 100.0).round().max(1.0) as i32))
-                .size(13.0),
+    pub fn zoom_text(&mut self, ui: &mut egui::Ui) {
+        let size = egui::vec2(52.0, 24.0);
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        ui.put(
+            rect,
+            egui::Label::new(
+                egui::RichText::new(format!("{}%", (self.zoom * 100.0).round().max(1.0) as i32))
+                    .size(14.0),
+            )
+            .halign(egui::Align::Center),
         );
-
+    }
+    pub fn zoom_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         // Zoom in
         if ui
             .add(
@@ -158,7 +164,6 @@ impl ViewerApp {
     }
 
     // IMAGE INFORMATION
-
     /// Display resolution, file size and aspect ratio.
     pub fn image_info_ui(&self, ui: &mut egui::Ui) {
         let (width, height) = self.image_dimensions();
@@ -204,7 +209,6 @@ impl ViewerApp {
     }
 
     // GIF CONTROLS
-
     /// Display GIF playback controls if the current image is an animated GIF.
     pub fn gif_controls_ui(&mut self, ui: &mut egui::Ui) {
         if !self.is_gif {

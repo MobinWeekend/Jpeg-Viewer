@@ -1,5 +1,6 @@
 // Custom title bar implementation
 use crate::app::types::ViewerApp;
+use crate::app::ui::helpers::render_drag_area;
 use eframe::egui;
 
 const TITLE_BAR_HEIGHT: f32 = 36.0;
@@ -11,10 +12,9 @@ pub fn render(ctx: &egui::Context, app: &mut ViewerApp) {
     }
 
     // Use the helper from the parent module
-    super::overlay_area("title_bar", egui::Align2::CENTER_TOP, egui::Vec2::ZERO)
-        .show(ctx, |ui| {
-            render_title_bar_ui(ctx, app, ui);
-        });
+    super::overlay_area("title_bar", egui::Align2::CENTER_TOP, egui::Vec2::ZERO).show(ctx, |ui| {
+        render_title_bar_ui(ctx, app, ui);
+    });
 }
 
 fn render_title_bar_ui(ctx: &egui::Context, app: &mut ViewerApp, ui: &mut egui::Ui) {
@@ -46,21 +46,6 @@ fn render_title_bar_ui(ctx: &egui::Context, app: &mut ViewerApp, ui: &mut egui::
                 render_window_controls(ctx, ui);
             });
         });
-}
-
-fn render_drag_area(ctx: &egui::Context, ui: &mut egui::Ui) {
-    let drag_response = ui.interact(
-        ui.max_rect(),
-        ui.id().with("window_drag"),
-        egui::Sense::click_and_drag(),
-    );
-
-    if drag_response.double_clicked() {
-        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-    } else if drag_response.drag_started() {
-        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-    }
 }
 
 fn render_window_title(app: &ViewerApp, ui: &mut egui::Ui) {
@@ -95,18 +80,19 @@ fn render_close_button(
 ) {
     let close_button = ui
         .add(
-            egui::Button::new(egui::RichText::new("X").size(14.0).color(visuals.text_color()))
-                .frame(false)
-                .min_size(egui::vec2(width, height)),
+            egui::Button::new(
+                egui::RichText::new("X")
+                    .size(14.0)
+                    .color(visuals.text_color()),
+            )
+            .frame(false)
+            .min_size(egui::vec2(width, height)),
         )
         .on_hover_text("Close");
 
     if close_button.hovered() {
-        ui.painter().rect_filled(
-            close_button.rect,
-            0.0,
-            egui::Color32::from_rgb(196, 43, 28),
-        );
+        ui.painter()
+            .rect_filled(close_button.rect, 0.0, egui::Color32::from_rgb(196, 43, 28));
         ui.painter().text(
             close_button.rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -133,18 +119,19 @@ fn render_maximize_button(
 
     let maximize_button = ui
         .add(
-            egui::Button::new(egui::RichText::new(icon).size(14.0).color(visuals.text_color()))
-                .frame(false)
-                .min_size(egui::vec2(width, height)),
+            egui::Button::new(
+                egui::RichText::new(icon)
+                    .size(14.0)
+                    .color(visuals.text_color()),
+            )
+            .frame(false)
+            .min_size(egui::vec2(width, height)),
         )
         .on_hover_text(if maximized { "Restore" } else { "Maximize" });
 
     if maximize_button.hovered() {
-        ui.painter().rect_filled(
-            maximize_button.rect,
-            0.0,
-            visuals.widgets.hovered.bg_fill,
-        );
+        ui.painter()
+            .rect_filled(maximize_button.rect, 0.0, visuals.widgets.hovered.bg_fill);
     }
 
     if maximize_button.clicked() {
@@ -161,18 +148,19 @@ fn render_minimize_button(
 ) {
     let minimize_button = ui
         .add(
-            egui::Button::new(egui::RichText::new("—").size(15.0).color(visuals.text_color()))
-                .frame(false)
-                .min_size(egui::vec2(width, height)),
+            egui::Button::new(
+                egui::RichText::new("—")
+                    .size(15.0)
+                    .color(visuals.text_color()),
+            )
+            .frame(false)
+            .min_size(egui::vec2(width, height)),
         )
         .on_hover_text("Minimize");
 
     if minimize_button.hovered() {
-        ui.painter().rect_filled(
-            minimize_button.rect,
-            0.0,
-            visuals.widgets.hovered.bg_fill,
-        );
+        ui.painter()
+            .rect_filled(minimize_button.rect, 0.0, visuals.widgets.hovered.bg_fill);
     }
 
     if minimize_button.clicked() {

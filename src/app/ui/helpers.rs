@@ -39,3 +39,17 @@ impl ViewerApp {
         egui::Rect::from_center_size(center + self.pan * self.zoom, display_size)
     }
 }
+pub fn render_drag_area(ctx: &egui::Context, ui: &mut egui::Ui) {
+    let drag_response = ui.interact(
+        ui.max_rect(),
+        ui.id().with("window_drag"),
+        egui::Sense::click_and_drag(),
+    );
+
+    if drag_response.double_clicked() {
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+    } else if drag_response.drag_started() {
+        ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+    }
+}

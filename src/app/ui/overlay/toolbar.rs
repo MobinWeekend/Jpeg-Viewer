@@ -37,6 +37,7 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_y: f3
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
+            this.zoom_text(ui);
             this.zoom_ui(ctx, ui);
             this.fullscreen_ui(ctx, ui);
             this.pin_window_ui(ctx, ui);

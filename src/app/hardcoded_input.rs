@@ -74,6 +74,9 @@ impl ViewerApp {
         }
 
         if right_down && response.dragged_by(egui::PointerButton::Secondary) {
+            if self.image_entries.is_empty() {
+                return;
+            }
             let Some(start_pos) = self.zoom_drag_start_pos else {
                 return;
             };
@@ -113,6 +116,9 @@ impl ViewerApp {
 
         // LEFT DRAG -> PAN
         if left_down && response.dragged_by(egui::PointerButton::Primary) {
+            if self.image_entries.is_empty() {
+                return;
+            }
             self.pan += delta / self.zoom;
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
         }

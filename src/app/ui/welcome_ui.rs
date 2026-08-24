@@ -5,6 +5,7 @@ use eframe::egui;
 
 impl ViewerApp {
     pub fn render_welcome_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        ui.style_mut().interaction.selectable_labels = false;
         let available_rect = ui.available_rect_before_wrap();
 
         // Full welcome area interaction
@@ -62,6 +63,8 @@ impl ViewerApp {
         });
         // Same mouse behavior as image view
         self.handle_image_mouse_input(ctx, &response);
+        //use crate::app::ui::helpers::render_drag_area;
+        //render_drag_area(ctx, ui);
     }
 
     /// Render keyboard shortcut help overlay
@@ -79,6 +82,7 @@ impl ViewerApp {
                 ..Default::default()
             })
             .show(ctx, |ui| {
+                ui.style_mut().interaction.selectable_labels = false;
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("Keys").size(18.0));
                     ui.add_space(8.0);
