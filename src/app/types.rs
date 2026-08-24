@@ -88,6 +88,10 @@ pub struct ViewerApp {
     pub b_zoom_used: bool,
     pub image_rect: Option<egui::Rect>,
     pub last_window_size: Option<egui::Vec2>,
+    pub zoom_drag_start_pos: Option<egui::Pos2>,
+    pub zoom_drag_start_zoom: f32,
+    pub zoom_drag_start_pan: egui::Vec2,
+    pub zoom_drag_start_center: egui::Pos2,
 
     // ====== CACHE ======
     pub image_cache: LruCache<String, CachedImage>,
@@ -218,6 +222,10 @@ impl Default for ViewerApp {
             b_zoom_used: false,
             image_rect: None,
             last_window_size: None,
+            zoom_drag_start_pos: None,
+            zoom_drag_start_zoom: 1.0,
+            zoom_drag_start_pan: egui::Vec2::ZERO,
+            zoom_drag_start_center: egui::Pos2::ZERO,
 
             // ====== CACHE ======
             image_cache: LruCache::new(

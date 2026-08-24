@@ -66,9 +66,45 @@ impl ViewerApp {
             )
         });
 
-        // RIGHT DRAG -> ZOOM
+        if response.drag_started_by(egui::PointerButton::Secondary) {
+            self.zoom_drag_start_pos = response.interact_pointer_pos();
+            self.zoom_drag_start_zoom = self.zoom;
+            self.zoom_drag_start_pan = self.pan;
+            self.zoom_drag_start_center = response.rect.center();
+        }
+
         if right_down && response.dragged_by(egui::PointerButton::Secondary) {
-            self.zoom = (self.zoom - delta.y * 0.005).clamp(0.005, 50.0);
+            let Some(start_pos) = self.zoom_drag_start_pos else {
+                return;
+            };
+
+            let Some(current_pos) = response.interact_pointer_pos() else {
+                return;
+            };
+
+            let start_zoom = self.zoom_drag_start_zoom;
+
+            // Use the actual pointer movement instead of drag_delta().
+            let vertical_delta = current_pos.y - start_pos.y;
+
+            let new_zoom = (start_zoom - vertical_delta * 0.0025).clamp(0.005, 50.0);
+
+            let start_center = self.zoom_drag_start_center;
+
+            // Screen-space position of the mouse relative to the
+            // image viewport when the drag started.
+            let mouse_offset = start_pos - start_center;
+
+            // Find the image-space point that was underneath the
+            // mouse when the drag started.
+            let image_point = mouse_offset / start_zoom - self.zoom_drag_start_pan;
+
+            // Apply the new zoom and calculate the pan required
+            // to keep that same image point under the mouse.
+            self.zoom = new_zoom;
+
+            self.pan = mouse_offset / new_zoom - image_point;
+
             self.b_zoom_used = true;
 
             ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);

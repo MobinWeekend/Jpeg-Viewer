@@ -29,12 +29,12 @@ impl ViewerApp {
                 self.navigate_images(ctx, -1);
             }
             ViewerCommand::ZoomIn => {
-                self.zoom *= 1.1;
+                self.zoom *= 1.2;
                 self.zoom = self.zoom.clamp(0.01, 10.0);
                 self.b_zoom_used = true;
             }
             ViewerCommand::ZoomOut => {
-                self.zoom /= 1.1;
+                self.zoom /= 1.2;
                 self.zoom = self.zoom.clamp(0.01, 10.0);
                 self.b_zoom_used = true;
             }

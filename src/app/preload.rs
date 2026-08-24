@@ -229,8 +229,11 @@ impl ViewerApp {
         let total = desired.len();
         let completed = self.preload_completed_count();
         let skipped = self.preload_skipped_count();
-
-        println!("Preload: {}/{} ({} skipped)", completed, total, skipped);
+        if completed < total {
+            println!("Preload: {}/{} ({} skipped)", completed, total, skipped);
+        } else {
+            return;
+        }
     }
 
     /// Returns true when every desired entry has been handled.
