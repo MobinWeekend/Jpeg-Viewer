@@ -26,6 +26,7 @@ pub struct AppSettings {
     pub slideshow_random: bool,
     // Startup settings
     pub start_fullscreen: bool,
+    pub theme_preference: String,
     // virtual texture
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
@@ -54,6 +55,7 @@ impl Default for AppSettings {
             slideshow_loop: true,
             slideshow_random: false,
             start_fullscreen: false,
+            theme_preference: "system".to_string(),
             virtual_texture_threshold: 8192,
             tile_size: 1024,
             show_titlebar: true,
@@ -256,6 +258,12 @@ impl SettingsManager {
                     if let Some(value) = section.get("show_titlebar") {
                         settings.show_titlebar = Self::parse_bool(value);
                     }
+                    // theme
+                    if let Some(value) = section.get("theme_preference") {
+                        if value == "system" || value == "light" || value == "dark" {
+                            settings.theme_preference = value.to_string();
+                        }
+                    }
                 }
 
                 settings
@@ -370,6 +378,7 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set("theme_preference", &settings.theme_preference);
 
         // Write the file
         conf.write_to_file(path)

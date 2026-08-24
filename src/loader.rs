@@ -43,12 +43,6 @@ pub fn load_image_from_bytes(
     Ok(image)
 }
 
-/// Load full resolution image from a file path
-pub fn load_full_resolution(path: PathBuf) -> Result<DynamicImage, String> {
-    let bytes = fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-    load_image_from_bytes(&bytes, Some(&path))
-}
-
 // ========== Archive Loading ==========
 
 /// Load image from ZIP archive

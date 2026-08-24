@@ -1,7 +1,7 @@
 use super::types::{LoadingState, ViewerApp};
+use crate::app::constants::{ARCHIVE_EXT, IMAGE_EXT};
 use crate::archive::{scan_7z, scan_rar, scan_zip};
 use crate::helpers::{get_extension, is_supported_image};
-use crate::app::constants::{ARCHIVE_EXT, IMAGE_EXT};
 use crate::image_entry::ImageEntry;
 use arboard::Clipboard;
 use eframe::egui;
@@ -264,38 +264,12 @@ impl ViewerApp {
     }
 
     pub fn copy_image_to_clipboard(&mut self) {
-        // Get the current image.
-        let image = if let Some(path) = &self.current_image_path {
-            match crate::loader::load_full_resolution(path.clone()) {
-                Ok(img) => img,
-                Err(e) => {
-                    eprintln!("Failed to load image for clipboard: {}", e);
-                    return;
-                }
-            }
-        } else if let Some(gif) = &self.gif_animation {
-            match gif.get_current_frame_ref() {
-                Some(frame) => image::DynamicImage::ImageRgba8(frame.clone()),
-                None => {
-                    eprintln!("GIF has no current frame");
-                    return;
-                }
-            }
-        } else {
-            println!("No image to copy");
+        let Some(path) = &self.current_image_path else {
+            println!("No image file to copy");
             return;
         };
 
-        // Convert to RGBA8.
-        //
-        // arboard expects raw RGBA pixels, so there is no need
-        // to encode the image to PNG ourselves.
-        let rgba = image.to_rgba8();
-
-        let width = rgba.width() as usize;
-        let height = rgba.height() as usize;
-
-        let mut clipboard = match Clipboard::new() {
+        let mut clipboard = match arboard::Clipboard::new() {
             Ok(clipboard) => clipboard,
             Err(e) => {
                 eprintln!("Failed to open clipboard: {}", e);
@@ -303,18 +277,12 @@ impl ViewerApp {
             }
         };
 
-        let image_data = arboard::ImageData {
-            width,
-            height,
-            bytes: rgba.into_raw().into(),
-        };
-
-        match clipboard.set_image(image_data) {
-            Ok(_) => {
-                println!("Image copied to clipboard");
+        match clipboard.set().file_list(std::slice::from_ref(path)) {
+            Ok(()) => {
+                println!("Image file copied to clipboard");
             }
             Err(e) => {
-                eprintln!("Failed to copy image to clipboard: {}", e);
+                eprintln!("Failed to copy image file to clipboard: {}", e);
             }
         }
     }

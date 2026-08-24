@@ -49,7 +49,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "JPEG Viewer",
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
             /*
             // Set the default font to the system's default sans-serif font
             let mut fonts = egui::FontDefinitions::default();
@@ -110,6 +110,14 @@ fn main() -> eframe::Result<()> {
             */
 
             let mut app = ViewerApp::default();
+
+            // Apply saved theme
+            let theme_pref = match app.settings_manager.get().theme_preference.as_str() {
+                "light" => egui::ThemePreference::Light,
+                "dark" => egui::ThemePreference::Dark,
+                _ => egui::ThemePreference::System,
+            };
+            cc.egui_ctx.set_theme(theme_pref);
 
             if let Some(path) = std::env::args().nth(1) {
                 app.open_path(path.into());

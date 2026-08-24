@@ -1,11 +1,11 @@
 //! Settings menu UI
 
+mod advanced;
 mod copy_buttons;
 mod file_info;
-mod general;
-mod slideshow;
-mod advanced;
+pub mod general;
 mod helpers;
+mod slideshow;
 
 use crate::app::types::ViewerApp;
 use eframe::egui;
@@ -17,10 +17,10 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
         .title_bar(true)
         .collapsible(false)
         .resizable(true)
-        .default_size([420.0, 600.0])
-        .min_size([350.0, 450.0])
+        .default_size([400.0, 420.0])
+        .min_size([300.0, 400.0])
         .max_size([600.0, 900.0])
-        .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0.0, 42.0))
+        .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0.0, 45.0))
         .open(&mut open)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical()

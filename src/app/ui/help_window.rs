@@ -5,7 +5,7 @@ impl ViewerApp {
     pub fn render_help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_help_menu;
         let close_requested = false;
-        
+
         egui::Window::new("Help - JPEG Viewer")
             .title_bar(true)
             .collapsible(false)
@@ -28,12 +28,12 @@ impl ViewerApp {
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new("By Mobin Sasanpour").size(13.0).italics());
                             ui.label(egui::RichText::new("@artofweekend").size(13.0).italics().color(egui::Color32::LIGHT_BLUE));
-                            
+
                             // Social links
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
-                                
+
                                 // Theme-aware link colors
                                 let dark_mode = ui.visuals().dark_mode;
 
@@ -97,11 +97,11 @@ impl ViewerApp {
                                         eprintln!("Failed to open GitHub: {}", err);
                                     }
                                 }
-                                
+
                                 ui.add_space(8.0);
                             });
                         });
-                        
+
                         ui.add_space(16.0);
                         ui.separator();
                         ui.add_space(12.0);
@@ -109,7 +109,7 @@ impl ViewerApp {
                         // ========== FEATURES ==========
                         ui.label(egui::RichText::new("Features").size(18.0).strong());
                         ui.add_space(8.0);
-                        
+
                         // some feel stupid to boast about and considering I want the user to quickly see the keyboard shortcuts, I commented most out :)
                         let features = vec![
                             "• View images from your computer, folders, and archives (.zip, .7z, .rar)",
@@ -127,7 +127,7 @@ impl ViewerApp {
                             //"• Automatic file type detection and rename suggestion",
                             "• Support for extremely large images using tiled virtual texturing",
                         ];
-                        
+
                         for feature in features {
                             ui.label(egui::RichText::new(feature).size(13.0));
                             ui.add_space(2.0);
@@ -149,7 +149,7 @@ impl ViewerApp {
                         Self::render_shortcut_row(ui, "Home", "Jump to first image");
                         Self::render_shortcut_row(ui, "End", "Jump to last image");
                         Self::render_shortcut_row(ui, "Ctrl+◀ / Ctrl+▶", "Jump to first / last image");
-                        
+
                         ui.add_space(4.0);
 
                         // Zoom & View
@@ -259,7 +259,7 @@ impl ViewerApp {
                         ui.add_space(8.0);
                     });
             });
-            
+
         // Update the actual state after the window closes
         if close_requested {
             self.show_help_menu = false;
