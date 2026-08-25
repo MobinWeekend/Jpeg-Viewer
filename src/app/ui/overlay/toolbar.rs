@@ -30,10 +30,11 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_y: f3
         return;
     }
 
+    // === Position of the top bar
     overlay_area(
         "toolbar_top_center",
-        egui::Align2::CENTER_TOP,
-        egui::vec2(0.0, offset_y),
+        egui::Align2::LEFT_TOP,
+        egui::vec2(48.0, offset_y),
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
@@ -57,10 +58,11 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
+    // === Position of the navigation bottons
     overlay_area(
         "toolbar_bot_center",
-        egui::Align2::CENTER_BOTTOM,
-        egui::vec2(0.0, -MENU_OFFSET),
+        egui::Align2::LEFT_BOTTOM,
+        egui::vec2(MENU_OFFSET, -MENU_OFFSET),
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
@@ -113,7 +115,7 @@ fn render_image_counter(app: &ViewerApp, ui: &mut egui::Ui) {
 }
 
 fn separator(ui: &mut egui::Ui) {
-    ui.add_space(MENU_OFFSET);
+    ui.add_space(MENU_OFFSET / 2.0);
     ui.separator();
-    ui.add_space(MENU_OFFSET);
+    ui.add_space(MENU_OFFSET / 2.0);
 }

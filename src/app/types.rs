@@ -374,11 +374,11 @@ impl ViewerApp {
         }
 
         format!(
-            "{}{} ({}/{}) - JPEG Viewer",
-            filename,
-            slideshow_indicator,
+            "({}/{}) {}{}",
             self.current_index + 1,
-            total
+            total,
+            slideshow_indicator,
+            filename,
         )
     }
 
