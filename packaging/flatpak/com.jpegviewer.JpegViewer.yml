@@ -1,12 +1,7 @@
 app-id: com.jpegviewer.JpegViewer
-
 runtime: org.gnome.Platform
 runtime-version: "49"
-
 sdk: org.gnome.Sdk
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable
-
 command: jpeg_viewer
 
 finish-args:
@@ -14,45 +9,40 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
 
-  # GPU
+  # GPU acceleration
   - --device=dri
 
-  # Audio
-  - --socket=pulseaudio
-
-  # File access
+  # Filesystem access
   - --filesystem=home
+
+  # Desktop integration
+  - --share=ipc
+
+  # Audio, if needed by the application
+  - --socket=pulseaudio
 
 modules:
   - name: jpeg-viewer
     buildsystem: simple
 
     build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/jpeg-viewer/cargo
 
     build-commands:
       - cargo build --release --locked
+      - install -Dm755 target/release/jpeg_viewer /app/bin/jpeg_viewer
 
-      - install -Dm755 \
-          target/release/jpeg_viewer \
-          /app/bin/jpeg_viewer
+      # Application icon
+      - install -Dm644 assets/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
 
-      - install -Dm644 \
-          packaging/icons/icon.png \
-          /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
+      # AppStream metadata
+      - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml /app/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml
 
-      - install -Dm644 \
-          packaging/flatpak/com.jpegviewer.JpegViewer.desktop \
-          /app/share/applications/com.jpegviewer.JpegViewer.desktop
-
-      - install -Dm644 \
-          packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml \
-          /app/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml
+      # Desktop entry
+      - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.desktop /app/share/applications/com.jpegviewer.JpegViewer.desktop
 
     sources:
       - cargo-sources.json
-
       - type: dir
         path: ../..
