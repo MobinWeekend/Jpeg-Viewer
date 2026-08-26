@@ -4,52 +4,46 @@ runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
 
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
 command: jpeg_viewer
 
 finish-args:
-  # GPU acceleration
   - --device=dri
-
-  # Wayland
   - --socket=wayland
-
-  # X11 fallback
   - --socket=x11
-
-  # Required for X11/Wayland desktop applications
   - --share=ipc
-
-  # Allow the application to open images, folders, and archives
-  # selected by the user.
   - --filesystem=home
 
 modules:
   - name: jpeg-viewer
-    buildsystem: simple
+    buildsystem: cargo
+
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_NET_OFFLINE: "true"
 
     build-commands:
-      # Build the application.
-      - cargo build --release --locked
-
-      # Install executable.
-      - install -Dm755 target/release/jpeg_viewer \
+      - install -Dm755 \
+          target/release/jpeg_viewer \
           /app/bin/jpeg_viewer
 
-      # Install desktop entry.
       - install -Dm644 \
           packaging/linux/com.jpegviewer.JpegViewer.desktop \
           /app/share/applications/com.jpegviewer.JpegViewer.desktop
 
-      # Install application icon.
       - install -Dm644 \
-          packaging/icons/512x512/com.jpegviewer.JpegViewer.png \
+          assets/icons/icon.png \
           /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
 
-      # Install AppStream metadata.
       - install -Dm644 \
           packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml \
           /app/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml
 
     sources:
+      - cargo-sources.json
+
       - type: dir
         path: ../..

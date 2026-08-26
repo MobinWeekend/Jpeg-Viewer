@@ -78,9 +78,9 @@ assets = [
         "644"
     ],
     [
-        "assets/com.jpegviewer.JpegViewer.png",
+        "assets/icons/icon.png",
         "usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png",
-        "644"
+        "644",
     ]
 ]
 

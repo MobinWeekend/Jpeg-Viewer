@@ -5,11 +5,11 @@ fn main() {
     #[cfg(target_os = "windows")]
     build_windows();
 
-    #[cfg(target_os = "macos")]
-    build_macos();
-
     #[cfg(target_os = "linux")]
     build_linux();
+
+    #[cfg(target_os = "macos")]
+    build_macos();
 }
 
 #[cfg(target_os = "windows")]
@@ -21,14 +21,14 @@ fn build_windows() {
     res.compile().expect("Failed to compile Windows resources");
 }
 
-#[cfg(target_os = "macos")]
-fn build_macos() {
-    println!("cargo:rerun-if-changed=packaging/macos/Info.plist");
-    println!("cargo:rerun-if-changed=packaging/macos/jpeg_viewer.icns");
-}
-
 #[cfg(target_os = "linux")]
 fn build_linux() {
     // Linux icons are installed separately by the packaging system.
     println!("cargo:rerun-if-changed=assets/icons/icon.png");
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos() {
+    println!("cargo:rerun-if-changed=packaging/macos/Info.plist");
+    println!("cargo:rerun-if-changed=packaging/macos/jpeg_viewer.icns");
 }
