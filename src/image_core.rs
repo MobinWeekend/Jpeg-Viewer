@@ -19,6 +19,84 @@ pub enum ImageFormat {
     Webp,
     Avif,
     Heic,
+    JpegXl,
+    Svg,
+}
+
+impl ImageFormat {
+    pub const ALL: &[Self] = &[
+        Self::Bmp,
+        Self::Dds,
+        Self::Exr,
+        Self::Farbfeld,
+        Self::Gif,
+        Self::Hdr,
+        Self::Ico,
+        Self::Jpeg,
+        Self::Png,
+        Self::Pnm,
+        Self::Qoi,
+        Self::Tga,
+        Self::Tiff,
+        Self::Webp,
+        Self::Avif,
+        Self::Heic,
+        Self::JpegXl,
+        Self::Svg,
+    ];
+
+    pub const fn extensions(self) -> &'static [&'static str] {
+        match self {
+            Self::Bmp => &["bmp"],
+            Self::Dds => &["dds"],
+            Self::Exr => &["exr"],
+            Self::Farbfeld => &["ff"],
+            Self::Gif => &["gif"],
+            Self::Hdr => &["hdr"],
+            Self::Ico => &["ico"],
+            Self::Jpeg => &["jpg", "jpeg"],
+            Self::Png => &["png"],
+            Self::Pnm => &["pnm"],
+            Self::Qoi => &["qoi"],
+            Self::Tga => &["tga"],
+            Self::Tiff => &["tif", "tiff"],
+            Self::Webp => &["webp"],
+            Self::Avif => &["avif"],
+            Self::Heic => &["heic", "heif"],
+            Self::JpegXl => &["jxl"],
+            Self::Svg => &["svg"],
+        }
+    }
+
+    /// The canonical extension used when renaming files.
+    pub const fn preferred_extension(self) -> &'static str {
+        self.extensions()[0]
+    }
+
+    pub fn matches_extension(self, extension: &str) -> bool {
+        let extension = extension.trim_start_matches('.');
+
+        self.extensions()
+            .iter()
+            .any(|ext| ext.eq_ignore_ascii_case(extension))
+    }
+
+    pub fn from_extension(extension: &str) -> Option<Self> {
+        let extension = extension.trim_start_matches('.');
+
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|format| format.matches_extension(extension))
+    }
+
+    pub fn all_extensions() -> Vec<String> {
+        Self::ALL
+            .iter()
+            .flat_map(|format| format.extensions())
+            .map(|ext| (*ext).to_string())
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug)]

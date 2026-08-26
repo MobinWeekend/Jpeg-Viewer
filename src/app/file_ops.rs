@@ -1,7 +1,8 @@
 use super::types::{LoadingState, ViewerApp};
 use crate::archive::{scan_7z, scan_rar, scan_zip};
-use crate::constants::{ARCHIVE_EXT, IMAGE_EXT};
+use crate::constants::ARCHIVE_EXT;
 use crate::helpers::{get_extension, is_supported_image};
+use crate::image_core::ImageFormat;
 use crate::image_entry::ImageEntry;
 use arboard::Clipboard;
 use eframe::egui;
@@ -63,22 +64,23 @@ impl ViewerApp {
     }
 
     pub fn open_file_dialog(&mut self) {
-        // Stop slideshow when opening a file
         self.stop_slideshow();
-        let mut extensions = Vec::new();
-        extensions.extend_from_slice(IMAGE_EXT);
-        extensions.extend_from_slice(ARCHIVE_EXT);
-        // Create the dialog with file picker
+
+        let mut extensions = ImageFormat::all_extensions();
+
+        extensions.extend(ARCHIVE_EXT.iter().map(|ext| (*ext).to_string()));
+
         let dialog = rfd::FileDialog::new().add_filter("Images and Archives", &extensions);
 
         self.dialog_open = true;
-        let path = dialog.clone().pick_file();
+        let path = dialog.pick_file();
         self.dialog_open = false;
 
         if let Some(path) = path {
             self.open_path(path);
         }
     }
+
     pub fn open_folder_dialog(&mut self) {
         self.stop_slideshow();
 

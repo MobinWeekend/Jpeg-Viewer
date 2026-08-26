@@ -85,6 +85,25 @@ fn detect_fallback_format(bytes: &[u8]) -> Option<ImageFormat> {
         }
     }
 
+    // JPEG XL container
+    if bytes.starts_with(&[0x00, 0x00, 0x00, 0x0C, b'J', b'X', b'L', b' ']) {
+        return Some(ImageFormat::JpegXl);
+    }
+
+    // JPEG XL codestream
+    if bytes.starts_with(&[0xFF, 0x0A]) {
+        return Some(ImageFormat::JpegXl);
+    }
+
+    // SVG is XML/text rather than a binary format.
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        let text = text.trim_start_matches('\u{FEFF}').trim_start();
+
+        if text.starts_with("<svg") || (text.starts_with("<?xml") && text.contains("<svg")) {
+            return Some(ImageFormat::Svg);
+        }
+    }
+
     None
 }
 

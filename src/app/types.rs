@@ -1,6 +1,7 @@
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
 use crate::gif::animation::GifAnimation;
 use crate::image_core::DecodedImage;
+use crate::image_core::ImageFormat;
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
 use crate::shortcuts::InputBindings;
@@ -36,7 +37,7 @@ pub struct CachedImage {
 
 #[derive(Clone, Debug)]
 pub struct FileTypeDetection {
-    pub detected_extension: String,
+    pub detected_format: ImageFormat,
     pub current_extension: Option<String>,
     pub mismatch: bool,
     pub index: usize,

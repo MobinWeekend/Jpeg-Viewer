@@ -26,6 +26,8 @@ thiserror = "2"
 heic = "0.1.6"
 zenavif = "0.1.4"
 zenpixels-convert = { version = "0.2.10", features = ["rgb"] }
+jxl-oxide = "0.12.6"
+resvg = "0.48.1"
 #fontdb = "0.24.0"
 
 [profile.release]
