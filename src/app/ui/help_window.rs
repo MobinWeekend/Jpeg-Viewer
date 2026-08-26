@@ -218,7 +218,7 @@ impl ViewerApp {
                         Self::render_mouse_row(ui, "Left Drag", "Pan image");
                         Self::render_mouse_row(ui, "Right Drag", "Zoom in/out");
                         Self::render_mouse_row(ui, "Double-click Left", "Open file dialog (on empty screen)");
-                        Self::render_mouse_row(ui, "Double-click Middle", "Toggle fullscreen");
+                        Self::render_mouse_row(ui, "Middle Click", "Toggle fullscreen");
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
                         Self::render_mouse_row(ui, "Alt + Left Drag", "Move window");
                         Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window");
