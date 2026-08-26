@@ -3,7 +3,6 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ImageFormat {
-    Avif,
     Bmp,
     Dds,
     Exr,
@@ -18,6 +17,8 @@ pub enum ImageFormat {
     Tga,
     Tiff,
     Webp,
+    Avif,
+    Heic,
 }
 
 #[derive(Clone, Debug)]

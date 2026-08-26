@@ -23,6 +23,9 @@ open = "5.4.1"
 infer = "0.22.0"
 arboard = "3.4"
 thiserror = "2"
+heic = "0.1.6"
+zenavif = "0.1.4"
+zenpixels-convert = { version = "0.2.10", features = ["rgb"] }
 #fontdb = "0.24.0"
 
 [profile.release]

@@ -25,6 +25,15 @@ impl ImageDecoder for ImageRsDecoder {
             ImageFormat::Webp,
             ImageFormat::Bmp,
             ImageFormat::Tiff,
+            //ImageFormat::Avif,
+            ImageFormat::Dds,
+            ImageFormat::Farbfeld,
+            ImageFormat::Hdr,
+            ImageFormat::Ico,
+            ImageFormat::Pnm,
+            ImageFormat::Qoi,
+            ImageFormat::Tga,
+            ImageFormat::Exr,
         ]
     }
 

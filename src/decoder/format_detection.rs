@@ -77,6 +77,14 @@ fn detect_fallback_format(bytes: &[u8]) -> Option<ImageFormat> {
         return Some(ImageFormat::Tga);
     }
 
+    // HEIC / HEIF (brands in ftyp box)
+    if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        let brand = &bytes[8..12];
+        if brand == b"heic" || brand == b"heix" || brand == b"hevc" || brand == b"mif1" {
+            return Some(ImageFormat::Heic);
+        }
+    }
+
     None
 }
 

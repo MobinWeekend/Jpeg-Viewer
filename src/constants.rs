@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 pub const IMAGE_EXT: &[&str] = &[
-    "avif", // default feature: avif
     "bmp",  // default feature: bmp
     "dds",  // default feature: dds
     "exr",  // default feature: exr
@@ -16,6 +15,8 @@ pub const IMAGE_EXT: &[&str] = &[
     "tga",  // default feature: tga
     "tiff", // default feature: tiff
     "webp", // default feature: webp
+    "avif", // zenavif
+    "heic", // heic
 ];
 
 pub const ARCHIVE_EXT: &[&str] = &["zip", "7z", "rar"];
