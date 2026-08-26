@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>com.jpegviewer.JpegViewer</id>
+
+    <name>JPEG Viewer</name>
+    <summary>Fast and lightweight GPU-accelerated image viewer</summary>
+
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0-only</project_license>
+
+    <developer id="com.jpegviewer">
+        <name>MobinWeekend</name>
+    </developer>
+
+    <description>
+        <p>
+            JPEG Viewer is a fast, lightweight GPU-accelerated image viewer
+            written in Rust. It is designed to make browsing large image
+            collections quick and effortless.
+        </p>
+
+        <p>
+            JPEG Viewer supports common image formats as well as modern
+            formats such as AVIF, HEIC, JPEG XL, and SVG.
+        </p>
+
+        <p>
+            Images stored inside ZIP, 7-Zip, and RAR archives can be viewed
+            without extracting them.
+        </p>
+
+        <ul>
+            <li>GPU-accelerated rendering</li>
+            <li>GIF animation and playback controls</li>
+            <li>Slideshow mode</li>
+            <li>Background image preloading</li>
+            <li>Configurable image caching</li>
+            <li>Virtual texturing for extremely large images</li>
+            <li>ZIP, 7z, and RAR archive support</li>
+            <li>Fullscreen viewing</li>
+            <li>Drag and drop support</li>
+            <li>File type detection and extension correction</li>
+        </ul>
+    </description>
+
+    <launchable type="desktop-id">
+        com.jpegviewer.JpegViewer.desktop
+    </launchable>
+
+    <provides>
+        <binary>jpeg_viewer</binary>
+    </provides>
+
+    <url type="homepage">https://github.com/MobinWeekend/Jpeg-Viewer</url>
+    <url type="bugtracker">https://github.com/MobinWeekend/Jpeg-Viewer/issues</url>
+    <url type="vcs-browser">https://github.com/MobinWeekend/Jpeg-Viewer</url>
+
+    <content_rating type="oars-1.1">
+        <content_attribute id="violence-cartoon">none</content_attribute>
+        <content_attribute id="violence-fantasy">none</content_attribute>
+        <content_attribute id="violence-realistic">none</content_attribute>
+        <content_attribute id="violence-bloodshed">none</content_attribute>
+        <content_attribute id="sex-nudity">none</content_attribute>
+        <content_attribute id="sex-themes">none</content_attribute>
+        <content_attribute id="language-profanity">none</content_attribute>
+        <content_attribute id="language-humor">none</content_attribute>
+        <content_attribute id="language-discrimination">none</content_attribute>
+        <content_attribute id="drugs-alcohol">none</content_attribute>
+        <content_attribute id="drugs-narcotics">none</content_attribute>
+        <content_attribute id="drugs-tobacco">none</content_attribute>
+        <content_attribute id="social-chat">none</content_attribute>
+        <content_attribute id="social-info">none</content_attribute>
+        <content_attribute id="social-audio">none</content_attribute>
+        <content_attribute id="social-location">none</content_attribute>
+        <content_attribute id="social-contacts">none</content_attribute>
+        <content_attribute id="social-browsing">none</content_attribute>
+        <content_attribute id="social-network">none</content_attribute>
+        <content_attribute id="advertising">none</content_attribute>
+        <content_attribute id="money-purchasing">none</content_attribute>
+    </content_rating>
+
+    <releases>
+        <release version="0.1.0" date="2026-08-27"/>
+    </releases>
+</component>

@@ -2,39 +2,48 @@
 name = "jpeg_viewer"
 version = "0.1.13"
 edition = "2024"
+description = "A fast, lightweight GPU-accelerated image viewer written in Rust."
+license = "GPL-3.0-only"
+repository = "https://github.com/MobinWeekend/Jpeg-Viewer"
+readme = "README.md"
+keywords = ["image", "viewer", "jpeg", "graphics", "egui"]
+categories = ["multimedia::images"]
 
 [dependencies]
+# GUI / rendering
 eframe = "0.33" # do not update this one!
 egui = "0.36.1"
+
+# Image formats
 image = { version = "0.25.10", features = ["default"] }
+heic = "0.1.6"
+zenavif = "0.1.4"
+zenpixels-convert = { version = "0.2.10", features = ["rgb"] }
+jxl-oxide = "0.12.6"
+resvg = "0.48.1"
+
+# Archives
+zip = "8.6.0"
+sevenz-rust2 = "0.21.4"
+unrar = "0.5"
+
+# Application
 rayon = "1.12.0"
 rfd = "0.17.2"
 pollster = "1.0.1"
 rust-ini = "0.21.3"
-zip = "8.6.0"
-sevenz-rust2 = "0.21.4"
-unrar = "0.5"
 trash = "5.2.6"
 gif = "0.14.2"
-lru = "0.18.2"  # for LRU cache
+lru = "0.18.2"
 dirs = "6.0.0"
 rand = "0.8" # do not update this one!
 open = "5.4.1"
 infer = "0.22.0"
 arboard = "3.4"
 thiserror = "2"
-heic = "0.1.6"
-zenavif = "0.1.4"
-zenpixels-convert = { version = "0.2.10", features = ["rgb"] }
-jxl-oxide = "0.12.6"
-resvg = "0.48.1"
-#fontdb = "0.24.0"
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
+[target.'cfg(not(windows))'.dependencies]
+natord = "1.0"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_Shell"] }
@@ -42,9 +51,45 @@ windows = { version = "0.62.2", features = ["Win32_UI_Shell"] }
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 
-[target.'cfg(not(windows))'.dependencies]
-natord = "1.0"
+# ------------------------------------------------------------
+# Debian package
+# ------------------------------------------------------------
 
-[target.'cfg(target_os = "macos")'.build-dependencies]
+[package.metadata.deb]
+maintainer = "MobinWeekend"
+section = "graphics"
+priority = "optional"
+depends = "$auto"
 
-[target.'cfg(target_os = "linux")'.build-dependencies]
+assets = [
+    [
+        "target/release/jpeg_viewer",
+        "usr/bin/jpeg_viewer",
+        "755"
+    ],
+    [
+        "packaging/linux/com.jpegviewer.JpegViewer.desktop",
+        "usr/share/applications/com.jpegviewer.JpegViewer.desktop",
+        "644"
+    ],
+    [
+        "packaging/linux/com.jpegviewer.JpegViewer.metainfo.xml",
+        "usr/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml",
+        "644"
+    ],
+    [
+        "assets/com.jpegviewer.JpegViewer.png",
+        "usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png",
+        "644"
+    ]
+]
+
+# ------------------------------------------------------------
+# Release profile
+# ------------------------------------------------------------
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

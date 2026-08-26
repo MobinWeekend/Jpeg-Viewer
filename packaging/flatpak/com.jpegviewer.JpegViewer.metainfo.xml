@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<component type="desktop-application">
+
+    <id>com.jpegviewer.JpegViewer</id>
+
+    <name>JPEG Viewer</name>
+
+    <summary>Fast GPU-accelerated image viewer</summary>
+
+    <metadata_license>CC0-1.0</metadata_license>
+
+    <project_license>GPL-3.0-only</project_license>
+
+    <developer id="com.github.MobinWeekend">
+        <name>MobinWeekend</name>
+    </developer>
+
+    <description>
+        <p>
+            JPEG Viewer is a fast, lightweight GPU-accelerated image viewer
+            written in Rust. It is designed for responsive image browsing
+            with a focus on performance and simplicity.
+        </p>
+
+        <p>
+            JPEG Viewer supports a wide range of image formats, including
+            JPEG, PNG, GIF, WebP, AVIF, HEIC, JPEG XL, SVG, TIFF, BMP,
+            DDS, EXR, HDR, ICO, PNM, QOI, TGA, and Farbfeld.
+        </p>
+
+        <p>
+            Images can also be viewed directly from ZIP, 7z, and RAR
+            archives without extracting them.
+        </p>
+
+        <p>
+            Large images can be handled using tiled virtual texturing,
+            while background preloading and caching provide smooth
+            navigation through large image collections.
+        </p>
+
+        <p>
+            JPEG Viewer includes slideshow support, GIF playback controls,
+            configurable caching, background preloading, fullscreen viewing,
+            drag-and-drop support, and customizable performance settings.
+        </p>
+    </description>
+
+    <launchable type="desktop-id">
+        com.jpegviewer.JpegViewer.desktop
+    </launchable>
+
+    <provides>
+        <binary>jpeg_viewer</binary>
+    </provides>
+
+    <categories>
+        <category>Graphics</category>
+        <category>Viewer</category>
+    </categories>
+
+    <keywords>
+        <keyword>image</keyword>
+        <keyword>viewer</keyword>
+        <keyword>photo</keyword>
+        <keyword>picture</keyword>
+        <keyword>jpeg</keyword>
+        <keyword>jpg</keyword>
+        <keyword>png</keyword>
+        <keyword>gif</keyword>
+        <keyword>webp</keyword>
+        <keyword>avif</keyword>
+        <keyword>heic</keyword>
+        <keyword>jxl</keyword>
+        <keyword>svg</keyword>
+        <keyword>tiff</keyword>
+        <keyword>bmp</keyword>
+        <keyword>archive</keyword>
+    </keywords>
+
+    <supports>
+        <control>pointing</control>
+        <control>keyboard</control>
+    </supports>
+
+    <url type="homepage">
+        https://github.com/MobinWeekend/Jpeg-Viewer
+    </url>
+
+    <url type="bugtracker">
+        https://github.com/MobinWeekend/Jpeg-Viewer/issues
+    </url>
+
+    <url type="vcs-browser">
+        https://github.com/MobinWeekend/Jpeg-Viewer
+    </url>
+
+    <branding>
+        <color type="primary" scheme_preference="light">#4A90E2</color>
+        <color type="primary" scheme_preference="dark">#4A90E2</color>
+    </branding>
+
+    <content_rating type="oars-1.1"/>
+
+    <releases>
+        <release version="0.1.0" date="2026-08-27">
+            <description>
+                <p>
+                    Initial release of JPEG Viewer.
+                </p>
+            </description>
+        </release>
+    </releases>
+
+</component>

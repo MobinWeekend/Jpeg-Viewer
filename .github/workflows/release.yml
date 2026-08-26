@@ -10,6 +10,7 @@ permissions:
 
 env:
   APP_NAME: jpeg_viewer
+  APP_ID: com.jpegviewer.JpegViewer
 
 jobs:
 
@@ -33,36 +34,42 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version
-        shell: bash
+      - name: Set version from Git tag
+        shell: pwsh
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Building version $VERSION"
+          $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          python - <<'PY'
-          import os
-          import pathlib
-          import re
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$') {
+              throw "Invalid release version: $version"
+          }
 
-          version = os.environ["VERSION"]
-          path = pathlib.Path("Cargo.toml")
+          Write-Host "Building version $version"
 
-          text = path.read_text()
+          $path = "Cargo.toml"
+          $text = Get-Content $path -Raw
 
-          text = re.sub(
-              r'(?m)^version\s*=\s*"[^"]+"',
-              f'version = "{version}"',
-              text,
-              count=1
+          $text = [regex]::Replace(
+              $text,
+              '(?m)^version\s*=\s*"[^"]+"',
+              "version = `"$version`"",
+              1
           )
 
-          path.write_text(text)
-          PY
+          Set-Content $path $text -NoNewline
+
+      - name: Verify version
+        shell: pwsh
+        run: |
+          cargo metadata --no-deps --format-version 1 |
+            ConvertFrom-Json |
+            Select-Object -ExpandProperty packages |
+            Select-Object -First 1 |
+            Select-Object name, version
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
-      - name: Rename binary
+      - name: Package
         shell: pwsh
         run: |
           Copy-Item `
@@ -82,7 +89,7 @@ jobs:
 
   build-windows-arm64:
     name: Build Windows ARM64
-    runs-on: windows-latest
+    runs-on: windows-11-arm
 
     steps:
       - name: Checkout
@@ -92,46 +99,50 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-pc-windows-msvc
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version
-        shell: bash
+      - name: Set version from Git tag
+        shell: pwsh
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Building version $VERSION"
+          $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          python - <<'PY'
-          import os
-          import pathlib
-          import re
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$') {
+              throw "Invalid release version: $version"
+          }
 
-          version = os.environ["VERSION"]
-          path = pathlib.Path("Cargo.toml")
+          Write-Host "Building version $version"
 
-          text = path.read_text()
+          $path = "Cargo.toml"
+          $text = Get-Content $path -Raw
 
-          text = re.sub(
-              r'(?m)^version\s*=\s*"[^"]+"',
-              f'version = "{version}"',
-              text,
-              count=1
+          $text = [regex]::Replace(
+              $text,
+              '(?m)^version\s*=\s*"[^"]+"',
+              "version = `"$version`"",
+              1
           )
 
-          path.write_text(text)
-          PY
+          Set-Content $path $text -NoNewline
+
+      - name: Verify version
+        shell: pwsh
+        run: |
+          cargo metadata --no-deps --format-version 1 |
+            ConvertFrom-Json |
+            Select-Object -ExpandProperty packages |
+            Select-Object -First 1 |
+            Select-Object name, version
 
       - name: Build
-        run: cargo build --release --target aarch64-pc-windows-msvc
+        run: cargo build --release --locked
 
-      - name: Rename binary
+      - name: Package
         shell: pwsh
         run: |
           Copy-Item `
-            "target\aarch64-pc-windows-msvc\release\jpeg_viewer.exe" `
+            "target\release\jpeg_viewer.exe" `
             "JPEG-View-Windows-ARM64.exe"
 
       - name: Upload artifact
@@ -142,7 +153,7 @@ jobs:
 
 
   # ============================================================
-  # Linux portable x64
+  # Linux x64 Portable
   # ============================================================
 
   build-linux-x64:
@@ -155,7 +166,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -173,44 +184,39 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version
+      - name: Set version from Git tag
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
           echo "Building version $VERSION"
 
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
+          sed -i -E \
+            "0,/^version = \".*\"/s//version = \"$VERSION\"/" \
+            Cargo.toml
 
-          version = os.environ["VERSION"]
-          path = pathlib.Path("Cargo.toml")
-
-          text = path.read_text()
-
-          text = re.sub(
-              r'(?m)^version\s*=\s*"[^"]+"',
-              f'version = "{version}"',
-              text,
-              count=1
-          )
-
-          path.write_text(text)
-          PY
+      - name: Verify version
+        run: cargo metadata --no-deps --format-version 1
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
-      - name: Create portable archive
+      - name: Package
         run: |
           mkdir -p package/JPEG-View
 
           cp target/release/jpeg_viewer \
-             package/JPEG-View/jpeg_viewer
+            package/JPEG-View/jpeg_viewer
 
           cp README.md \
-             package/JPEG-View/README.md
+            package/JPEG-View/README.md
+
+          chmod +x package/JPEG-View/jpeg_viewer
 
           tar -C package \
             -czf JPEG-View-Linux-x64.tar.gz \
@@ -224,7 +230,7 @@ jobs:
 
 
   # ============================================================
-  # Linux portable ARM64
+  # Linux ARM64 Portable
   # ============================================================
 
   build-linux-arm64:
@@ -237,7 +243,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -255,44 +261,39 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version
+      - name: Set version from Git tag
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
           echo "Building version $VERSION"
 
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
+          sed -i -E \
+            "0,/^version = \".*\"/s//version = \"$VERSION\"/" \
+            Cargo.toml
 
-          version = os.environ["VERSION"]
-          path = pathlib.Path("Cargo.toml")
-
-          text = path.read_text()
-
-          text = re.sub(
-              r'(?m)^version\s*=\s*"[^"]+"',
-              f'version = "{version}"',
-              text,
-              count=1
-          )
-
-          path.write_text(text)
-          PY
+      - name: Verify version
+        run: cargo metadata --no-deps --format-version 1
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
-      - name: Create portable archive
+      - name: Package
         run: |
           mkdir -p package/JPEG-View
 
           cp target/release/jpeg_viewer \
-             package/JPEG-View/jpeg_viewer
+            package/JPEG-View/jpeg_viewer
 
           cp README.md \
-             package/JPEG-View/README.md
+            package/JPEG-View/README.md
+
+          chmod +x package/JPEG-View/jpeg_viewer
 
           tar -C package \
             -czf JPEG-View-Linux-ARM64.tar.gz \
@@ -306,7 +307,7 @@ jobs:
 
 
   # ============================================================
-  # Debian package x64
+  # Debian x64
   # ============================================================
 
   build-debian-x64:
@@ -319,7 +320,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -339,44 +340,36 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version
+      - name: Set version from Git tag
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "Building version $VERSION"
 
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
 
-          version = os.environ["VERSION"]
-          path = pathlib.Path("Cargo.toml")
-
-          text = path.read_text()
-
-          text = re.sub(
-              r'(?m)^version\s*=\s*"[^"]+"',
-              f'version = "{version}"',
-              text,
-              count=1
-          )
-
-          path.write_text(text)
-          PY
+          sed -i -E \
+            "0,/^version = \".*\"/s//version = \"$VERSION\"/" \
+            Cargo.toml
 
       - name: Install cargo-deb
         run: cargo install cargo-deb
 
       - name: Build Debian package
-        run: cargo deb
+        run: cargo deb --no-build
 
-      - name: Rename Debian package
+      - name: Rename package
         run: |
           DEB=$(find target/debian -name "*.deb" | head -n 1)
 
-          cp "$DEB" \
-            "JPEG-View-Linux-x64.deb"
+          if [ -z "$DEB" ]; then
+            echo "Debian package was not created."
+            exit 1
+          fi
+
+          cp "$DEB" JPEG-View-Linux-x64.deb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -386,11 +379,83 @@ jobs:
 
 
   # ============================================================
-  # Flatpak x64
+  # Debian ARM64
   # ============================================================
 
-  build-flatpak:
-    name: Build Flatpak x64
+  build-debian-arm64:
+    name: Build Debian ARM64
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            dpkg \
+            dpkg-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          sed -i -E \
+            "0,/^version = \".*\"/s//version = \"$VERSION\"/" \
+            Cargo.toml
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build Debian package
+        run: cargo deb --no-build
+
+      - name: Rename package
+        run: |
+          DEB=$(find target/debian -name "*.deb" | head -n 1)
+
+          if [ -z "$DEB" ]; then
+            echo "Debian package was not created."
+            exit 1
+          fi
+
+          cp "$DEB" JPEG-View-Linux-ARM64.deb
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux-ARM64-deb
+          path: JPEG-View-Linux-ARM64.deb
+
+
+  # ============================================================
+  # Flatpak x86_64
+  # ============================================================
+
+  build-flatpak-x86_64:
+    name: Build Flatpak x86_64
     runs-on: ubuntu-24.04
 
     container:
@@ -402,6 +467,77 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Set Flatpak version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          python3 - "$VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+
+          manifest = pathlib.Path(
+              "packaging/flatpak/com.jpegviewer.JpegViewer.yml"
+          )
+
+          text = manifest.read_text()
+
+          if re.search(r"(?m)^version:", text):
+              text = re.sub(
+                  r"(?m)^version:.*$",
+                  f"version: {version}",
+                  text,
+                  count=1,
+              )
+          else:
+              text = f"version: {version}\n" + text
+
+          manifest.write_text(text)
+          PY
+
+      - name: Set AppStream release version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          python3 - "$VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+
+          path = pathlib.Path(
+              "packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml"
+          )
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'<release\s+version="[^"]+"\s+date="[^"]+">',
+              f'<release version="{version}" date="${{github.event.repository.updated_at}}">',
+              text,
+              count=1,
+          )
+
+          # Replace date if the placeholder above was not suitable.
+          text = re.sub(
+              r'date="\$\{github\.event\.repository\.updated_at\}"',
+              'date="' + "${GITHUB_REF_NAME}" + '"',
+              text,
+          )
+
+          path.write_text(text)
+          PY
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
@@ -419,6 +555,272 @@ jobs:
 
 
   # ============================================================
+  # Flatpak ARM64
+  # ============================================================
+
+  build-flatpak-arm64:
+    name: Build Flatpak ARM64
+    runs-on: ubuntu-24.04-arm
+
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set Flatpak version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          python3 - "$VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+
+          manifest = pathlib.Path(
+              "packaging/flatpak/com.jpegviewer.JpegViewer.yml"
+          )
+
+          text = manifest.read_text()
+
+          if re.search(r"(?m)^version:", text):
+              text = re.sub(
+                  r"(?m)^version:.*$",
+                  f"version: {version}",
+                  text,
+                  count=1,
+              )
+          else:
+              text = f"version: {version}\n" + text
+
+          manifest.write_text(text)
+          PY
+
+      - name: Set AppStream release version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          python3 - "$VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+          from datetime import date
+
+          version = sys.argv[1]
+
+          path = pathlib.Path(
+              "packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml"
+          )
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'<release\s+version="[^"]+"\s+date="[^"]+">',
+              f'<release version="{version}" date="{date.today()}">',
+              text,
+              count=1,
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/com.jpegviewer.JpegViewer.yml
+          bundle: JPEG-View-Linux-ARM64.flatpak
+          cache-key: flatpak-builder-${{ github.sha }}
+          arch: aarch64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux-ARM64-Flatpak
+          path: JPEG-View-Linux-ARM64.flatpak
+
+
+  # ============================================================
+  # macOS ARM64
+  # ============================================================
+
+  build-macos-arm64:
+    name: Build macOS ARM64
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          sed -i '' -E \
+            "0,/^version = \".*\"/s//version = \"$VERSION\"/" \
+            Cargo.toml
+
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleShortVersionString $VERSION" \
+            packaging/macos/Info.plist
+
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleVersion $VERSION" \
+            packaging/macos/Info.plist
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Create macOS app bundle
+        run: |
+          APP="JPEG-View.app"
+
+          mkdir -p \
+            "$APP/Contents/MacOS" \
+            "$APP/Contents/Resources"
+
+          cp target/release/jpeg_viewer \
+            "$APP/Contents/MacOS/jpeg_viewer"
+
+          cp packaging/macos/Info.plist \
+            "$APP/Contents/Info.plist"
+
+          cp packaging/macos/jpeg_viewer.icns \
+            "$APP/Contents/Resources/jpeg_viewer.icns"
+
+          chmod +x \
+            "$APP/Contents/MacOS/jpeg_viewer"
+
+      - name: Verify app bundle
+        run: |
+          test -f "JPEG-View.app/Contents/Info.plist"
+          test -f "JPEG-View.app/Contents/MacOS/jpeg_viewer"
+          test -f "JPEG-View.app/Contents/Resources/jpeg_viewer.icns"
+
+      - name: Package
+        run: |
+          tar -czf \
+            JPEG-View-macOS-ARM64.tar.gz \
+            JPEG-View.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-macOS-ARM64
+          path: JPEG-View-macOS-ARM64.tar.gz
+
+
+  # ============================================================
+  # macOS Intel
+  # ============================================================
+
+  build-macos-x64:
+    name: Build macOS Intel
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          sed -i '' -E \
+            "0,/^version = \".*\"/s//version = \"$VERSION\"/" \
+            Cargo.toml
+
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleShortVersionString $VERSION" \
+            packaging/macos/Info.plist
+
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleVersion $VERSION" \
+            packaging/macos/Info.plist
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Create macOS app bundle
+        run: |
+          APP="JPEG-View.app"
+
+          mkdir -p \
+            "$APP/Contents/MacOS" \
+            "$APP/Contents/Resources"
+
+          cp target/release/jpeg_viewer \
+            "$APP/Contents/MacOS/jpeg_viewer"
+
+          cp packaging/macos/Info.plist \
+            "$APP/Contents/Info.plist"
+
+          cp packaging/macos/jpeg_viewer.icns \
+            "$APP/Contents/Resources/jpeg_viewer.icns"
+
+          chmod +x \
+            "$APP/Contents/MacOS/jpeg_viewer"
+
+      - name: Verify app bundle
+        run: |
+          test -f "JPEG-View.app/Contents/Info.plist"
+          test -f "JPEG-View.app/Contents/MacOS/jpeg_viewer"
+          test -f "JPEG-View.app/Contents/Resources/jpeg_viewer.icns"
+
+      - name: Package
+        run: |
+          tar -czf \
+            JPEG-View-macOS-x64.tar.gz \
+            JPEG-View.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-macOS-x64
+          path: JPEG-View-macOS-x64.tar.gz
+
+
+  # ============================================================
   # GitHub Release
   # ============================================================
 
@@ -431,7 +833,11 @@ jobs:
       - build-linux-x64
       - build-linux-arm64
       - build-debian-x64
-      - build-flatpak
+      - build-debian-arm64
+      - build-flatpak-x86_64
+      - build-flatpak-arm64
+      - build-macos-arm64
+      - build-macos-x64
 
     runs-on: ubuntu-24.04
 
@@ -440,6 +846,19 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Get release version
+        id: version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
         id: changelog
@@ -465,7 +884,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
@@ -488,29 +907,44 @@ jobs:
           body: |
             # JPEG Viewer ${{ github.ref_name }}
 
+            **Version:** `${{ steps.version.outputs.version }}`
+
             ## Downloads
 
             ### Windows
+
             - **Windows x64** — `JPEG-View-Windows-x64.exe`
             - **Windows ARM64** — `JPEG-View-Windows-ARM64.exe`
 
             Portable executables. No installation required.
 
             ### Linux
+
             - **Linux x64 Portable** — `JPEG-View-Linux-x64.tar.gz`
             - **Linux ARM64 Portable** — `JPEG-View-Linux-ARM64.tar.gz`
             - **Debian / Ubuntu x64** — `JPEG-View-Linux-x64.deb`
+            - **Debian / Ubuntu ARM64** — `JPEG-View-Linux-ARM64.deb`
             - **Flatpak x86_64** — `JPEG-View-Linux-x86_64.flatpak`
+            - **Flatpak ARM64** — `JPEG-View-Linux-ARM64.flatpak`
+
+            ### macOS
+
+            - **macOS Apple Silicon** — `JPEG-View-macOS-ARM64.tar.gz`
+            - **macOS Intel** — `JPEG-View-macOS-x64.tar.gz`
+
+            Both macOS downloads contain a proper `.app` bundle.
 
             ## What's Changed
 
             ${{ steps.changelog.outputs.body }}
 
-            ## Portable Linux
+            ## Linux Portable
 
-            Extract the archive and run:
+            Extract:
 
             ```bash
+            tar -xzf JPEG-View-Linux-x64.tar.gz
+            cd JPEG-View
             ./jpeg_viewer
             ```
 
@@ -518,6 +952,14 @@ jobs:
 
             ```bash
             chmod +x jpeg_viewer
+            ```
+
+            ## macOS
+
+            Extract the archive and open:
+
+            ```text
+            JPEG-View.app
             ```
 
           files: |
