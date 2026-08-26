@@ -52,16 +52,20 @@ jobs:
 
           cargo set-version $version
 
-      - name: Verify version
+      - name: Verify Cargo.toml and Cargo.lock
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Select-Object -First 1
+          $metadata = cargo metadata --format-version 1 --locked | ConvertFrom-Json
+          $package = $metadata.packages | Where-Object { $_.name -eq "${env:APP_NAME}" } | Select-Object -First 1
 
-          Write-Host "Cargo.toml version: $($package.version)"
-          Write-Host "Git tag version:    $version"
+          if (-not $package) {
+              throw "Could not find package ${env:APP_NAME}"
+          }
+
+          Write-Host "Cargo package version: $($package.version)"
+          Write-Host "Git tag version:       $version"
 
           if ($package.version -ne $version) {
               throw "Cargo.toml version does not match Git tag."
@@ -78,7 +82,7 @@ jobs:
             "JPEG-View-Windows-x64.exe"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Windows-x64
           path: JPEG-View-Windows-x64.exe
@@ -122,16 +126,20 @@ jobs:
 
           cargo set-version $version
 
-      - name: Verify version
+      - name: Verify Cargo.toml and Cargo.lock
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Select-Object -First 1
+          $metadata = cargo metadata --format-version 1 --locked | ConvertFrom-Json
+          $package = $metadata.packages | Where-Object { $_.name -eq "${env:APP_NAME}" } | Select-Object -First 1
 
-          Write-Host "Cargo.toml version: $($package.version)"
-          Write-Host "Git tag version:    $version"
+          if (-not $package) {
+              throw "Could not find package ${env:APP_NAME}"
+          }
+
+          Write-Host "Cargo package version: $($package.version)"
+          Write-Host "Git tag version:       $version"
 
           if ($package.version -ne $version) {
               throw "Cargo.toml version does not match Git tag."
@@ -148,7 +156,7 @@ jobs:
             "JPEG-View-Windows-ARM64.exe"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Windows-ARM64
           path: JPEG-View-Windows-ARM64.exe
@@ -205,22 +213,29 @@ jobs:
 
           cargo set-version "$VERSION"
 
-      - name: Verify version
+      - name: Verify Cargo.toml and Cargo.lock
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
           CARGO_VERSION=$(cargo metadata \
-            --no-deps \
-            --format-version 1 |
+            --format-version 1 \
+            --locked |
             python3 -c '
           import json
           import sys
+
           data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
           ')
 
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
+          echo "Cargo package version: $CARGO_VERSION"
+          echo "Git tag version:       $VERSION"
 
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Cargo.toml version does not match Git tag."
@@ -247,7 +262,7 @@ jobs:
             JPEG-View
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Linux-x64
           path: JPEG-View-Linux-x64.tar.gz
@@ -304,22 +319,29 @@ jobs:
 
           cargo set-version "$VERSION"
 
-      - name: Verify version
+      - name: Verify Cargo.toml and Cargo.lock
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
           CARGO_VERSION=$(cargo metadata \
-            --no-deps \
-            --format-version 1 |
+            --format-version 1 \
+            --locked |
             python3 -c '
           import json
           import sys
+
           data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
           ')
 
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
+          echo "Cargo package version: $CARGO_VERSION"
+          echo "Git tag version:       $VERSION"
 
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Cargo.toml version does not match Git tag."
@@ -346,7 +368,7 @@ jobs:
             JPEG-View
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Linux-ARM64
           path: JPEG-View-Linux-ARM64.tar.gz
@@ -403,22 +425,29 @@ jobs:
 
           cargo set-version "$VERSION"
 
-      - name: Verify version
+      - name: Verify Cargo.toml and Cargo.lock
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
           CARGO_VERSION=$(cargo metadata \
-            --no-deps \
-            --format-version 1 |
+            --format-version 1 \
+            --locked |
             python3 -c '
           import json
           import sys
+
           data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
           ')
 
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
+          echo "Cargo package version: $CARGO_VERSION"
+          echo "Git tag version:       $VERSION"
 
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Cargo.toml version does not match Git tag."
@@ -436,7 +465,7 @@ jobs:
 
       - name: Rename package
         run: |
-          DEB=$(find target/debian -name "*.deb" | head -n 1)
+          DEB=$(find target/debian -name "*.deb" -type f | head -n 1)
 
           if [ -z "$DEB" ]; then
             echo "Debian package was not created."
@@ -446,7 +475,7 @@ jobs:
           cp "$DEB" JPEG-View-Linux-x64.deb
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Linux-x64-deb
           path: JPEG-View-Linux-x64.deb
@@ -503,22 +532,29 @@ jobs:
 
           cargo set-version "$VERSION"
 
-      - name: Verify version
+      - name: Verify Cargo.toml and Cargo.lock
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
           CARGO_VERSION=$(cargo metadata \
-            --no-deps \
-            --format-version 1 |
+            --format-version 1 \
+            --locked |
             python3 -c '
           import json
           import sys
+
           data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
           ')
 
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
+          echo "Cargo package version: $CARGO_VERSION"
+          echo "Git tag version:       $VERSION"
 
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Cargo.toml version does not match Git tag."
@@ -536,7 +572,7 @@ jobs:
 
       - name: Rename package
         run: |
-          DEB=$(find target/debian -name "*.deb" | head -n 1)
+          DEB=$(find target/debian -name "*.deb" -type f | head -n 1)
 
           if [ -z "$DEB" ]; then
             echo "Debian package was not created."
@@ -546,7 +582,7 @@ jobs:
           cp "$DEB" JPEG-View-Linux-ARM64.deb
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Linux-ARM64-deb
           path: JPEG-View-Linux-ARM64.deb
@@ -570,15 +606,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit
-
-      - name: Set version from Git tag
+      - name: Set Flatpak version
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -589,8 +617,6 @@ jobs:
           fi
 
           echo "Building Flatpak version $VERSION"
-
-          cargo set-version "$VERSION"
 
           python3 - "$VERSION" <<'PY'
           import pathlib
@@ -638,12 +664,23 @@ jobs:
 
           text = path.read_text()
 
-          text = re.sub(
-              r'<release\s+version="[^"]+"\s+date="[^"]+">',
-              f'<release version="{version}" date="{release_date}">',
+          pattern = (
+              r'<release\s+version="[^"]+"\s+date="[^"]+">'
+          )
+
+          replacement = (
+              f'<release version="{version}" date="{release_date}">'
+          )
+
+          text, count = re.subn(
+              pattern,
+              replacement,
               text,
               count=1,
           )
+
+          if count == 0:
+              print("Warning: no existing <release> entry was found.")
 
           path.write_text(text)
           PY
@@ -657,7 +694,7 @@ jobs:
           arch: x86_64
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Linux-x86_64-Flatpak
           path: JPEG-View-Linux-x86_64.flatpak
@@ -681,15 +718,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit
-
-      - name: Set version from Git tag
+      - name: Set Flatpak version
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -700,8 +729,6 @@ jobs:
           fi
 
           echo "Building Flatpak version $VERSION"
-
-          cargo set-version "$VERSION"
 
           python3 - "$VERSION" <<'PY'
           import pathlib
@@ -749,12 +776,23 @@ jobs:
 
           text = path.read_text()
 
-          text = re.sub(
-              r'<release\s+version="[^"]+"\s+date="[^"]+">',
-              f'<release version="{version}" date="{release_date}">',
+          pattern = (
+              r'<release\s+version="[^"]+"\s+date="[^"]+">'
+          )
+
+          replacement = (
+              f'<release version="{version}" date="{release_date}">'
+          )
+
+          text, count = re.subn(
+              pattern,
+              replacement,
               text,
               count=1,
           )
+
+          if count == 0:
+              print("Warning: no existing <release> entry was found.")
 
           path.write_text(text)
           PY
@@ -768,7 +806,7 @@ jobs:
           arch: aarch64
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: JPEG-View-Linux-ARM64-Flatpak
           path: JPEG-View-Linux-ARM64.flatpak
@@ -837,7 +875,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Download artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           path: release
 
