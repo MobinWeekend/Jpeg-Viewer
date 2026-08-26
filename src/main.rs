@@ -20,7 +20,7 @@ fn main() -> eframe::Result<()> {
     let settings_manager = settings::SettingsManager::new();
     let app_settings = settings_manager.get();
 
-    let icon = image::load_from_memory(include_bytes!("../assets/icon.ico"))
+    let icon = image::load_from_memory(include_bytes!("../assets/icons/icon.ico"))
         .expect("Failed to load icon")
         .into_rgba8();
     let (icon_width, icon_height) = icon.dimensions();

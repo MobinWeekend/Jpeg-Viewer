@@ -23,7 +23,7 @@ impl eframe::App for ViewerApp {
 
         // Initialize logo texture
         if self.logo_texture.is_none() {
-            match image::load_from_memory(include_bytes!("../../assets/icon.ico")) {
+            match image::load_from_memory(include_bytes!("../../assets/icons/icon.ico")) {
                 Ok(img) => {
                     let image = img.into_rgba8();
                     let size = [image.width() as usize, image.height() as usize];
