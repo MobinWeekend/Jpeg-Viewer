@@ -39,7 +39,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version and update lockfile
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
@@ -51,6 +51,12 @@ jobs:
           Write-Host "Building version $version"
 
           cargo set-version $version
+
+          # Synchronize Cargo.lock with Cargo.toml.
+          cargo check
+
+          # Verify Cargo.lock is now synchronized.
+          cargo check --locked
 
       - name: Verify version
         shell: pwsh
@@ -109,7 +115,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version and update lockfile
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
@@ -121,6 +127,9 @@ jobs:
           Write-Host "Building version $version"
 
           cargo set-version $version
+
+          cargo check
+          cargo check --locked
 
       - name: Verify version
         shell: pwsh
@@ -191,7 +200,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version and update lockfile
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -204,6 +213,9 @@ jobs:
           echo "Building version $VERSION"
 
           cargo set-version "$VERSION"
+
+          cargo check
+          cargo check --locked
 
       - name: Verify version
         run: |
@@ -290,7 +302,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version and update lockfile
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -303,6 +315,9 @@ jobs:
           echo "Building version $VERSION"
 
           cargo set-version "$VERSION"
+
+          cargo check
+          cargo check --locked
 
       - name: Verify version
         run: |
@@ -391,7 +406,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version and update lockfile
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -401,7 +416,34 @@ jobs:
             exit 1
           fi
 
+          echo "Building version $VERSION"
+
           cargo set-version "$VERSION"
+
+          cargo check
+          cargo check --locked
+
+      - name: Verify version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION=$(cargo metadata \
+            --no-deps \
+            --format-version 1 |
+            python3 -c '
+          import json
+          import sys
+          data = json.load(sys.stdin)
+          print(data["packages"][0]["version"])
+          ')
+
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "Git tag version:    $VERSION"
+
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Cargo.toml version does not match Git tag."
+            exit 1
+          fi
 
       - name: Build
         run: cargo build --release --locked
@@ -469,7 +511,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version and update lockfile
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -479,7 +521,34 @@ jobs:
             exit 1
           fi
 
+          echo "Building version $VERSION"
+
           cargo set-version "$VERSION"
+
+          cargo check
+          cargo check --locked
+
+      - name: Verify version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION=$(cargo metadata \
+            --no-deps \
+            --format-version 1 |
+            python3 -c '
+          import json
+          import sys
+          data = json.load(sys.stdin)
+          print(data["packages"][0]["version"])
+          ')
+
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "Git tag version:    $VERSION"
+
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Cargo.toml version does not match Git tag."
+            exit 1
+          fi
 
       - name: Build
         run: cargo build --release --locked
@@ -526,15 +595,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit
-
-      - name: Set version from Git tag
+      - name: Set Flatpak version
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -546,8 +607,6 @@ jobs:
 
           echo "Building Flatpak version $VERSION"
 
-          cargo set-version "$VERSION"
-
           python3 - "$VERSION" <<'PY'
           import pathlib
           import re
@@ -555,23 +614,20 @@ jobs:
 
           version = sys.argv[1]
 
-          manifest = pathlib.Path(
+          path = pathlib.Path(
               "packaging/flatpak/com.jpegviewer.JpegViewer.yml"
           )
 
-          text = manifest.read_text()
+          text = path.read_text()
 
-          if re.search(r"(?m)^version:", text):
-              text = re.sub(
-                  r"(?m)^version:.*$",
-                  f"version: {version}",
-                  text,
-                  count=1,
-              )
-          else:
-              text = f"version: {version}\n" + text
+          # Replace the cargo source tag/version if present.
+          text = re.sub(
+              r'(?m)^(\s*tag:\s*).*$',
+              rf'\g<1>v{version}',
+              text,
+          )
 
-          manifest.write_text(text)
+          path.write_text(text)
           PY
 
       - name: Set AppStream release version
@@ -594,12 +650,23 @@ jobs:
 
           text = path.read_text()
 
-          text = re.sub(
+          if re.search(
               r'<release\s+version="[^"]+"\s+date="[^"]+">',
-              f'<release version="{version}" date="{release_date}">',
               text,
-              count=1,
-          )
+          ):
+              text = re.sub(
+                  r'<release\s+version="[^"]+"\s+date="[^"]+">',
+                  f'<release version="{version}" date="{release_date}">',
+                  text,
+                  count=1,
+              )
+          else:
+              text = text.replace(
+                  "<releases>",
+                  f'<releases>\n'
+                  f'    <release version="{version}" date="{release_date}"/>',
+                  1,
+              )
 
           path.write_text(text)
           PY
@@ -637,15 +704,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit
-
-      - name: Set version from Git tag
+      - name: Set Flatpak version
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -657,8 +716,6 @@ jobs:
 
           echo "Building Flatpak version $VERSION"
 
-          cargo set-version "$VERSION"
-
           python3 - "$VERSION" <<'PY'
           import pathlib
           import re
@@ -666,23 +723,19 @@ jobs:
 
           version = sys.argv[1]
 
-          manifest = pathlib.Path(
+          path = pathlib.Path(
               "packaging/flatpak/com.jpegviewer.JpegViewer.yml"
           )
 
-          text = manifest.read_text()
+          text = path.read_text()
 
-          if re.search(r"(?m)^version:", text):
-              text = re.sub(
-                  r"(?m)^version:.*$",
-                  f"version: {version}",
-                  text,
-                  count=1,
-              )
-          else:
-              text = f"version: {version}\n" + text
+          text = re.sub(
+              r'(?m)^(\s*tag:\s*).*$',
+              rf'\g<1>v{version}',
+              text,
+          )
 
-          manifest.write_text(text)
+          path.write_text(text)
           PY
 
       - name: Set AppStream release version
@@ -705,12 +758,23 @@ jobs:
 
           text = path.read_text()
 
-          text = re.sub(
+          if re.search(
               r'<release\s+version="[^"]+"\s+date="[^"]+">',
-              f'<release version="{version}" date="{release_date}">',
               text,
-              count=1,
-          )
+          ):
+              text = re.sub(
+                  r'<release\s+version="[^"]+"\s+date="[^"]+">',
+                  f'<release version="{version}" date="{release_date}">',
+                  text,
+                  count=1,
+              )
+          else:
+              text = text.replace(
+                  "<releases>",
+                  f'<releases>\n'
+                  f'    <release version="{version}" date="{release_date}"/>',
+                  1,
+              )
 
           path.write_text(text)
           PY
