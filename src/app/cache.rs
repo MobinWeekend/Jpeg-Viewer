@@ -1,7 +1,6 @@
 use super::types::{CachedImage, LoadedImage, ViewerApp};
-use crate::app::constants::MAX_TILE_SIZE;
+use crate::constants::MAX_TILE_SIZE;
 use eframe::egui;
-use image::GenericImageView;
 
 impl ViewerApp {
     pub fn get_image_id(&self, index: usize) -> Option<String> {
@@ -102,7 +101,9 @@ impl ViewerApp {
 
         // Skip caching if the image would be handled by virtual texturing
         if let LoadedImage::Static(img) = &loaded_image {
-            let (width, height) = img.dimensions();
+            // ----- CHANGED: use width() and height() -----
+            let width = img.width();
+            let height = img.height();
             let settings = self.settings_manager.get();
             let threshold = settings.virtual_texture_threshold;
             let use_virtual = width > threshold
@@ -111,7 +112,6 @@ impl ViewerApp {
                 || height > MAX_TILE_SIZE;
 
             if use_virtual {
-                // Large image – return pending virtual texture
                 return; // skip caching for large images
             }
         }
@@ -128,27 +128,21 @@ impl ViewerApp {
 
         let texture = match &loaded_image {
             LoadedImage::Static(img) => {
-                let rgba = img.to_rgba8();
-                let width = rgba.width();
-                let height = rgba.height();
+                let size = [img.width() as usize, img.height() as usize];
+                let color = egui::ColorImage::from_rgba_unmultiplied(size, img.data());
 
-                // Size validation - skip caching if too large
                 let settings = self.settings_manager.get();
                 let threshold = settings.virtual_texture_threshold;
-
-                if width > threshold
-                    || height > threshold
-                    || width > MAX_TILE_SIZE
-                    || height > MAX_TILE_SIZE
+                if img.width() > threshold
+                    || img.height() > threshold
+                    || img.width() > MAX_TILE_SIZE
+                    || img.height() > MAX_TILE_SIZE
                 {
-                    return;
+                    None
+                } else {
+                    let options = self.get_texture_options();
+                    Some(ctx.load_texture(&format!("cache_{}", image_id), color, options))
                 }
-
-                let size = [width as usize, height as usize];
-                let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-
-                let options = self.get_texture_options();
-                Some(ctx.load_texture(&format!("cache_{}", image_id), color, options))
             }
             LoadedImage::Animated(gif, _) => {
                 // This shouldn't be reached since we skip GIFs above

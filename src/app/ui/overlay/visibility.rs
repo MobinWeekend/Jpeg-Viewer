@@ -1,6 +1,6 @@
 // Overlay visibility management
-use crate::app::constants::OVERLAY_HIDE_DELAY;
 use crate::app::types::ViewerApp;
+use crate::constants::OVERLAY_HIDE_DELAY;
 use eframe::egui;
 
 pub fn update_overlay_visibility(app: &mut ViewerApp, ctx: &egui::Context) {
@@ -24,9 +24,7 @@ pub fn update_overlay_visibility(app: &mut ViewerApp, ctx: &egui::Context) {
     let mouse_over_ui = ctx.is_pointer_over_area();
     let elapsed = app.last_interaction_time.elapsed();
 
-    let should_hide = !mouse_over_ui
-        && !app.hamburger_menu_open
-        && elapsed >= OVERLAY_HIDE_DELAY;
+    let should_hide = !mouse_over_ui && !app.hamburger_menu_open && elapsed >= OVERLAY_HIDE_DELAY;
 
     if should_hide {
         set_visible(app, ctx, false);

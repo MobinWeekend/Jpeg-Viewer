@@ -31,7 +31,9 @@ impl ImageEntry {
     pub fn get_id(&self) -> String {
         match self {
             ImageEntry::File(path) => format!("file:{}", path.display()),
-            ImageEntry::Zip(zip) => format!("zip:{}:{}", zip.archive_path.display(), zip.entry_index),
+            ImageEntry::Zip(zip) => {
+                format!("zip:{}:{}", zip.archive_path.display(), zip.entry_index)
+            }
             ImageEntry::S7z(s7z) => format!("7z:{}:{}", s7z.archive_path.display(), s7z.name),
             ImageEntry::Rar(rar) => format!("rar:{}:{}", rar.archive_path.display(), rar.name),
         }

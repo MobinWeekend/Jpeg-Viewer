@@ -1,10 +1,10 @@
-use crate::image_entry::{ArchiveImage, ImageEntry, S7ArchiveImage, RarArchiveImage};
 use crate::helpers::is_supported_image;
+use crate::image_entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveImage};
+use sevenz_rust2::Archive as SevenZipArchive;
 use std::fs::File;
 use std::path::Path;
-use zip::ZipArchive;
-use sevenz_rust2::Archive as SevenZipArchive;
 use unrar::Archive as RarArchive;
+use zip::ZipArchive;
 
 pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
     let mut images = Vec::new();
@@ -49,7 +49,6 @@ pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
 
     images
 }
-
 
 pub fn scan_7z(path: &Path) -> Vec<ImageEntry> {
     let mut images = Vec::new();

@@ -1,7 +1,7 @@
 use super::types::{LoadingState, ViewerApp};
 use super::virtual_texture::VirtualTexture;
+use crate::decoder::decode_bytes;
 use eframe::egui;
-use image::GenericImageView;
 use std::time::Instant;
 
 impl eframe::App for ViewerApp {
@@ -111,12 +111,9 @@ impl eframe::App for ViewerApp {
                         let mut should_spawn_full_gif = false;
                         match loaded_image {
                             super::types::LoadedImage::Static(img) => {
-                                // This is a small image – upload directly
-                                let (width, height) = img.dimensions();
-                                let rgba = img.to_rgba8();
-                                let size = [width as usize, height as usize];
+                                let size = [img.width() as usize, img.height() as usize];
                                 let color =
-                                    egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                                    egui::ColorImage::from_rgba_unmultiplied(size, img.data());
                                 let options = self.get_texture_options();
                                 self.texture = Some(ctx.load_texture("image", color, options));
                                 self.gif_animation = None;
@@ -182,11 +179,8 @@ impl eframe::App for ViewerApp {
 
                                 // Spawn thread to decode and prepare virtual texture
                                 let handle = std::thread::spawn(move || {
-                                    // Decode the bytes
-                                    let img = crate::loader::load_image_from_bytes(&bytes, None)
-                                        .expect("Failed to decode image"); // better error handling later
-                                    // Create and prepare virtual texture
-                                    let mut vt = VirtualTexture::new(img, tile_size);
+                                    let img = decode_bytes(&bytes).expect("Failed to decode image");
+                                    let mut vt = VirtualTexture::new(img, tile_size); // VirtualTexture must accept DecodedImage
                                     vt.prepare();
                                     vt
                                 });
@@ -282,9 +276,9 @@ impl eframe::App for ViewerApp {
         if let Some(rx) = &self.full_image_receiver {
             if let Ok(full_image) = rx.try_recv() {
                 if !self.is_loading() && self.texture.is_some() {
-                    let rgba = full_image.to_rgba8();
-                    let size = [rgba.width() as usize, rgba.height() as usize];
-                    let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                    // full_image is DecodedImage
+                    let size = [full_image.width() as usize, full_image.height() as usize];
+                    let color = egui::ColorImage::from_rgba_unmultiplied(size, full_image.data());
                     let options = self.get_texture_options();
                     self.texture = Some(ctx.load_texture("image_full", color, options));
                     self.is_preview = false;

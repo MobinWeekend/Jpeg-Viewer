@@ -2,7 +2,7 @@ use eframe::egui;
 use std::time::{Duration, Instant};
 
 use super::types::ViewerApp;
-use crate::app::constants::OVERLAY_HIDE_DELAY;
+use crate::constants::OVERLAY_HIDE_DELAY;
 
 impl ViewerApp {
     // ─── Repaint scheduling ──────────────────────────────────────

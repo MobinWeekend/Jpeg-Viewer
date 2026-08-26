@@ -1,5 +1,5 @@
+use crate::constants::IMAGE_EXT;
 use std::path::Path;
-use crate::app::constants::IMAGE_EXT;
 
 pub fn get_extension(path: &Path) -> Option<String> {
     path.extension()
@@ -8,7 +8,7 @@ pub fn get_extension(path: &Path) -> Option<String> {
 }
 
 pub fn is_supported_image(path: &Path) -> bool {
-     path.extension()
+    path.extension()
         .and_then(|ext| ext.to_str()) //Convert to UTF-8 Option<&OsStr> becomes Option<&Str>
         // support check
         .map(|ext| {

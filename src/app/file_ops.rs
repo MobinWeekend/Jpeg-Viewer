@@ -1,6 +1,6 @@
 use super::types::{LoadingState, ViewerApp};
-use crate::app::constants::{ARCHIVE_EXT, IMAGE_EXT};
 use crate::archive::{scan_7z, scan_rar, scan_zip};
+use crate::constants::{ARCHIVE_EXT, IMAGE_EXT};
 use crate::helpers::{get_extension, is_supported_image};
 use crate::image_entry::ImageEntry;
 use arboard::Clipboard;

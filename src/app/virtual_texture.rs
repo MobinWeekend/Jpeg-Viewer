@@ -1,11 +1,12 @@
 // src/app/virtual_texture.rs
+//! Virtual texture manager – uses `DecodedImage` (plain RGBA8) and generates tiles on demand.
 
+use crate::constants::MAX_TILE_SIZE;
+use crate::image_core::DecodedImage;
 use eframe::egui;
-use image::{DynamicImage, GenericImageView, RgbaImage};
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::Arc;
-use crate::app::constants::MAX_TILE_SIZE;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
 // Atomic state constants
 const STATE_NOT_STARTED: u8 = 0;
@@ -33,18 +34,20 @@ impl Default for PreparationProgress {
     }
 }
 
-/// A single tile – owned image data and optional GPU texture.
+/// A single tile – raw RGBA8 data and optional GPU texture.
 struct Tile {
     grid_x: u32,
     grid_y: u32,
-    image: RgbaImage,
+    data: Vec<u8>, // RGBA8 tile data
+    width: u32,
+    height: u32,
     texture: Option<egui::TextureHandle>,
 }
 
 /// Virtual texture manager – holds the full image and generates tiles on demand.
 pub struct VirtualTexture {
     id: usize,
-    full_image: Option<DynamicImage>,
+    data: Vec<u8>, // RGBA8 data of the full image
     width: u32,
     height: u32,
     tile_size: u32,
@@ -52,19 +55,21 @@ pub struct VirtualTexture {
     tiles_y: usize,
     total_tiles: usize,
     tiles: Vec<Tile>,
-    // Atomic progress – shared with Rayon workers.
     prepared_tiles: Arc<AtomicUsize>,
     state: AtomicU8,
 }
 
 impl VirtualTexture {
-    pub fn new(img: DynamicImage, tile_size: u32) -> Self {
+    pub fn new(img: DecodedImage, tile_size: u32) -> Self {
         assert!(
             tile_size > 0 && tile_size <= MAX_TILE_SIZE,
             "Invalid virtual texture tile size"
         );
 
-        let (width, height) = img.dimensions();
+        let width = img.width();
+        let height = img.height();
+        let data = img.into_data(); // consumes DecodedImage, returns RGBA8 Vec<u8>
+
         let tiles_x = (width as usize).div_ceil(tile_size as usize);
         let tiles_y = (height as usize).div_ceil(tile_size as usize);
         let total_tiles = tiles_x * tiles_y;
@@ -74,7 +79,7 @@ impl VirtualTexture {
 
         Self {
             id,
-            full_image: Some(img),
+            data,
             width,
             height,
             tile_size,
@@ -93,24 +98,20 @@ impl VirtualTexture {
             return;
         }
 
-        let img = self
-            .full_image
-            .take()
-            .expect("VirtualTexture::prepare called without source image");
-        let rgba = img.to_rgba8();
-
         let w = self.width;
         let h = self.height;
         let tile_size = self.tile_size;
         let tiles_x = self.tiles_x;
-        //let tiles_y = self.tiles_y;
         let total_tiles = self.total_tiles;
+
+        // Share the data reference; we will not mutate it during tile generation.
+        let data = &self.data;
+        //let row_stride = (w * 4) as usize; // bytes per row
 
         // Reset progress and mark as preparing.
         self.prepared_tiles.store(0, Ordering::Relaxed);
         self.state.store(STATE_PREPARING, Ordering::Release);
 
-        // Share the atomic counter with Rayon.
         let prepared_tiles = Arc::clone(&self.prepared_tiles);
 
         let tiles: Vec<Tile> = (0..total_tiles)
@@ -123,16 +124,23 @@ impl VirtualTexture {
                 let tile_w = (x + tile_size).min(w) - x;
                 let tile_h = (y + tile_size).min(h) - y;
 
-                let sub_image = image::imageops::crop_imm(&rgba, x, y, tile_w, tile_h);
-                let tile_data = sub_image.to_image();
+                // Extract tile data from the full RGBA8 buffer.
+                let mut tile_data = Vec::with_capacity((tile_w * tile_h * 4) as usize);
+                let src_start = (y * w + x) as usize * 4;
+                for row in 0..tile_h {
+                    let src_off = src_start + (row * w) as usize * 4;
+                    //let dst_off = row as usize * (tile_w as usize * 4);
+                    tile_data.extend_from_slice(&data[src_off..src_off + (tile_w as usize * 4)]);
+                }
 
-                // Increment prepared count.
                 prepared_tiles.fetch_add(1, Ordering::Relaxed);
 
                 Tile {
                     grid_x: tx as u32,
                     grid_y: ty as u32,
-                    image: tile_data,
+                    data: tile_data,
+                    width: tile_w,
+                    height: tile_h,
                     texture: None,
                 }
             })
@@ -170,12 +178,11 @@ impl VirtualTexture {
     /// Upload a single tile's texture (if not already uploaded).
     fn upload_tile(tile: &mut Tile, ctx: &egui::Context, options: egui::TextureOptions, id: usize) {
         if tile.texture.is_none() {
-            let rgba = &tile.image;
-            let width = rgba.width();
-            let height = rgba.height();
+            let width = tile.width;
+            let height = tile.height;
             let color_image = egui::ColorImage::from_rgba_unmultiplied(
                 [width as usize, height as usize],
-                rgba.as_raw(),
+                &tile.data,
             );
             let texture = ctx.load_texture(
                 &format!("vt_{}_tile_{}_{}", id, tile.grid_x, tile.grid_y),
@@ -244,8 +251,8 @@ impl VirtualTexture {
 
                     let tile_x = gx as f32 * tile_size_f;
                     let tile_y = gy as f32 * tile_size_f;
-                    let tile_w = tile.image.width() as f32;
-                    let tile_h = tile.image.height() as f32;
+                    let tile_w = tile.width as f32;
+                    let tile_h = tile.height as f32;
 
                     let screen_x = rect_center.x + (tile_x - img_w / 2.0) * zoom;
                     let screen_y = rect_center.y + (tile_y - img_h / 2.0) * zoom;

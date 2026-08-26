@@ -1,11 +1,13 @@
 // preloading governs the range and tasks and duration for preloading
 
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
-use crate::app::constants::MAX_TILE_SIZE;
+use crate::decoder::default_registry;
+use crate::decoder::format_detection::load_bytes_with_detection;
 use crate::gif::detection::is_gif_entry;
 use crate::gif::loader::{
     load_gif_preview_from_7z, load_gif_preview_from_rar, load_gif_preview_from_zip,
 };
+use crate::image_core::DecodeOptions;
 use crate::image_entry::ImageEntry;
 
 use eframe::egui;
@@ -269,12 +271,12 @@ impl ViewerApp {
             ImageEntry::File(path) => {
                 let bytes =
                     std::fs::read(&path).map_err(|e| format!("Failed to read image: {e}"))?;
-
-                crate::app::loading::load_bytes_with_detection(
+                load_bytes_with_detection(
                     bytes,
                     Some(&path),
                     virtual_texture_threshold,
-                    MAX_TILE_SIZE,
+                    &DecodeOptions::default(),
+                    Some(&default_registry()),
                 )
             }
 

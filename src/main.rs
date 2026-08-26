@@ -2,8 +2,11 @@
 
 mod app;
 mod archive;
+pub mod constants;
+mod decoder;
 mod gif;
 mod helpers;
+mod image_core;
 mod image_entry;
 mod loader;
 mod settings;

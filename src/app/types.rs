@@ -1,10 +1,10 @@
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
 use crate::gif::animation::GifAnimation;
+use crate::image_core::DecodedImage;
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
 use crate::shortcuts::InputBindings;
 use eframe::egui;
-use image::DynamicImage;
 use lru::LruCache;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub enum LoadedImage {
-    Static(DynamicImage),
+    Static(DecodedImage),
     Animated(GifAnimation, bool),
     VirtualPending(Vec<u8>, u32, u32),
 }
@@ -69,7 +69,7 @@ pub struct ViewerApp {
     pub texture: Option<egui::TextureHandle>,
     pub gif_animation: Option<GifAnimation>,
     pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
-    pub full_image_receiver: Option<Receiver<DynamicImage>>,
+    pub full_image_receiver: Option<Receiver<DecodedImage>>,
     pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>,
 
     pub current_directory: Option<PathBuf>,

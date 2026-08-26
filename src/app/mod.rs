@@ -1,18 +1,16 @@
+mod aspect_ratio;
 mod cache;
 mod commands;
+mod file_detection;
 mod file_ops;
+mod frame_limiter;
+mod hardcoded_input;
 mod loading;
 mod navigation;
 mod preload;
-mod types;
-mod update;
+pub mod types;
 mod ui;
-mod hardcoded_input;
-mod frame_limiter;
-mod aspect_ratio;
+mod update;
 mod virtual_texture;
-mod file_detection;
-
-pub mod constants;
 
 pub use types::ViewerApp;

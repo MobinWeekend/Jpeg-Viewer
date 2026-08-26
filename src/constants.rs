@@ -18,11 +18,7 @@ pub const IMAGE_EXT: &[&str] = &[
     "webp", // default feature: webp
 ];
 
-pub const ARCHIVE_EXT: &[&str] = &[
-    "zip",
-    "7z",
-    "rar",
-];
+pub const ARCHIVE_EXT: &[&str] = &["zip", "7z", "rar"];
 
 pub const OVERLAY_HIDE_DELAY: Duration = Duration::from_millis(1400);
 
