@@ -8,11 +8,19 @@ on:
 permissions:
   contents: write
 
+env:
+  APP_NAME: jpeg_viewer
+
 jobs:
+
+  # ============================================================
+  # Windows x64
+  # ============================================================
+
   build-windows-x64:
-    name: Build Windows (x64)
+    name: Build Windows x64
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -25,31 +33,57 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version
         shell: bash
         run: |
-          cargo install cargo-edit
-          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
-          echo "Setting version to: $VERSION"
-          cargo set-version $VERSION
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version $VERSION"
 
-      - name: Build release
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          path = pathlib.Path("Cargo.toml")
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              text,
+              count=1
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Build
         run: cargo build --release
 
       - name: Rename binary
+        shell: pwsh
         run: |
-          copy target\release\jpeg_viewer.exe JPEG-View-Windows-x64.exe
+          Copy-Item `
+            "target\release\jpeg_viewer.exe" `
+            "JPEG-View-Windows-x64.exe"
 
-      - name: Upload Windows x64 executable
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JPEG-View-Windows-x64.exe
+          name: JPEG-View-Windows-x64
           path: JPEG-View-Windows-x64.exe
 
-  build-windows-arm:
-    name: Build Windows (ARM64)
+
+  # ============================================================
+  # Windows ARM64
+  # ============================================================
+
+  build-windows-arm64:
+    name: Build Windows ARM64
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -64,32 +98,342 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Set version from Git tag
+      - name: Set version
         shell: bash
         run: |
-          cargo install cargo-edit
-          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
-          echo "Setting version to: $VERSION"
-          cargo set-version $VERSION
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version $VERSION"
 
-      - name: Build for ARM64
-        run: |
-          cargo build --release --target aarch64-pc-windows-msvc
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          path = pathlib.Path("Cargo.toml")
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              text,
+              count=1
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Build
+        run: cargo build --release --target aarch64-pc-windows-msvc
 
       - name: Rename binary
+        shell: pwsh
         run: |
-          copy target\aarch64-pc-windows-msvc\release\jpeg_viewer.exe JPEG-View-Windows-ARM64.exe
+          Copy-Item `
+            "target\aarch64-pc-windows-msvc\release\jpeg_viewer.exe" `
+            "JPEG-View-Windows-ARM64.exe"
 
-      - name: Upload Windows ARM64 executable
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JPEG-View-Windows-ARM64.exe
+          name: JPEG-View-Windows-ARM64
           path: JPEG-View-Windows-ARM64.exe
+
+
+  # ============================================================
+  # Linux portable x64
+  # ============================================================
+
+  build-linux-x64:
+    name: Build Linux x64 Portable
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version $VERSION"
+
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          path = pathlib.Path("Cargo.toml")
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              text,
+              count=1
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Create portable archive
+        run: |
+          mkdir -p package/JPEG-View
+
+          cp target/release/jpeg_viewer \
+             package/JPEG-View/jpeg_viewer
+
+          cp README.md \
+             package/JPEG-View/README.md
+
+          tar -C package \
+            -czf JPEG-View-Linux-x64.tar.gz \
+            JPEG-View
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux-x64
+          path: JPEG-View-Linux-x64.tar.gz
+
+
+  # ============================================================
+  # Linux portable ARM64
+  # ============================================================
+
+  build-linux-arm64:
+    name: Build Linux ARM64 Portable
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version $VERSION"
+
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          path = pathlib.Path("Cargo.toml")
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              text,
+              count=1
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Create portable archive
+        run: |
+          mkdir -p package/JPEG-View
+
+          cp target/release/jpeg_viewer \
+             package/JPEG-View/jpeg_viewer
+
+          cp README.md \
+             package/JPEG-View/README.md
+
+          tar -C package \
+            -czf JPEG-View-Linux-ARM64.tar.gz \
+            JPEG-View
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux-ARM64
+          path: JPEG-View-Linux-ARM64.tar.gz
+
+
+  # ============================================================
+  # Debian package x64
+  # ============================================================
+
+  build-debian-x64:
+    name: Build Debian x64
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            dpkg \
+            dpkg-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version $VERSION"
+
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          path = pathlib.Path("Cargo.toml")
+
+          text = path.read_text()
+
+          text = re.sub(
+              r'(?m)^version\s*=\s*"[^"]+"',
+              f'version = "{version}"',
+              text,
+              count=1
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build Debian package
+        run: cargo deb
+
+      - name: Rename Debian package
+        run: |
+          DEB=$(find target/debian -name "*.deb" | head -n 1)
+
+          cp "$DEB" \
+            "JPEG-View-Linux-x64.deb"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux-x64-deb
+          path: JPEG-View-Linux-x64.deb
+
+
+  # ============================================================
+  # Flatpak x64
+  # ============================================================
+
+  build-flatpak:
+    name: Build Flatpak x64
+    runs-on: ubuntu-24.04
+
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/com.jpegviewer.JpegViewer.yml
+          bundle: JPEG-View-Linux-x86_64.flatpak
+          cache-key: flatpak-builder-${{ github.sha }}
+          arch: x86_64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JPEG-View-Linux-x86_64-Flatpak
+          path: JPEG-View-Linux-x86_64.flatpak
+
+
+  # ============================================================
+  # GitHub Release
+  # ============================================================
 
   release:
     name: Create GitHub Release
-    needs: [build-windows-x64, build-windows-arm]
-    runs-on: ubuntu-latest
+
+    needs:
+      - build-windows-x64
+      - build-windows-arm64
+      - build-linux-x64
+      - build-linux-arm64
+      - build-debian-x64
+      - build-flatpak
+
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -101,36 +445,20 @@ jobs:
         id: changelog
         shell: bash
         run: |
-          # Get the previous tag
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
-          # Generate changelog based on commits since last tag
+
           if [ -z "$PREVIOUS_TAG" ]; then
-            # If no previous tag, get all commits
-            CHANGELOG=$(git log --pretty=format:"- %s" --reverse)
+            CHANGELOG=$(git log --pretty=format:"- %s (%an)" --reverse)
           else
-            # Get commits between tags
-            CHANGELOG=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s" --reverse)
+            CHANGELOG=$(git log "$PREVIOUS_TAG..HEAD" \
+              --pretty=format:"- %s (%an)" \
+              --reverse)
           fi
-          
-          # Also try to get commit messages with their authors for better context
-          if [ -z "$PREVIOUS_TAG" ]; then
-            CHANGELOG_DETAILED=$(git log --pretty=format:"- %s (%an)" --reverse)
-          else
-            CHANGELOG_DETAILED=$(git log $PREVIOUS_TAG..HEAD --pretty=format:"- %s (%an)" --reverse)
-          fi
-          
-          # Use detailed changelog if available, otherwise use simple one
-          if [ -n "$CHANGELOG_DETAILED" ]; then
-            CHANGELOG="$CHANGELOG_DETAILED"
-          fi
-          
-          # If no commits found, use a default message
+
           if [ -z "$CHANGELOG" ]; then
             CHANGELOG="- Initial release or no new commits since last tag"
           fi
-          
-          # Output the changelog
+
           {
             echo "body<<EOF"
             echo "$CHANGELOG"
@@ -142,26 +470,56 @@ jobs:
         with:
           path: release
 
-      - name: List downloaded files
-        run: ls -la release/
+      - name: Flatten release files
+        shell: bash
+        run: |
+          mkdir -p release-files
 
-      - name: Create Release
+          find release \
+            -type f \
+            -exec cp {} release-files/ \;
+
+          echo "Release files:"
+          ls -lh release-files/
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            ## 📦 Windows Portable Release
+            # JPEG Viewer ${{ github.ref_name }}
 
-            ${{ github.ref_name }}            
-            
-            ### What's Changed
+            ## Downloads
+
+            ### Windows
+            - **Windows x64** — `JPEG-View-Windows-x64.exe`
+            - **Windows ARM64** — `JPEG-View-Windows-ARM64.exe`
+
+            Portable executables. No installation required.
+
+            ### Linux
+            - **Linux x64 Portable** — `JPEG-View-Linux-x64.tar.gz`
+            - **Linux ARM64 Portable** — `JPEG-View-Linux-ARM64.tar.gz`
+            - **Debian / Ubuntu x64** — `JPEG-View-Linux-x64.deb`
+            - **Flatpak x86_64** — `JPEG-View-Linux-x86_64.flatpak`
+
+            ## What's Changed
+
             ${{ steps.changelog.outputs.body }}
-            
-            ---
-            
-            ### 🚀 How to Use
-            1. Download the appropriate `.exe` file for your system
-            2. Double-click to run - no installation required!
-            3. Enjoy viewing your JPEG images
+
+            ## Portable Linux
+
+            Extract the archive and run:
+
+            ```bash
+            ./jpeg_viewer
+            ```
+
+            If necessary:
+
+            ```bash
+            chmod +x jpeg_viewer
+            ```
+
           files: |
-            release/**/*
+            release-files/*
           generate_release_notes: false
