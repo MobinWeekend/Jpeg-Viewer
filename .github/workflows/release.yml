@@ -15,19 +15,12 @@ env:
 jobs:
 
   # ============================================================
-  # Prepare Release
-  #
-  # Updates:
-  #   Cargo.toml
-  #   Cargo.lock
-  #   cargo-sources.json
-  #
-  # These generated files are then used by the build jobs.
+  # Windows x64
   # ============================================================
 
-  prepare-release:
-    name: Prepare Release
-    runs-on: ubuntu-24.04
+  build-windows-x64:
+    name: Build Windows x64
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
@@ -43,128 +36,43 @@ jobs:
         with:
           tool: cargo-edit
 
-      - name: Install Python dependencies
-        run: |
-          python3 -m pip install --user \
-            aiohttp \
-            tomlkit
-
-      - name: Set version and update Cargo.lock
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release version: $VERSION"
-            exit 1
-          fi
-
-          echo "Preparing release version: $VERSION"
-
-          cargo set-version "$VERSION"
-
-          # Update Cargo.lock to match Cargo.toml.
-          cargo check
-
-          # Make absolutely sure the lockfile is now valid.
-          cargo check --locked
-
-      - name: Verify Cargo version
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          CARGO_VERSION=$(
-            cargo metadata \
-              --no-deps \
-              --format-version 1 |
-              python3 -c '
-          import json
-          import sys
-
-          data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
-          '
-          )
-
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
-
-          if [ "$CARGO_VERSION" != "$VERSION" ]; then
-            echo "Cargo.toml version does not match Git tag."
-            exit 1
-          fi
-
-      - name: Generate cargo-sources.json
-        shell: bash
-        run: |
-          python3 \
-            flatpak-builder-tools/cargo/flatpak-cargo-generator.py \
-            Cargo.lock \
-            -o packaging/flatpak/cargo-sources.json
-
-      - name: Verify generated files
-        run: |
-          test -f Cargo.toml
-          test -f Cargo.lock
-          test -f packaging/flatpak/cargo-sources.json
-
-          echo "Prepared files:"
-          ls -lh \
-            Cargo.toml \
-            Cargo.lock \
-            packaging/flatpak/cargo-sources.json
-
-      - name: Upload prepared Cargo files
-        uses: actions/upload-artifact@v4
-        with:
-          name: prepared-cargo
-          path: |
-            Cargo.toml
-            Cargo.lock
-            packaging/flatpak/cargo-sources.json
-
-
-  # ============================================================
-  # Windows x64
-  # ============================================================
-
-  build-windows-x64:
-    name: Build Windows x64
-    needs: prepare-release
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
-        with:
-          name: prepared-cargo
-          path: .
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Verify version
+      - name: Set version from Git tag
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Select-Object -First 1
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$') {
+              throw "Invalid release version: $version"
+          }
 
-          Write-Host "Cargo.toml version: $($package.version)"
-          Write-Host "Git tag version:    $version"
+          Write-Host "Building version $version"
+
+          cargo set-version $version
+
+      - name: Verify Cargo.toml and Cargo.lock
+        shell: pwsh
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".Substring(1)
+
+          $metadata = cargo metadata --locked --no-deps --format-version 1 |
+            ConvertFrom-Json
+
+          $package = $metadata.packages |
+            Where-Object { $_.name -eq "${env:APP_NAME}" } |
+            Select-Object -First 1
+
+          if (-not $package) {
+              throw "Could not find package ${env:APP_NAME}."
+          }
+
+          Write-Host "Cargo version:  $($package.version)"
+          Write-Host "Git tag version: $version"
 
           if ($package.version -ne $version) {
-              throw "Cargo.toml version does not match Git tag."
+              throw "Cargo package version does not match Git tag."
           }
 
       - name: Build
@@ -190,7 +98,6 @@ jobs:
 
   build-windows-arm64:
     name: Build Windows ARM64
-    needs: prepare-release
     runs-on: windows-11-arm
 
     steps:
@@ -199,31 +106,51 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
-        with:
-          name: prepared-cargo
-          path: .
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Verify version
+      - name: Set version from Git tag
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Select-Object -First 1
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$') {
+              throw "Invalid release version: $version"
+          }
 
-          Write-Host "Cargo.toml version: $($package.version)"
-          Write-Host "Git tag version:    $version"
+          Write-Host "Building version $version"
+
+          cargo set-version $version
+
+      - name: Verify Cargo.toml and Cargo.lock
+        shell: pwsh
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".Substring(1)
+
+          $metadata = cargo metadata --locked --no-deps --format-version 1 |
+            ConvertFrom-Json
+
+          $package = $metadata.packages |
+            Where-Object { $_.name -eq "${env:APP_NAME}" } |
+            Select-Object -First 1
+
+          if (-not $package) {
+              throw "Could not find package ${env:APP_NAME}."
+          }
+
+          Write-Host "Cargo version:  $($package.version)"
+          Write-Host "Git tag version: $version"
 
           if ($package.version -ne $version) {
-              throw "Cargo.toml version does not match Git tag."
+              throw "Cargo package version does not match Git tag."
           }
 
       - name: Build
@@ -249,18 +176,13 @@ jobs:
 
   build-linux-x64:
     name: Build Linux x64 Portable
-    needs: prepare-release
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
         with:
-          name: prepared-cargo
-          path: .
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -277,8 +199,58 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          echo "Building version $VERSION"
+
+          cargo set-version "$VERSION"
+
+      - name: Verify Cargo.toml and Cargo.lock
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION=$(cargo metadata \
+            --locked \
+            --no-deps \
+            --format-version 1 |
+            python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
+          ')
+
+          echo "Cargo version:   $CARGO_VERSION"
+          echo "Git tag version: $VERSION"
+
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Cargo package version does not match Git tag."
+            exit 1
+          fi
 
       - name: Build
         run: cargo build --release --locked
@@ -312,18 +284,13 @@ jobs:
 
   build-linux-arm64:
     name: Build Linux ARM64 Portable
-    needs: prepare-release
     runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
         with:
-          name: prepared-cargo
-          path: .
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -340,8 +307,58 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          echo "Building version $VERSION"
+
+          cargo set-version "$VERSION"
+
+      - name: Verify Cargo.toml and Cargo.lock
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION=$(cargo metadata \
+            --locked \
+            --no-deps \
+            --format-version 1 |
+            python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
+          ')
+
+          echo "Cargo version:   $CARGO_VERSION"
+          echo "Git tag version: $VERSION"
+
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Cargo package version does not match Git tag."
+            exit 1
+          fi
 
       - name: Build
         run: cargo build --release --locked
@@ -375,18 +392,13 @@ jobs:
 
   build-debian-x64:
     name: Build Debian x64
-    needs: prepare-release
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
         with:
-          name: prepared-cargo
-          path: .
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -405,8 +417,55 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          cargo set-version "$VERSION"
+
+      - name: Verify Cargo.toml and Cargo.lock
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION=$(cargo metadata \
+            --locked \
+            --no-deps \
+            --format-version 1 |
+            python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
+          ')
+
+          echo "Cargo version:   $CARGO_VERSION"
+          echo "Git tag version: $VERSION"
+
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Cargo package version does not match Git tag."
+            exit 1
+          fi
 
       - name: Build
         run: cargo build --release --locked
@@ -441,18 +500,13 @@ jobs:
 
   build-debian-arm64:
     name: Build Debian ARM64
-    needs: prepare-release
     runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
         with:
-          name: prepared-cargo
-          path: .
+          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -471,8 +525,55 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+
+      - name: Set version from Git tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          cargo set-version "$VERSION"
+
+      - name: Verify Cargo.toml and Cargo.lock
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          CARGO_VERSION=$(cargo metadata \
+            --locked \
+            --no-deps \
+            --format-version 1 |
+            python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
+          ')
+
+          echo "Cargo version:   $CARGO_VERSION"
+          echo "Git tag version: $VERSION"
+
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "Cargo package version does not match Git tag."
+            exit 1
+          fi
 
       - name: Build
         run: cargo build --release --locked
@@ -507,7 +608,6 @@ jobs:
 
   build-flatpak-x86_64:
     name: Build Flatpak x86_64
-    needs: prepare-release
     runs-on: ubuntu-24.04
 
     container:
@@ -517,18 +617,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
         with:
-          name: prepared-cargo
-          path: .
+          fetch-depth: 0
 
-      - name: Install Rust SDK extension
+      - name: Verify Flatpak Cargo sources
+        shell: bash
         run: |
-          flatpak install -y --noninteractive \
-            flathub \
-            org.freedesktop.Sdk.Extension.rust-stable//24.08
+          test -f packaging/flatpak/cargo-sources.json || {
+            echo "Missing packaging/flatpak/cargo-sources.json"
+            exit 1
+          }
+
+      - name: Set AppStream release version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DATE=$(date -u +%Y-%m-%d)
+
+          python3 - "$VERSION" "$DATE" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+          release_date = sys.argv[2]
+
+          path = pathlib.Path(
+              "packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml"
+          )
+
+          text = path.read_text()
+
+          pattern = (
+              r'<release\s+version="[^"]+"\s+date="[^"]+">'
+          )
+
+          replacement = (
+              f'<release version="{version}" date="{release_date}">'
+          )
+
+          text, count = re.subn(
+              pattern,
+              replacement,
+              text,
+              count=1,
+          )
+
+          if count == 0:
+              raise SystemExit(
+                  "Could not find an existing AppStream release entry."
+              )
+
+          path.write_text(text)
+          PY
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
@@ -551,7 +692,6 @@ jobs:
 
   build-flatpak-arm64:
     name: Build Flatpak ARM64
-    needs: prepare-release
     runs-on: ubuntu-24.04-arm
 
     container:
@@ -561,18 +701,59 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Download prepared Cargo files
-        uses: actions/download-artifact@v4
         with:
-          name: prepared-cargo
-          path: .
+          fetch-depth: 0
 
-      - name: Install Rust SDK extension
+      - name: Verify Flatpak Cargo sources
+        shell: bash
         run: |
-          flatpak install -y --noninteractive \
-            flathub \
-            org.freedesktop.Sdk.Extension.rust-stable//24.08
+          test -f packaging/flatpak/cargo-sources.json || {
+            echo "Missing packaging/flatpak/cargo-sources.json"
+            exit 1
+          }
+
+      - name: Set AppStream release version
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DATE=$(date -u +%Y-%m-%d)
+
+          python3 - "$VERSION" "$DATE" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          version = sys.argv[1]
+          release_date = sys.argv[2]
+
+          path = pathlib.Path(
+              "packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml"
+          )
+
+          text = path.read_text()
+
+          pattern = (
+              r'<release\s+version="[^"]+"\s+date="[^"]+">'
+          )
+
+          replacement = (
+              f'<release version="{version}" date="{release_date}">'
+          )
+
+          text, count = re.subn(
+              pattern,
+              replacement,
+              text,
+              count=1,
+          )
+
+          if count == 0:
+              raise SystemExit(
+                  "Could not find an existing AppStream release entry."
+              )
+
+          path.write_text(text)
+          PY
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
