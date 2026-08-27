@@ -3,9 +3,6 @@ runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
 
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable//49
-
 command: jpeg_viewer
 
 finish-args:
@@ -29,15 +26,9 @@ modules:
   - name: jpeg-viewer
     buildsystem: simple
 
-    build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
-      env:
-        CARGO_HOME: /run/build/jpeg-viewer/cargo
-        CARGO_NET_OFFLINE: "true"
-
     build-commands:
-      - cargo build --offline --release --locked
-      - install -Dm755 target/release/jpeg_viewer /app/bin/jpeg_viewer
+      # Install prebuilt Rust executable
+      - install -Dm755 jpeg_viewer /app/bin/jpeg_viewer
 
       # Application icon
       - install -Dm644 assets/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
@@ -52,9 +43,15 @@ modules:
       - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/jpeg-viewer/LICENSE
 
     sources:
-      # Generated from Cargo.lock using flatpak-cargo-generator.py
-      - cargo-sources.json
-
-      # Project source
+      # Created by release.yml after cargo build.
+      #
+      # The manifest is located at:
+      # packaging/flatpak/
+      #
+      # Therefore ../../flatpak-build points to:
+      # flatpak-build/
+      #
+      # flatpak-build contains the already-built binary and
+      # the files needed by the Flatpak package.
       - type: dir
-        path: ../..
+        path: ../../flatpak-build
