@@ -12,9 +12,6 @@ env:
   APP_NAME: jpeg_viewer
   APP_ID: com.jpegviewer.JpegViewer
 
-  # Force JavaScript-based GitHub Actions to use Node.js 24.
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
 
   # ============================================================
@@ -51,20 +48,26 @@ jobs:
               throw "Invalid release version: $version"
           }
 
-          Write-Host "Building version $version"
-
           cargo set-version $version
+
+      - name: Update Cargo.lock
+        run: cargo check
 
       - name: Verify version
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Select-Object -First 1
+          $metadata = cargo metadata --format-version 1 --no-deps |
+            ConvertFrom-Json
 
-          Write-Host "Cargo.toml version: $($package.version)"
-          Write-Host "Git tag version:    $version"
+          $package = $metadata.packages |
+            Where-Object { $_.name -eq "jpeg_viewer" } |
+            Select-Object -First 1
+
+          if ($null -eq $package) {
+              throw "jpeg_viewer package was not found."
+          }
 
           if ($package.version -ne $version) {
               throw "Cargo.toml version does not match Git tag."
@@ -81,7 +84,7 @@ jobs:
             "JPEG-View-Windows-x64.exe"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Windows-x64
           path: JPEG-View-Windows-x64.exe
@@ -121,20 +124,26 @@ jobs:
               throw "Invalid release version: $version"
           }
 
-          Write-Host "Building version $version"
-
           cargo set-version $version
+
+      - name: Update Cargo.lock
+        run: cargo check
 
       - name: Verify version
         shell: pwsh
         run: |
           $version = "${env:GITHUB_REF_NAME}".Substring(1)
 
-          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Select-Object -First 1
+          $metadata = cargo metadata --format-version 1 --no-deps |
+            ConvertFrom-Json
 
-          Write-Host "Cargo.toml version: $($package.version)"
-          Write-Host "Git tag version:    $version"
+          $package = $metadata.packages |
+            Where-Object { $_.name -eq "jpeg_viewer" } |
+            Select-Object -First 1
+
+          if ($null -eq $package) {
+              throw "jpeg_viewer package was not found."
+          }
 
           if ($package.version -ne $version) {
               throw "Cargo.toml version does not match Git tag."
@@ -151,7 +160,7 @@ jobs:
             "JPEG-View-Windows-ARM64.exe"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Windows-ARM64
           path: JPEG-View-Windows-ARM64.exe
@@ -204,11 +213,13 @@ jobs:
             exit 1
           fi
 
-          echo "Building version $VERSION"
-
           cargo set-version "$VERSION"
 
+      - name: Update Cargo.lock
+        run: cargo check
+
       - name: Verify version
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
@@ -218,12 +229,16 @@ jobs:
             python3 -c '
           import json
           import sys
-          data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
-          ')
 
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
+          data = json.load(sys.stdin)
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
+          ')
 
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Cargo.toml version does not match Git tag."
@@ -250,7 +265,7 @@ jobs:
             JPEG-View
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Linux-x64
           path: JPEG-View-Linux-x64.tar.gz
@@ -303,11 +318,13 @@ jobs:
             exit 1
           fi
 
-          echo "Building version $VERSION"
-
           cargo set-version "$VERSION"
 
+      - name: Update Cargo.lock
+        run: cargo check
+
       - name: Verify version
+        shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
@@ -317,12 +334,16 @@ jobs:
             python3 -c '
           import json
           import sys
-          data = json.load(sys.stdin)
-          print(data["packages"][0]["version"])
-          ')
 
-          echo "Cargo.toml version: $CARGO_VERSION"
-          echo "Git tag version:    $VERSION"
+          data = json.load(sys.stdin)
+
+          package = next(
+              p for p in data["packages"]
+              if p["name"] == "jpeg_viewer"
+          )
+
+          print(package["version"])
+          ')
 
           if [ "$CARGO_VERSION" != "$VERSION" ]; then
             echo "Cargo.toml version does not match Git tag."
@@ -349,7 +370,7 @@ jobs:
             JPEG-View
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Linux-ARM64
           path: JPEG-View-Linux-ARM64.tar.gz
@@ -406,6 +427,9 @@ jobs:
 
           cargo set-version "$VERSION"
 
+      - name: Update Cargo.lock
+        run: cargo check
+
       - name: Build
         run: cargo build --release --locked
 
@@ -427,7 +451,7 @@ jobs:
           cp "$DEB" JPEG-View-Linux-x64.deb
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Linux-x64-deb
           path: JPEG-View-Linux-x64.deb
@@ -484,6 +508,9 @@ jobs:
 
           cargo set-version "$VERSION"
 
+      - name: Update Cargo.lock
+        run: cargo check
+
       - name: Build
         run: cargo build --release --locked
 
@@ -505,291 +532,10 @@ jobs:
           cp "$DEB" JPEG-View-Linux-ARM64.deb
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Linux-ARM64-deb
           path: JPEG-View-Linux-ARM64.deb
-
-
-  # ============================================================
-  # Flatpak x86_64
-  #
-  # Rust is compiled OUTSIDE the Flatpak container.
-  # The resulting binary is staged into flatpak-build/.
-  # ============================================================
-
-  build-flatpak-x86_64:
-    name: Build Flatpak x86_64
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libegl1-mesa-dev \
-            libgl1-mesa-dev
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Set version from Git tag
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release version: $VERSION"
-            exit 1
-          fi
-
-          cargo set-version "$VERSION"
-
-      - name: Update Flatpak metadata
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          DATE=$(date -u +%Y-%m-%d)
-
-          python3 - "$VERSION" "$DATE" <<'PY'
-          import pathlib
-          import re
-          import sys
-
-          version = sys.argv[1]
-          release_date = sys.argv[2]
-
-          manifest = pathlib.Path(
-              "packaging/flatpak/com.jpegviewer.JpegViewer.yml"
-          )
-
-          text = manifest.read_text()
-
-          text = re.sub(
-              r'(?m)^version:.*$',
-              f'version: {version}',
-              text,
-              count=1,
-          )
-
-          manifest.write_text(text)
-
-          metainfo = pathlib.Path(
-              "packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml"
-          )
-
-          text = metainfo.read_text()
-
-          text = re.sub(
-              r'<release\s+version="[^"]+"\s+date="[^"]+">',
-              f'<release version="{version}" date="{release_date}">',
-              text,
-              count=1,
-          )
-
-          metainfo.write_text(text)
-          PY
-
-      - name: Build Rust binary
-        run: cargo build --release --locked
-
-      - name: Prepare Flatpak staging directory
-        run: |
-          rm -rf flatpak-build
-
-          mkdir -p \
-            flatpak-build/assets/icons \
-            flatpak-build/packaging/flatpak
-
-          cp target/release/jpeg_viewer \
-            flatpak-build/jpeg_viewer
-
-          cp assets/icons/icon.png \
-            flatpak-build/assets/icons/icon.png
-
-          cp packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml \
-            flatpak-build/packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml
-
-          cp packaging/flatpak/com.jpegviewer.JpegViewer.desktop \
-            flatpak-build/packaging/flatpak/com.jpegviewer.JpegViewer.desktop
-
-          cp LICENSE \
-            flatpak-build/LICENSE
-
-          chmod +x flatpak-build/jpeg_viewer
-
-          ls -lh flatpak-build/jpeg_viewer
-
-      - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          manifest-path: packaging/flatpak/com.jpegviewer.JpegViewer.yml
-          bundle: JPEG-View-Linux-x86_64.flatpak
-          cache-key: flatpak-builder-${{ github.sha }}
-          arch: x86_64
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: JPEG-View-Linux-x86_64-Flatpak
-          path: JPEG-View-Linux-x86_64.flatpak
-
-
-  # ============================================================
-  # Flatpak ARM64
-  # ============================================================
-
-  build-flatpak-arm64:
-    name: Build Flatpak ARM64
-    runs-on: ubuntu-24.04-arm
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libegl1-mesa-dev \
-            libgl1-mesa-dev
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Set version from Git tag
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release version: $VERSION"
-            exit 1
-          fi
-
-          cargo set-version "$VERSION"
-
-      - name: Update Flatpak metadata
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          DATE=$(date -u +%Y-%m-%d)
-
-          python3 - "$VERSION" "$DATE" <<'PY'
-          import pathlib
-          import re
-          import sys
-
-          version = sys.argv[1]
-          release_date = sys.argv[2]
-
-          manifest = pathlib.Path(
-              "packaging/flatpak/com.jpegviewer.JpegViewer.yml"
-          )
-
-          text = manifest.read_text()
-
-          text = re.sub(
-              r'(?m)^version:.*$',
-              f'version: {version}',
-              text,
-              count=1,
-          )
-
-          manifest.write_text(text)
-
-          metainfo = pathlib.Path(
-              "packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml"
-          )
-
-          text = metainfo.read_text()
-
-          text = re.sub(
-              r'<release\s+version="[^"]+"\s+date="[^"]+">',
-              f'<release version="{version}" date="{release_date}">',
-              text,
-              count=1,
-          )
-
-          metainfo.write_text(text)
-          PY
-
-      - name: Build Rust binary
-        run: cargo build --release --locked
-
-      - name: Prepare Flatpak staging directory
-        run: |
-          rm -rf flatpak-build
-
-          mkdir -p \
-            flatpak-build/assets/icons \
-            flatpak-build/packaging/flatpak
-
-          cp target/release/jpeg_viewer \
-            flatpak-build/jpeg_viewer
-
-          cp assets/icons/icon.png \
-            flatpak-build/assets/icons/icon.png
-
-          cp packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml \
-            flatpak-build/packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml
-
-          cp packaging/flatpak/com.jpegviewer.JpegViewer.desktop \
-            flatpak-build/packaging/flatpak/com.jpegviewer.JpegViewer.desktop
-
-          cp LICENSE \
-            flatpak-build/LICENSE
-
-          chmod +x flatpak-build/jpeg_viewer
-
-          ls -lh flatpak-build/jpeg_viewer
-
-      - name: Build Flatpak
-        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-        with:
-          manifest-path: packaging/flatpak/com.jpegviewer.JpegViewer.yml
-          bundle: JPEG-View-Linux-ARM64.flatpak
-          cache-key: flatpak-builder-${{ github.sha }}
-          arch: aarch64
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: JPEG-View-Linux-ARM64-Flatpak
-          path: JPEG-View-Linux-ARM64.flatpak
 
 
   # ============================================================
@@ -806,8 +552,6 @@ jobs:
       - build-linux-arm64
       - build-debian-x64
       - build-debian-arm64
-      - build-flatpak-x86_64
-      - build-flatpak-arm64
 
     runs-on: ubuntu-24.04
 
@@ -834,14 +578,26 @@ jobs:
         id: changelog
         shell: bash
         run: |
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          PREVIOUS_TAG=$(
+            git describe \
+              --tags \
+              --abbrev=0 \
+              HEAD^ 2>/dev/null || echo ""
+          )
 
           if [ -z "$PREVIOUS_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%an)" --reverse)
+            CHANGELOG=$(
+              git log \
+                --pretty=format:"- %s (%an)" \
+                --reverse
+            )
           else
-            CHANGELOG=$(git log "$PREVIOUS_TAG..HEAD" \
-              --pretty=format:"- %s (%an)" \
-              --reverse)
+            CHANGELOG=$(
+              git log \
+                "$PREVIOUS_TAG..HEAD" \
+                --pretty=format:"- %s (%an)" \
+                --reverse
+            )
           fi
 
           if [ -z "$CHANGELOG" ]; then
@@ -855,7 +611,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release
 
@@ -894,8 +650,6 @@ jobs:
             - **Linux ARM64 Portable** — `JPEG-View-Linux-ARM64.tar.gz`
             - **Debian / Ubuntu x64** — `JPEG-View-Linux-x64.deb`
             - **Debian / Ubuntu ARM64** — `JPEG-View-Linux-ARM64.deb`
-            - **Flatpak x86_64** — `JPEG-View-Linux-x86_64.flatpak`
-            - **Flatpak ARM64** — `JPEG-View-Linux-ARM64.flatpak`
 
             ## What's Changed
 

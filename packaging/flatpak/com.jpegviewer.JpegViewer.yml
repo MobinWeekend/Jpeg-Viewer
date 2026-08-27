@@ -1,57 +1,48 @@
 app-id: com.jpegviewer.JpegViewer
+
 runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
 
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable//25.08
+
 command: jpeg_viewer
 
 finish-args:
-  # Display
   - --socket=wayland
   - --socket=fallback-x11
-
-  # GPU acceleration
   - --device=dri
-
-  # Filesystem access
   - --filesystem=home
-
-  # Desktop integration
   - --share=ipc
-
-  # Audio
   - --socket=pulseaudio
 
 modules:
   - name: jpeg-viewer
+
     buildsystem: simple
 
-    build-commands:
-      # Install prebuilt Rust executable
-      - install -Dm755 jpeg_viewer /app/bin/jpeg_viewer
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/jpeg-viewer/cargo
+        CARGO_NET_OFFLINE: "true"
 
-      # Application icon
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo build --offline --release --locked
+      - install -Dm755 target/release/jpeg_viewer /app/bin/jpeg_viewer
+
       - install -Dm644 assets/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
 
-      # AppStream metadata
       - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml /app/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml
 
-      # Desktop entry
       - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.desktop /app/share/applications/com.jpegviewer.JpegViewer.desktop
 
-      # License
       - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/jpeg-viewer/LICENSE
 
     sources:
-      # Created by release.yml after cargo build.
-      #
-      # The manifest is located at:
-      # packaging/flatpak/
-      #
-      # Therefore ../../flatpak-build points to:
-      # flatpak-build/
-      #
-      # flatpak-build contains the already-built binary and
-      # the files needed by the Flatpak package.
+      - cargo-sources.json
+
       - type: dir
-        path: ../../flatpak-build
+        path: ../..
