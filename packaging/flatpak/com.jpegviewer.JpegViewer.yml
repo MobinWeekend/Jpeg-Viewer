@@ -2,6 +2,10 @@ app-id: com.jpegviewer.JpegViewer
 runtime: org.gnome.Platform
 runtime-version: "49"
 sdk: org.gnome.Sdk
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable//49
+
 command: jpeg_viewer
 
 finish-args:
@@ -18,7 +22,7 @@ finish-args:
   # Desktop integration
   - --share=ipc
 
-  # Audio, if needed by the application
+  # Audio
   - --socket=pulseaudio
 
 modules:
@@ -26,11 +30,13 @@ modules:
     buildsystem: simple
 
     build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/jpeg-viewer/cargo
+        CARGO_NET_OFFLINE: "true"
 
     build-commands:
-      - cargo build --release --locked
+      - cargo build --offline --release --locked
       - install -Dm755 target/release/jpeg_viewer /app/bin/jpeg_viewer
 
       # Application icon
@@ -42,7 +48,13 @@ modules:
       # Desktop entry
       - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.desktop /app/share/applications/com.jpegviewer.JpegViewer.desktop
 
+      # License
+      - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/jpeg-viewer/LICENSE
+
     sources:
+      # Generated from Cargo.lock using flatpak-cargo-generator.py
       - cargo-sources.json
+
+      # Project source
       - type: dir
         path: ../..
