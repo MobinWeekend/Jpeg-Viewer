@@ -1,8 +1,8 @@
 use crate::app::types::ViewerApp;
 use eframe::egui;
 
-pub fn render(app: &mut ViewerApp, ctx: &egui::Context) {
-    let Some((current, suggested)) = get_rename_suggestion(app) else {
+pub fn rename_warning(app: &mut ViewerApp, ctx: &egui::Context) {
+    let Some((current, suggested)) = app.get_rename_suggestion() else {
         return;
     };
 
@@ -38,25 +38,4 @@ pub fn render(app: &mut ViewerApp, ctx: &egui::Context) {
                 });
             });
     });
-}
-
-fn get_rename_suggestion(app: &ViewerApp) -> Option<(String, &'static str)> {
-    app.file_type_detection
-        .as_ref()
-        .filter(|detection| {
-            detection.mismatch
-                && detection.index == app.current_index
-                && detection.generation == app.preload_generation
-        })
-        .map(|detection| {
-            let current = detection
-                .current_extension
-                .as_deref()
-                .unwrap_or("(none)")
-                .to_owned();
-
-            let suggested = detection.detected_format.preferred_extension();
-
-            (current, suggested)
-        })
 }

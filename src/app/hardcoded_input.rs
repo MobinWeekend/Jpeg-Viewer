@@ -90,7 +90,7 @@ impl ViewerApp {
             // Use the actual pointer movement instead of drag_delta().
             let vertical_delta = current_pos.y - start_pos.y;
 
-            let new_zoom = (start_zoom - vertical_delta * 0.0025).clamp(0.005, 50.0);
+            let new_zoom = (start_zoom * (-vertical_delta * 0.005).exp()).clamp(0.005, 50.0);
 
             let start_center = self.zoom_drag_start_center;
 

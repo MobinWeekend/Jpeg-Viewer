@@ -167,12 +167,7 @@ impl ViewerApp {
             }
         };
 
-        if let ImageEntry::File(path) = &entry {
-            self.current_image_path = Some(path.clone());
-        } else {
-            self.current_image_path = None;
-        }
-
+        self.update_current_image_path();
         let settings = self.settings_manager.get();
         let threshold = settings.virtual_texture_threshold;
 
@@ -180,6 +175,7 @@ impl ViewerApp {
         self.b_fit_to_window = true;
 
         let (tx, rx) = channel();
+
         spawn(move || {
             let result = load_entry_content(entry, threshold);
             let _ = tx.send(result);
@@ -219,6 +215,45 @@ impl ViewerApp {
 
         self.detect_current_file_type();
         self.load_current_image();
+    }
+
+    /// Updates `current_image_path` based on the current index.
+    /// - If the current entry is a standalone file, set path to that file.
+    /// - Otherwise (archive entries), set to `None`.
+    pub fn update_current_image_path(&mut self) {
+        let entry = match self.image_entries.get(self.current_index).cloned() {
+            Some(e) => e,
+            None => {
+                self.set_loading_state(LoadingState::Idle);
+                return;
+            }
+        };
+        if let ImageEntry::File(path) = &entry {
+            self.current_image_path = Some(path.clone());
+        } else {
+            self.current_image_path = None;
+        }
+    }
+
+    pub fn get_rename_suggestion(&mut self) -> Option<(String, &'static str)> {
+        self.file_type_detection
+            .as_ref()
+            .filter(|detection| {
+                detection.mismatch
+                    && detection.index == self.current_index
+                    && detection.generation == self.preload_generation
+            })
+            .map(|detection| {
+                let current = detection
+                    .current_extension
+                    .as_deref()
+                    .unwrap_or("(none)")
+                    .to_owned();
+
+                let suggested = detection.detected_format.preferred_extension();
+
+                (current, suggested)
+            })
     }
 }
 

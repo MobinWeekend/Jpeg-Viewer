@@ -82,7 +82,12 @@ impl ViewerApp {
 
         // Update UI
         ctx.request_repaint_after(std::time::Duration::from_millis(32));
+        //title bar update
         self.update_window_title(ctx);
+        //update the current image path that is shown
+        self.update_current_image_path();
+        //self.get_rename_suggestion();
+        crate::app::ui::rename_warning(self, ctx);
         // just in case!
         self.load_frame_limiter_settings();
     }
