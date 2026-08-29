@@ -13,7 +13,9 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("◀").size(16.0))
-                    .min_size(egui::vec2(32.0, 28.0)),
+                    .min_size(egui::vec2(32.0, 28.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Previous")
             .clicked()
@@ -25,7 +27,9 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("▶").size(16.0))
-                    .min_size(egui::vec2(32.0, 28.0)),
+                    .min_size(egui::vec2(32.0, 28.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Next")
             .clicked()
@@ -53,7 +57,9 @@ impl ViewerApp {
         let button = ui
             .add(
                 egui::Button::new(egui::RichText::new(slideshow_icon).size(24.0))
-                    .min_size(egui::vec2(32.0, 28.0)),
+                    .min_size(egui::vec2(32.0, 28.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text(slideshow_tooltip);
 
@@ -77,7 +83,9 @@ impl ViewerApp {
         let slower_button = ui
             .add(
                 egui::Button::new(egui::RichText::new("↘").size(24.0))
-                    .min_size(egui::vec2(28.0, 24.0)),
+                    .min_size(egui::vec2(28.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Slower slideshow");
 
@@ -89,7 +97,9 @@ impl ViewerApp {
         let faster_button = ui
             .add(
                 egui::Button::new(egui::RichText::new("↗").size(24.0))
-                    .min_size(egui::vec2(28.0, 24.0)),
+                    .min_size(egui::vec2(28.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Faster slideshow");
 
@@ -104,47 +114,72 @@ impl ViewerApp {
 
     // ZOOM
     /// Zoom percentage, zoom buttons and fit/reset button.
-    pub fn zoom_text(&mut self, ui: &mut egui::Ui) {
-        let size = egui::vec2(52.0, 24.0);
-        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-        ui.put(
-            rect,
-            egui::Label::new(
-                egui::RichText::new(format!("{}%", (self.zoom * 100.0).round().max(1.0) as i32))
-                    .size(14.0),
+    pub fn zoom_text(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let text = format!("{}%", (self.zoom * 100.0).round().max(1.0) as i32);
+        let tooltip = if self.b_zoom_used {
+            "Click to Fit"
+        } else {
+            "Click for 100%"
+        };
+
+        let response = ui
+            .add(
+                egui::Button::new(egui::RichText::new(text).size(14.0))
+                    .min_size(egui::vec2(52.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
-            .halign(egui::Align::Center),
-        );
+            .on_hover_text(tooltip);
+
+        if response.clicked() {
+            if self.b_zoom_used {
+                self.handle_command(ctx, ViewerCommand::MakeFit);
+            } else {
+                self.handle_command(ctx, ViewerCommand::ResetZoom);
+            }
+        }
     }
-    pub fn zoom_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        // Zoom in
+
+    // Zoom in
+    pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("+").size(20.0))
-                    .min_size(egui::vec2(24.0, 24.0)),
+                egui::Button::new(egui::RichText::new("+").size(24.0))
+                    .min_size(egui::vec2(24.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
+            .on_hover_text("Zoom in")
             .clicked()
         {
             self.handle_command(ctx, ViewerCommand::ZoomIn);
         }
-
-        // Zoom out
+    }
+    // Zoom out
+    pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("−").size(20.0))
-                    .min_size(egui::vec2(24.0, 24.0)),
+                egui::Button::new(egui::RichText::new("−").size(24.0))
+                    .min_size(egui::vec2(24.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
+            .on_hover_text("Zoom out")
             .clicked()
         {
             self.handle_command(ctx, ViewerCommand::ZoomOut);
         }
+    }
 
+    pub fn zoom_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         // Fit / 1:1
         if self.b_zoom_used {
             if ui
                 .add(
                     egui::Button::new(egui::RichText::new("⊞").size(14.0))
-                        .min_size(egui::vec2(28.0, 24.0)),
+                        .min_size(egui::vec2(28.0, 24.0))
+                        .fill(egui::Color32::TRANSPARENT)
+                        .stroke(egui::Stroke::NONE),
                 )
                 .on_hover_text("Fit")
                 .clicked()
@@ -154,7 +189,9 @@ impl ViewerApp {
         } else if ui
             .add(
                 egui::Button::new(egui::RichText::new("1:1").size(14.0))
-                    .min_size(egui::vec2(28.0, 24.0)),
+                    .min_size(egui::vec2(28.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Make 1:1 Ratio")
             .clicked()
@@ -191,6 +228,7 @@ impl ViewerApp {
         if let Some(label) = aspect_ratio {
             ui.label(egui::RichText::new(label).size(14.0));
         }
+        ui.add_space(4.0);
     }
 
     /// Return the dimensions of the currently loaded image.
@@ -235,7 +273,9 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new(play_text).size(16.0))
-                    .min_size(egui::vec2(32.0, 28.0)),
+                    .min_size(egui::vec2(32.0, 28.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .clicked()
         {
@@ -254,7 +294,9 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new(&speed_text).size(12.0))
-                    .min_size(egui::vec2(40.0, 24.0)),
+                    .min_size(egui::vec2(40.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .clicked()
         {
@@ -309,7 +351,9 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("⛶").size(14.0))
-                    .min_size(egui::vec2(24.0, 24.0)),
+                    .min_size(egui::vec2(24.0, 24.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Toggle Fullscreen")
             .clicked()
@@ -321,16 +365,18 @@ impl ViewerApp {
 
     // Toggle whether the application window stays above all other windows.
     pub fn pin_window_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let (icon, tooltip, color) = if self.window_always_on_top {
-            ("📌", "Unpin Window", egui::Color32::LIGHT_BLUE)
+        let (icon, tooltip, fill) = if self.window_always_on_top {
+            ("📌", "Unpin Window", egui::Color32::RED)
         } else {
-            ("📌", "Pin Window to Top", egui::Color32::GRAY)
+            ("📌", "Pin Window to Top", egui::Color32::TRANSPARENT)
         };
 
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(icon).size(14.0).color(color))
-                    .min_size(egui::vec2(24.0, 24.0)),
+                egui::Button::new(egui::RichText::new(icon).size(14.0))
+                    .min_size(egui::vec2(24.0, 24.0))
+                    .fill(fill)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text(tooltip)
             .clicked()

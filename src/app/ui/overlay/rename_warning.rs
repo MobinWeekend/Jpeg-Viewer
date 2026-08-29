@@ -9,7 +9,7 @@ pub fn rename_warning(app: &mut ViewerApp, ctx: &egui::Context) {
     super::overlay_area(
         "rename_warning",
         egui::Align2::CENTER_TOP,
-        egui::vec2(0.0, 36.0),
+        egui::vec2(0.0, 42.0),
     )
     .show(ctx, |ui| {
         egui::Frame::new()

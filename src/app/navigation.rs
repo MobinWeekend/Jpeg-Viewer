@@ -65,6 +65,13 @@ impl ViewerApp {
         self.vt_progress = None;
         self.vt_total_tiles = 0;
 
+        //title bar update
+        self.update_window_title(ctx);
+        //update the current image path that is shown
+        self.update_current_image_path();
+        //Detect if wrong file format
+        self.detect_current_file_type();
+
         // Reset loading state
         self.set_loading_state(LoadingState::Idle);
 
@@ -76,18 +83,12 @@ impl ViewerApp {
         self.load_current_image_with_cache_keep_texture();
 
         // Invalidate all previous async results (including detection)
-        self.preload_generation = self.preload_generation.wrapping_add(1);
+        //self.preload_generation = self.preload_generation.wrapping_add(1);
         // Clear file type detection before changing image
-        self.set_file_type_detection(None);
+        //self.set_file_type_detection(None);
 
         // Update UI
-        ctx.request_repaint_after(std::time::Duration::from_millis(32));
-        //title bar update
-        self.update_window_title(ctx);
-        //update the current image path that is shown
-        self.update_current_image_path();
-        //self.get_rename_suggestion();
-        crate::app::ui::rename_warning(self, ctx);
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
         // just in case!
         self.load_frame_limiter_settings();
     }

@@ -243,7 +243,7 @@ impl ViewerApp {
         // -------------------------
 
         let angle = (time * 3.0) as f32;
-        let radius = SPINNER_SIZE * 0.35;
+        let radius = SPINNER_SIZE * 0.3;
         let segments = 8;
 
         let spinner_center = egui::pos2(
@@ -357,11 +357,15 @@ impl ViewerApp {
         }
     }
 
+    // loading...
     fn draw_loading_overlay(painter: &egui::Painter, rect: egui::Rect, message: &str) {
         let center = rect.center();
         let content_rect = Self::loading_content_rect(center);
 
-        painter.rect_filled(content_rect, 12.0, painter.ctx().style().visuals.panel_fill);
+        let panel_fill = painter.ctx().style().visuals.panel_fill;
+        let semi_transparent = panel_fill.linear_multiply(0.85);
+
+        painter.rect_filled(content_rect, 12.0, semi_transparent);
 
         Self::draw_loading_content(
             painter,
@@ -374,51 +378,9 @@ impl ViewerApp {
     }
 
     fn loading_content_rect(center: egui::Pos2) -> egui::Rect {
-        const CONTENT_WIDTH: f32 = 300.0;
-        const CONTENT_HEIGHT: f32 = 220.0;
+        const CONTENT_WIDTH: f32 = 217.0;
+        const CONTENT_HEIGHT: f32 = 163.0;
 
         egui::Rect::from_center_size(center, egui::vec2(CONTENT_WIDTH, CONTENT_HEIGHT))
-    }
-
-    // ... rest of helper functions (render_error_ui, render_welcome_ui, etc.) ...
-    fn render_error_ui(&mut self, ui: &mut egui::Ui, error: &str) {
-        ui.centered_and_justified(|ui| {
-            ui.add_space(40.0);
-            ui.label(egui::RichText::new("🖼️").size(64.0));
-            ui.add_space(16.0);
-            ui.label(
-                egui::RichText::new("Failed to Load Image")
-                    .size(28.0)
-                    .strong(),
-            );
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(error).size(16.0));
-            ui.add_space(16.0);
-
-            ui.horizontal(|ui| {
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("🔄 Retry").size(16.0))
-                            .min_size(egui::vec2(100.0, 36.0)),
-                    )
-                    .clicked()
-                {
-                    self.image_error = None;
-                    self.load_current_image_with_cache();
-                }
-
-                ui.add_space(8.0);
-
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("⏭️ Skip").size(16.0))
-                            .min_size(egui::vec2(100.0, 36.0)),
-                    )
-                    .clicked()
-                {
-                    self.navigate_images(ui.ctx(), 1);
-                }
-            });
-        });
     }
 }

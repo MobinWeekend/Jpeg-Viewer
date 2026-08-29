@@ -14,7 +14,9 @@ impl ViewerApp {
         let button = ui
             .add(
                 egui::Button::new(egui::RichText::new(icon).size(24.0))
-                    .min_size(egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE)),
+                    .min_size(egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Menu");
 
@@ -23,24 +25,43 @@ impl ViewerApp {
         }
     }
 
-    pub fn render_hamburger_menu_ui(
-        &mut self,
-        ctx: &egui::Context,
-        ui: &mut egui::Ui,
-    ) {
+    pub fn render_hamburger_menu_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if !self.hamburger_menu_open {
             return;
         }
 
         toolbar_frame(ctx).show(ui, |ui| {
             ui.vertical(|ui| {
+                //Controls
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("📋 Copy").size(14.0))
+                                .min_size(egui::vec2(28.0, 28.0))
+                                .fill(egui::Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::NONE),
+                        )
+                        .on_hover_text("Shortcut: Ctrl+C")
+                        .clicked()
+                    {
+                        self.copy_image_to_clipboard();
+                    }
+                    ui.separator();
+                    self.zoom_ui(ctx, ui);
+                    ui.separator();
+                    self.fullscreen_ui(ctx, ui);
+                    ui.add_space(4.0);
+                    self.pin_window_ui(ctx, ui);
+                });
+
+                ui.separator();
                 // Open File
                 if ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new("📂  Open File").size(14.0),
-                        )
-                        .min_size(egui::vec2(140.0, 30.0)),
+                        egui::Button::new(egui::RichText::new("📂  Open File").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
                     )
                     .on_hover_text("Load an Image or Archive")
                     .clicked()
@@ -52,10 +73,10 @@ impl ViewerApp {
                 // Open Folder
                 if ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new("📁  Open Folder").size(14.0),
-                        )
-                        .min_size(egui::vec2(140.0, 30.0)),
+                        egui::Button::new(egui::RichText::new("📁  Open Folder").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
                     )
                     .on_hover_text("Open a Folder of Images")
                     .clicked()
@@ -69,10 +90,10 @@ impl ViewerApp {
                 // Settings
                 if ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new("⚙  Settings").size(14.0),
-                        )
-                        .min_size(egui::vec2(140.0, 30.0)),
+                        egui::Button::new(egui::RichText::new("⚙  Settings").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
                     )
                     .on_hover_text("Settings")
                     .clicked()
@@ -84,10 +105,10 @@ impl ViewerApp {
                 // Help
                 if ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new("❓  Help").size(14.0),
-                        )
-                        .min_size(egui::vec2(140.0, 30.0)),
+                        egui::Button::new(egui::RichText::new("❓  Help").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
                     )
                     .on_hover_text("Keyboard shortcuts and features")
                     .clicked()
@@ -102,9 +123,7 @@ impl ViewerApp {
 
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
-                        ui.label(
-                            egui::RichText::new("Loading...").size(12.0),
-                        );
+                        ui.label(egui::RichText::new("Loading...").size(12.0));
                     });
                 }
 
@@ -113,10 +132,10 @@ impl ViewerApp {
 
                 if ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new("X  Exit").size(14.0),
-                        )
-                        .min_size(egui::vec2(140.0, 30.0)),
+                        egui::Button::new(egui::RichText::new("X  Exit").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
                     )
                     .on_hover_text("Exit")
                     .clicked()
@@ -137,9 +156,7 @@ impl ViewerApp {
                         egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE),
                     );
 
-                    if !menu_rect.contains(pointer_pos)
-                        && !hamburger_rect.contains(pointer_pos)
-                    {
+                    if !menu_rect.contains(pointer_pos) && !hamburger_rect.contains(pointer_pos) {
                         self.hamburger_menu_open = false;
                     }
                 }

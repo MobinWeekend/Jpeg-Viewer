@@ -240,8 +240,8 @@ impl ViewerApp {
             .as_ref()
             .filter(|detection| {
                 detection.mismatch
-                    && detection.index == self.current_index
-                    && detection.generation == self.preload_generation
+                //&& detection.index == self.current_index
+                //&& detection.generation == self.preload_generation
             })
             .map(|detection| {
                 let current = detection

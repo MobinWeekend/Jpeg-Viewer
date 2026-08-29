@@ -15,8 +15,8 @@ pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
 
     egui::Frame::new()
         .fill(background)
-        .inner_margin(egui::Margin::symmetric(6, 6))
-        .corner_radius(egui::CornerRadius::same(12))
+        .inner_margin(egui::Margin::symmetric(12, 8))
+        .corner_radius(egui::CornerRadius::same(24))
 }
 
 fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
@@ -25,26 +25,29 @@ fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> e
         .anchor(anchor, offset)
 }
 
-pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_y: f32) {
-    if app.image_entries.is_empty() {
-        return;
-    }
+pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset: f32) {
+    let no_image = !app.image_entries.is_empty();
 
     // === Position of the top bar
     overlay_area(
         "toolbar_top_center",
         egui::Align2::LEFT_TOP,
-        egui::vec2(48.0, offset_y),
+        egui::vec2(offset, offset),
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
-            this.zoom_text(ui);
-            this.zoom_ui(ctx, ui);
-            this.fullscreen_ui(ctx, ui);
-            this.pin_window_ui(ctx, ui);
-            separator(ui);
-            this.image_info_ui(ui);
-
+            this.render_hamburger_ui(ui);
+            if no_image {
+                separator(ui);
+                this.zoom_out_ui(ctx, ui);
+                this.zoom_text(ctx, ui);
+                this.zoom_in_ui(ctx, ui);
+                //this.zoom_ui(ctx, ui);
+                //this.fullscreen_ui(ctx, ui);
+                //this.pin_window_ui(ctx, ui);
+                separator(ui);
+                this.image_info_ui(ui);
+            }
             if this.is_gif {
                 separator(ui);
                 this.gif_controls_ui(ui);

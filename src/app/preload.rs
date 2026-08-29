@@ -230,9 +230,9 @@ impl ViewerApp {
 
         let total = desired.len();
         let completed = self.preload_completed_count();
-        let skipped = self.preload_skipped_count();
+        //let skipped = self.preload_skipped_count();
         if completed < total {
-            println!("Preload: {}/{} ({} skipped)", completed, total, skipped);
+            //println!("Preload: {}/{} ({} skipped)", completed, total, skipped);
         } else {
             return;
         }
@@ -558,9 +558,8 @@ impl ViewerApp {
             // Failed preload
             Err(err) => {
                 eprintln!("Preload: failed to load index {}: {}", idx, err);
-
-                // Failed entries are intentionally not marked as skipped.
-                // They can be retried on a later preload pass.
+                self.preload_skipped.insert(idx);
+                // Failded preloads Marked as skipped for now
             }
         }
     }

@@ -150,8 +150,9 @@ impl ViewerApp {
         let detection = match self.file_type_detection.take() {
             Some(detection)
                 if detection.mismatch
-                    && detection.index == self.current_index
-                    && detection.generation == self.preload_generation =>
+                    //&& detection.index == self.current_index
+                    //&& detection.generation == self.preload_generation
+                    =>
             {
                 detection
             }
