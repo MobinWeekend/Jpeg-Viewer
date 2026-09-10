@@ -1,6 +1,7 @@
 # JPEG Viewer
 
-<img width="977" height="763" alt="image" src="https://github.com/user-attachments/assets/2d8bca2e-5d48-49c0-938b-3aeb685c373b" />
+<img width="851" height="686" alt="image" src="https://github.com/user-attachments/assets/26e2fe70-7222-42a9-9ea7-b558ecd58899" />
+
 
 A GPU-accelerated image viewer written in Rust.
 
