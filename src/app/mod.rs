@@ -5,6 +5,7 @@ mod file_detection;
 mod file_ops;
 mod frame_limiter;
 mod hardcoded_input;
+mod image_metadata;
 mod loading;
 mod navigation;
 mod preload;

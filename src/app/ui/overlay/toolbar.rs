@@ -16,8 +16,8 @@ pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
 
     egui::Frame::new()
         .fill(background)
-        .inner_margin(egui::Margin::symmetric(12, 8))
-        .corner_radius(egui::CornerRadius::same(24))
+        .inner_margin(egui::Margin::symmetric(12, 6))
+        .corner_radius(egui::CornerRadius::same(20))
 }
 
 fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
@@ -50,8 +50,8 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset: f32)
                 sort_method_horizontal_ui(this, ctx, ui);
 
                 separator(ui);
-                this.image_info_ui(ui);
-                this.file_metadata_button(ctx, ui);
+                //this.image_info_ui(ui);
+                this.file_metadata_button(ui);
             }
             if this.is_gif {
                 separator(ui);
@@ -123,7 +123,7 @@ fn render_image_counter(app: &ViewerApp, ui: &mut egui::Ui) {
 }
 
 fn separator(ui: &mut egui::Ui) {
-    ui.add_space(MENU_OFFSET / 2.0);
+    ui.add_space(MENU_OFFSET / 4.0);
     ui.separator();
-    ui.add_space(MENU_OFFSET / 2.0);
+    ui.add_space(MENU_OFFSET / 4.0);
 }

@@ -94,6 +94,8 @@ impl ViewerApp {
         self.vt_total_tiles = 0;
         self.virtual_texture_thread = None;
         self.file_type_detection = None;
+        self.file_metadata_open = false;
+        self.file_metadata = None;
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
@@ -218,6 +220,8 @@ impl ViewerApp {
         self.preload_generation = self.preload_generation.wrapping_add(1);
         self.should_stop_caching = false;
         self.file_type_detection = None;
+        self.file_metadata_open = false;
+        self.file_metadata = None;
 
         self.detect_current_file_type();
         self.load_current_image();

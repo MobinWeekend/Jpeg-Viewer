@@ -100,6 +100,12 @@ impl ImageFormat {
 }
 
 #[derive(Clone, Debug)]
+pub struct ImageColorInfo {
+    pub description: String,
+    pub bits_per_channel: u8,
+}
+
+#[derive(Clone, Debug)]
 pub struct DecodedImage {
     pub width: u32,
     pub height: u32,
@@ -157,6 +163,11 @@ pub trait ImageDecoder: Send + Sync {
     fn supported_formats(&self) -> &'static [ImageFormat];
 
     fn decode(&self, bytes: &[u8], options: &DecodeOptions) -> Result<DecodedImage, ImageError>;
+
+    /// Return source color representation when the decoder can provide it.
+    fn color_info(&self, _bytes: &[u8]) -> Result<Option<ImageColorInfo>, ImageError> {
+        Ok(None)
+    }
 
     /// Fast dimension inspection. Default falls back to full decode.
     fn dimensions(&self, bytes: &[u8]) -> Result<(u32, u32), ImageError> {

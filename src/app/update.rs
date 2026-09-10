@@ -126,7 +126,8 @@ impl eframe::App for ViewerApp {
                                 self.b_fit_to_window = true;
                                 ctx.request_repaint();
                                 self.set_loading_state(LoadingState::Idle);
-
+                                // Update meta data
+                                self.file_metadata = Some(self.build_file_metadata());
                                 // Detect file type after successful load
                                 self.detect_current_file_type();
                             }

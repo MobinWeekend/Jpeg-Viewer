@@ -44,6 +44,17 @@ impl DecoderRegistry {
         decoder.decode(bytes, options)
     }
 
+    pub fn color_info(
+        &self,
+        bytes: &[u8],
+        format: ImageFormat,
+    ) -> Result<Option<crate::image_core::ImageColorInfo>, ImageError> {
+        let decoder = self
+            .get_decoder(format)
+            .ok_or(ImageError::NoDecoder(format))?;
+        decoder.color_info(bytes)
+    }
+
     pub fn dimensions(&self, bytes: &[u8], format: ImageFormat) -> Result<(u32, u32), ImageError> {
         let decoder = self
             .get_decoder(format)

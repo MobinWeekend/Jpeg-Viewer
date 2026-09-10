@@ -249,6 +249,7 @@ impl ViewerApp {
         }
     }
 
+    /*
     /// Get the current file size as a human-readable string.
     pub fn get_file_size_string(&self) -> String {
         // Regular filesystem file.
@@ -299,4 +300,5 @@ impl ViewerApp {
             format!("{bytes} B")
         }
     }
+     */
 }

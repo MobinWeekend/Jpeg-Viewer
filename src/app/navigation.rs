@@ -87,8 +87,12 @@ impl ViewerApp {
         // Clear file type detection before changing image
         //self.set_file_type_detection(None);
 
+        // Update meta data
+        self.file_metadata = Some(self.build_file_metadata());
+
         // Update UI
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
+
         // just in case!
         self.load_frame_limiter_settings();
     }

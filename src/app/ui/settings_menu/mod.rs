@@ -17,6 +17,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
         .title_bar(true)
         .collapsible(false)
         .resizable(true)
+        .default_pos([36.0, 64.0])
         .default_size([400.0, 420.0])
         .min_size([300.0, 400.0])
         .max_size([600.0, 900.0])

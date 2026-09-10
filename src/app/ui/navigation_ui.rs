@@ -1,4 +1,4 @@
-use crate::app::aspect_ratio::AspectRatio;
+//use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
@@ -200,52 +200,53 @@ impl ViewerApp {
         }
     }
 
-    // IMAGE INFORMATION
-    /// Display resolution, file size and aspect ratio.
-    pub fn image_info_ui(&self, ui: &mut egui::Ui) {
-        let (width, height) = self.image_dimensions();
+    /*
+       // IMAGE INFORMATION
+       /// Display resolution, file size and aspect ratio.
+       pub fn image_info_ui(&self, ui: &mut egui::Ui) {
+           let (width, height) = self.image_dimensions();
 
-        if width == 0 || height == 0 {
-            return;
-        }
+           if width == 0 || height == 0 {
+               return;
+           }
 
-        let file_size = self.get_file_size_string();
-        let aspect_ratio = AspectRatio::get_label(width, height);
+           let file_size = self.get_file_size_string();
+           let aspect_ratio = AspectRatio::get_label(width, height);
 
-        // Resolution
-        ui.label(egui::RichText::new(format!("{}×{}", width, height)).size(12.0));
+           // Resolution
+           ui.label(egui::RichText::new(format!("{}×{}", width, height)).size(12.0));
 
-        ui.add_space(4.0);
+           ui.add_space(4.0);
 
-        // File size
-        if !file_size.is_empty() {
-            ui.label(egui::RichText::new(file_size).size(12.0));
+           // File size
+           if !file_size.is_empty() {
+               ui.label(egui::RichText::new(file_size).size(12.0));
 
-            ui.add_space(4.0);
-        }
+               ui.add_space(4.0);
+           }
 
-        // Aspect ratio
-        if let Some(label) = aspect_ratio {
-            ui.label(egui::RichText::new(label).size(14.0));
-        }
-        ui.add_space(4.0);
-    }
+           // Aspect ratio
+           if let Some(label) = aspect_ratio {
+               ui.label(egui::RichText::new(label).size(14.0));
+           }
+           ui.add_space(4.0);
+       }
 
-    /// Return the dimensions of the currently loaded image.
-    pub fn image_dimensions(&self) -> (u32, u32) {
-        if let Some(vt) = &self.virtual_texture {
-            return vt.dimensions();
-        }
+       /// Return the dimensions of the currently loaded image.
+       pub fn image_dimensions(&self) -> (u32, u32) {
+           if let Some(vt) = &self.virtual_texture {
+               return vt.dimensions();
+           }
 
-        if let Some(texture) = &self.texture {
-            let size = texture.size_vec2();
+           if let Some(texture) = &self.texture {
+               let size = texture.size_vec2();
 
-            return (size.x as u32, size.y as u32);
-        }
+               return (size.x as u32, size.y as u32);
+           }
 
-        (0, 0)
-    }
-
+           (0, 0)
+       }
+    */
     // GIF CONTROLS
     /// Display GIF playback controls if the current image is an animated GIF.
     pub fn gif_controls_ui(&mut self, ui: &mut egui::Ui) {

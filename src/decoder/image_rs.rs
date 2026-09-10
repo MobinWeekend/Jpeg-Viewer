@@ -1,7 +1,9 @@
 // src/decoder/image_rs.rs
 // This file is the sole place where `image` is used.
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::image_core::{
+    DecodeOptions, DecodedImage, ImageColorInfo, ImageDecoder, ImageError, ImageFormat,
+};
 use image::{DynamicImage, GenericImageView, ImageDecoder as _, ImageReader};
 
 pub struct ImageRsDecoder;
@@ -60,6 +62,36 @@ impl ImageDecoder for ImageRsDecoder {
             height: h,
             data,
         })
+    }
+
+    fn color_info(&self, bytes: &[u8]) -> Result<Option<ImageColorInfo>, ImageError> {
+        use std::io::Cursor;
+
+        let reader = ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|e| ImageError::Decode(format!("format detection: {}", e)))?;
+        let decoder = reader
+            .into_decoder()
+            .map_err(|e| ImageError::Decode(format!("decoder creation: {}", e)))?;
+
+        let info = match decoder.color_type() {
+            image::ColorType::L8 => ("Grayscale", 8),
+            image::ColorType::La8 => ("Grayscale + Alpha", 8),
+            image::ColorType::Rgb8 => ("RGB", 8),
+            image::ColorType::Rgba8 => ("RGBA", 8),
+            image::ColorType::L16 => ("Grayscale", 16),
+            image::ColorType::La16 => ("Grayscale + Alpha", 16),
+            image::ColorType::Rgb16 => ("RGB", 16),
+            image::ColorType::Rgba16 => ("RGBA", 16),
+            image::ColorType::Rgb32F => ("RGB float", 32),
+            image::ColorType::Rgba32F => ("RGBA float", 32),
+            _ => ("Unknown", 0),
+        };
+
+        Ok(Some(ImageColorInfo {
+            description: info.0.to_string(),
+            bits_per_channel: info.1,
+        }))
     }
 
     // Fast dimension path – uses `into_dimensions()` from `image::ImageReader`

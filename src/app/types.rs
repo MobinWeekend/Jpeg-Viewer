@@ -1,3 +1,4 @@
+use super::image_metadata::FileMetadata;
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
 use crate::gif::animation::GifAnimation;
 use crate::image_core::DecodedImage;
@@ -189,6 +190,7 @@ pub struct ViewerApp {
 
     //meta data
     pub file_metadata_open: bool,
+    pub file_metadata: Option<FileMetadata>,
 }
 
 impl Default for ViewerApp {
@@ -336,6 +338,7 @@ impl Default for ViewerApp {
 
             //metadata
             file_metadata_open: false,
+            file_metadata: None,
         }
     }
 }

@@ -53,3 +53,31 @@ pub fn render_drag_area(ctx: &egui::Context, ui: &mut egui::Ui) {
         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
 }
+
+pub fn format_file_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+
+    let bytes_f = bytes as f64;
+
+    if bytes_f >= GB {
+        format!("{:.2} GB", bytes_f / GB)
+    } else if bytes_f >= MB {
+        format!("{:.2} MB", bytes_f / MB)
+    } else if bytes_f >= KB {
+        format!("{:.1} KB", bytes_f / KB)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+pub fn icon_button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
+    ui.add(
+        egui::Button::new(egui::RichText::new(icon).size(14.0))
+            .min_size(egui::vec2(24.0, 24.0))
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(egui::Stroke::NONE),
+    )
+    .on_hover_text(tooltip)
+}
