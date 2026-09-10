@@ -11,6 +11,7 @@ mod image_entry;
 mod loader;
 mod settings;
 mod shortcuts;
+mod sort;
 
 use app::ViewerApp;
 use eframe::egui;

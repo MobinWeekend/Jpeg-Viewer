@@ -1,4 +1,5 @@
 use crate::app::types::ViewerApp;
+use crate::app::ui::settings_menu::general::sort_method_horizontal_ui;
 use eframe::egui;
 
 const TOOLBAR_BG_ALPHA: u8 = 217;
@@ -46,7 +47,11 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset: f32)
                 //this.fullscreen_ui(ctx, ui);
                 //this.pin_window_ui(ctx, ui);
                 separator(ui);
+                sort_method_horizontal_ui(this, ctx, ui);
+
+                separator(ui);
                 this.image_info_ui(ui);
+                this.file_metadata_button(ctx, ui);
             }
             if this.is_gif {
                 separator(ui);

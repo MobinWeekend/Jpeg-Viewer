@@ -3,6 +3,7 @@ mod error_ui;
 mod hamburger_ui;
 mod help_window;
 mod helpers;
+mod metainfo;
 mod navigation_ui;
 mod overlay;
 mod settings_menu;

@@ -3,8 +3,11 @@
 //! - Texture filter
 //! - Theme
 //! - Startup fullscreen
+//! - Sorting method
 
 use crate::app::types::ViewerApp;
+use crate::shortcuts::ViewerCommand;
+use crate::sort::SortMethod;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -170,4 +173,30 @@ fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
     });
     ui.add_space(8.0);
     ui.label("Note: When started in fullscreen, Escape will close the app.");
+}
+
+/// Render sort method in a horizontal layout (for compact settings panels)
+pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
+    let old_method = app.sort_method;
+
+    ui.horizontal(|ui| {
+        ui.label("Sort:");
+
+        egui::ComboBox::from_id_salt("sort_method_combobox")
+            .selected_text(format!("{:?}", app.sort_method))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut app.sort_method, SortMethod::Natural, "Natural");
+                ui.selectable_value(&mut app.sort_method, SortMethod::DateNewest, "Newest");
+                ui.selectable_value(&mut app.sort_method, SortMethod::DateOldest, "Oldest");
+                ui.selectable_value(&mut app.sort_method, SortMethod::Shuffle, "Shuffle");
+            });
+    });
+
+    if old_method != app.sort_method {
+        app.handle_command(ctx, ViewerCommand::RebuildIndex);
+
+        if let Some(path) = app.current_image_path.clone() {
+            app.open_path(path);
+        }
+    }
 }

@@ -23,6 +23,7 @@ pub enum ViewerCommand {
     Help,
     CopyPath,
     CopyImage,
+    RebuildIndex,
     // Slideshow commands
     ToggleSlideshow,
     SlideshowSpeedUp,
@@ -161,10 +162,7 @@ impl Default for InputBindings {
             ViewerCommand::Settings,
             vec![KeyBinding::plain(egui::Key::Tab)],
         );
-        keyboard.insert(
-            ViewerCommand::Help,
-            vec![KeyBinding::plain(egui::Key::F1)],
-        );
+        keyboard.insert(ViewerCommand::Help, vec![KeyBinding::plain(egui::Key::F1)]);
 
         keyboard.insert(
             ViewerCommand::NextImage,
@@ -328,9 +326,7 @@ pub fn handle_keyboard(ctx: &egui::Context, bindings: &InputBindings) -> Vec<Vie
     commands
 }
 
-const MOUSE_COMMANDS_ALLOWED_OVER_UI: &[ViewerCommand] = &[
-    ViewerCommand::ToggleFullscreen,
-];
+const MOUSE_COMMANDS_ALLOWED_OVER_UI: &[ViewerCommand] = &[ViewerCommand::ToggleFullscreen];
 
 pub fn handle_mouse(
     ctx: &egui::Context,

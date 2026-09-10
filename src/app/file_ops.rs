@@ -31,7 +31,7 @@ impl ViewerApp {
         self.should_stop_caching = false; // ensure caching is re-enabled
 
         if path.is_dir() {
-            self.load_directory(&path);
+            self.load_directory(&path, self.sort_method);
             return;
         }
 
@@ -46,7 +46,7 @@ impl ViewerApp {
                 self.set_image_entries(scan_rar(&path), 0);
             }
             Some(_) if is_supported_image(&path) => {
-                self.load_image(path);
+                self.load_image(path, self.sort_method);
             }
             _ => {
                 println!("Unsupported file: {:?}", path);
@@ -286,6 +286,34 @@ impl ViewerApp {
             Err(e) => {
                 eprintln!("Failed to copy image file to clipboard: {}", e);
             }
+        }
+    }
+
+    /// Rebuild the image index from the current directory
+    pub fn rebuild_image_index(&mut self) {
+        use std::fs;
+        if let Some(directory) = &self.current_directory {
+            // Read directory and get image files
+            let mut files: Vec<PathBuf> = fs::read_dir(directory)
+                .ok()
+                .into_iter()
+                .flat_map(|entries| {
+                    entries
+                        .filter_map(|entry| {
+                            let entry = entry.ok()?;
+                            let path = entry.path();
+                            if path.is_file() && crate::helpers::is_supported_image(&path) {
+                                Some(path)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+
+            // Sort images using current sort method
+            crate::sort::sort_images(&mut files, self.sort_method);
         }
     }
 }

@@ -5,6 +5,7 @@ use crate::image_core::ImageFormat;
 use crate::image_entry::ImageEntry;
 use crate::settings::SettingsManager;
 use crate::shortcuts::InputBindings;
+use crate::sort::SortMethod;
 use eframe::egui;
 use lru::LruCache;
 use std::collections::HashSet;
@@ -182,6 +183,12 @@ pub struct ViewerApp {
     // ====== LOADING ======
     pub loading_state: LoadingState,
     pub indexing_receiver: Option<Receiver<(Vec<PathBuf>, Option<PathBuf>)>>,
+
+    // ====== Sort method ======
+    pub sort_method: SortMethod,
+
+    //meta data
+    pub file_metadata_open: bool,
 }
 
 impl Default for ViewerApp {
@@ -323,6 +330,12 @@ impl Default for ViewerApp {
             // ====== LOADING ======
             loading_state: LoadingState::Idle,
             indexing_receiver: None,
+
+            // ====== Sort method ======
+            sort_method: SortMethod::Natural,
+
+            //metadata
+            file_metadata_open: false,
         }
     }
 }

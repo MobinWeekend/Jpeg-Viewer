@@ -132,6 +132,9 @@ impl ViewerApp {
             ViewerCommand::CopyImage => {
                 self.copy_image_to_clipboard();
             }
+            ViewerCommand::RebuildIndex => {
+                self.rebuild_image_index();
+            }
         }
     }
 }

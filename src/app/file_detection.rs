@@ -1,5 +1,4 @@
 // src/app/file_detection.rs
-
 use super::types::{FileTypeDetection, LoadingState, ViewerApp};
 use crate::decoder::format_detection::detect_format;
 use crate::image_entry::ImageEntry;

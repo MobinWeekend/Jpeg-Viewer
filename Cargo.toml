@@ -41,6 +41,7 @@ open = "5.4.1"
 infer = "0.22.0"
 arboard = "3.4"
 thiserror = "2"
+chrono = "0.4.45"
 
 [target.'cfg(not(windows))'.dependencies]
 natord = "1.0"

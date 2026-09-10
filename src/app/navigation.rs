@@ -99,7 +99,7 @@ impl ViewerApp {
         }
 
         let len = self.image_entries.len();
-
+        /*
         let new_index = if self.slideshow_random {
             use rand::Rng;
 
@@ -119,7 +119,8 @@ impl ViewerApp {
         } else {
             (self.current_index + 1) % len
         };
-
+         */
+        let new_index = (self.current_index + 1) % len;
         self.navigate_to_index(ctx, new_index);
     }
 }

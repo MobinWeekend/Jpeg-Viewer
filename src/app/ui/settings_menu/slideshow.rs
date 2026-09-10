@@ -57,7 +57,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
         });
         ui.add_space(4.0);
-
+        /*
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             let mut random_enabled = app.slideshow_random;
@@ -69,6 +69,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
         });
         ui.add_space(8.0);
+         */
         ui.separator();
         ui.add_space(8.0);
 

@@ -2,6 +2,7 @@ use crate::decoder::decode_bytes;
 use crate::helpers::is_supported_image;
 use crate::image_core::{DecodedImage, ImageError};
 use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
+use crate::sort::{SortMethod, sort_images};
 use sevenz_rust2::{ArchiveReader, Password};
 use std::fs;
 use std::fs::File;
@@ -63,8 +64,8 @@ pub fn load_rar_image(image: RarArchiveImage) -> Result<DecodedImage, ImageError
 
 // ========== Directory Loading ==========
 
-/// Load all supported images from a directory, sorted naturally
-pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
+/// Load all supported images from a directory with optional sorting
+pub fn load_directory_images(path: &Path, sort_method: SortMethod) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = fs::read_dir(path)
         .ok()
         .into_iter()
@@ -83,33 +84,6 @@ pub fn load_directory_images(path: &Path) -> Vec<PathBuf> {
         })
         .collect();
 
-    #[cfg(target_os = "windows")]
-    fn compare_filenames(a: &Path, b: &Path) -> std::cmp::Ordering {
-        use std::os::windows::ffi::OsStrExt;
-        use windows::Win32::UI::Shell::StrCmpLogicalW;
-        use windows::core::PCWSTR;
-
-        let a_name = a.file_name().unwrap_or_default();
-        let b_name = b.file_name().unwrap_or_default();
-
-        let a_wide: Vec<u16> = a_name.encode_wide().chain(std::iter::once(0)).collect();
-
-        let b_wide: Vec<u16> = b_name.encode_wide().chain(std::iter::once(0)).collect();
-
-        let result = unsafe { StrCmpLogicalW(PCWSTR(a_wide.as_ptr()), PCWSTR(b_wide.as_ptr())) };
-
-        result.cmp(&0)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    fn compare_filenames(a: &Path, b: &Path) -> std::cmp::Ordering {
-        let a_name = a.file_name().unwrap_or_default().to_string_lossy();
-        let b_name = b.file_name().unwrap_or_default().to_string_lossy();
-
-        natord::compare(&a_name.to_lowercase(), &b_name.to_lowercase())
-    }
-
-    //Apply the sorting
-    files.sort_by(|a, b| compare_filenames(a.as_path(), b.as_path()));
+    sort_images(&mut files, sort_method);
     files
 }

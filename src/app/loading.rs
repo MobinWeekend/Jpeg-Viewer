@@ -5,6 +5,7 @@ use crate::decoder::format_detection::detect_format;
 use crate::gif::detection::is_gif_bytes;
 use crate::image_entry::ImageEntry;
 use crate::loader::load_directory_images;
+use crate::sort::SortMethod;
 use rayon::spawn;
 use std::io::Read;
 use std::path::PathBuf;
@@ -14,18 +15,23 @@ impl ViewerApp {
     // ====== FILE / DIRECTORY LOADING ======
 
     /// Open a specific image.
-    pub fn load_image(&mut self, path: PathBuf) {
+    pub fn load_image(&mut self, path: PathBuf, sort_method: SortMethod) {
         let Some(parent) = path.parent() else { return };
-        self.start_directory_indexing(parent.to_path_buf(), Some(path));
+        self.start_directory_indexing(parent.to_path_buf(), Some(path), sort_method);
     }
 
     /// Open a directory.
-    pub fn load_directory(&mut self, path: &PathBuf) {
-        self.start_directory_indexing(path.clone(), None);
+    pub fn load_directory(&mut self, path: &PathBuf, sort_method: SortMethod) {
+        self.start_directory_indexing(path.clone(), None, sort_method);
     }
 
     /// Start asynchronous directory indexing.
-    fn start_directory_indexing(&mut self, directory: PathBuf, selected_path: Option<PathBuf>) {
+    fn start_directory_indexing(
+        &mut self,
+        directory: PathBuf,
+        selected_path: Option<PathBuf>,
+        sort_method: SortMethod,
+    ) {
         self.indexing_receiver = None;
         self.current_directory = Some(directory.clone());
         self.clear_current_image_state();
@@ -35,7 +41,7 @@ impl ViewerApp {
         self.indexing_receiver = Some(rx);
 
         spawn(move || {
-            let paths = load_directory_images(&directory);
+            let paths = load_directory_images(&directory, sort_method);
             let _ = tx.send((paths, selected_path)); // sends Vec<PathBuf>
         });
     }
