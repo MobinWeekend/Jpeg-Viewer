@@ -1,13 +1,13 @@
 # JPEG Viewer
+Open it. View it. Move on.
 
 <img width="851" height="686" alt="image" src="https://github.com/user-attachments/assets/26e2fe70-7222-42a9-9ea7-b558ecd58899" />
 
+A GPU-accelerated image viewer written in Rust focused on responsiveness.
 
-A GPU-accelerated image viewer written in Rust.
-
-JPEG Viewer is a small passion project built around a simple idea: viewing images should feel fast, effortless, and enjoyable. It focuses on speed, simplicity, and a lightweight experience without unnecessary complexity.
-
-Created primarily for personal use, this project aims to provide a responsive image viewer that stays out of the way and lets you focus on what matters — your images.
+the project started with this quote in mind:
+"Do I look like I know what a JPEG is?!"
+The tool should just stay a tool and the user should use it to enjoy the content.
 
 More formats, improvements, and features are coming as the project continues to grow.
 
