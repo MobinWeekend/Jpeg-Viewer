@@ -384,15 +384,17 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== UI RENDERING ==========
-        crate::app::ui::render_overlay_ui(self, ctx);
+        // Docked panels must be registered before the central panel so the image
+        // canvas is laid out in the remaining space rather than underneath them.
+        crate::app::ui::render_left_sidebar(self, ctx);
+        if self.show_settings_menu {
+            crate::app::ui::render_settings_menu(self, ctx);
+        }
         self.render_central_panel(ctx);
+        crate::app::ui::render_overlay_ui(self, ctx);
 
         if self.texture.is_none() && !self.is_loading() && self.image_entries.is_empty() {
             self.render_shortcut_help(ctx);
-        }
-
-        if self.show_settings_menu {
-            crate::app::ui::render_settings_menu(self, ctx);
         }
 
         // ========== FRAME LIMITER ==========

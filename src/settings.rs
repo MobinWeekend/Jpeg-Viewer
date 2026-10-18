@@ -3,7 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 1;
+const SETTINGS_SCHEMA_VERSION: u32 = 2;
 
 /// Application settings stored in INI format
 #[derive(Debug, Clone)]
@@ -35,6 +35,11 @@ pub struct AppSettings {
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
     pub show_titlebar: bool,
+    // Sidebar and compact-view preferences
+    pub show_file_sidebar: bool,
+    pub file_sidebar_width: f32,
+    pub settings_sidebar_width: f32,
+    pub compact_mode: bool,
 }
 
 impl Default for AppSettings {
@@ -63,6 +68,10 @@ impl Default for AppSettings {
             virtual_texture_threshold: 8192,
             tile_size: 1024,
             show_titlebar: true,
+            show_file_sidebar: true,
+            file_sidebar_width: 250.0,
+            settings_sidebar_width: 360.0,
+            compact_mode: false,
         }
     }
 }
@@ -275,6 +284,26 @@ impl SettingsManager {
                     if let Some(value) = section.get("show_titlebar") {
                         settings.show_titlebar = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("show_file_sidebar") {
+                        settings.show_file_sidebar = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("file_sidebar_width") {
+                        if let Ok(width) = value.parse::<f32>() {
+                            if width.is_finite() && (180.0..=520.0).contains(&width) {
+                                settings.file_sidebar_width = width;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("settings_sidebar_width") {
+                        if let Ok(width) = value.parse::<f32>() {
+                            if width.is_finite() && (260.0..=640.0).contains(&width) {
+                                settings.settings_sidebar_width = width;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("compact_mode") {
+                        settings.compact_mode = Self::parse_bool(value);
+                    }
                     // theme
                     if let Some(value) = section.get("theme_preference") {
                         if value == "system" || value == "light" || value == "dark" {
@@ -423,6 +452,10 @@ impl SettingsManager {
             },
         );
         section.set("theme_preference", &settings.theme_preference);
+        section.set("show_file_sidebar", if settings.show_file_sidebar { "true" } else { "false" });
+        section.set("file_sidebar_width", settings.file_sidebar_width.to_string());
+        section.set("settings_sidebar_width", settings.settings_sidebar_width.to_string());
+        section.set("compact_mode", if settings.compact_mode { "true" } else { "false" });
 
         Self::write_ini_safely(path, &conf)
     }
@@ -573,7 +606,7 @@ mod tests {
 
         SettingsManager::save_to_file(&path, &loaded).unwrap();
         let saved = fs::read_to_string(&path).unwrap();
-        assert!(saved.contains("schema_version=1"));
+        assert!(saved.contains("schema_version=2"));
         let _ = fs::remove_file(path);
     }
 

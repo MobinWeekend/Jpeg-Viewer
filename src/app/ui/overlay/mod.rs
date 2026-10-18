@@ -15,6 +15,7 @@ use eframe::egui;
 
 /// Render the complete overlay UI
 pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
+    const MENU_OFFSET: f32 = 8.0;
     if !app.overlay_visible {
         return;
     }
@@ -32,13 +33,25 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // Hamburger button
     // render_hamburger_button(app, ctx, menu_offset_y);
 
-    // Hamburger menu
-    render_hamburger_menu(app, ctx);
+    // Floating controls are offset by the docked sidebars so they never sit
+    // underneath a panel.
+    let left_offset = if app.settings_manager.get().show_file_sidebar {
+        app.settings_manager.get().file_sidebar_width
+    } else {
+        0.0
+    };
+    let right_offset = if app.show_settings_menu {
+        app.settings_manager.get().settings_sidebar_width
+    } else {
+        0.0
+    };
+
+    render_hamburger_menu(app, ctx, left_offset);
 
     // Main toolbars
-    toolbar::render_top_toolbar(app, ctx, menu_offset_y);
-    toolbar::render_bottom_toolbar(app, ctx);
-    toolbar::render_bottom_right_toolbar(app, ctx);
+    toolbar::render_top_toolbar(app, ctx, left_offset + MENU_OFFSET, menu_offset_y);
+    toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET);
+    toolbar::render_bottom_right_toolbar(app, ctx, right_offset + MENU_OFFSET);
 
     // Rename warning
     rename_warning::rename_warning(app, ctx);
@@ -55,14 +68,14 @@ pub fn render_hamburger_button(app: &mut ViewerApp, ctx: &egui::Context) {
 }
  */
 
-fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context) {
+fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, left_offset: f32) {
     const MENU_OFFSET: f32 = 8.0;
     const HAMBURGER_SIZE: f32 = 58.0;
 
     overlay_area(
         "hamburger_menu",
         egui::Align2::LEFT_TOP,
-        egui::vec2(MENU_OFFSET * 2.0, HAMBURGER_SIZE),
+        egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE),
     )
     .show(ctx, |ui| app.render_hamburger_menu_ui(ctx, ui));
 }

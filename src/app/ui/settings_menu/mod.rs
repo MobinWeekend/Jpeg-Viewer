@@ -4,41 +4,51 @@ mod advanced;
 mod copy_buttons;
 mod file_info;
 pub mod general;
-mod helpers;
+pub mod helpers;
 mod slideshow;
 
 use crate::app::types::ViewerApp;
 use eframe::egui;
 
-/// Render the settings window.
+/// Render settings in a docked, resizable sidebar on the right.
 pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
-    let mut open = app.show_settings_menu;
-    egui::Window::new("Settings")
-        .title_bar(true)
-        .collapsible(false)
+    if !app.show_settings_menu {
+        return;
+    }
+
+    let default_width = app.settings_manager.get().settings_sidebar_width.clamp(260.0, 640.0);
+    let response = egui::SidePanel::right("settings_sidebar")
         .resizable(true)
-        .default_pos([36.0, 64.0])
-        .default_size([400.0, 420.0])
-        .min_size([300.0, 400.0])
-        .max_size([600.0, 900.0])
-        //.anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0.0, 45.0))
-        .open(&mut open)
+        .default_width(default_width)
+        .width_range(260.0..=640.0)
         .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.heading("Settings");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("×").on_hover_text("Close settings").clicked() {
+                        app.show_settings_menu = false;
+                    }
+                });
+            });
+            ui.separator();
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     ui.add_space(4.0);
-
                     copy_buttons::render(app, ui);
                     file_info::render(app, ui);
                     general::render(app, ui, ctx);
                     slideshow::render(app, ui, ctx);
                     advanced::render(app, ui, ctx);
-
                     ui.add_space(8.0);
                 });
         });
-    app.show_settings_menu = open;
+
+    let width = response.response.rect.width().clamp(260.0, 640.0);
+    let previous = app.settings_manager.get().settings_sidebar_width;
+    if !ctx.input(|input| input.pointer.any_down()) && (width - previous).abs() > 2.0 {
+        let _ = app.settings_manager.update(|settings| settings.settings_sidebar_width = width);
+    }
 }
 
 /// Toggle settings menu visibility.

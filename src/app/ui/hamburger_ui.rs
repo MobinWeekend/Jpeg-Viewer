@@ -87,6 +87,21 @@ impl ViewerApp {
 
                 ui.separator();
 
+                // File sidebar
+                let sidebar_visible = self.settings_manager.get().show_file_sidebar;
+                if ui
+                    .add(
+                        egui::Button::new(if sidebar_visible { "▤  Hide Sidebar" } else { "▤  Show Sidebar" })
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
+                    )
+                    .clicked()
+                {
+                    let _ = self.settings_manager.update(|settings| settings.show_file_sidebar = !sidebar_visible);
+                    self.hamburger_menu_open = false;
+                }
+
                 // Settings
                 if ui
                     .add(

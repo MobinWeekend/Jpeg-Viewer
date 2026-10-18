@@ -262,12 +262,30 @@ impl ViewerApp {
 }
 
 fn metadata_row(ui: &mut egui::Ui, label: &str, value: &str) {
-    ui.horizontal_top(|ui| {
+    ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).size(11.0).weak());
-        ui.add_space(8.0);
-        ui.label(egui::RichText::new(value).size(12.0));
+        ui.add_space(6.0);
+        let available = ui.available_width().max(24.0);
+        let max_chars = (available / 7.0).floor() as usize;
+        let display = middle_ellipsis(value, max_chars);
+        ui.add(egui::Label::new(egui::RichText::new(display).size(12.0)))
+            .on_hover_text(value);
     });
     ui.add_space(3.0);
+}
+
+fn middle_ellipsis(value: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= max_chars {
+        return value.to_string();
+    }
+    if max_chars < 5 {
+        return chars.into_iter().take(max_chars).collect();
+    }
+    let keep = max_chars - 3;
+    let left = (keep * 3 + 2) / 5;
+    let right = keep - left;
+    format!("{}...{}", chars[..left].iter().collect::<String>(), chars[chars.len() - right..].iter().collect::<String>())
 }
 
 fn format_number(value: u64) -> String {

@@ -6,6 +6,10 @@ const TOOLBAR_BG_ALPHA: u8 = 217;
 const MENU_OFFSET: f32 = 8.0;
 
 pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
+    toolbar_frame_mode(ctx, false)
+}
+
+fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
     let panel_color = ctx.style().visuals.panel_fill;
     let background = egui::Color32::from_rgba_unmultiplied(
         panel_color.r(),
@@ -16,8 +20,12 @@ pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
 
     egui::Frame::new()
         .fill(background)
-        .inner_margin(egui::Margin::symmetric(12, 6))
-        .corner_radius(egui::CornerRadius::same(20))
+        .inner_margin(if compact {
+            egui::Margin::symmetric(3, 1)
+        } else {
+            egui::Margin::symmetric(12, 6)
+        })
+        .corner_radius(egui::CornerRadius::same(if compact { 5 } else { 20 }))
 }
 
 fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
@@ -26,14 +34,14 @@ fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> e
         .anchor(anchor, offset)
 }
 
-pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset: f32) {
+pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f32, offset_y: f32) {
     let no_image = !app.image_entries.is_empty();
-
+    let compact = app.settings_manager.get().compact_mode;
     // === Position of the top bar
     overlay_area(
         "toolbar_top_center",
         egui::Align2::LEFT_TOP,
-        egui::vec2(offset, offset),
+        egui::vec2(offset_x, offset_y),
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
@@ -46,12 +54,14 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset: f32)
                 //this.zoom_ui(ctx, ui);
                 //this.fullscreen_ui(ctx, ui);
                 //this.pin_window_ui(ctx, ui);
-                separator(ui);
-                sort_method_horizontal_ui(this, ctx, ui);
+                if !compact {
+                    separator(ui);
+                    sort_method_horizontal_ui(this, ctx, ui);
 
-                separator(ui);
-                //this.image_info_ui(ui);
-                this.file_metadata_button(ui);
+                    separator(ui);
+                    //this.image_info_ui(ui);
+                    this.file_metadata_button(ui);
+                }
             }
             if this.is_gif {
                 separator(ui);
@@ -61,7 +71,7 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset: f32)
     });
 }
 
-pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offset: f32) {
     if app.image_entries.is_empty() {
         return;
     }
@@ -70,7 +80,7 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
     overlay_area(
         "toolbar_bot_center",
         egui::Align2::LEFT_BOTTOM,
-        egui::vec2(MENU_OFFSET, -MENU_OFFSET),
+        egui::vec2(left_offset, -MENU_OFFSET),
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
@@ -81,7 +91,7 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
     });
 }
 
-pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context, right_offset: f32) {
     if app.image_entries.is_empty() {
         return;
     }
@@ -89,7 +99,7 @@ pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context) {
     overlay_area(
         "toolbar_bot_right",
         egui::Align2::RIGHT_BOTTOM,
-        egui::vec2(-MENU_OFFSET, -MENU_OFFSET),
+        egui::vec2(-right_offset, -MENU_OFFSET),
     )
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
@@ -104,7 +114,8 @@ fn render_toolbar_ui(
     ui: &mut egui::Ui,
     content: impl FnOnce(&mut ViewerApp, &mut egui::Ui),
 ) {
-    toolbar_frame(ctx).show(ui, |ui| {
+    let compact = app.settings_manager.get().compact_mode;
+    toolbar_frame_mode(ctx, compact).show(ui, |ui| {
         ui.horizontal(|ui| {
             content(app, ui);
         });
