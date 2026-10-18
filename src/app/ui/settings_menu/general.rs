@@ -17,6 +17,13 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 }
 
 pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    let mut compact = app.settings_manager.get().compact_mode;
+    if ui.checkbox(&mut compact, "Compact controls").changed() {
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.compact_mode = compact);
+    }
+
     ui.add_space(4.0);
 
     render_invert_scroll_zoom(app, ui);

@@ -135,6 +135,13 @@ impl ViewerApp {
             ViewerCommand::RebuildIndex => {
                 self.rebuild_image_index();
             }
+            ViewerCommand::ShowFileSidebar => {
+                let sidebar_visible = self.settings_manager.get().show_file_sidebar;
+                let _ = self
+                    .settings_manager
+                    .update(|settings| settings.show_file_sidebar = !sidebar_visible);
+                self.hamburger_menu_open = false;
+            }
         }
     }
 }

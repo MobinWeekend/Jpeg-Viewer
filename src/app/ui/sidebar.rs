@@ -40,12 +40,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     app.file_metadata_open = !app.file_metadata_open;
                 }
             });
-            let mut compact = app.settings_manager.get().compact_mode;
-            if ui.checkbox(&mut compact, "Compact controls").changed() {
-                let _ = app
-                    .settings_manager
-                    .update(|settings| settings.compact_mode = compact);
-            }
 
             egui::ScrollArea::vertical()
                 .id_salt("file_sidebar_list")
