@@ -9,6 +9,7 @@ mod image_rs;
 mod jpeg_xl;
 mod registry;
 mod svg;
+mod tga;
 mod zenavif;
 
 pub use heic::HeicDecoder;
@@ -16,6 +17,7 @@ pub use image_rs::ImageRsDecoder;
 pub use jpeg_xl::JpegXlDecoder;
 pub use registry::DecoderRegistry;
 pub use svg::SvgDecoder;
+pub use tga::TgaDecoder;
 pub use zenavif::ZenAvifDecoder;
 
 /// Build the default decoder registry.
@@ -29,6 +31,8 @@ pub fn default_registry() -> DecoderRegistry {
     // Standard formats:
     // JPEG, PNG, GIF, WebP, BMP, TIFF, etc.
     registry.register(Box::new(ImageRsDecoder::new()));
+    // Override the generic image decoder with explicit TGA format selection.
+    registry.register(Box::new(TgaDecoder::new()));
 
     // AVIF
     registry.register(Box::new(ZenAvifDecoder::new()));

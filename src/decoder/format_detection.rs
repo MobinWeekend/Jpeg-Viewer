@@ -69,11 +69,10 @@ fn detect_fallback_format(bytes: &[u8]) -> Option<ImageFormat> {
         return Some(ImageFormat::Qoi);
     }
 
-    // TGA
-    //
-    // TGA does not have a reliable magic signature, so this is only
-    // a heuristic for common uncompressed/RLE RGB images.
-    if bytes.len() >= 3 && bytes[1] == 0 && matches!(bytes[2], 2 | 10) && bytes[0] < 128 {
+    // TGA has no dependable magic signature. Validate the fixed header rather
+    // than checking only the image-type byte: valid files may be grayscale or
+    // color-mapped, and may use either uncompressed or RLE encoding.
+    if looks_like_tga(bytes) {
         return Some(ImageFormat::Tga);
     }
 
@@ -105,6 +104,92 @@ fn detect_fallback_format(bytes: &[u8]) -> Option<ImageFormat> {
     }
 
     None
+}
+
+/// Conservative structural validation for the 18-byte TGA header.
+/// This is a heuristic, not proof that the complete file is valid.
+fn looks_like_tga(bytes: &[u8]) -> bool {
+    if bytes.len() < 18 {
+        return false;
+    }
+
+    let color_map_type = bytes[1];
+    let image_type = bytes[2];
+    let width = u16::from_le_bytes([bytes[12], bytes[13]]);
+    let height = u16::from_le_bytes([bytes[14], bytes[15]]);
+    let pixel_depth = bytes[16];
+    let color_map_length = u16::from_le_bytes([bytes[5], bytes[6]]);
+    let color_map_depth = bytes[7];
+
+    if width == 0 || height == 0 || color_map_type > 1 {
+        return false;
+    }
+
+    let depth_is_valid = match image_type {
+        // Color-mapped, true-color, grayscale and their RLE variants.
+        1 | 9 => matches!(pixel_depth, 8 | 16),
+        2 | 10 => matches!(pixel_depth, 15 | 16 | 24 | 32),
+        3 | 11 => matches!(pixel_depth, 8 | 16),
+        _ => false,
+    };
+    if !depth_is_valid {
+        return false;
+    }
+
+    let is_color_mapped = matches!(image_type, 1 | 9);
+    if is_color_mapped && color_map_type != 1 {
+        return false;
+    }
+
+    if color_map_type == 1
+        && (color_map_length == 0 || !matches!(color_map_depth, 15 | 16 | 24 | 32))
+    {
+        return false;
+    }
+
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tga_header(image_type: u8, depth: u8, width: u16, height: u16) -> Vec<u8> {
+        let mut bytes = vec![0u8; 18];
+        bytes[2] = image_type;
+        bytes[12..14].copy_from_slice(&width.to_le_bytes());
+        bytes[14..16].copy_from_slice(&height.to_le_bytes());
+        bytes[16] = depth;
+        bytes
+    }
+
+    #[test]
+    fn detects_uncompressed_and_rle_true_color_tga() {
+        for image_type in [2, 10] {
+            assert!(looks_like_tga(&tga_header(image_type, 24, 1, 1)));
+        }
+    }
+
+    #[test]
+    fn detects_grayscale_and_color_mapped_tga() {
+        for image_type in [3, 11] {
+            assert!(looks_like_tga(&tga_header(image_type, 8, 1, 1)));
+        }
+
+        let mut color_mapped = tga_header(1, 8, 1, 1);
+        color_mapped[1] = 1;
+        color_mapped[5..7].copy_from_slice(&1u16.to_le_bytes());
+        color_mapped[7] = 24;
+        assert!(looks_like_tga(&color_mapped));
+    }
+
+    #[test]
+    fn rejects_invalid_or_incomplete_tga_headers() {
+        assert!(!looks_like_tga(&[0u8; 17]));
+        assert!(!looks_like_tga(&tga_header(2, 24, 0, 1)));
+        assert!(!looks_like_tga(&tga_header(2, 7, 1, 1)));
+        assert!(!looks_like_tga(&tga_header(99, 24, 1, 1)));
+    }
 }
 
 /// Load an image from raw bytes, with:
