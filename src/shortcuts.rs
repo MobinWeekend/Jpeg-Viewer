@@ -29,6 +29,7 @@ pub enum ViewerCommand {
     SlideshowSpeedUp,
     SlideshowSpeedDown,
     ShowFileSidebar,
+    ToggleCompact,
 }
 
 #[derive(Debug, Clone)]
@@ -163,6 +164,7 @@ impl Default for InputBindings {
             ViewerCommand::Settings,
             vec![KeyBinding::plain(egui::Key::F5)],
         );
+
         keyboard.insert(ViewerCommand::Help, vec![KeyBinding::plain(egui::Key::F1)]);
 
         keyboard.insert(
@@ -315,6 +317,11 @@ impl Default for InputBindings {
                 KeyBinding::plain(egui::Key::T),
                 KeyBinding::plain(egui::Key::F3),
             ],
+        );
+
+        keyboard.insert(
+            ViewerCommand::ToggleCompact,
+            vec![KeyBinding::plain(egui::Key::F4)],
         );
 
         Self { keyboard, mouse }

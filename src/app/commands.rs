@@ -107,7 +107,7 @@ impl ViewerApp {
                 }
             }
             ViewerCommand::Settings => {
-                crate::app::ui::render_settings_menu(self, ctx);
+                crate::app::ui::toggle_settings_menu(self);
             }
             ViewerCommand::Help => {
                 self.toggle_help_menu();
@@ -141,6 +141,9 @@ impl ViewerApp {
                     .settings_manager
                     .update(|settings| settings.show_file_sidebar = !sidebar_visible);
                 self.hamburger_menu_open = false;
+            }
+            ViewerCommand::ToggleCompact => {
+                self.toggle_compactui();
             }
         }
     }

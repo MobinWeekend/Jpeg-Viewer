@@ -170,6 +170,8 @@ pub struct ViewerApp {
     pub hamburger_menu_open: bool,
     pub overlay_visible: bool,
 
+    pub compactui: bool,
+
     // ====== WINDOW ======
     pub startup_fullscreen_handled: bool,
     pub window_always_on_top: bool,
@@ -318,6 +320,8 @@ impl Default for ViewerApp {
             hamburger_menu_open: false,
             overlay_visible: true,
 
+            compactui: false,
+
             // ====== WINDOW ======
             startup_fullscreen_handled: false,
             window_always_on_top: false,
@@ -439,6 +443,14 @@ impl ViewerApp {
 
         let _ = self.settings_manager.update(|settings| {
             settings.slideshow_enabled = enabled;
+        });
+    }
+
+    pub fn toggle_compactui(&mut self) {
+        self.compactui = !self.compactui;
+
+        let _ = self.settings_manager.update(|settings| {
+            settings.compact_mode = self.compactui;
         });
     }
 

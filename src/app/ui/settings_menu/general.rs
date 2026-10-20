@@ -17,13 +17,9 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 }
 
 pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    let mut compact = app.settings_manager.get().compact_mode;
-    if ui.checkbox(&mut compact, "Compact controls").changed() {
-        let _ = app
-            .settings_manager
-            .update(|settings| settings.compact_mode = compact);
-    }
+    ui.add_space(4.0);
 
+    render_toggle_compactui(app, ui);
     ui.add_space(4.0);
 
     render_invert_scroll_zoom(app, ui);
@@ -63,6 +59,20 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
         } else {
             "(Ctrl+Scroll to zoom)"
         });
+    });
+}
+
+fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        ui.add_space(8.0);
+        let compact = ui.checkbox(&mut app.compactui, "Compact mode");
+
+        if compact.changed() {
+            let value = app.compactui;
+            let _ = app.settings_manager.update(|settings| {
+                settings.compact_mode = value;
+            });
+        }
     });
 }
 

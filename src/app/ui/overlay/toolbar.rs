@@ -36,7 +36,7 @@ fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> e
 
 pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f32, offset_y: f32) {
     let no_image = !app.image_entries.is_empty();
-    let compact = app.settings_manager.get().compact_mode;
+    let compact = app.compactui;
     // === Position of the top bar
     overlay_area(
         "toolbar_top_center",
@@ -114,7 +114,7 @@ fn render_toolbar_ui(
     ui: &mut egui::Ui,
     content: impl FnOnce(&mut ViewerApp, &mut egui::Ui),
 ) {
-    let compact = app.settings_manager.get().compact_mode;
+    let compact = app.compactui;
     toolbar_frame_mode(ctx, compact).show(ui, |ui| {
         ui.horizontal(|ui| {
             content(app, ui);
