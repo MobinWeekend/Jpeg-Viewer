@@ -58,7 +58,15 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                             )
                             .on_hover_text(&full_name);
                         if response.clicked() && index != app.current_index {
-                            selected = Some(index);
+                            if app.edit_session.is_none() {
+                                selected = Some(index);
+                            } else {
+                                app.edit_status = Some(
+                                    "Close the editor and save or discard edits before changing images."
+                                        .into(),
+                                );
+                                app.show_edit_menu = true;
+                            }
                         }
                     }
                     if let Some(index) = selected {

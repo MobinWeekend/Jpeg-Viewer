@@ -193,6 +193,18 @@ pub struct ViewerApp {
     //meta data
     pub file_metadata_open: bool,
     pub file_metadata: Option<FileMetadata>,
+
+    // ====== WORKING-COPY EDITING ======
+    pub(crate) edit_session: Option<super::editing::EditSession>,
+    pub show_edit_menu: bool,
+    pub edit_status: Option<String>,
+    pub crop_x: u32,
+    pub crop_y: u32,
+    pub crop_width: u32,
+    pub crop_height: u32,
+    pub confirm_overwrite_path: Option<PathBuf>,
+    pub overwrite_is_save_as: bool,
+    pub confirm_discard_edits: bool,
 }
 
 impl Default for ViewerApp {
@@ -343,6 +355,17 @@ impl Default for ViewerApp {
             //metadata
             file_metadata_open: false,
             file_metadata: None,
+
+            edit_session: None,
+            show_edit_menu: false,
+            edit_status: None,
+            crop_x: 0,
+            crop_y: 0,
+            crop_width: 0,
+            crop_height: 0,
+            confirm_overwrite_path: None,
+            overwrite_is_save_as: false,
+            confirm_discard_edits: false,
         }
     }
 }

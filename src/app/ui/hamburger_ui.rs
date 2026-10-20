@@ -108,6 +108,21 @@ impl ViewerApp {
                     self.hamburger_menu_open = false;
                 }
 
+                // Basic image editing
+                if ui
+                    .add(
+                        egui::Button::new(egui::RichText::new("✎  Edit Image").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
+                    )
+                    .on_hover_text("Edit a working copy; the original is unchanged until you save.")
+                    .clicked()
+                {
+                    self.start_editing(ctx);
+                    self.hamburger_menu_open = false;
+                }
+
                 // Settings
                 if ui
                     .add(

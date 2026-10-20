@@ -409,6 +409,9 @@ impl eframe::App for ViewerApp {
             self.save_window_state(ctx);
         }
 
+        // ========== WORKING-COPY IMAGE EDITOR ==========
+        self.render_editing_ui(ctx);
+
         // ========== DELETE CONFIRMATION ==========
         if self.show_delete_confirmation {
             egui::Window::new("Confirm Delete")

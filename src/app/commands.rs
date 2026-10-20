@@ -5,6 +5,25 @@ use std::time::Instant;
 
 impl ViewerApp {
     pub fn handle_command(&mut self, ctx: &egui::Context, command: ViewerCommand) {
+        if self.edit_session.is_some()
+            && matches!(
+                command,
+                ViewerCommand::NextImage
+                    | ViewerCommand::PreviousImage
+                    | ViewerCommand::JumpToFirst
+                    | ViewerCommand::JumpToLast
+                    | ViewerCommand::OpenFile
+                    | ViewerCommand::OpenFolder
+            )
+        {
+            self.edit_status = Some(
+                "Close the editor before navigating or opening another file. Save or discard the working copy first."
+                    .into(),
+            );
+            self.show_edit_menu = true;
+            return;
+        }
+
         match command {
             ViewerCommand::NextImage => {
                 // Stop slideshow when manually navigating

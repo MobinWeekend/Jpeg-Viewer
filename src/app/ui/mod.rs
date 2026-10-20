@@ -1,5 +1,6 @@
 mod central_panel;
 mod error_ui;
+mod editing;
 mod hamburger_ui;
 mod help_window;
 mod helpers;

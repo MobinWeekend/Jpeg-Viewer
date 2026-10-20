@@ -10,6 +10,14 @@ use std::path::PathBuf;
 
 impl ViewerApp {
     pub fn open_path(&mut self, path: PathBuf) {
+        if self.edit_session.is_some() {
+            self.edit_status = Some(
+                "Close the editor and save or discard the working copy before opening another path."
+                    .into(),
+            );
+            self.show_edit_menu = true;
+            return;
+        }
         self.b_zoom_used = false;
         self.b_fit_to_window = true;
         self.image_rect = None;
@@ -188,6 +196,14 @@ impl ViewerApp {
     }
 
     pub fn load_dropped_files(&mut self, paths: Vec<PathBuf>) {
+        if self.edit_session.is_some() {
+            self.edit_status = Some(
+                "Close the editor and save or discard the working copy before opening dropped files."
+                    .into(),
+            );
+            self.show_edit_menu = true;
+            return;
+        }
         if paths.is_empty() {
             return;
         }
