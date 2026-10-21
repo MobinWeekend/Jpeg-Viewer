@@ -12,7 +12,7 @@ impl ViewerApp {
     pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("◀").size(16.0))
+                egui::Button::new(egui::RichText::new("◀").size(22.0))
                     .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -26,7 +26,7 @@ impl ViewerApp {
     pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("▶").size(16.0))
+                egui::Button::new(egui::RichText::new("▶").size(22.0))
                     .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -56,7 +56,7 @@ impl ViewerApp {
 
         let button = ui
             .add(
-                egui::Button::new(egui::RichText::new(slideshow_icon).size(24.0))
+                egui::Button::new(egui::RichText::new(slideshow_icon).size(22.0))
                     .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -96,7 +96,7 @@ impl ViewerApp {
         // Faster
         let faster_button = ui
             .add(
-                egui::Button::new(egui::RichText::new("↗").size(24.0))
+                egui::Button::new(egui::RichText::new("↗").size(22.0))
                     .min_size(self.btn_size_medium())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -144,7 +144,7 @@ impl ViewerApp {
     pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("+").size(24.0))
+                egui::Button::new(egui::RichText::new("+").size(22.0))
                     .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -159,7 +159,7 @@ impl ViewerApp {
     pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("−").size(24.0))
+                egui::Button::new(egui::RichText::new("−").size(22.0))
                     .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -228,7 +228,7 @@ impl ViewerApp {
 
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(play_text).size(16.0))
+                egui::Button::new(egui::RichText::new(play_text).size(22.0))
                     .min_size(btn)
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -361,18 +361,18 @@ impl ViewerApp {
     /// Small toolbar button size (used for +/−, 1:1, fit, pin, etc.)
     fn btn_size_small(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(20.0, 20.0)
+            egui::vec2(20.0, 22.0)
         } else {
-            egui::vec2(24.0, 24.0)
+            egui::vec2(24.0, 28.0)
         }
     }
 
     /// Medium button size (slower/faster, zoom text)
     fn btn_size_medium(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(24.0, 20.0)
+            egui::vec2(22.0, 22.0)
         } else {
-            egui::vec2(28.0, 24.0)
+            egui::vec2(28.0, 28.0)
         }
     }
 }

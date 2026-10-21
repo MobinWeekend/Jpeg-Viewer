@@ -10,7 +10,7 @@ use crate::shortcuts::InputBindings;
 use crate::sort::SortMethod;
 use eframe::egui;
 use lru::LruCache;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -216,7 +216,6 @@ pub struct ViewerApp {
     pub confirm_discard_edits: bool,
 
     // ====== QUEUE / SELECTION WORKFLOWS ======
-    pub show_queue_manager: bool,
     pub queue_paths: Vec<PathBuf>,
     pub queue_mode: bool,
     pub queue_shuffle: bool,
@@ -225,6 +224,16 @@ pub struct ViewerApp {
     pub queue_status: Option<String>,
     pub queue_previous_entries: Option<Vec<ImageEntry>>,
     pub queue_previous_index: usize,
+    /// Which content tab is active in the left sidebar (false = browse, true = queue).
+    pub sidebar_queue_tab: bool,
+    /// Last rendered queue drop target; external drops here are queued rather than opened.
+    pub queue_drop_rect: Option<egui::Rect>,
+    /// Lazily generated thumbnail textures keyed by normalized path / entry id.
+    pub sidebar_thumbnails: HashMap<String, egui::TextureHandle>,
+    pub sidebar_thumbnail_attempted: HashSet<String>,
+    pub sidebar_thumbnail_failed: HashSet<String>,
+    pub sidebar_thumbnail_pending: HashSet<String>,
+    pub sidebar_thumbnail_receivers: Vec<Receiver<(String, Result<(usize, usize, Vec<u8>), String>)>>,
 }
 
 impl Default for ViewerApp {
@@ -392,7 +401,6 @@ impl Default for ViewerApp {
             confirm_overwrite_path: None,
             overwrite_is_save_as: false,
             confirm_discard_edits: false,
-            show_queue_manager: false,
             queue_paths: Vec::new(),
             queue_mode: false,
             queue_shuffle: false,
@@ -401,6 +409,13 @@ impl Default for ViewerApp {
             queue_status: None,
             queue_previous_entries: None,
             queue_previous_index: 0,
+            sidebar_queue_tab: false,
+            queue_drop_rect: None,
+            sidebar_thumbnails: HashMap::new(),
+            sidebar_thumbnail_attempted: HashSet::new(),
+            sidebar_thumbnail_failed: HashSet::new(),
+            sidebar_thumbnail_pending: HashSet::new(),
+            sidebar_thumbnail_receivers: Vec::new(),
         }
     }
 }

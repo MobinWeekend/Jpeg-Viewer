@@ -131,21 +131,6 @@ impl ViewerApp {
                     self.hamburger_menu_open = false;
                 }
 
-                // Queue and selection manager
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("○  Selection & Queue").size(14.0))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Build, reorder, save, restore, and browse image queues")
-                    .clicked()
-                {
-                    self.show_queue_manager = true;
-                    self.hamburger_menu_open = false;
-                }
-
                 // Settings
                 if ui
                     .add(

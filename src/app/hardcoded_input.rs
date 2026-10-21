@@ -208,6 +208,12 @@ impl ViewerApp {
             return;
         }
 
+        let drop_position = ctx.input(|i| i.pointer.hover_pos().or_else(|| i.pointer.latest_pos()));
+        let dropped_on_queue = self.sidebar_queue_tab
+            && self.queue_drop_rect.is_some_and(|rect| {
+                drop_position.is_some_and(|position| rect.contains(position))
+            });
+
         // Stop slideshow when dropping files
         if self.slideshow_enabled {
             self.slideshow_enabled = false;
@@ -222,13 +228,15 @@ impl ViewerApp {
             .filter_map(|file| file.path.clone())
             .collect();
 
-        if paths.len() == 1 {
-            // Single file: open it
+        if dropped_on_queue {
+            self.add_dropped_paths_to_queue(paths);
+        } else if paths.len() == 1 {
+            // Single file: open it (preserve the normal drop behavior outside the queue).
             if let Some(path) = paths.first() {
                 self.open_path(path.clone());
             }
         } else if paths.len() > 1 {
-            // Multiple files: load them as a set
+            // Multiple files: load them as a set.
             self.load_dropped_files(paths);
         }
     }

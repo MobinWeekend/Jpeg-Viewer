@@ -293,3 +293,8 @@ target/release/
 Open **Menu → Selection & Queue** to build an ordered list of filesystem image files. Add individual files, the current image, images in the current view, or recursively scan a folder tree. Queue entries can be reordered, removed, browsed in queue order, and configured for shuffle-on-next and repeat behavior. Saved `.jvq` files use a versioned text format with hexadecimal-encoded UTF-8 paths, relative paths when they are inside the queue file's directory, absolute paths otherwise, and a stored root path for missing-file remapping. Missing items are retained on load and marked unavailable; use **Remap missing root** to resolve moved directory trees. **Export paths** writes a plain-text path list.
 
 Queues currently include standalone filesystem image files only; images inside ZIP/7z/RAR archives are not added to queues. Batch actions are limited to queue management and path export; destructive batch image operations are intentionally not included in this phase.
+
+
+### Sidebar thumbnails and selection queue
+
+The left sidebar has **Browse** and **Queue** tabs. Browse displays image thumbnails with filenames underneath; thumbnails are decoded in background tasks as needed. The Queue tab manages queued files in the same sidebar. Use **Add sidebar files if empty** to add all filesystem images currently shown in Browse only when the queue has no entries. Dropping image files or folders onto the visible Queue pane adds supported images to the queue; dropping elsewhere retains the normal open/load behavior.

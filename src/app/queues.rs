@@ -8,122 +8,320 @@ use std::path::{Path, PathBuf};
 const QUEUE_MAGIC: &str = "JPEG_VIEWER_QUEUE\t1";
 
 impl ViewerApp {
-    pub fn render_queue_manager(&mut self, ctx: &egui::Context) {
-        if !self.show_queue_manager {
-            return;
-        }
+    pub fn render_queue_sidebar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        // Remember the active queue pane's bounds so external drops can be routed
+        // to the queue without changing drops elsewhere in the application.
+        self.queue_drop_rect = Some(ui.available_rect_before_wrap());
 
-        let mut open = self.show_queue_manager;
-        let mut close_requested = false;
-        egui::Window::new("Selection & Queue")
-            .open(&mut open)
-            .default_pos(egui::pos2(128.0, 128.0))
-            .default_width(520.0)
-            .min_width(420.0)
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Add files…").clicked() {
-                        if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                            let mut added = 0;
-                            for path in paths { added += usize::from(self.add_queue_path(path)); }
-                            self.queue_status = Some(format!("Added {added} file(s)."));
-                        }
+        ui.heading("Selection & Queue");
+        ui.label(format!("{} item(s)", self.queue_paths.len()));
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Add files…").clicked() {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                    let mut added = 0;
+                    for path in paths {
+                        added += usize::from(self.add_queue_path(path));
                     }
-                    if ui.button("Add current image").clicked() {
-                        self.add_current_image_to_queue();
-                    }
-                    if ui.button("Add current folder images").clicked() {
-                        self.add_current_folder_images();
-                    }
-                    if ui.button("Add folder recursively…").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            let added = self.add_folder_recursively(&path);
-                            self.queue_status = Some(format!("Added {added} image(s) from folder tree."));
-                        }
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Open queue").clicked() {
-                        close_requested = self.open_queue_in_viewer(ctx);
-                    }
-                    if ui.button("Return to previous view").clicked() {
-                        self.return_to_previous_view(ctx);
-                    }
-                    if ui.button("Save queue…").clicked() {
-                        self.save_queue_dialog();
-                    }
-                    if ui.button("Load queue…").clicked() {
-                        self.load_queue_dialog();
-                    }
-                    if ui.button("Export paths…").clicked() {
-                        self.export_queue_paths();
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Remap missing root…").clicked() {
-                        self.remap_missing_queue_root();
-                    }
-                    if ui.button("Remove unavailable").clicked() {
-                        let before = self.queue_paths.len();
-                        self.queue_paths.retain(|path| path.exists());
-                        self.queue_status = Some(format!("Removed {} unavailable queue item(s).", before - self.queue_paths.len()));
-                    }
-                    if ui.button("Clear queue").clicked() {
-                        if self.queue_mode { self.return_to_previous_view(ctx); }
-                        self.queue_paths.clear();
-                        self.queue_mode = false;
-                        self.queue_status = Some("Queue cleared.".into());
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.queue_shuffle, "Shuffle next");
-                    ui.checkbox(&mut self.queue_repeat, "Repeat queue");
-                    ui.label(format!("{} item(s)", self.queue_paths.len()));
-                });
-                ui.separator();
+                    self.queue_status = Some(format!("Added {added} file(s)."));
+                }
+            }
+            if ui.button("Add current image").clicked() {
+                self.add_current_image_to_queue();
+            }
+            if ui.button("Add sidebar files if empty").on_hover_text(
+                "Adds all filesystem images currently listed in Browse, but only when the queue is empty."
+            ).clicked() {
                 if self.queue_paths.is_empty() {
-                    ui.label("Queue is empty. Add the current image, current folder, or another folder tree.");
+                    self.add_current_folder_images();
                 } else {
-                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-                        let mut remove_index = None;
-                        let mut move_action: Option<(usize, isize)> = None;
-                        let mut open_index = None;
-                        for (index, path) in self.queue_paths.iter().enumerate() {
-                            ui.horizontal(|ui| {
-                                let unavailable = !path.exists();
-                                let name = path.file_name().unwrap_or_default().to_string_lossy();
-                                let label = if unavailable { format!("⚠ {name}") } else { name.into_owned() };
-                                if ui.selectable_label(false, label).on_hover_text(path.display().to_string()).clicked() {
+                    self.queue_status = Some("Queue is not empty; existing items were preserved.".into());
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Add current folder images").clicked() {
+                self.add_current_folder_images();
+            }
+            if ui.button("Add folder recursively…").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    let added = self.add_folder_recursively(&path);
+                    self.queue_status = Some(format!("Added {added} image(s) from folder tree."));
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Open queue").clicked() {
+                self.open_queue_in_viewer(ctx);
+            }
+            if ui.button("Return to previous view").clicked() {
+                self.return_to_previous_view(ctx);
+            }
+            if ui.button("Save…").clicked() {
+                self.save_queue_dialog();
+            }
+            if ui.button("Load…").clicked() {
+                self.load_queue_dialog();
+            }
+            if ui.button("Export paths…").clicked() {
+                self.export_queue_paths();
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Remap missing root…").clicked() {
+                self.remap_missing_queue_root();
+            }
+            if ui.button("Remove unavailable").clicked() {
+                let before = self.queue_paths.len();
+                self.queue_paths.retain(|path| path.exists());
+                self.queue_status = Some(format!(
+                    "Removed {} unavailable queue item(s).",
+                    before - self.queue_paths.len()
+                ));
+            }
+            if ui.button("Clear queue").clicked() {
+                if self.queue_mode {
+                    self.return_to_previous_view(ctx);
+                }
+                self.queue_paths.clear();
+                self.queue_mode = false;
+                self.queue_status = Some("Queue cleared.".into());
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.queue_shuffle, "Shuffle next");
+            ui.checkbox(&mut self.queue_repeat, "Repeat queue");
+        });
+        ui.separator();
+
+        if self.queue_paths.is_empty() {
+            ui.label(
+                "Queue is empty. Add files, the current image, or the images listed in Browse.",
+            );
+        } else {
+            let queue_items = self.queue_paths.clone();
+            let mut remove_index = None;
+            let mut move_action: Option<(usize, isize)> = None;
+            let mut open_index = None;
+            let available = ui.available_width().max(100.0);
+            let columns = if available >= 320.0 { 2 } else { 1 };
+            egui::ScrollArea::vertical()
+                .id_salt("queue_sidebar_items")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    egui::Grid::new("queue_sidebar_grid")
+                        .num_columns(columns)
+                        .spacing(egui::vec2(8.0, 10.0))
+                        .show(ui, |ui| {
+                            for (index, path) in queue_items.iter().enumerate() {
+                                let name = path
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .into_owned();
+                                let label = if path.exists() {
+                                    name
+                                } else {
+                                    format!("⚠ {name}")
+                                };
+                                let key = format!("file:{}", absolute_path(path).display());
+                                let clicked = self
+                                    .render_thumbnail_card(ui, path, &key, &label, false, 112.0);
+                                if clicked {
                                     open_index = Some(index);
                                 }
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.small_button("×").on_hover_text("Remove from queue").clicked() { remove_index = Some(index); }
-                                    if ui.small_button("↓").on_hover_text("Move down").clicked() { move_action = Some((index, 1)); }
-                                    if ui.small_button("↑").on_hover_text("Move up").clicked() { move_action = Some((index, -1)); }
+                                ui.horizontal(|ui| {
+                                    if ui.small_button("↑").on_hover_text("Move up").clicked() {
+                                        move_action = Some((index, -1));
+                                    }
+                                    if ui.small_button("↓").on_hover_text("Move down").clicked() {
+                                        move_action = Some((index, 1));
+                                    }
+                                    if ui
+                                        .small_button("×")
+                                        .on_hover_text("Remove from queue")
+                                        .clicked()
+                                    {
+                                        remove_index = Some(index);
+                                    }
                                 });
-                            });
-                        }
-                        if let Some(index) = remove_index {
-                            self.queue_paths.remove(index);
-                        }
-                        if let Some((index, delta)) = move_action {
-                            let target = index as isize + delta;
-                            if target >= 0 && (target as usize) < self.queue_paths.len() {
-                                self.queue_paths.swap(index, target as usize);
+                                if (index + 1) % columns == 0 {
+                                    ui.end_row();
+                                }
                             }
-                        }
-                        if let Some(index) = open_index {
-                            close_requested = self.open_queue_in_viewer_at(ctx, index);
-                        }
-                    });
+                            if queue_items.len() % columns != 0 {
+                                ui.end_row();
+                            }
+                        });
+                });
+            if let Some(index) = remove_index {
+                self.queue_paths.remove(index);
+            }
+            if let Some((index, delta)) = move_action {
+                let target = index as isize + delta;
+                if target >= 0 && (target as usize) < self.queue_paths.len() {
+                    self.queue_paths.swap(index, target as usize);
                 }
-                if let Some(status) = self.queue_status.as_deref() {
-                    ui.separator();
-                    ui.label(status);
+            }
+            if let Some(index) = open_index {
+                self.open_queue_in_viewer_at(ctx, index);
+            }
+        }
+        if let Some(status) = self.queue_status.as_deref() {
+            ui.separator();
+            ui.label(status);
+        }
+    }
+
+    /// Add dropped files to the queue without changing the current viewer contents.
+    pub fn add_dropped_paths_to_queue(&mut self, paths: Vec<PathBuf>) {
+        let mut added = 0;
+        let mut ignored = 0;
+        for path in paths {
+            if path.is_dir() {
+                added += self.add_folder_recursively(&path);
+            } else if path.is_file() && is_supported_image(&path) {
+                added += usize::from(self.add_queue_path(path));
+            } else {
+                ignored += 1;
+            }
+        }
+        self.queue_status = Some(if ignored == 0 {
+            format!("Added {added} dropped image(s) to the queue.")
+        } else {
+            format!("Added {added} image(s); ignored {ignored} unsupported item(s).")
+        });
+    }
+
+    /// Render an asynchronously generated thumbnail and its filename below it.
+    /// Returns true when the card is clicked.
+    pub fn render_thumbnail_card(
+        &mut self,
+        ui: &mut egui::Ui,
+        //ctx: &egui::Context,
+        path: &Path,
+        key: &str,
+        label: &str,
+        selected: bool,
+        thumbnail_width: f32,
+    ) -> bool {
+        let card_width = ui.available_width().min(thumbnail_width + 12.0).max(80.0);
+        let mut clicked = false;
+        ui.vertical(|ui| {
+            ui.set_width(card_width);
+            let (rect, response) =
+                ui.allocate_exact_size(egui::vec2(card_width, 88.0), egui::Sense::click());
+            if let Some(texture) = self.sidebar_thumbnails.get(key) {
+                let size = texture.size_vec2();
+                let scale = (rect.width() / size.x).min(rect.height() / size.y).min(1.0);
+                let draw_size = size * scale;
+                let draw_rect = egui::Rect::from_center_size(rect.center(), draw_size);
+                ui.painter().image(
+                    texture.id(),
+                    draw_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            } else {
+                ui.painter()
+                    .rect_filled(rect, 4.0, ui.visuals().widgets.noninteractive.bg_fill);
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    if !path.exists() {
+                        "Missing"
+                    } else if self.sidebar_thumbnail_failed.contains(key) {
+                        "No preview"
+                    } else {
+                        "Loading…"
+                    },
+                    egui::FontId::proportional(11.0),
+                    ui.visuals().weak_text_color(),
+                );
+                if ui.is_rect_visible(rect) {
+                    self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string());
                 }
+            }
+            if selected {
+                ui.painter().rect_stroke(
+                    rect,
+                    4.0,
+                    egui::Stroke::new(2.0 as f32, ui.visuals().selection.stroke.color),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            clicked = response.on_hover_text(path.display().to_string()).clicked();
+            let text = ui.add_sized(
+                [card_width, 32.0],
+                egui::Button::selectable(
+                    selected,
+                    middle_ellipsis(label, (card_width / 6.0) as usize),
+                ),
+            );
+            clicked |= text.on_hover_text(label).clicked();
+        });
+        clicked
+    }
+
+    fn request_sidebar_thumbnail(&mut self, path: PathBuf, key: String) {
+        if !path.is_file()
+            || self.sidebar_thumbnail_attempted.contains(&key)
+            || self.sidebar_thumbnail_pending.contains(&key)
+        {
+            return;
+        }
+        self.sidebar_thumbnail_attempted.insert(key.clone());
+        self.sidebar_thumbnail_pending.insert(key.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.sidebar_thumbnail_receivers.push(rx);
+        std::thread::spawn(move || {
+            let result = (|| -> Result<(usize, usize, Vec<u8>), String> {
+                let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+                let decoded = crate::decoder::decode_bytes(&bytes).map_err(|e| e.to_string())?;
+                let rgba = image::RgbaImage::from_raw(
+                    decoded.width(),
+                    decoded.height(),
+                    decoded.data().to_vec(),
+                )
+                .ok_or_else(|| "invalid RGBA thumbnail source".to_string())?;
+                let thumbnail = image::imageops::thumbnail(&rgba, 144, 100);
+                Ok((
+                    thumbnail.width() as usize,
+                    thumbnail.height() as usize,
+                    thumbnail.into_raw(),
+                ))
+            })();
+            let _ = tx.send((key, result));
+        });
+    }
+
+    pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
+        let mut completed = Vec::new();
+        self.sidebar_thumbnail_receivers
+            .retain(|receiver| match receiver.try_recv() {
+                Ok(item) => {
+                    completed.push(item);
+                    false
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => false,
+                Err(std::sync::mpsc::TryRecvError::Empty) => true,
             });
-        self.show_queue_manager = open && !close_requested;
+        for (key, result) in completed {
+            self.sidebar_thumbnail_pending.remove(&key);
+            match result {
+                Ok((width, height, pixels)) => {
+                    let color = egui::ColorImage::from_rgba_unmultiplied([width, height], &pixels);
+                    let texture = ctx.load_texture(
+                        format!("sidebar_thumb_{key}"),
+                        color,
+                        egui::TextureOptions::LINEAR,
+                    );
+                    self.sidebar_thumbnails.insert(key, texture);
+                }
+                Err(_) => {
+                    self.sidebar_thumbnail_failed.insert(key);
+                }
+            }
+        }
     }
 
     pub fn add_current_image_to_queue(&mut self) {
@@ -234,7 +432,6 @@ impl ViewerApp {
             .collect();
         self.set_image_entries(entries, index.min(self.queue_paths.len() - 1));
         self.queue_status = Some("Browsing queue order. Missing files remain in the queue and show an unavailable warning.".into());
-        self.show_queue_manager = false;
         ctx.request_repaint();
         true
     }
@@ -334,6 +531,25 @@ impl ViewerApp {
             "Remapped {remapped} item(s); {still_missing} remain unavailable."
         ));
     }
+}
+
+fn middle_ellipsis(text: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max_chars || max_chars < 5 {
+        return if chars.len() <= max_chars {
+            text.to_string()
+        } else {
+            chars.into_iter().take(max_chars).collect()
+        };
+    }
+    let keep = max_chars - 3;
+    let left = (keep * 3 + 2) / 5;
+    let right = keep - left;
+    format!(
+        "{}...{}",
+        chars[..left].iter().collect::<String>(),
+        chars[chars.len() - right..].iter().collect::<String>()
+    )
 }
 
 fn entry_path(entry: &ImageEntry) -> Option<&PathBuf> {
