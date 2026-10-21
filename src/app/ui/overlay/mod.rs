@@ -76,11 +76,10 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, left_offset: 
         "hamburger_menu",
         egui::Align2::LEFT_TOP,
         if app.compactui {
-            egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE),
-            } else {
-                egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE),
-            }
-
+            egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE)
+        } else {
+            egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE)
+        },
     )
     .show(ctx, |ui| app.render_hamburger_menu_ui(ctx, ui));
 }
