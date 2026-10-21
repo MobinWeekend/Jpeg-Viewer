@@ -387,7 +387,10 @@ impl eframe::App for ViewerApp {
         // Docked panels must be registered before the central panel so the image
         // canvas is laid out in the remaining space rather than underneath them.
         crate::app::ui::render_left_sidebar(self, ctx);
-        if self.show_settings_menu {
+        // Dock the active right-side tool panel before the central canvas so
+        // it receives a proper share of the available layout width.
+        self.render_editing_ui(ctx);
+        if self.show_settings_menu && !self.show_edit_menu {
             crate::app::ui::render_settings_menu(self, ctx);
         }
         self.render_central_panel(ctx);
@@ -408,9 +411,6 @@ impl eframe::App for ViewerApp {
             self.stop_caching();
             self.save_window_state(ctx);
         }
-
-        // ========== WORKING-COPY IMAGE EDITOR ==========
-        self.render_editing_ui(ctx);
 
         // ========== DELETE CONFIRMATION ==========
         if self.show_delete_confirmation {

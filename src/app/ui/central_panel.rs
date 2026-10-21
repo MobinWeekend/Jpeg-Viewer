@@ -183,7 +183,21 @@ impl ViewerApp {
                 egui::Color32::WHITE,
             );
 
-            // In render_central_panel(), after the image is rendered:
+            // Crop selection owns primary-button drags while editing. Other
+            // mouse bindings remain available when the crop tool is inactive.
+            if self.show_edit_menu && self.edit_session.is_some() {
+                if self.crop_tool_active {
+                    self.handle_crop_mouse_input(ctx, &response, image_rect);
+                } else {
+                    self.handle_image_mouse_input(ctx, &response);
+                }
+                if self.crop_tool_active || self.crop_selection.is_some() {
+                    self.paint_crop_selection(ui.painter(), image_rect);
+                }
+            } else {
+                self.handle_image_mouse_input(ctx, &response);
+            }
+
             if self.is_loading() {
                 let painter = ui.painter();
                 let message = match self.loading_state {
@@ -193,7 +207,6 @@ impl ViewerApp {
                 };
                 Self::draw_loading_overlay(&painter, available_rect, message);
             }
-            self.handle_image_mouse_input(ctx, &response);
         });
     }
 

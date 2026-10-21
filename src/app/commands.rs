@@ -5,23 +5,34 @@ use std::time::Instant;
 
 impl ViewerApp {
     pub fn handle_command(&mut self, ctx: &egui::Context, command: ViewerCommand) {
-        if self.edit_session.is_some()
-            && matches!(
-                command,
-                ViewerCommand::NextImage
-                    | ViewerCommand::PreviousImage
-                    | ViewerCommand::JumpToFirst
-                    | ViewerCommand::JumpToLast
-                    | ViewerCommand::OpenFile
-                    | ViewerCommand::OpenFolder
-            )
+        let is_navigation_command = matches!(
+            command,
+            ViewerCommand::NextImage
+                | ViewerCommand::PreviousImage
+                | ViewerCommand::JumpToFirst
+                | ViewerCommand::JumpToLast
+                | ViewerCommand::OpenFile
+                | ViewerCommand::OpenFolder
+        );
+        if is_navigation_command
+            && self.edit_session.as_ref().is_some_and(|session| session.dirty)
         {
             self.edit_status = Some(
-                "Close the editor before navigating or opening another file. Save or discard the working copy first."
+                "Save or discard the unsaved working copy before navigating or opening another file."
                     .into(),
             );
             self.show_edit_menu = true;
+            self.show_settings_menu = false;
             return;
+        }
+        if is_navigation_command && self.edit_session.is_some() {
+            // A clean session can be dropped without user confirmation when
+            // the viewer moves to another image.
+            self.edit_session = None;
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
         }
 
         match command {

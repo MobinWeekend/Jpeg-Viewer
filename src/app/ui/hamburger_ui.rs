@@ -108,15 +108,23 @@ impl ViewerApp {
                     self.hamburger_menu_open = false;
                 }
 
-                // Basic image editing
+                // Toggle the separate image-editing mode. An existing working
+                // copy can be resumed without discarding unsaved changes.
+                let edit_label = if self.show_edit_menu {
+                    "✎  Exit Edit Mode"
+                } else if self.edit_session.is_some() {
+                    "✎  Resume Edit Mode"
+                } else {
+                    "✎  Edit Image"
+                };
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("✎  Edit Image").size(14.0))
+                        egui::Button::new(egui::RichText::new(edit_label).size(14.0))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
                     )
-                    .on_hover_text("Edit a working copy; the original is unchanged until you save.")
+                    .on_hover_text("Toggle editing mode. Unsaved work stays in a working copy until saved or discarded.")
                     .clicked()
                 {
                     self.start_editing(ctx);

@@ -54,4 +54,11 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
 /// Toggle settings menu visibility.
 pub fn toggle_settings_menu(app: &mut ViewerApp) {
     app.show_settings_menu = !app.show_settings_menu;
+    if app.show_settings_menu {
+        // Both views use the right dock; preserve the edit session but only
+        // display one right-side panel at a time.
+        app.show_edit_menu = false;
+        app.crop_tool_active = false;
+        app.crop_drag_start_image = None;
+    }
 }

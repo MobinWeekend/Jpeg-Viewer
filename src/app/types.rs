@@ -1,3 +1,4 @@
+use super::editing::EditOutputFormat;
 use super::image_metadata::FileMetadata;
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
 use crate::gif::animation::GifAnimation;
@@ -196,12 +197,20 @@ pub struct ViewerApp {
 
     // ====== WORKING-COPY EDITING ======
     pub(crate) edit_session: Option<super::editing::EditSession>,
+    /// `show_edit_menu` is the toggleable editing mode/panel visibility.
+    /// The session survives when the user returns to normal viewing mode.
     pub show_edit_menu: bool,
     pub edit_status: Option<String>,
     pub crop_x: u32,
     pub crop_y: u32,
     pub crop_width: u32,
     pub crop_height: u32,
+    pub crop_tool_active: bool,
+    pub crop_drag_start_image: Option<egui::Pos2>,
+    pub crop_selection: Option<[u32; 4]>,
+    pub adjustment_gesture_active: bool,
+    pub edit_output_format: EditOutputFormat,
+    pub save_quality: u8,
     pub confirm_overwrite_path: Option<PathBuf>,
     pub overwrite_is_save_as: bool,
     pub confirm_discard_edits: bool,
@@ -363,6 +372,12 @@ impl Default for ViewerApp {
             crop_y: 0,
             crop_width: 0,
             crop_height: 0,
+            crop_tool_active: false,
+            crop_drag_start_image: None,
+            crop_selection: None,
+            adjustment_gesture_active: false,
+            edit_output_format: EditOutputFormat::Png,
+            save_quality: 90,
             confirm_overwrite_path: None,
             overwrite_is_save_as: false,
             confirm_discard_edits: false,

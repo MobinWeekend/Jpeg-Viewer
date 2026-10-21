@@ -10,13 +10,20 @@ use std::path::PathBuf;
 
 impl ViewerApp {
     pub fn open_path(&mut self, path: PathBuf) {
-        if self.edit_session.is_some() {
+        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
             self.edit_status = Some(
-                "Close the editor and save or discard the working copy before opening another path."
-                    .into(),
+                "Save or discard the unsaved working copy before opening another path.".into(),
             );
             self.show_edit_menu = true;
+            self.show_settings_menu = false;
             return;
+        }
+        if self.edit_session.is_some() {
+            self.edit_session = None;
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
         }
         self.b_zoom_used = false;
         self.b_fit_to_window = true;
@@ -196,13 +203,20 @@ impl ViewerApp {
     }
 
     pub fn load_dropped_files(&mut self, paths: Vec<PathBuf>) {
-        if self.edit_session.is_some() {
+        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
             self.edit_status = Some(
-                "Close the editor and save or discard the working copy before opening dropped files."
-                    .into(),
+                "Save or discard the unsaved working copy before opening dropped files.".into(),
             );
             self.show_edit_menu = true;
+            self.show_settings_menu = false;
             return;
+        }
+        if self.edit_session.is_some() {
+            self.edit_session = None;
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
         }
         if paths.is_empty() {
             return;

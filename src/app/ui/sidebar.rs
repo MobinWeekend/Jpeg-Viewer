@@ -58,14 +58,19 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                             )
                             .on_hover_text(&full_name);
                         if response.clicked() && index != app.current_index {
-                            if app.edit_session.is_none() {
-                                selected = Some(index);
-                            } else {
+                            if app.edit_session.as_ref().is_some_and(|session| session.dirty) {
                                 app.edit_status = Some(
-                                    "Close the editor and save or discard edits before changing images."
-                                        .into(),
+                                    "Save or discard unsaved edits before changing images.".into(),
                                 );
                                 app.show_edit_menu = true;
+                                app.show_settings_menu = false;
+                            } else {
+                                app.edit_session = None;
+                                app.show_edit_menu = false;
+                                app.crop_tool_active = false;
+                                app.crop_drag_start_image = None;
+                                app.crop_selection = None;
+                                selected = Some(index);
                             }
                         }
                     }
@@ -113,7 +118,7 @@ fn entry_name(entry: &ImageEntry) -> String {
     }
 }
 
-fn middle_ellipsis(text: &str, max_chars: usize) -> String {
+pub(super) fn middle_ellipsis(text: &str, max_chars: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
     if chars.len() <= max_chars || max_chars < 5 {
         return if chars.len() <= max_chars {

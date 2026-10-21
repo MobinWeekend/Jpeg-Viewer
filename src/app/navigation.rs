@@ -25,13 +25,20 @@ impl ViewerApp {
     /// This contains all of the common image-navigation/reset/loading logic
     /// used by next/previous/first/last navigation.
     pub fn navigate_to_index(&mut self, ctx: &egui::Context, new_index: usize) {
-        if self.edit_session.is_some() {
+        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
             self.edit_status = Some(
-                "Close the editor and save or discard the working copy before changing images."
-                    .into(),
+                "Save or discard the unsaved working copy before changing images.".into(),
             );
             self.show_edit_menu = true;
+            self.show_settings_menu = false;
             return;
+        }
+        if self.edit_session.is_some() {
+            self.edit_session = None;
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
         }
         if self.image_entries.is_empty() {
             return;

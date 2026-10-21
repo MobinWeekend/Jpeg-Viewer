@@ -40,7 +40,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     } else {
         0.0
     };
-    let right_offset = if app.show_settings_menu {
+    let right_offset = if app.show_settings_menu || app.show_edit_menu {
         app.settings_manager.get().settings_sidebar_width
     } else {
         0.0
@@ -75,7 +75,12 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, left_offset: 
     overlay_area(
         "hamburger_menu",
         egui::Align2::LEFT_TOP,
-        egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE),
+        if app.compactui {
+            egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE),
+            } else {
+                egui::vec2(left_offset + MENU_OFFSET * 2.0, HAMBURGER_SIZE),
+            }
+
     )
     .show(ctx, |ui| app.render_hamburger_menu_ui(ctx, ui));
 }
