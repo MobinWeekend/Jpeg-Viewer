@@ -13,7 +13,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("◀").size(16.0))
-                    .min_size(egui::vec2(32.0, 28.0))
+                    .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -27,7 +27,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("▶").size(16.0))
-                    .min_size(egui::vec2(32.0, 28.0))
+                    .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -57,7 +57,7 @@ impl ViewerApp {
         let button = ui
             .add(
                 egui::Button::new(egui::RichText::new(slideshow_icon).size(24.0))
-                    .min_size(egui::vec2(32.0, 28.0))
+                    .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -83,7 +83,7 @@ impl ViewerApp {
         let slower_button = ui
             .add(
                 egui::Button::new(egui::RichText::new("↘").size(24.0))
-                    .min_size(egui::vec2(28.0, 24.0))
+                    .min_size(self.btn_size_medium())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -97,7 +97,7 @@ impl ViewerApp {
         let faster_button = ui
             .add(
                 egui::Button::new(egui::RichText::new("↗").size(24.0))
-                    .min_size(egui::vec2(28.0, 24.0))
+                    .min_size(self.btn_size_medium())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -125,7 +125,7 @@ impl ViewerApp {
         let response = ui
             .add(
                 egui::Button::new(egui::RichText::new(text).size(14.0))
-                    .min_size(egui::vec2(52.0, 24.0))
+                    .min_size(egui::vec2(50.0, 24.0))
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -145,7 +145,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("+").size(24.0))
-                    .min_size(egui::vec2(24.0, 24.0))
+                    .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -160,7 +160,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("−").size(24.0))
-                    .min_size(egui::vec2(24.0, 24.0))
+                    .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -177,7 +177,7 @@ impl ViewerApp {
             if ui
                 .add(
                     egui::Button::new(egui::RichText::new("⊞").size(14.0))
-                        .min_size(egui::vec2(28.0, 24.0))
+                        .min_size(self.btn_size_medium())
                         .fill(egui::Color32::TRANSPARENT)
                         .stroke(egui::Stroke::NONE),
                 )
@@ -189,7 +189,7 @@ impl ViewerApp {
         } else if ui
             .add(
                 egui::Button::new(egui::RichText::new("1:1").size(14.0))
-                    .min_size(egui::vec2(28.0, 24.0))
+                    .min_size(self.btn_size_medium())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -200,59 +200,14 @@ impl ViewerApp {
         }
     }
 
-    /*
-       // IMAGE INFORMATION
-       /// Display resolution, file size and aspect ratio.
-       pub fn image_info_ui(&self, ui: &mut egui::Ui) {
-           let (width, height) = self.image_dimensions();
-
-           if width == 0 || height == 0 {
-               return;
-           }
-
-           let file_size = self.get_file_size_string();
-           let aspect_ratio = AspectRatio::get_label(width, height);
-
-           // Resolution
-           ui.label(egui::RichText::new(format!("{}×{}", width, height)).size(12.0));
-
-           ui.add_space(4.0);
-
-           // File size
-           if !file_size.is_empty() {
-               ui.label(egui::RichText::new(file_size).size(12.0));
-
-               ui.add_space(4.0);
-           }
-
-           // Aspect ratio
-           if let Some(label) = aspect_ratio {
-               ui.label(egui::RichText::new(label).size(14.0));
-           }
-           ui.add_space(4.0);
-       }
-
-       /// Return the dimensions of the currently loaded image.
-       pub fn image_dimensions(&self) -> (u32, u32) {
-           if let Some(vt) = &self.virtual_texture {
-               return vt.dimensions();
-           }
-
-           if let Some(texture) = &self.texture {
-               let size = texture.size_vec2();
-
-               return (size.x as u32, size.y as u32);
-           }
-
-           (0, 0)
-       }
-    */
     // GIF CONTROLS
     /// Display GIF playback controls if the current image is an animated GIF.
     pub fn gif_controls_ui(&mut self, ui: &mut egui::Ui) {
         if !self.is_gif {
             return;
         }
+        // Read size BEFORE the mutable borrow
+        let btn = self.btn_size();
 
         let Some(gif) = &mut self.gif_animation else {
             return;
@@ -274,7 +229,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new(play_text).size(16.0))
-                    .min_size(egui::vec2(32.0, 28.0))
+                    .min_size(btn)
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -352,7 +307,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("⛶").size(14.0))
-                    .min_size(egui::vec2(24.0, 24.0))
+                    .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
             )
@@ -375,7 +330,7 @@ impl ViewerApp {
         if ui
             .add(
                 egui::Button::new(egui::RichText::new(icon).size(14.0))
-                    .min_size(egui::vec2(24.0, 24.0))
+                    .min_size(self.btn_size_small())
                     .fill(fill)
                     .stroke(egui::Stroke::NONE),
             )
@@ -391,6 +346,33 @@ impl ViewerApp {
             };
 
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(window_level));
+        }
+    }
+
+    /// Standard toolbar button size.
+    fn btn_size(&self) -> egui::Vec2 {
+        if self.compactui {
+            egui::vec2(24.0, 22.0) // compact
+        } else {
+            egui::vec2(32.0, 28.0) // normal
+        }
+    }
+
+    /// Small toolbar button size (used for +/−, 1:1, fit, pin, etc.)
+    fn btn_size_small(&self) -> egui::Vec2 {
+        if self.compactui {
+            egui::vec2(20.0, 20.0)
+        } else {
+            egui::vec2(24.0, 24.0)
+        }
+    }
+
+    /// Medium button size (slower/faster, zoom text)
+    fn btn_size_medium(&self) -> egui::Vec2 {
+        if self.compactui {
+            egui::vec2(24.0, 20.0)
+        } else {
+            egui::vec2(28.0, 24.0)
         }
     }
 }

@@ -73,6 +73,7 @@ fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
                 settings.compact_mode = value;
             });
         }
+        ui.label("Toggle by pressing F4");
     });
 }
 

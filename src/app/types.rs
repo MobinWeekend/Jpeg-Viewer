@@ -214,6 +214,17 @@ pub struct ViewerApp {
     pub confirm_overwrite_path: Option<PathBuf>,
     pub overwrite_is_save_as: bool,
     pub confirm_discard_edits: bool,
+
+    // ====== QUEUE / SELECTION WORKFLOWS ======
+    pub show_queue_manager: bool,
+    pub queue_paths: Vec<PathBuf>,
+    pub queue_mode: bool,
+    pub queue_shuffle: bool,
+    pub queue_repeat: bool,
+    pub queue_root: Option<PathBuf>,
+    pub queue_status: Option<String>,
+    pub queue_previous_entries: Option<Vec<ImageEntry>>,
+    pub queue_previous_index: usize,
 }
 
 impl Default for ViewerApp {
@@ -381,6 +392,15 @@ impl Default for ViewerApp {
             confirm_overwrite_path: None,
             overwrite_is_save_as: false,
             confirm_discard_edits: false,
+            show_queue_manager: false,
+            queue_paths: Vec::new(),
+            queue_mode: false,
+            queue_shuffle: false,
+            queue_repeat: true,
+            queue_root: None,
+            queue_status: None,
+            queue_previous_entries: None,
+            queue_previous_index: 0,
         }
     }
 }

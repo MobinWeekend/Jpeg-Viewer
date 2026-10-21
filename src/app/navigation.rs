@@ -15,7 +15,21 @@ impl ViewerApp {
 
         let len = self.image_entries.len();
 
-        let new_index = (self.current_index as i32 + direction).rem_euclid(len as i32) as usize;
+        let new_index = if self.queue_mode && self.queue_shuffle && direction > 0 && len > 1 {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let mut candidate = rng.gen_range(0..len);
+            while candidate == self.current_index {
+                candidate = rng.gen_range(0..len);
+            }
+            candidate
+        } else if self.queue_mode && !self.queue_repeat {
+            let candidate = self.current_index as i32 + direction;
+            if candidate < 0 || candidate >= len as i32 { return; }
+            candidate as usize
+        } else {
+            (self.current_index as i32 + direction).rem_euclid(len as i32) as usize
+        };
 
         self.navigate_to_index(ctx, new_index);
     }
@@ -139,7 +153,23 @@ impl ViewerApp {
             (self.current_index + 1) % len
         };
          */
-        let new_index = (self.current_index + 1) % len;
+        if self.queue_mode && !self.queue_repeat && self.current_index + 1 >= len {
+            self.slideshow_enabled = false;
+            let _ = self.settings_manager.update(|settings| settings.slideshow_enabled = false);
+            self.update_window_title(ctx);
+            return;
+        }
+        let new_index = if self.queue_mode && self.queue_shuffle && len > 1 {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let mut candidate = rng.gen_range(0..len);
+            while candidate == self.current_index {
+                candidate = rng.gen_range(0..len);
+            }
+            candidate
+        } else {
+            (self.current_index + 1) % len
+        };
         self.navigate_to_index(ctx, new_index);
     }
 }

@@ -287,3 +287,9 @@ The compiled executable will be located in:
 ```text
 target/release/
 ```
+
+## Selection and queues
+
+Open **Menu → Selection & Queue** to build an ordered list of filesystem image files. Add individual files, the current image, images in the current view, or recursively scan a folder tree. Queue entries can be reordered, removed, browsed in queue order, and configured for shuffle-on-next and repeat behavior. Saved `.jvq` files use a versioned text format with hexadecimal-encoded UTF-8 paths, relative paths when they are inside the queue file's directory, absolute paths otherwise, and a stored root path for missing-file remapping. Missing items are retained on load and marked unavailable; use **Remap missing root** to resolve moved directory trees. **Export paths** writes a plain-text path list.
+
+Queues currently include standalone filesystem image files only; images inside ZIP/7z/RAR archives are not added to queues. Batch actions are limited to queue management and path export; destructive batch image operations are intentionally not included in this phase.

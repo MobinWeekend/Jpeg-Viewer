@@ -395,6 +395,7 @@ impl eframe::App for ViewerApp {
         }
         self.render_central_panel(ctx);
         crate::app::ui::render_overlay_ui(self, ctx);
+        self.render_queue_manager(ctx);
 
         if self.texture.is_none() && !self.is_loading() && self.image_entries.is_empty() {
             self.render_shortcut_help(ctx);

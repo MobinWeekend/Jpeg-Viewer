@@ -1,15 +1,16 @@
 mod aspect_ratio;
 mod cache;
 mod commands;
+mod editing;
 mod file_detection;
 mod file_ops;
-mod editing;
 mod frame_limiter;
 mod hardcoded_input;
 mod image_metadata;
 mod loading;
 mod navigation;
 mod preload;
+mod queues;
 pub mod types;
 mod ui;
 mod update;

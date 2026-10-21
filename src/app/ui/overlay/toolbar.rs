@@ -46,8 +46,9 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f3
     .show(ctx, |ui| {
         render_toolbar_ui(app, ctx, ui, |this, ui| {
             this.render_hamburger_ui(ui);
+            let space = if compact { 8.0 } else { 1.0 };
             if no_image {
-                separator(ui);
+                separator(ui, space);
                 this.zoom_out_ui(ctx, ui);
                 this.zoom_text(ctx, ui);
                 this.zoom_in_ui(ctx, ui);
@@ -55,16 +56,16 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f3
                 //this.fullscreen_ui(ctx, ui);
                 //this.pin_window_ui(ctx, ui);
                 if !compact {
-                    separator(ui);
+                    separator(ui, space);
                     sort_method_horizontal_ui(this, ctx, ui);
 
-                    separator(ui);
+                    separator(ui, space);
                     //this.image_info_ui(ui);
                     this.file_metadata_button(ui);
                 }
             }
             if this.is_gif {
-                separator(ui);
+                separator(ui, space);
                 this.gif_controls_ui(ui);
             }
         });
@@ -133,8 +134,8 @@ fn render_image_counter(app: &ViewerApp, ui: &mut egui::Ui) {
     );
 }
 
-fn separator(ui: &mut egui::Ui) {
-    ui.add_space(MENU_OFFSET / 4.0);
+fn separator(ui: &mut egui::Ui, space: f32) {
+    ui.add_space(MENU_OFFSET / (4.0 * space));
     ui.separator();
-    ui.add_space(MENU_OFFSET / 4.0);
+    ui.add_space(MENU_OFFSET / (4.0 * space));
 }

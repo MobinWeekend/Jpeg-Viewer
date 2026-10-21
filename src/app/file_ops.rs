@@ -18,6 +18,8 @@ impl ViewerApp {
             self.show_settings_menu = false;
             return;
         }
+        self.queue_mode = false;
+        self.queue_previous_entries = None;
         if self.edit_session.is_some() {
             self.edit_session = None;
             self.show_edit_menu = false;
