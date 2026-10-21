@@ -123,21 +123,19 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                                     let clicked = match entry {
                                         ImageEntry::File(path) => {
-                                            let key = format!(
-                                                "file:{}",
-                                                if path.is_absolute() {
-                                                    path.display().to_string()
-                                                } else {
-                                                    std::env::current_dir()
-                                                        .unwrap_or_default()
-                                                        .join(path)
-                                                        .display()
-                                                        .to_string()
-                                                }
-                                            );
+                                            let absolute_path = if path.is_absolute() {
+                                                path.clone()
+                                            } else {
+                                                std::env::current_dir()
+                                                    .unwrap_or_default()
+                                                    .join(path)
+                                            };
+                                            let key = format!("file:{}", absolute_path.display());
 
+                                            // Reuse the same thumbnail card renderer as the queue UI
+                                            // so image sizing, selection outlines, and filename fitting
+                                            // stay consistent between Browse and Queue.
                                             let mut clicked = false;
-
                                             ui.allocate_ui_with_layout(
                                                 egui::vec2(card_size, card_size),
                                                 egui::Layout::centered_and_justified(
@@ -156,7 +154,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                     );
                                                 },
                                             );
-
                                             clicked
                                         }
                                         _ => {
