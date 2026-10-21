@@ -7,6 +7,29 @@ use std::path::{Path, PathBuf};
 
 const QUEUE_MAGIC: &str = "JPEG_VIEWER_QUEUE\t1";
 
+/// Maximum side length of each thumbnail cell.
+pub(super) const CELL_MAX: f32 = 128.0;
+/// Minimum side length of each thumbnail cell.
+pub(super) const CELL_MIN: f32 = 64.0;
+/// Gap between grid cells (both axes).
+pub(super) const GAP: f32 = 10.0;
+
+/// Choose the number of columns and the card size.
+///
+/// Cards stay between CELL_MIN and CELL_MAX whenever the available width
+/// permits it. The layout uses the fewest columns that can fill the width
+/// without exceeding CELL_MAX.
+pub(super) fn fit_cards(available: f32) -> (usize, f32) {
+    let available = available.max(CELL_MIN);
+
+    let columns = (((available + GAP) / (CELL_MAX + GAP)).ceil() as usize).clamp(1, 24);
+
+    let card_size =
+        ((available - GAP * (columns as f32 - 1.0)) / columns as f32).clamp(CELL_MIN, CELL_MAX);
+
+    (columns, card_size)
+}
+
 impl ViewerApp {
     pub fn render_queue_sidebar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         // Remember the active queue pane's bounds so external drops can be routed
@@ -102,15 +125,18 @@ impl ViewerApp {
             let mut remove_index = None;
             let mut move_action: Option<(usize, isize)> = None;
             let mut open_index = None;
-            let available = ui.available_width().max(100.0);
-            let columns = if available >= 320.0 { 2 } else { 1 };
+
+            // Dynamic sizing — same logic as the Browse sidebar.
+            let available = ui.available_width().max(CELL_MIN);
+            let (columns, card_size) = fit_cards(available);
+
             egui::ScrollArea::vertical()
                 .id_salt("queue_sidebar_items")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     egui::Grid::new("queue_sidebar_grid")
                         .num_columns(columns)
-                        .spacing(egui::vec2(8.0, 10.0))
+                        .spacing(egui::vec2(GAP, GAP))
                         .show(ui, |ui| {
                             for (index, path) in queue_items.iter().enumerate() {
                                 let name = path
@@ -124,26 +150,46 @@ impl ViewerApp {
                                     format!("⚠ {name}")
                                 };
                                 let key = format!("file:{}", absolute_path(path).display());
-                                let clicked = self
-                                    .render_thumbnail_card(ui, path, &key, &label, false, 112.0);
-                                if clicked {
+
+                                // Card (thumbnail + label) and queue controls,
+                                // stacked vertically and centered under each other.
+                                let mut card_clicked = false;
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(card_size, 0.0),
+                                    egui::Layout::top_down(egui::Align::Center),
+                                    |ui| {
+                                        card_clicked = self.render_thumbnail_card(
+                                            ui, path, &key, &label, false, false, card_size,
+                                        );
+                                        // Queue controls, below the label.
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .small_button("^")
+                                                .on_hover_text("Move up")
+                                                .clicked()
+                                            {
+                                                move_action = Some((index, -1));
+                                            }
+                                            if ui
+                                                .small_button("v")
+                                                .on_hover_text("Move down")
+                                                .clicked()
+                                            {
+                                                move_action = Some((index, 1));
+                                            }
+                                            if ui
+                                                .small_button("×")
+                                                .on_hover_text("Remove from queue")
+                                                .clicked()
+                                            {
+                                                remove_index = Some(index);
+                                            }
+                                        });
+                                    },
+                                );
+                                if card_clicked {
                                     open_index = Some(index);
                                 }
-                                ui.horizontal(|ui| {
-                                    if ui.small_button("↑").on_hover_text("Move up").clicked() {
-                                        move_action = Some((index, -1));
-                                    }
-                                    if ui.small_button("↓").on_hover_text("Move down").clicked() {
-                                        move_action = Some((index, 1));
-                                    }
-                                    if ui
-                                        .small_button("×")
-                                        .on_hover_text("Remove from queue")
-                                        .clicked()
-                                    {
-                                        remove_index = Some(index);
-                                    }
-                                });
                                 if (index + 1) % columns == 0 {
                                     ui.end_row();
                                 }
@@ -197,50 +243,72 @@ impl ViewerApp {
     pub fn render_thumbnail_card(
         &mut self,
         ui: &mut egui::Ui,
-        //ctx: &egui::Context,
         path: &Path,
         key: &str,
         label: &str,
         selected: bool,
+        auto_scroll: bool,
         thumbnail_width: f32,
     ) -> bool {
-        let card_width = ui.available_width().min(thumbnail_width + 12.0).max(80.0);
+        let card_width = thumbnail_width.max(1.0);
+        let label_height = (card_width * 0.25).clamp(20.0, 32.0);
+        let image_height = (card_width - label_height).max(1.0);
+
         let mut clicked = false;
+
         ui.vertical(|ui| {
             ui.set_width(card_width);
+
+            // Image area. Leave unused space unpainted.
             let (rect, response) =
-                ui.allocate_exact_size(egui::vec2(card_width, 88.0), egui::Sense::click());
+                ui.allocate_exact_size(egui::vec2(card_width, image_height), egui::Sense::click());
+
             if let Some(texture) = self.sidebar_thumbnails.get(key) {
                 let size = texture.size_vec2();
-                let scale = (rect.width() / size.x).min(rect.height() / size.y).min(1.0);
-                let draw_size = size * scale;
-                let draw_rect = egui::Rect::from_center_size(rect.center(), draw_size);
-                ui.painter().image(
-                    texture.id(),
-                    draw_rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    egui::Color32::WHITE,
-                );
+
+                // Validate dimensions before calculating the scale.
+                if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
+                    // Contain-fit: preserve the original aspect ratio and
+                    // ensure the entire image fits inside the image area.
+                    let scale_x = rect.width() / size.x;
+                    let scale_y = rect.height() / size.y;
+                    let scale = scale_x.min(scale_y);
+
+                    if scale.is_finite() && scale > 0.0 {
+                        let draw_size = size * scale;
+                        let draw_rect = egui::Rect::from_center_size(rect.center(), draw_size);
+
+                        ui.painter().image(
+                            texture.id(),
+                            draw_rect,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                }
             } else {
-                ui.painter()
-                    .rect_filled(rect, 4.0, ui.visuals().widgets.noninteractive.bg_fill);
+                let message = if !path.exists() {
+                    "Missing"
+                } else if self.sidebar_thumbnail_failed.contains(key) {
+                    "No preview"
+                } else {
+                    "Loading…"
+                };
+
                 ui.painter().text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
-                    if !path.exists() {
-                        "Missing"
-                    } else if self.sidebar_thumbnail_failed.contains(key) {
-                        "No preview"
-                    } else {
-                        "Loading…"
-                    },
+                    message,
                     egui::FontId::proportional(11.0),
                     ui.visuals().weak_text_color(),
                 );
+
                 if ui.is_rect_visible(rect) {
                     self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string());
                 }
             }
+
+            // Selection outline around the image area.
             if selected {
                 ui.painter().rect_stroke(
                     rect,
@@ -249,16 +317,26 @@ impl ViewerApp {
                     egui::StrokeKind::Inside,
                 );
             }
+
+            // Scroll the selected image into view when selection changes.
+            if auto_scroll && selected && !ui.clip_rect().contains_rect(rect) {
+                ui.scroll_to_rect(rect, Some(egui::Align::Min));
+            }
+
             clicked = response.on_hover_text(path.display().to_string()).clicked();
+
+            // Filename label — forced to a single line.
+            // Give `fit_label` a slightly conservative budget so the button's internal
+            // padding never causes egui to truncate again.
+            let truncated = fit_label(ui, label, (card_width - 8.0).max(8.0));
             let text = ui.add_sized(
-                [card_width, 32.0],
-                egui::Button::selectable(
-                    selected,
-                    middle_ellipsis(label, (card_width / 6.0) as usize),
-                ),
+                [card_width, label_height],
+                egui::Button::selectable(selected, truncated).wrap_mode(egui::TextWrapMode::Extend), // no wrap, no extra ellipsis
             );
+
             clicked |= text.on_hover_text(label).clicked();
         });
+
         clicked
     }
 
@@ -269,27 +347,97 @@ impl ViewerApp {
         {
             return;
         }
+
         self.sidebar_thumbnail_attempted.insert(key.clone());
         self.sidebar_thumbnail_pending.insert(key.clone());
+
         let (tx, rx) = std::sync::mpsc::channel();
         self.sidebar_thumbnail_receivers.push(rx);
+
         std::thread::spawn(move || {
             let result = (|| -> Result<(usize, usize, Vec<u8>), String> {
-                let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-                let decoded = crate::decoder::decode_bytes(&bytes).map_err(|e| e.to_string())?;
-                let rgba = image::RgbaImage::from_raw(
-                    decoded.width(),
-                    decoded.height(),
-                    decoded.data().to_vec(),
-                )
-                .ok_or_else(|| "invalid RGBA thumbnail source".to_string())?;
-                let thumbnail = image::imageops::thumbnail(&rgba, 144, 100);
-                Ok((
-                    thumbnail.width() as usize,
-                    thumbnail.height() as usize,
-                    thumbnail.into_raw(),
-                ))
+                let bytes = fs::read(&path)
+                    .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+
+                let decoded = crate::decoder::decode_bytes(&bytes)
+                    .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?;
+
+                let source_width = decoded.width();
+                let source_height = decoded.height();
+
+                if source_width == 0 || source_height == 0 {
+                    return Err(format!(
+                        "Invalid source dimensions for {}: {}x{}",
+                        path.display(),
+                        source_width,
+                        source_height
+                    ));
+                }
+
+                let expected_bytes = (source_width as usize)
+                    .checked_mul(source_height as usize)
+                    .and_then(|pixels| pixels.checked_mul(4))
+                    .ok_or_else(|| "Source image dimensions overflow".to_string())?;
+
+                let source_pixels = decoded.data();
+
+                if source_pixels.len() != expected_bytes {
+                    return Err(format!(
+                        "Invalid RGBA data for {}: dimensions {}x{} require {} bytes, got {}",
+                        path.display(),
+                        source_width,
+                        source_height,
+                        expected_bytes,
+                        source_pixels.len()
+                    ));
+                }
+                /*
+                eprintln!(
+                    "[sidebar thumbnail] Source: {} — {}x{}",
+                    path.display(),
+                    source_width,
+                    source_height
+                );
+                */
+                let rgba =
+                    image::RgbaImage::from_raw(source_width, source_height, source_pixels.to_vec())
+                        .ok_or_else(|| {
+                            format!("Could not construct RGBA image for {}", path.display())
+                        })?;
+
+                // Fit within a max box while preserving the source aspect ratio.
+                // `image::imageops::thumbnail` does NOT preserve AR — it forces exactly
+                // the given dimensions — so compute the contained size ourselves.
+                const THUMB_MAX_W: u32 = 256;
+                const THUMB_MAX_H: u32 = 256;
+
+                let scale = (THUMB_MAX_W as f32 / source_width as f32)
+                    .min(THUMB_MAX_H as f32 / source_height as f32);
+                let target_w = ((source_width as f32 * scale).round() as u32).max(1);
+                let target_h = ((source_height as f32 * scale).round() as u32).max(1);
+
+                let thumbnail = image::imageops::thumbnail(&rgba, target_w, target_h);
+
+                let width = thumbnail.width() as usize;
+                let height = thumbnail.height() as usize;
+
+                if width == 0 || height == 0 {
+                    return Err(format!(
+                        "Thumbnail has invalid dimensions for {}",
+                        path.display()
+                    ));
+                }
+                /*
+                eprintln!(
+                    "[sidebar thumbnail] Result: {} — {}x{}",
+                    path.display(),
+                    width,
+                    height
+                );
+                 */
+                Ok((width, height, thumbnail.into_raw()))
             })();
+
             let _ = tx.send((key, result));
         });
     }
@@ -533,23 +681,80 @@ impl ViewerApp {
     }
 }
 
-fn middle_ellipsis(text: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() <= max_chars || max_chars < 5 {
-        return if chars.len() <= max_chars {
-            text.to_string()
-        } else {
-            chars.into_iter().take(max_chars).collect()
-        };
+/// Truncate `text` with a middle ellipsis so that it fits within `max_width`
+/// pixels when rendered with the button font. Always returns a single-line
+/// string. Pixel-accurate; guarantees the label never overflows or wraps.
+pub(super) fn fit_label(ui: &egui::Ui, text: &str, max_width: f32) -> String {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let measure = |s: &str| -> f32 {
+        ui.painter()
+            .layout_no_wrap(s.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
+            .size()
+            .x
+    };
+
+    if measure(text) <= max_width {
+        return text.to_string();
     }
-    let keep = max_chars - 3;
-    let left = (keep * 3 + 2) / 5;
-    let right = keep - left;
-    format!(
-        "{}...{}",
-        chars[..left].iter().collect::<String>(),
-        chars[chars.len() - right..].iter().collect::<String>()
-    )
+
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+
+    // Start with the ellipsis alone, then greedily grow the prefix/suffix
+    // while the result still fits. Keep the last candidate that fit.
+    let mut best = "…".to_string();
+    if measure(&best) > max_width {
+        return best; // ellipsis itself doesn't fit; nothing better to do
+    }
+
+    let mut left = 0usize;
+    let mut right = chars.len();
+    while left < right {
+        // Grow the side that's currently shorter (keeps the split balanced).
+        let grow_left = left <= chars.len() - right;
+        let (next_left, next_right) = if grow_left {
+            (left + 1, right)
+        } else {
+            (left, right - 1)
+        };
+
+        let candidate: String = chars[..next_left]
+            .iter()
+            .chain(std::iter::once(&'…'))
+            .chain(chars[next_right..].iter())
+            .collect();
+
+        if measure(&candidate) <= max_width {
+            best = candidate;
+            left = next_left;
+            right = next_right;
+        } else {
+            // This side can't grow; try the other side once.
+            if grow_left {
+                // Try growing from the right instead.
+                if right > left {
+                    let alt_right = right - 1;
+                    let alt: String = chars[..left]
+                        .iter()
+                        .chain(std::iter::once(&'…'))
+                        .chain(chars[alt_right..].iter())
+                        .collect();
+                    if measure(&alt) <= max_width {
+                        best = alt;
+                        right = alt_right;
+                        continue;
+                    }
+                }
+                break;
+            } else {
+                break;
+            }
+        }
+    }
+
+    best
 }
 
 fn entry_path(entry: &ImageEntry) -> Option<&PathBuf> {

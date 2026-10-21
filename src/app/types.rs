@@ -226,6 +226,8 @@ pub struct ViewerApp {
     pub queue_previous_index: usize,
     /// Which content tab is active in the left sidebar (false = browse, true = queue).
     pub sidebar_queue_tab: bool,
+    /// Last current image index handled by sidebar auto-scroll.
+    pub sidebar_last_current_index: Option<usize>,
     /// Last rendered queue drop target; external drops here are queued rather than opened.
     pub queue_drop_rect: Option<egui::Rect>,
     /// Lazily generated thumbnail textures keyed by normalized path / entry id.
@@ -233,7 +235,8 @@ pub struct ViewerApp {
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
-    pub sidebar_thumbnail_receivers: Vec<Receiver<(String, Result<(usize, usize, Vec<u8>), String>)>>,
+    pub sidebar_thumbnail_receivers:
+        Vec<Receiver<(String, Result<(usize, usize, Vec<u8>), String>)>>,
 }
 
 impl Default for ViewerApp {
@@ -410,6 +413,7 @@ impl Default for ViewerApp {
             queue_previous_entries: None,
             queue_previous_index: 0,
             sidebar_queue_tab: false,
+            sidebar_last_current_index: None,
             queue_drop_rect: None,
             sidebar_thumbnails: HashMap::new(),
             sidebar_thumbnail_attempted: HashSet::new(),
