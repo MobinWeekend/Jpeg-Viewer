@@ -5,6 +5,7 @@ mod copy_buttons;
 mod file_info;
 pub mod general;
 pub mod helpers;
+mod settings_file;
 mod slideshow;
 
 use crate::app::types::ViewerApp;
@@ -16,7 +17,11 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
-    let default_width = app.settings_manager.get().settings_sidebar_width.clamp(260.0, 640.0);
+    let default_width = app
+        .settings_manager
+        .get()
+        .settings_sidebar_width
+        .clamp(260.0, 640.0);
     let response = egui::SidePanel::right("settings_sidebar")
         .resizable(true)
         .default_width(default_width)
@@ -25,7 +30,11 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
             ui.horizontal(|ui| {
                 ui.heading("Settings");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("×").on_hover_text("Close settings").clicked() {
+                    if ui
+                        .small_button("×")
+                        .on_hover_text("Close settings")
+                        .clicked()
+                    {
                         app.show_settings_menu = false;
                     }
                 });
@@ -40,6 +49,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                     general::render(app, ui, ctx);
                     slideshow::render(app, ui, ctx);
                     advanced::render(app, ui, ctx);
+                    settings_file::render(app, ui);
                     ui.add_space(8.0);
                 });
         });
@@ -47,7 +57,9 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
     let width = response.response.rect.width().clamp(260.0, 640.0);
     let previous = app.settings_manager.get().settings_sidebar_width;
     if !ctx.input(|input| input.pointer.any_down()) && (width - previous).abs() > 2.0 {
-        let _ = app.settings_manager.update(|settings| settings.settings_sidebar_width = width);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.settings_sidebar_width = width);
     }
 }
 

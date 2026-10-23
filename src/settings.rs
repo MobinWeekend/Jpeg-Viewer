@@ -80,23 +80,31 @@ impl Default for AppSettings {
 pub struct SettingsManager {
     path: PathBuf,
     pub settings: AppSettings,
+    /// Last read/write error, if any. Cleared on a successful save.
+    last_error: Option<String>,
 }
 
 impl SettingsManager {
     /// Create a new SettingsManager that loads settings from the default location
     pub fn new() -> Self {
         let path = Self::get_settings_path();
-        let settings = Self::load_from_file(&path);
+        let mut error: Option<String> = None;
+        let settings = Self::load_from_file(&path, &mut error);
 
         // Create a settings file on first run, and recover from a malformed file
         // without silently destroying the user's original configuration.
         if !path.exists() {
             if let Err(e) = Self::save_to_file(&path, &settings) {
                 eprintln!("Warning: Could not save default settings: {}", e);
+                error = Some(format!("Could not save default settings: {}", e));
             }
         }
 
-        Self { path, settings }
+        Self {
+            path,
+            settings,
+            last_error: error,
+        }
     }
 
     /// Get the path where settings should be stored
@@ -112,8 +120,8 @@ impl SettingsManager {
         PathBuf::from("jpeg_viewer settings.ini")
     }
 
-    /// Load settings from an INI file
-    fn load_from_file(path: &PathBuf) -> AppSettings {
+    /// Load settings from an INI file. Any read error is recorded in `error_out`.
+    fn load_from_file(path: &PathBuf, error_out: &mut Option<String>) -> AppSettings {
         if !path.exists() {
             return AppSettings::default();
         }
@@ -133,8 +141,10 @@ impl SettingsManager {
                                 "Settings file schema version {} is newer than supported version {}; known settings will be loaded.",
                                 v, SETTINGS_SCHEMA_VERSION
                             ),
-                            Ok(_) => {},
-                            Err(_) => eprintln!("Invalid settings schema_version; treating file as legacy settings."),
+                            Ok(_) => {}
+                            Err(_) => eprintln!(
+                                "Invalid settings schema_version; treating file as legacy settings."
+                            ),
                         }
                     }
                     // Read b_ctrl_invert (boolean)
@@ -152,7 +162,11 @@ impl SettingsManager {
                     // Read window size
                     if let Some(value) = section.get("window_size") {
                         if let Some((width, height)) = Self::parse_f32_pair(value) {
-                            if width.is_finite() && height.is_finite() && width > 100.0 && height > 100.0 {
+                            if width.is_finite()
+                                && height.is_finite()
+                                && width > 100.0
+                                && height > 100.0
+                            {
                                 settings.window_size = Some([width, height]);
                             }
                         }
@@ -168,7 +182,8 @@ impl SettingsManager {
                     // Read cache delta_factor
                     if let Some(value) = section.get("cache_delta_factor") {
                         if let Ok(factor) = value.parse::<f32>() {
-                            if factor.is_finite() && (0.0..=10.0).contains(&factor) && factor > 0.0 {
+                            if factor.is_finite() && (0.0..=10.0).contains(&factor) && factor > 0.0
+                            {
                                 settings.cache_delta_factor = factor;
                             }
                         }
@@ -316,6 +331,7 @@ impl SettingsManager {
             }
             Err(e) => {
                 eprintln!("Error loading settings from {:?}: {}", path, e);
+                *error_out = Some(format!("Could not read {}: {}", path.display(), e));
                 // Preserve the unreadable file for diagnosis before starting with
                 // defaults. The constructor will then create a fresh settings file.
                 if path.exists() {
@@ -325,11 +341,16 @@ impl SettingsManager {
                         .unwrap_or(0);
                     let backup = path.with_file_name(format!(
                         "{}.corrupt-{}",
-                        path.file_name().and_then(|n| n.to_str()).unwrap_or("settings.ini"),
+                        path.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("settings.ini"),
                         stamp
                     ));
                     if let Err(rename_error) = fs::rename(path, &backup) {
-                        eprintln!("Could not preserve malformed settings file at {:?}: {}", path, rename_error);
+                        eprintln!(
+                            "Could not preserve malformed settings file at {:?}: {}",
+                            path, rename_error
+                        );
                     } else {
                         eprintln!("Preserved malformed settings file at {:?}", backup);
                     }
@@ -353,7 +374,10 @@ impl SettingsManager {
         // Versioned, additive schema: absent keys in old files retain defaults.
         // Do not downgrade a file written by a newer version of the application.
         let mut section = conf.with_section(Some("Settings"));
-        section.set("schema_version", stored_version.max(SETTINGS_SCHEMA_VERSION).to_string());
+        section.set(
+            "schema_version",
+            stored_version.max(SETTINGS_SCHEMA_VERSION).to_string(),
+        );
 
         section.set(
             "b_ctrl_invert",
@@ -452,10 +476,30 @@ impl SettingsManager {
             },
         );
         section.set("theme_preference", &settings.theme_preference);
-        section.set("show_file_sidebar", if settings.show_file_sidebar { "true" } else { "false" });
-        section.set("file_sidebar_width", settings.file_sidebar_width.to_string());
-        section.set("settings_sidebar_width", settings.settings_sidebar_width.to_string());
-        section.set("compact_mode", if settings.compact_mode { "true" } else { "false" });
+        section.set(
+            "show_file_sidebar",
+            if settings.show_file_sidebar {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "file_sidebar_width",
+            settings.file_sidebar_width.to_string(),
+        );
+        section.set(
+            "settings_sidebar_width",
+            settings.settings_sidebar_width.to_string(),
+        );
+        section.set(
+            "compact_mode",
+            if settings.compact_mode {
+                "true"
+            } else {
+                "false"
+            },
+        );
 
         Self::write_ini_safely(path, &conf)
     }
@@ -464,7 +508,10 @@ impl SettingsManager {
     /// old file. A backup protects the previous copy during replacement. This is a
     /// recoverable replacement strategy, not a guarantee of atomicity on every OS/filesystem.
     fn write_ini_safely(path: &Path, conf: &Ini) -> Result<(), String> {
-        let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         fs::create_dir_all(parent)
             .map_err(|e| format!("Could not create settings directory {:?}: {}", parent, e))?;
 
@@ -472,7 +519,10 @@ impl SettingsManager {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("settings.ini");
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("settings.ini");
         let temp_path = parent.join(format!(".{}.{}.tmp", file_name, stamp));
         let backup_path = parent.join(format!(".{}.{}.bak", file_name, stamp));
 
@@ -481,7 +531,12 @@ impl SettingsManager {
                 .write(true)
                 .create_new(true)
                 .open(&temp_path)
-                .map_err(|e| format!("Could not create temporary settings file {:?}: {}", temp_path, e))?;
+                .map_err(|e| {
+                    format!(
+                        "Could not create temporary settings file {:?}: {}",
+                        temp_path, e
+                    )
+                })?;
             conf.write_to(&mut file)
                 .map_err(|e| format!("Could not write temporary settings file: {}", e))?;
             file.sync_all()
@@ -490,14 +545,21 @@ impl SettingsManager {
 
             let had_original = path.exists();
             if had_original {
-                fs::rename(path, &backup_path)
-                    .map_err(|e| format!("Could not preserve existing settings file {:?}: {}", path, e))?;
+                fs::rename(path, &backup_path).map_err(|e| {
+                    format!(
+                        "Could not preserve existing settings file {:?}: {}",
+                        path, e
+                    )
+                })?;
             }
 
             if let Err(e) = fs::rename(&temp_path, path) {
                 if had_original {
                     if let Err(restore_error) = fs::rename(&backup_path, path) {
-                        return Err(format!("Could not install new settings file: {}; restoring the previous file also failed: {} (backup at {:?})", e, restore_error, backup_path));
+                        return Err(format!(
+                            "Could not install new settings file: {}; restoring the previous file also failed: {} (backup at {:?})",
+                            e, restore_error, backup_path
+                        ));
                     }
                 }
                 return Err(format!("Could not install new settings file: {}", e));
@@ -505,7 +567,10 @@ impl SettingsManager {
 
             if had_original {
                 if let Err(e) = fs::remove_file(&backup_path) {
-                    eprintln!("Warning: settings saved, but could not remove backup {:?}: {}", backup_path, e);
+                    eprintln!(
+                        "Warning: settings saved, but could not remove backup {:?}: {}",
+                        backup_path, e
+                    );
                 }
             }
             Ok(())
@@ -513,7 +578,10 @@ impl SettingsManager {
 
         if temp_path.exists() {
             if let Err(e) = fs::remove_file(&temp_path) {
-                eprintln!("Warning: could not remove temporary settings file {:?}: {}", temp_path, e);
+                eprintln!(
+                    "Warning: could not remove temporary settings file {:?}: {}",
+                    temp_path, e
+                );
             }
         }
         result
@@ -538,9 +606,26 @@ impl SettingsManager {
         &self.settings
     }
 
-    /// Save current settings to disk
-    pub fn save(&self) -> Result<(), String> {
-        Self::save_to_file(&self.path, &self.settings)
+    /// Path to the persisted settings `.ini` file.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Last read/write error, or `None` if the last operation succeeded.
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
+    }
+
+    /// Save current settings to disk. Records/clears `last_error` accordingly.
+    pub fn save(&mut self) -> Result<(), String> {
+        let result = Self::save_to_file(&self.path, &self.settings);
+        match &result {
+            Ok(()) => self.last_error = None,
+            Err(e) => {
+                self.last_error = Some(format!("Could not write {}: {}", self.path.display(), e));
+            }
+        }
+        result
     }
 
     /// Update a setting and save automatically
@@ -558,7 +643,11 @@ impl SettingsManager {
 
     pub fn update_window_state(&mut self, pos: [f32; 2], size: [f32; 2]) -> Result<(), String> {
         // Clamp to reasonable values (prevent off-screen)
-        if !pos[0].is_finite() || !pos[1].is_finite() || !size[0].is_finite() || !size[1].is_finite() {
+        if !pos[0].is_finite()
+            || !pos[1].is_finite()
+            || !size[0].is_finite()
+            || !size[1].is_finite()
+        {
             return Err("Window position and size must contain finite numbers".to_string());
         }
         let size = [size[0].max(100.0), size[1].max(100.0)];
@@ -595,11 +684,16 @@ mod tests {
 
     #[test]
     fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-test-{}.ini", unique));
         fs::write(&path, "[Settings]\nb_ctrl_invert=true\ncache_radius=12\n").unwrap();
 
-        let loaded = SettingsManager::load_from_file(&path);
+        let mut error: Option<String> = None;
+        let loaded = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
         assert!(loaded.b_ctrl_invert);
         assert_eq!(loaded.cache_radius, 12);
         assert_eq!(loaded.tile_size, AppSettings::default().tile_size);
@@ -612,7 +706,10 @@ mod tests {
 
     #[test]
     fn save_preserves_unknown_keys_and_future_schema_version() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-future-{}.ini", unique));
         fs::write(
             &path,
@@ -630,14 +727,27 @@ mod tests {
 
     #[test]
     fn invalid_values_fall_back_to_safe_defaults() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-invalid-{}.ini", unique));
-        fs::write(&path, "[Settings]\ntexture_filter=unexpected\nmax_fps=NaN\ncache_delta_factor=inf\n").unwrap();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("jpeg-viewer-settings-invalid-{}.ini", unique));
+        fs::write(
+            &path,
+            "[Settings]\ntexture_filter=unexpected\nmax_fps=NaN\ncache_delta_factor=inf\n",
+        )
+        .unwrap();
 
-        let loaded = SettingsManager::load_from_file(&path);
+        let mut error: Option<String> = None;
+        let loaded = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
         assert_eq!(loaded.texture_filter, "linear");
         assert_eq!(loaded.max_fps, AppSettings::default().max_fps);
-        assert_eq!(loaded.cache_delta_factor, AppSettings::default().cache_delta_factor);
+        assert_eq!(
+            loaded.cache_delta_factor,
+            AppSettings::default().cache_delta_factor
+        );
         let _ = fs::remove_file(path);
     }
 

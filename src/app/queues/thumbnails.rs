@@ -107,6 +107,88 @@ impl ViewerApp {
         });
     }
 
+    #[allow(unused_assignments)]
+    pub(crate) fn request_sidebar_archive_thumbnail(
+        &mut self,
+        entry: crate::image_entry::ImageEntry,
+        key: String,
+    ) {
+        if self.sidebar_thumbnail_attempted.contains(&key)
+            || self.sidebar_thumbnail_pending.contains(&key)
+        {
+            return;
+        }
+        self.sidebar_thumbnail_attempted.insert(key.clone());
+        self.sidebar_thumbnail_pending.insert(key.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.sidebar_thumbnail_receivers.push(rx);
+        std::thread::spawn(move || {
+            let result = (|| -> Result<(usize, usize, Vec<u8>), String> {
+                use std::io::Read;
+                let bytes = match &entry {
+                    crate::image_entry::ImageEntry::File(path) => {
+                        std::fs::read(path).map_err(|e| e.to_string())?
+                    }
+                    crate::image_entry::ImageEntry::Zip(item) => {
+                        let file =
+                            std::fs::File::open(&item.archive_path).map_err(|e| e.to_string())?;
+                        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+                        let mut item_file = archive
+                            .by_index(item.entry_index)
+                            .map_err(|e| e.to_string())?;
+                        let mut bytes = Vec::new();
+                        item_file
+                            .read_to_end(&mut bytes)
+                            .map_err(|e| e.to_string())?;
+                        bytes
+                    }
+                    crate::image_entry::ImageEntry::S7z(item) => {
+                        let mut archive = sevenz_rust2::ArchiveReader::open(
+                            &item.archive_path,
+                            sevenz_rust2::Password::empty(),
+                        )
+                        .map_err(|e| e.to_string())?;
+                        archive.read_file(&item.name).map_err(|e| e.to_string())?
+                    }
+                    crate::image_entry::ImageEntry::Rar(item) => {
+                        let mut archive = unrar::Archive::new(&item.archive_path)
+                            .open_for_processing()
+                            .map_err(|e| e.to_string())?;
+                        loop {
+                            let header = archive
+                                .read_header()
+                                .map_err(|e| e.to_string())?
+                                .ok_or_else(|| format!("Entry not found: {}", item.name))?;
+                            if header.entry().filename.to_string_lossy() == item.name {
+                                let (bytes, next) = header.read().map_err(|e| e.to_string())?;
+                                archive = next;
+                                break bytes;
+                            }
+                            archive = header.skip().map_err(|e| e.to_string())?;
+                        }
+                    }
+                };
+                let decoded = crate::decoder::decode_bytes(&bytes).map_err(|e| e.to_string())?;
+                let w = decoded.width();
+                let h = decoded.height();
+                if w == 0 || h == 0 {
+                    return Err("Empty image".into());
+                }
+                let rgba = image::RgbaImage::from_raw(w, h, decoded.data().to_vec())
+                    .ok_or_else(|| "Invalid decoded image data".to_string())?;
+                let scale = (256.0 / w as f32).min(256.0 / h as f32);
+                let tw = ((w as f32 * scale).round() as u32).max(1);
+                let th = ((h as f32 * scale).round() as u32).max(1);
+                let thumb = image::imageops::thumbnail(&rgba, tw, th);
+                Ok((
+                    thumb.width() as usize,
+                    thumb.height() as usize,
+                    thumb.into_raw(),
+                ))
+            })();
+            let _ = tx.send((key, result));
+        });
+    }
     pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
         let mut completed = Vec::new();
         self.sidebar_thumbnail_receivers

@@ -157,56 +157,105 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                             clicked
                                         }
                                         _ => {
-                                            let (rect, response) = ui.allocate_exact_size(
-                                                egui::vec2(card_size, card_size),
-                                                egui::Sense::click(),
-                                            );
-
-                                            ui.painter().rect_filled(
-                                                rect,
-                                                4.0,
-                                                ui.visuals()
-                                                    .widgets
-                                                    .noninteractive
-                                                    .bg_fill,
-                                            );
-
-                                            ui.painter().text(
-                                                rect.center(),
-                                                egui::Align2::CENTER_CENTER,
-                                                "Archive entry",
-                                                egui::FontId::proportional(11.0),
-                                                ui.visuals().weak_text_color(),
-                                            );
-
-                                            if index == app.current_index
-                                                && auto_scroll_current
-                                                && !ui.clip_rect().contains_rect(rect)
-                                            {
-                                                ui.scroll_to_rect(
-                                                    rect,
-                                                    Some(egui::Align::Min),
-                                                );
-                                            }
-
+                                            let key = entry.get_id();
                                             let label_h =
                                                 (card_size * 0.25).clamp(20.0, 32.0);
+                                            let thumb_h = (card_size - label_h).max(1.0);
 
-                                            let text = ui.add_sized(
-                                                [rect.width(), label_h],
-                                                egui::Button::selectable(
-                                                    index == app.current_index,
-                                                    middle_ellipsis(
-                                                        &name,
-                                                        (rect.width() / 6.0) as usize,
-                                                    ),
-                                                ),
+                                            let mut clicked = false;
+
+                                            // Allocate the whole card as a top-down vertical
+                                            // block: thumbnail on top, label directly below it.
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(card_size, card_size),
+                                                egui::Layout::top_down(egui::Align::Center),
+                                                |ui| {
+                                                    let (rect, response) =
+                                                        ui.allocate_exact_size(
+                                                            egui::vec2(card_size, thumb_h),
+                                                            egui::Sense::click(),
+                                                        );
+
+                                                    if let Some(texture) =
+                                                        app.sidebar_thumbnails.get(&key)
+                                                    {
+                                                        let size = texture.size_vec2();
+                                                        if size.x > 0.0 && size.y > 0.0 {
+                                                            let scale = (rect.width() / size.x)
+                                                                .min(rect.height() / size.y);
+                                                            let draw =
+                                                                egui::Rect::from_center_size(
+                                                                    rect.center(),
+                                                                    size * scale,
+                                                                );
+                                                            ui.painter().image(
+                                                                texture.id(),
+                                                                draw,
+                                                                egui::Rect::from_min_max(
+                                                                    egui::pos2(0.0, 0.0),
+                                                                    egui::pos2(1.0, 1.0),
+                                                                ),
+                                                                egui::Color32::WHITE,
+                                                            );
+                                                        }
+                                                    } else {
+                                                        ui.painter().rect_filled(
+                                                            rect,
+                                                            4.0,
+                                                            ui.visuals()
+                                                                .widgets
+                                                                .noninteractive
+                                                                .bg_fill,
+                                                        );
+                                                        ui.painter().text(
+                                                            rect.center(),
+                                                            egui::Align2::CENTER_CENTER,
+                                                            if app
+                                                                .sidebar_thumbnail_failed
+                                                                .contains(&key)
+                                                            {
+                                                                "No preview"
+                                                            } else {
+                                                                "Loading…"
+                                                            },
+                                                            egui::FontId::proportional(11.0),
+                                                            ui.visuals().weak_text_color(),
+                                                        );
+                                                        if ui.is_rect_visible(rect) {
+                                                            app.request_sidebar_archive_thumbnail(
+                                                                entry.clone(),
+                                                                key.clone(),
+                                                            );
+                                                        }
+                                                    }
+
+                                                    if index == app.current_index
+                                                        && auto_scroll_current
+                                                        && !ui.clip_rect().contains_rect(rect)
+                                                    {
+                                                        ui.scroll_to_rect(
+                                                            rect,
+                                                            Some(egui::Align::Min),
+                                                        );
+                                                    }
+
+                                                    let text = ui.add_sized(
+                                                        [card_size, label_h],
+                                                        egui::Button::selectable(
+                                                            index == app.current_index,
+                                                            middle_ellipsis(
+                                                                &name,
+                                                                (card_size / 6.0) as usize,
+                                                            ),
+                                                        ),
+                                                    );
+
+                                                    clicked = response.clicked()
+                                                        || text.on_hover_text(&name).clicked();
+                                                },
                                             );
 
-                                            response.clicked()
-                                                || text
-                                                    .on_hover_text(&name)
-                                                    .clicked()
+                                            clicked
                                         }
                                     };
 
@@ -250,23 +299,41 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                 app.sidebar_last_current_index = Some(app.current_index);
 
-                if app.file_metadata_open {
-                    ui.separator();
-                    ui.heading("Image information");
-
-                    egui::ScrollArea::vertical()
-                        .id_salt("file_sidebar_metadata")
-                        .max_height(260.0)
-                        .show(ui, |ui| {
-                            if let Some(metadata) = app.file_metadata.clone() {
-                                app.render_file_metadata(ui, &metadata);
-                            } else {
-                                ui.label("Metadata is not available yet.");
-                            }
-                        });
-                }
             }
         });
+
+    // Keep metadata in a floating popup so toggling it never resizes the sidebar.
+    if app.file_metadata_open && !app.sidebar_queue_tab {
+        let anchor = response.response.rect.left_top() + egui::vec2(12.0, 74.0);
+        let popup = egui::Area::new(egui::Id::new("sidebar_metadata_popup"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(anchor)
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(egui::Margin::same(8))
+                    .show(ui, |ui| {
+                        ui.set_max_width(320.0);
+                        ui.heading("Image information");
+                        ui.separator();
+                        egui::ScrollArea::vertical()
+                            .max_height(380.0)
+                            .show(ui, |ui| {
+                                if let Some(metadata) = app.file_metadata.clone() {
+                                    app.render_file_metadata(ui, &metadata);
+                                } else {
+                                    ui.label("Metadata is not available yet.");
+                                }
+                            });
+                    });
+            });
+        if ctx.input(|input| input.pointer.any_click()) {
+            if let Some(pos) = ctx.input(|input| input.pointer.interact_pos()) {
+                if !popup.response.rect.contains(pos) && !response.response.rect.contains(pos) {
+                    app.file_metadata_open = false;
+                }
+            }
+        }
+    }
 
     let width = response.response.rect.width().clamp(260.0, 2048.0);
     let previous = app.settings_manager.get().file_sidebar_width;

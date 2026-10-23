@@ -364,7 +364,7 @@ impl Default for ViewerApp {
             hamburger_menu_open: false,
             overlay_visible: true,
 
-            compactui: false,
+            compactui: settings.compact_mode,
 
             // ====== WINDOW ======
             startup_fullscreen_handled: false,

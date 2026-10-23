@@ -415,27 +415,32 @@ impl ViewerApp {
                                     crop_height = dimensions.map(|d| d.1).unwrap_or(1);
                                 }
                             });
-                            crop_x = x;
-                            crop_y = y;
-                            crop_width = width;
-                            crop_height = height;
                         } else {
                             ui.label("No crop selection");
                         }
                         ui.collapsing("Enter crop coordinates", |ui| {
                             let (max_width, max_height) = dimensions.unwrap_or((1, 1));
+                            let mut numeric_crop_changed = false;
                             ui.horizontal(|ui| {
                                 ui.label("X");
-                                ui.add(egui::DragValue::new(&mut crop_x).range(0..=max_width.saturating_sub(1)));
+                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_x).range(0..=max_width.saturating_sub(1))).changed();
                                 ui.label("Y");
-                                ui.add(egui::DragValue::new(&mut crop_y).range(0..=max_height.saturating_sub(1)));
+                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_y).range(0..=max_height.saturating_sub(1))).changed();
                             });
                             ui.horizontal(|ui| {
                                 ui.label("W");
-                                ui.add(egui::DragValue::new(&mut crop_width).range(1..=max_width.max(1)));
+                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_width).range(1..=max_width.max(1))).changed();
                                 ui.label("H");
-                                ui.add(egui::DragValue::new(&mut crop_height).range(1..=max_height.max(1)));
+                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_height).range(1..=max_height.max(1))).changed();
                             });
+                            if numeric_crop_changed {
+                                crop_selection = Some([
+                                    crop_x.min(max_width.saturating_sub(1)),
+                                    crop_y.min(max_height.saturating_sub(1)),
+                                    crop_width.max(1).min(max_width.saturating_sub(crop_x.min(max_width.saturating_sub(1))).max(1)),
+                                    crop_height.max(1).min(max_height.saturating_sub(crop_y.min(max_height.saturating_sub(1))).max(1)),
+                                ]);
+                            }
                             if ui.button("Apply numeric crop").clicked() {
                                 action = Some(EditAction::Crop);
                                 crop_selection = Some([crop_x, crop_y, crop_width, crop_height]);
