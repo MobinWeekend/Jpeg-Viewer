@@ -35,7 +35,20 @@ impl ViewerApp {
         self.indexing_receiver = None;
         self.current_directory = Some(directory.clone());
         self.clear_current_image_state();
-        self.set_loading_state(LoadingState::Indexing);
+
+        // When a specific image was opened, begin loading it immediately instead
+        // of making the user wait for the entire containing folder to be indexed.
+        // The one-entry list is temporary; process_indexing replaces it once the
+        // background scan finishes, without reloading the displayed image.
+        if let Some(path) = selected_path.as_ref() {
+            self.image_entries = vec![ImageEntry::File(path.clone())];
+            self.current_index = 0;
+            self.preload_origin = 0;
+            self.current_image_path = Some(path.clone());
+            self.load_current_image();
+        } else {
+            self.set_loading_state(LoadingState::Indexing);
+        }
 
         let (tx, rx) = channel();
         self.indexing_receiver = Some(rx);
@@ -58,24 +71,48 @@ impl ViewerApp {
 
         if paths.is_empty() {
             println!("No images found in directory");
-            self.image_entries.clear();
-            self.current_index = 0;
-            self.set_loading_state(LoadingState::Idle);
+            // If a specific image was opened, keep that image available even if
+            // the directory scan failed or returned no other entries.
+            if self.image_entries.is_empty() {
+                self.current_index = 0;
+                self.set_loading_state(LoadingState::Idle);
+            }
             return;
         }
 
-        // Convert PathBufs to ImageEntry::File
+        // Convert PathBufs to ImageEntry::File.
         let entries: Vec<ImageEntry> = paths.into_iter().map(ImageEntry::File).collect();
 
-        let current_index = match selected_path {
+        let current_index = match selected_path.as_ref() {
             Some(path) => entries
                 .iter()
-                .position(|entry| matches!(entry, ImageEntry::File(p) if p == &path))
+                .position(|entry| matches!(entry, ImageEntry::File(p) if p == path))
                 .unwrap_or(0),
             None => 0,
         };
 
-        self.set_image_entries(entries, current_index);
+        if selected_path.is_some() {
+            // The requested image has already started loading (and may already
+            // be visible). Update the navigation index in place so finishing the
+            // directory scan doesn't clear its texture or trigger a second decode.
+            self.image_entries = entries;
+            self.current_index = current_index;
+            self.preload_origin = current_index;
+            self.delta_threshold =
+                ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
+
+            // Any cache created while the temporary one-entry list was active
+            // used temporary indices, so discard it before enabling preloading.
+            self.image_cache.clear();
+            self.preloading_indices.clear();
+            self.preload_tasks.clear();
+            self.preload_workers = 0;
+            self.preload_generation = self.preload_generation.wrapping_add(1);
+            self.should_stop_caching = false;
+            self.detect_current_file_type();
+        } else {
+            self.set_image_entries(entries, current_index);
+        }
     }
 
     /// Clear state belonging to the currently displayed image.
