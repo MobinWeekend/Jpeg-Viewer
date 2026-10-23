@@ -23,7 +23,7 @@ impl ViewerApp {
 
                         // ========== HEADER ==========
                         ui.vertical_centered(|ui| {
-                            ui.label(egui::RichText::new("📷 JPEG Viewer").size(28.0).strong());
+                            ui.label(egui::RichText::new("🖼 JPEG Viewer").size(28.0).strong());
                             ui.label(egui::RichText::new("A fast, lightweight image viewer").size(16.0));
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new("By Mobin Sasanpour").size(13.0).italics());
@@ -71,7 +71,7 @@ impl ViewerApp {
                                 ui.add_space(16.0);
 
                                 // X (Twitter)
-                                let x_text = egui::RichText::new("🐦  X (Twitter)")
+                                let x_text = egui::RichText::new("𝕏 X (Twitter)")
                                     .size(13.0)
                                     .color(x_color);
 

@@ -381,16 +381,16 @@ impl ViewerApp {
                         ui.separator();
                         ui.label(egui::RichText::new("Transform").strong());
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("Rotate left").clicked() { action = Some(EditAction::RotateLeft); }
-                            if ui.button("Rotate right").clicked() { action = Some(EditAction::RotateRight); }
+                            if ui.button("↺").clicked() { action = Some(EditAction::RotateLeft); }
+                            if ui.button("↻").clicked() { action = Some(EditAction::RotateRight); }
                         });
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("Flip horizontal").clicked() { action = Some(EditAction::FlipHorizontal); }
-                            if ui.button("Flip vertical").clicked() { action = Some(EditAction::FlipVertical); }
+                            if ui.button("↔️").clicked() { action = Some(EditAction::FlipHorizontal); }
+                            if ui.button("↕️").clicked() { action = Some(EditAction::FlipVertical); }
                         });
 
                         ui.separator();
-                        ui.label(egui::RichText::new("Crop").strong());
+                        ui.label(egui::RichText::new("✂️ Crop").strong());
                         let crop_button = if crop_tool_active { "Stop crop selection" } else { "Draw crop on image" };
                         if ui.button(crop_button).clicked() {
                             crop_tool_active = !crop_tool_active;
@@ -443,23 +443,23 @@ impl ViewerApp {
                         });
 
                         ui.separator();
-                        ui.label(egui::RichText::new("Colour adjustments").strong());
-                        let response = ui.add(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("Brightness"));
+                        ui.label(egui::RichText::new("🎨 Colour adjustments").strong());
+                        let response = ui.add(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("☀️ Brightness"));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("Contrast"));
+                        let response = ui.add(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("◐ Contrast"));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(egui::Slider::new(&mut adjustments.saturation, 0..=200).text("Saturation"));
+                        let response = ui.add(egui::Slider::new(&mut adjustments.saturation, 0..=200).text("🌈 Saturation"));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(egui::Slider::new(&mut adjustments.hue, -180..=180).text("Hue"));
+                        let response = ui.add(egui::Slider::new(&mut adjustments.hue, -180..=180).text("🎨 Hue"));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();

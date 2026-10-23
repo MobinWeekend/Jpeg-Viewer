@@ -37,7 +37,7 @@ impl ViewerApp {
         ui.heading("Selection & Queue");
         ui.label(format!("{} item(s)", self.queue_paths.len()));
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Add files…").clicked() {
+            if ui.button("➕ Add files…").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     let mut added = 0;
                     for path in paths {
@@ -46,7 +46,7 @@ impl ViewerApp {
                     self.queue_status = Some(format!("Added {added} file(s)."));
                 }
             }
-            if ui.button("Add current image").clicked() {
+            if ui.button("➕ Add current image").clicked() {
                 self.add_current_image_to_queue();
             }
             if ui.button("Add sidebar files if empty").on_hover_text(
@@ -60,7 +60,7 @@ impl ViewerApp {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Add current folder images").clicked() {
+            if ui.button("📁 Add current folder images").clicked() {
                 self.add_current_folder_images();
             }
             if ui.button("Add folder recursively…").clicked() {
@@ -77,10 +77,10 @@ impl ViewerApp {
             if ui.button("Return to previous view").clicked() {
                 self.return_to_previous_view(ctx);
             }
-            if ui.button("Save…").clicked() {
+            if ui.button("💾 Save…").clicked() {
                 self.save_queue_dialog();
             }
-            if ui.button("Load…").clicked() {
+            if ui.button("📥 Load…").clicked() {
                 self.load_queue_dialog();
             }
             if ui.button("Export paths…").clicked() {
@@ -162,21 +162,21 @@ impl ViewerApp {
                                         // Queue controls, below the label.
                                         ui.horizontal(|ui| {
                                             if ui
-                                                .small_button("^")
+                                                .small_button("🔼")
                                                 .on_hover_text("Move up")
                                                 .clicked()
                                             {
                                                 move_action = Some((index, -1));
                                             }
                                             if ui
-                                                .small_button("v")
+                                                .small_button("🔽")
                                                 .on_hover_text("Move down")
                                                 .clicked()
                                             {
                                                 move_action = Some((index, 1));
                                             }
                                             if ui
-                                                .small_button("×")
+                                                .small_button("✖️")
                                                 .on_hover_text("Remove from queue")
                                                 .clicked()
                                             {

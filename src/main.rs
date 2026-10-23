@@ -54,6 +54,24 @@ fn main() -> eframe::Result<()> {
         "JPEG Viewer",
         options,
         Box::new(|cc| {
+            // Keep egui's default fonts for all normal text and use Noto Emoji
+            // only as a fallback for glyphs those fonts do not contain.
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "noto_emoji".to_owned(),
+                egui::FontData::from_static(include_bytes!("../assets/fonts/NotoEmoji-Regular.ttf")).into(),
+            );
+
+            for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+                fonts
+                    .families
+                    .entry(family)
+                    .or_default()
+                    .push("noto_emoji".to_owned());
+            }
+
+            cc.egui_ctx.set_fonts(fonts);
+
             /*
             // Set the default font to the system's default sans-serif font
             let mut fonts = egui::FontDefinitions::default();

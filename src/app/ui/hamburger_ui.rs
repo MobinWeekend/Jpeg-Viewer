@@ -58,7 +58,7 @@ impl ViewerApp {
                 // Open File
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("📂  Open File").size(14.0))
+                        egui::Button::new(egui::RichText::new("📄 Open File").size(14.0))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -92,9 +92,9 @@ impl ViewerApp {
                 if ui
                     .add(
                         egui::Button::new(if sidebar_visible {
-                            "○  Hide Sidebar"
+                            "🗄️  Hide Sidebar"
                         } else {
-                            "○  Show Sidebar"
+                            "🗄️  Show Sidebar"
                         })
                         .min_size(egui::vec2(180.0, 30.0))
                         .fill(egui::Color32::TRANSPARENT)
@@ -111,11 +111,11 @@ impl ViewerApp {
                 // Toggle the separate image-editing mode. An existing working
                 // copy can be resumed without discarding unsaved changes.
                 let edit_label = if self.show_edit_menu {
-                    "○  Exit Edit Mode"
+                    "✂️  Exit Edit Mode"
                 } else if self.edit_session.is_some() {
-                    "○  Resume Edit Mode"
+                    "✂️  Resume Edit Mode"
                 } else {
-                    "○  Edit Image"
+                    "✂️  Edit Image"
                 };
                 if ui
                     .add(

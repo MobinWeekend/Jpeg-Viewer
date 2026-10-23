@@ -57,6 +57,7 @@ impl ViewerApp {
                 egui::RichText::new("or a .zip, .7z, or .rar archive containing your photos.")
                     .size(24.0),
             );
+            //ui.label(egui::RichText::new("Emoji test: 😀 😂 ❤️ 🎨 🚀 🖥️").size(24.0));
             // For later work:
             //use super::settings_menu::general::general_settings;
             //general_settings(self, ui, ctx);

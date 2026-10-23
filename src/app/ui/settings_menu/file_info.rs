@@ -1,12 +1,12 @@
 //! File info section
 
 use crate::app::types::ViewerApp;
-use crate::image_entry::ImageEntry;
 use crate::app::ui::settings_menu::helpers::format_file_size;
+use crate::image_entry::ImageEntry;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.collapsing(egui::RichText::new("📂 File Info").size(15.0), |ui| {
+    ui.collapsing(egui::RichText::new("📄 File Info").size(15.0), |ui| {
         ui.add_space(4.0);
 
         let Some(entry) = app.image_entries.get(app.current_index) else {

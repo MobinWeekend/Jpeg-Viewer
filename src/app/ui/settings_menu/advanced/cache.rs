@@ -3,7 +3,7 @@ use eframe::egui;
 use std::time::Duration;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("💾 Cache Settings").size(13.0).strong());
+    ui.label(egui::RichText::new("🛠️ Cache Settings").size(13.0).strong());
     ui.add_space(4.0);
 
     // Cache Radius
