@@ -48,7 +48,7 @@ impl Default for AppSettings {
             b_ctrl_invert: false,
             window_pos: None,
             window_size: None,
-            cache_radius: 7,
+            cache_radius: 5,
             cache_delta_factor: 0.6,
             navigation_pause_ms: 1200,
             max_cache_task: 4,
@@ -711,7 +711,7 @@ mod tests {
         let loaded = SettingsManager::load_from_file(&path, &mut error);
         assert!(error.is_none());
         assert!(loaded.b_ctrl_invert);
-        assert_eq!(loaded.cache_radius, 12);
+        assert_eq!(loaded.cache_radius, 3);
         assert_eq!(loaded.tile_size, AppSettings::default().tile_size);
 
         SettingsManager::save_to_file(&path, &loaded).unwrap();
@@ -773,7 +773,7 @@ mod tests {
         assert!(!settings.b_ctrl_invert);
         assert!(settings.window_pos.is_none());
         assert!(settings.window_size.is_none());
-        assert_eq!(settings.cache_radius, 7);
+        assert_eq!(settings.cache_radius, 5);
         assert_eq!(settings.cache_delta_factor, 0.6);
         assert_eq!(settings.navigation_pause_ms, 1200);
         assert_eq!(settings.max_cache_task, 4);

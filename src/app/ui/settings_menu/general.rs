@@ -11,9 +11,9 @@ use crate::sort::SortMethod;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("📋 General").size(15.0), |ui| {
-        general_settings(app, ui, ctx);
-    });
+    // ui.collapsing(egui::RichText::new("📋 General").size(15.0), |ui| {
+    general_settings(app, ui, ctx);
+    // });
 }
 
 pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {

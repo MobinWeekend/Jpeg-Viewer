@@ -45,10 +45,10 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                 .show(ui, |ui| {
                     ui.add_space(4.0);
                     copy_buttons::render(app, ui);
-                    file_info::render(app, ui);
                     general::render(app, ui, ctx);
                     slideshow::render(app, ui, ctx);
                     advanced::render(app, ui, ctx);
+                    file_info::render(app, ui);
                     settings_file::render(app, ui);
                     ui.add_space(8.0);
                 });
