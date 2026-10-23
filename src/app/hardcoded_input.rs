@@ -12,6 +12,26 @@ impl ViewerApp {
             return;
         }
 
+        // Trackpad pinch gestures: preserve existing zoom behavior.
+        let zoom_delta = ctx.input(|i| i.zoom_delta());
+
+        if zoom_delta.is_finite() && (zoom_delta - 1.0).abs() > 0.001 {
+            if !self.image_entries.is_empty() {
+                let center = response.rect.center();
+                let offset = center - response.rect.center();
+                let image_point = offset / self.zoom - self.pan;
+
+                self.zoom = (self.zoom * zoom_delta).clamp(0.005, 50.0);
+                self.pan = offset / self.zoom - image_point;
+
+                self.b_zoom_used = true;
+                self.mark_interaction();
+                ctx.request_repaint();
+            }
+
+            return;
+        }
+
         let (alt, ctrl) = ctx.input(|i| (i.modifiers.alt, i.modifiers.ctrl));
 
         // CTRL + LEFT DRAG -> RESIZE WINDOW
@@ -210,9 +230,9 @@ impl ViewerApp {
 
         let drop_position = ctx.input(|i| i.pointer.hover_pos().or_else(|| i.pointer.latest_pos()));
         let dropped_on_queue = self.sidebar_queue_tab
-            && self.queue_drop_rect.is_some_and(|rect| {
-                drop_position.is_some_and(|position| rect.contains(position))
-            });
+            && self
+                .queue_drop_rect
+                .is_some_and(|rect| drop_position.is_some_and(|position| rect.contains(position)));
 
         // Stop slideshow when dropping files
         if self.slideshow_enabled {

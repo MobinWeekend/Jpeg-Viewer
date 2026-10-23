@@ -74,7 +74,7 @@ impl ViewerApp {
         added
     }
 
-    pub(super) fn add_queue_path(&mut self, path: PathBuf) -> bool {
+    pub fn add_queue_path(&mut self, path: PathBuf) -> bool {
         let normalized = absolute_path(&path);
         if self
             .queue_paths

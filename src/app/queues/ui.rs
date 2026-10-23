@@ -157,7 +157,7 @@ impl ViewerApp {
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
                                         card_clicked = self.render_thumbnail_card(
-                                            ui, path, &key, &label, false, false, card_size,
+                                            ui, path, &key, &label, false, false, card_size, None, ctx,
                                         );
                                         // Queue controls, below the label.
                                         ui.horizontal(|ui| {
@@ -245,6 +245,8 @@ impl ViewerApp {
         selected: bool,
         auto_scroll: bool,
         thumbnail_width: f32,
+        context_index: Option<usize>,
+        ctx: &egui::Context,
     ) -> bool {
         let card_width = thumbnail_width.max(1.0);
         let label_height = (card_width * 0.25).clamp(20.0, 32.0);
@@ -319,7 +321,39 @@ impl ViewerApp {
                 ui.scroll_to_rect(rect, Some(egui::Align::Min));
             }
 
-            clicked = response.on_hover_text(path.display().to_string()).clicked();
+            let response = response.on_hover_text(path.display().to_string());
+            clicked = response.clicked();
+            if let Some(index) = context_index {
+                response.context_menu(|ui| {
+                    if ui.button("Open image").clicked() {
+                        self.navigate_to_index(ctx, index);
+                        ui.close();
+                    }
+                    if ui.button("Add to queue").clicked() {
+                        let added = self.add_queue_path(path.to_path_buf());
+                        self.queue_status = Some(if added {
+                            "Added image to queue.".to_owned()
+                        } else {
+                            "Image is already in the queue.".to_owned()
+                        });
+                        ui.close();
+                    }
+                    if ui.button("Copy file path").clicked() {
+                        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
+                            Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
+                            Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Open containing folder").clicked() {
+                        let target = path.parent().unwrap_or(path);
+                        if let Err(error) = open::that(target) {
+                            self.queue_status = Some(format!("Could not open folder: {error}"));
+                        }
+                        ui.close();
+                    }
+                });
+            }
 
             // Filename label — forced to a single line.
             // Give `fit_label` a slightly conservative budget so the button's internal

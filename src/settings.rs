@@ -107,17 +107,33 @@ impl SettingsManager {
         }
     }
 
-    /// Get the path where settings should be stored
+    /// Get the per-user settings path, using the platform's standard config directory.
+    /// Existing portable settings are migrated on first launch when possible.
     fn get_settings_path() -> PathBuf {
-        // Save next to the executable (portable app style)
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(parent) = exe_path.parent() {
-                return parent.join("jpeg_viewer settings.ini");
+        let filename = "settings.ini";
+        let config_root = dirs::config_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let app_dir = config_root.join("Jpeg Viewer");
+        let target = app_dir.join(filename);
+
+        if !target.exists() {
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(parent) = exe_path.parent() {
+                    for legacy_name in ["jpeg_viewer settings.ini", "settings.ini"] {
+                        let legacy = parent.join(legacy_name);
+                        if legacy.is_file() {
+                            if fs::create_dir_all(&app_dir).is_ok()
+                                && fs::copy(&legacy, &target).is_ok()
+                            {
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
-
-        // Fallback: current working directory
-        PathBuf::from("jpeg_viewer settings.ini")
+        target
     }
 
     /// Load settings from an INI file. Any read error is recorded in `error_out`.

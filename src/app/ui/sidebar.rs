@@ -151,6 +151,8 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         auto_scroll_current
                                                             && index == app.current_index,
                                                         card_size,
+                                                        Some(index),
+                                                        ctx,
                                                     );
                                                 },
                                             );
@@ -175,6 +177,31 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             egui::vec2(card_size, thumb_h),
                                                             egui::Sense::click(),
                                                         );
+                                                    response.context_menu(|ui| {
+                                                        if ui.button("Open image").clicked() {
+                                                            app.navigate_to_index(ctx, index);
+                                                            ui.close();
+                                                        }
+                                                        if ui.button("Copy entry name").clicked() {
+                                                            match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(name.clone())) {
+                                                                Ok(()) => app.queue_status = Some("Copied archive entry name.".into()),
+                                                                Err(error) => app.queue_status = Some(format!("Could not copy name: {error}")),
+                                                            }
+                                                            ui.close();
+                                                        }
+                                                        if ui.button("Open containing archive").clicked() {
+                                                            let archive_path = match entry {
+                                                                ImageEntry::Zip(item) => &item.archive_path,
+                                                                ImageEntry::S7z(item) => &item.archive_path,
+                                                                ImageEntry::Rar(item) => &item.archive_path,
+                                                                ImageEntry::File(path) => path,
+                                                            };
+                                                            if let Err(error) = open::that(archive_path) {
+                                                                app.queue_status = Some(format!("Could not open archive: {error}"));
+                                                            }
+                                                            ui.close();
+                                                        }
+                                                    });
 
                                                     if let Some(texture) =
                                                         app.sidebar_thumbnails.get(&key)
