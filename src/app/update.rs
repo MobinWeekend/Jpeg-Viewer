@@ -386,7 +386,7 @@ impl eframe::App for ViewerApp {
         // ========== UI RENDERING ==========
         // Docked panels must be registered before the central panel so the image
         // canvas is laid out in the remaining space rather than underneath them.
-        crate::app::ui::render_left_sidebar(self, ctx);
+        crate::app::queues::render_left_sidebar(self, ctx);
         // Dock the active right-side tool panel before the central canvas so
         // it receives a proper share of the available layout width.
         self.render_editing_ui(ctx);

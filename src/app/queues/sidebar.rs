@@ -128,17 +128,22 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                             .spacing(egui::vec2(GAP, GAP))
                             .show(ui, |ui| {
                                 for (index, entry) in entries.iter().enumerate() {
-                                    let name = entry_name(entry);
-
-                                    let clicked = match entry {
+                                    // Grid keeps every row in the scroll area's content size, but
+                                    // don't build thumbnail widgets for rows outside the viewport.
+                                    // This is a lightweight form of virtualization: it preserves
+                                    // scrolling geometry while avoiding per-card work off-screen.
+                                    let estimated_rect = egui::Rect::from_min_size(
+                                        ui.cursor().min,
+                                        egui::vec2(card_size, card_size),
+                                    );
+                                    let clicked = if !ui.is_rect_visible(estimated_rect) {
+                                        ui.allocate_space(egui::vec2(card_size, card_size));
+                                        false
+                                    } else {
+                                        let name = entry_name(entry);
+                                        match entry {
                                         ImageEntry::File(path) => {
-                                            let absolute_path = if path.is_absolute() {
-                                                path.clone()
-                                            } else {
-                                                std::env::current_dir()
-                                                    .unwrap_or_default()
-                                                    .join(path)
-                                            };
+                                            let absolute_path = super::storage::absolute_path(path);
                                             let key = format!("file:{}", absolute_path.display());
 
                                             // Reuse the same thumbnail card renderer as the queue UI
@@ -294,6 +299,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                                             clicked
                                         }
+                                    }
                                     };
 
                                     if clicked && index != app.current_index {
@@ -347,16 +353,23 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         let mut cancel = false;
         egui::Window::new("Move entry to position")
             .id(egui::Id::new("sidebar_number_editor"))
-            .collapsible(false).resizable(false)
+            .collapsible(false)
+            .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.label("Enter the new position (starting at 1):");
                 let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(100.0));
                 response.request_focus();
-                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) { commit = true; }
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    commit = true;
+                }
                 ui.horizontal(|ui| {
-                    if ui.button("Move").clicked() { commit = true; }
-                    if ui.button("Cancel").clicked() { cancel = true; }
+                    if ui.button("Move").clicked() {
+                        commit = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
                 });
             });
         if commit {
@@ -366,26 +379,49 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     0 if index < app.image_entries.len() && target < app.image_entries.len() => {
                         let selected_path = app.current_image_path.clone();
                         let item = app.image_entries.remove(index);
-                        app.image_entries.insert(target.min(app.image_entries.len()), item);
+                        app.image_entries
+                            .insert(target.min(app.image_entries.len()), item);
                         if let Some(path) = selected_path {
-                            if let Some(new_index) = app.image_entries.iter().position(|e| matches!(e, ImageEntry::File(p) if p == &path)) { app.current_index = new_index; }
+                            if let Some(new_index) = app
+                                .image_entries
+                                .iter()
+                                .position(|e| matches!(e, ImageEntry::File(p) if p == &path))
+                            {
+                                app.current_index = new_index;
+                            }
                         }
-                        app.image_cache.clear(); app.preloading_indices.clear(); app.preload_tasks.clear();
+                        app.image_cache.clear();
+                        app.preloading_indices.clear();
+                        app.preload_tasks.clear();
                         app.preload_generation = app.preload_generation.wrapping_add(1);
-                        if !app.image_entries.is_empty() { app.load_current_image_with_cache(); }
+                        if !app.image_entries.is_empty() {
+                            app.load_current_image_with_cache();
+                        }
                     }
                     1 if index < app.queue_paths.len() && target < app.queue_paths.len() => {
-                        let item = app.queue_paths.remove(index); app.queue_paths.insert(target.min(app.queue_paths.len()), item);
+                        let item = app.queue_paths.remove(index);
+                        app.queue_paths
+                            .insert(target.min(app.queue_paths.len()), item);
                     }
                     2 if index < app.favorite_paths.len() && target < app.favorite_paths.len() => {
-                        let item = app.favorite_paths.remove(index); app.favorite_paths.insert(target.min(app.favorite_paths.len()), item); app.save_favorites_for_ui();
+                        let item = app.favorite_paths.remove(index);
+                        app.favorite_paths
+                            .insert(target.min(app.favorite_paths.len()), item);
+                        app.save_favorites_for_ui();
                     }
-                    _ => { app.queue_status = Some("Position is outside the list.".into()); }
+                    _ => {
+                        app.queue_status = Some("Position is outside the list.".into());
+                    }
                 }
-            } else { app.queue_status = Some("Enter a valid whole number.".into()); }
+            } else {
+                app.queue_status = Some("Enter a valid whole number.".into());
+            }
             app.sidebar_number_edit = None;
-        } else if cancel { app.sidebar_number_edit = None; }
-        else { app.sidebar_number_edit = Some((collection, index, text)); }
+        } else if cancel {
+            app.sidebar_number_edit = None;
+        } else {
+            app.sidebar_number_edit = Some((collection, index, text));
+        }
     }
 
     if let Some((path, value)) = app.rename_dialog.clone() {
@@ -394,45 +430,89 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         let mut cancel = false;
         egui::Window::new("Rename file")
             .id(egui::Id::new("rename_file_dialog"))
-            .collapsible(false).resizable(false)
+            .collapsible(false)
+            .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.label("New filename (extension is preserved):");
                 let response = ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0));
                 response.request_focus();
-                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) { commit = true; }
-                ui.horizontal(|ui| { if ui.button("Rename").clicked() { commit = true; } if ui.button("Cancel").clicked() { cancel = true; } });
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    commit = true;
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Rename").clicked() {
+                        commit = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel = true;
+                    }
+                });
             });
         if commit {
             let trimmed = name.trim();
-            if !trimmed.is_empty() && !trimmed.contains('/') && !trimmed.contains('\\') && trimmed != "." && trimmed != ".." {
+            if !trimmed.is_empty()
+                && !trimmed.contains('/')
+                && !trimmed.contains('\\')
+                && trimmed != "."
+                && trimmed != ".."
+            {
                 let extension = path.extension().map(|e| e.to_os_string());
                 let mut new_path = path.with_file_name(trimmed);
                 if let Some(ext) = extension {
-                    if new_path.extension().is_none() { new_path.set_extension(ext); }
-                    else { new_path.set_extension(ext); }
+                    if new_path.extension().is_none() {
+                        new_path.set_extension(ext);
+                    } else {
+                        new_path.set_extension(ext);
+                    }
                 }
                 if new_path != path {
                     match std::fs::rename(&path, &new_path) {
                         Ok(()) => {
-                            for entry in &mut app.image_entries { if let ImageEntry::File(p) = entry { if *p == path { *p = new_path.clone(); } } }
-                            for p in &mut app.queue_paths { if *p == path { *p = new_path.clone(); } }
-                            for p in &mut app.favorite_paths { if *p == path { *p = new_path.clone(); } }
+                            for entry in &mut app.image_entries {
+                                if let ImageEntry::File(p) = entry {
+                                    if *p == path {
+                                        *p = new_path.clone();
+                                    }
+                                }
+                            }
+                            for p in &mut app.queue_paths {
+                                if *p == path {
+                                    *p = new_path.clone();
+                                }
+                            }
+                            for p in &mut app.favorite_paths {
+                                if *p == path {
+                                    *p = new_path.clone();
+                                }
+                            }
                             app.save_favorites_for_ui();
                             app.current_image_path = Some(new_path.clone());
                             app.update_current_image_path();
-                            app.sidebar_thumbnails.clear(); app.sidebar_thumbnail_attempted.clear(); app.sidebar_thumbnail_failed.clear();
-                            app.image_cache.clear(); app.preloading_indices.clear(); app.preload_tasks.clear();
+                            app.sidebar_thumbnails.clear();
+                            app.sidebar_thumbnail_attempted.clear();
+                            app.sidebar_thumbnail_failed.clear();
+                            app.image_cache.clear();
+                            app.preloading_indices.clear();
+                            app.preload_tasks.clear();
                             app.preload_generation = app.preload_generation.wrapping_add(1);
-                            app.queue_status = Some(format!("Renamed file to {}.", new_path.file_name().unwrap_or_default().to_string_lossy()));
+                            app.queue_status = Some(format!(
+                                "Renamed file to {}.",
+                                new_path.file_name().unwrap_or_default().to_string_lossy()
+                            ));
                         }
                         Err(error) => app.queue_status = Some(format!("Rename failed: {error}")),
                     }
                 }
-            } else { app.queue_status = Some("Enter a valid filename without path separators.".into()); }
+            } else {
+                app.queue_status = Some("Enter a valid filename without path separators.".into());
+            }
             app.rename_dialog = None;
-        } else if cancel { app.rename_dialog = None; }
-        else { app.rename_dialog = Some((path, name)); }
+        } else if cancel {
+            app.rename_dialog = None;
+        } else {
+            app.rename_dialog = Some((path, name));
+        }
     }
 
     // Keep the pointer feedback active while a card is being dragged.
@@ -467,7 +547,7 @@ fn entry_name(entry: &ImageEntry) -> String {
     }
 }
 
-pub(super) fn middle_ellipsis(text: &str, max_chars: usize) -> String {
+pub fn middle_ellipsis(text: &str, max_chars: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
 
     if chars.len() <= max_chars || max_chars < 5 {

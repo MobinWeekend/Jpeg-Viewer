@@ -10,7 +10,7 @@ mod image_metadata;
 mod loading;
 mod navigation;
 mod preload;
-mod queues;
+pub(crate) mod queues;
 pub mod types;
 mod ui;
 mod update;

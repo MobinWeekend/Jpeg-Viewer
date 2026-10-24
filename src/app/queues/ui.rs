@@ -414,12 +414,30 @@ impl ViewerApp {
     ) -> bool {
         let card_width = thumbnail_width.max(1.0);
         let label_height = (card_width * 0.25).clamp(20.0, 32.0);
-        let image_height = (card_width - label_height).max(1.0);
+        let number_height = if context_index.is_some() { 22.0 } else { 0.0 };
+        let image_height = (card_width - label_height - number_height).max(1.0);
 
         let mut clicked = false;
 
         ui.vertical(|ui| {
             ui.set_width(card_width);
+
+            // Keep the position control in normal layout flow. A foreground Area
+            // can overlap neighboring cards and unrelated controls while scrolling.
+            if let Some(index) = context_index {
+                ui.horizontal(|ui| {
+                    ui.add_space(2.0);
+                    let badge = egui::Button::new(
+                        egui::RichText::new((index + 1).to_string()).size(12.0)
+                            .color(egui::Color32::WHITE),
+                    )
+                    .fill(egui::Color32::from_black_alpha(205))
+                    .min_size(egui::vec2(28.0, 18.0));
+                    if ui.add(badge).on_hover_text("Click to move this entry to a specific position").clicked() {
+                        self.sidebar_number_edit = Some((context_mode, index, (index + 1).to_string()));
+                    }
+                });
+            }
 
             // Image area. Leave unused space unpainted.
             let (rect, response) =
@@ -524,21 +542,6 @@ impl ViewerApp {
             }
             clicked = response.clicked();
             if let Some(index) = context_index {
-                // The numbered badge is interactive: click it to type a 1-based
-                // destination position for fast insertion-based reordering.
-                let badge_pos = rect.min + egui::vec2(4.0, 4.0);
-                egui::Area::new(egui::Id::new(("thumbnail_position", context_mode, key)))
-                    .order(egui::Order::Foreground)
-                    .fixed_pos(badge_pos)
-                    .show(ctx, |ui| {
-                        let badge = egui::Button::new(egui::RichText::new((index + 1).to_string()).size(12.0).color(egui::Color32::WHITE))
-                            .fill(egui::Color32::from_black_alpha(205))
-                            .min_size(egui::vec2(28.0, 20.0));
-                        if ui.add(badge).on_hover_text("Click to move this entry to a specific position").clicked() {
-                            self.sidebar_number_edit = Some((context_mode, index, (index + 1).to_string()));
-                        }
-                    });
-
                 if response.drag_started() {
                     self.sidebar_drag_index = Some(index);
                     self.sidebar_drag_collection = context_mode;

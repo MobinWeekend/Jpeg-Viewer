@@ -352,7 +352,7 @@ impl ViewerApp {
                             .unwrap_or_default()
                             .to_string_lossy()
                             .into_owned();
-                        let display_filename = crate::app::ui::sidebar::middle_ellipsis(
+                        let display_filename = crate::app::queues::sidebar::middle_ellipsis(
                             &full_filename,
                             (ui.available_width() / 7.2).floor() as usize,
                         );

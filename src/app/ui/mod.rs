@@ -6,11 +6,9 @@ mod help_window;
 mod helpers;
 mod metainfo;
 mod navigation_ui;
-mod sidebar;
 mod overlay;
 mod settings_menu;
 mod welcome_ui;
 
 pub use overlay::{render_overlay_ui, toolbar_frame, update_overlay_visibility};
 pub use settings_menu::{render_settings_menu, toggle_settings_menu};
-pub use sidebar::render_left_sidebar;
