@@ -141,8 +141,14 @@ fn main() -> eframe::Result<()> {
             };
             cc.egui_ctx.set_theme(theme_pref);
 
-            if let Some(path) = std::env::args().nth(1) {
-                app.open_path(path.into());
+            let startup_paths: Vec<std::path::PathBuf> = std::env::args_os().skip(1).map(Into::into).collect();
+            if startup_paths.len() == 1 && startup_paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {
+                app.open_queue_file(&startup_paths[0], &cc.egui_ctx, false);
+            } else if startup_paths.len() == 1 {
+                app.open_path(startup_paths[0].clone());
+            } else if !startup_paths.is_empty() {
+                // Process every path passed by the OS (including multiple files dropped on the app icon).
+                app.load_dropped_files(startup_paths);
             }
 
             Ok(Box::new(app))

@@ -157,7 +157,8 @@ impl ViewerApp {
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
                                         card_clicked = self.render_thumbnail_card(
-                                            ui, path, &key, &label, false, false, card_size, None, ctx,
+                                            ui, path, &key, &label, false, false, card_size, None,
+                                            ctx,
                                         );
                                         // Queue controls, below the label.
                                         ui.horizontal(|ui| {
@@ -214,6 +215,44 @@ impl ViewerApp {
             ui.separator();
             ui.label(status);
         }
+
+        if let Some((paths, root)) = self.queue_import_prompt.clone() {
+            egui::Window::new("Import saved queue")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.label(format!("The .jvq file contains {} item(s).", paths.len()));
+                    ui.label("Add appends unique items; Replace discards the current queue.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Add to queue").clicked() {
+                            let mut added = 0;
+                            for path in &paths {
+                                added += usize::from(self.add_queue_path(path.clone()));
+                            }
+                            if self.queue_root.is_none() {
+                                self.queue_root = root.clone();
+                            }
+                            self.queue_status =
+                                Some(format!("Added {added} item(s) from saved queue."));
+                            self.queue_import_prompt = None;
+                        }
+                        if ui.button("Replace queue").clicked() {
+                            self.queue_paths = paths.clone();
+                            self.queue_root = root.clone();
+                            self.queue_mode = false;
+                            self.queue_status = Some(format!(
+                                "Replaced queue with {} item(s).",
+                                self.queue_paths.len()
+                            ));
+                            self.queue_import_prompt = None;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.queue_import_prompt = None;
+                        }
+                    });
+                });
+        }
     }
 
     /// Add dropped files to the queue without changing the current viewer contents.
@@ -258,8 +297,10 @@ impl ViewerApp {
             ui.set_width(card_width);
 
             // Image area. Leave unused space unpainted.
-            let (rect, response) =
-                ui.allocate_exact_size(egui::vec2(card_width, image_height), egui::Sense::click());
+            let (rect, response) = ui.allocate_exact_size(
+                egui::vec2(card_width, image_height),
+                egui::Sense::click_and_drag(),
+            );
 
             if let Some(texture) = self.sidebar_thumbnails.get(key) {
                 let size = texture.size_vec2();
@@ -306,6 +347,23 @@ impl ViewerApp {
                 }
             }
 
+            // Show the one-based list position over the thumbnail in Browse.
+            if let Some(index) = context_index {
+                let badge_rect = egui::Rect::from_min_size(
+                    rect.min + egui::vec2(4.0, 4.0),
+                    egui::vec2(28.0, 20.0),
+                );
+                ui.painter()
+                    .rect_filled(badge_rect, 4.0, egui::Color32::from_black_alpha(190));
+                ui.painter().text(
+                    badge_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    (index + 1).to_string(),
+                    egui::FontId::proportional(12.0),
+                    egui::Color32::WHITE,
+                );
+            }
+
             // Selection outline around the image area.
             if selected {
                 ui.painter().rect_stroke(
@@ -324,6 +382,61 @@ impl ViewerApp {
             let response = response.on_hover_text(path.display().to_string());
             clicked = response.clicked();
             if let Some(index) = context_index {
+                if response.drag_started() {
+                    self.sidebar_drag_index = Some(index);
+                }
+                if self.sidebar_drag_index.is_some()
+                    && response.hovered()
+                    && ctx.input(|i| i.pointer.any_released())
+                {
+                    if let Some(from) = self.sidebar_drag_index.take() {
+                        let to = index;
+                        if from != to
+                            && from < self.image_entries.len()
+                            && to < self.image_entries.len()
+                        {
+                            let selected_before = self.current_index;
+                            let item = self.image_entries.remove(from);
+                            self.image_entries.insert(to, item);
+                            self.current_index = if selected_before == from {
+                                to
+                            } else if from < selected_before && selected_before <= to {
+                                selected_before - 1
+                            } else if to <= selected_before && selected_before < from {
+                                selected_before + 1
+                            } else {
+                                selected_before
+                            };
+                            self.sidebar_last_current_index = None;
+                            // Cache entries are index-based; invalidate them after changing order.
+                            self.image_cache.clear();
+                            self.preloading_indices.clear();
+                            self.preload_tasks.clear();
+                            self.preload_generation = self.preload_generation.wrapping_add(1);
+                            self.current_index = usize::MAX;
+                            self.navigate_to_index(
+                                ctx,
+                                if selected_before == from {
+                                    to
+                                } else if from < selected_before && selected_before <= to {
+                                    selected_before - 1
+                                } else if to <= selected_before && selected_before < from {
+                                    selected_before + 1
+                                } else {
+                                    selected_before
+                                },
+                            );
+                            self.queue_status =
+                                Some(format!("Moved item {} to position {}.", from + 1, to + 1));
+                        }
+                    }
+                }
+                if response.hovered() && self.sidebar_drag_index.is_some() {
+                    ui.painter().line_segment(
+                        [rect.left_top(), rect.right_top()],
+                        egui::Stroke::new(3.0 as f32, ui.visuals().selection.bg_fill),
+                    );
+                }
                 response.context_menu(|ui| {
                     if ui.button("Open image").clicked() {
                         self.navigate_to_index(ctx, index);
@@ -339,9 +452,15 @@ impl ViewerApp {
                         ui.close();
                     }
                     if ui.button("Copy file path").clicked() {
-                        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
-                            Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
-                            Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
+                        match arboard::Clipboard::new().and_then(|mut clipboard| {
+                            clipboard.set_text(path.display().to_string())
+                        }) {
+                            Ok(()) => {
+                                self.queue_status = Some("Copied file path to clipboard.".into())
+                            }
+                            Err(error) => {
+                                self.queue_status = Some(format!("Could not copy path: {error}"))
+                            }
                         }
                         ui.close();
                     }

@@ -76,6 +76,11 @@ assets = [
         "644"
     ],
     [
+        "packaging/linux/jpeg-viewer-queue.xml",
+        "usr/share/mime/packages/jpeg-viewer-queue.xml",
+        "644"
+    ],
+    [
         "packaging/linux/com.jpegviewer.JpegViewer.metainfo.xml",
         "usr/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml",
         "644"

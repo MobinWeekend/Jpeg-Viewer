@@ -6,5 +6,5 @@ Icon=com.jpegviewer.JpegViewer
 Terminal=false
 Type=Application
 Categories=Graphics;Viewer;
-MimeType=image/jpeg;image/png;image/gif;image/bmp;image/webp;
+MimeType=application/x-jpeg-viewer-queue;image/jpeg;image/png;image/gif;image/bmp;image/webp;
 StartupWMClass=jpeg_viewer

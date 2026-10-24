@@ -248,7 +248,11 @@ impl ViewerApp {
             .filter_map(|file| file.path.clone())
             .collect();
 
-        if dropped_on_queue {
+        // A single .jvq is a queue document, not an image or folder.
+        if paths.len() == 1 && paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {
+            self.sidebar_queue_tab = dropped_on_queue || self.sidebar_queue_tab;
+            self.open_queue_file(&paths[0], ctx, dropped_on_queue);
+        } else if dropped_on_queue {
             self.add_dropped_paths_to_queue(paths);
         } else if paths.len() == 1 {
             // Single file: open it (preserve the normal drop behavior outside the queue).

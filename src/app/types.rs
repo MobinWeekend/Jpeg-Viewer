@@ -230,6 +230,10 @@ pub struct ViewerApp {
     pub sidebar_last_current_index: Option<usize>,
     /// Last rendered queue drop target; external drops here are queued rather than opened.
     pub queue_drop_rect: Option<egui::Rect>,
+    /// Imported queue waiting for the user to choose Add or Replace.
+    pub queue_import_prompt: Option<(Vec<PathBuf>, Option<PathBuf>)>,
+    /// Browse-sidebar drag source index, used to reorder image entries.
+    pub sidebar_drag_index: Option<usize>,
     /// Lazily generated thumbnail textures keyed by normalized path / entry id.
     pub sidebar_thumbnails: HashMap<String, egui::TextureHandle>,
     pub sidebar_thumbnail_attempted: HashSet<String>,
@@ -415,6 +419,8 @@ impl Default for ViewerApp {
             sidebar_queue_tab: false,
             sidebar_last_current_index: None,
             queue_drop_rect: None,
+            queue_import_prompt: None,
+            sidebar_drag_index: None,
             sidebar_thumbnails: HashMap::new(),
             sidebar_thumbnail_attempted: HashSet::new(),
             sidebar_thumbnail_failed: HashSet::new(),

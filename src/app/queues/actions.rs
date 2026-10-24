@@ -149,6 +149,26 @@ impl ViewerApp {
         }
     }
 
+    /// Open a saved queue file. When dropped onto the queue editor, defer the
+    /// import until the user chooses whether to append or replace.
+    pub fn open_queue_file(&mut self, path: &Path, ctx: &egui::Context, prompt: bool) {
+        match read_queue(path) {
+            Ok((paths, root)) => {
+                if prompt {
+                    self.queue_import_prompt = Some((paths, root));
+                    self.queue_status = Some("Choose whether to add this saved queue or replace the current queue.".into());
+                } else {
+                    self.queue_paths = paths;
+                    self.queue_root = root;
+                    self.open_queue_in_viewer(ctx);
+                    let missing = self.queue_paths.iter().filter(|path| !path.exists()).count();
+                    self.queue_status = Some(format!("Opened {} queue item(s); {missing} unavailable.", self.queue_paths.len()));
+                }
+            }
+            Err(error) => self.queue_status = Some(format!("Could not open queue: {error}")),
+        }
+    }
+
     pub(super) fn load_queue_dialog(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("JPEG Viewer queue", &["jvq", "txt"])
