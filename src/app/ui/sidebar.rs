@@ -68,23 +68,18 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
             ui.separator();
 
-            ui.horizontal(|ui| {
-                if ui.selectable_label(!app.sidebar_queue_tab && !app.sidebar_favorites_tab, "Browse").clicked() {
-                    app.sidebar_queue_tab = false;
-                    app.sidebar_favorites_tab = false;
-                    app.queue_drop_rect = None;
+            ui.horizontal_wrapped(|ui| {
+                if ui.selectable_label(!app.sidebar_queue_tab && !app.sidebar_favorites_tab && !app.sidebar_info_tab, "Browse").clicked() {
+                    app.sidebar_queue_tab = false; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false; app.queue_drop_rect = None;
                 }
                 if ui.selectable_label(app.sidebar_queue_tab, format!("Queue ({})", app.queue_paths.len())).clicked() {
-                    app.sidebar_queue_tab = true;
-                    app.sidebar_favorites_tab = false;
+                    app.sidebar_queue_tab = true; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false;
                 }
                 if ui.selectable_label(app.sidebar_favorites_tab, format!("Favorites ({})", app.favorite_paths.len())).clicked() {
-                    app.sidebar_queue_tab = false;
-                    app.sidebar_favorites_tab = true;
-                    app.queue_drop_rect = None;
+                    app.sidebar_queue_tab = false; app.sidebar_favorites_tab = true; app.sidebar_info_tab = false;
                 }
-                if !app.sidebar_queue_tab && !app.sidebar_favorites_tab && ui.small_button("Info").clicked() {
-                    app.file_metadata_open = !app.file_metadata_open;
+                if ui.selectable_label(app.sidebar_info_tab, "Info").clicked() {
+                    app.sidebar_queue_tab = false; app.sidebar_favorites_tab = false; app.sidebar_info_tab = true; app.queue_drop_rect = None;
                 }
             });
 
@@ -96,6 +91,20 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             } else if app.sidebar_favorites_tab {
                 app.sidebar_last_current_index = None;
                 app.render_favorites_sidebar(ui, ctx);
+            } else if app.sidebar_info_tab {
+                app.queue_drop_rect = None;
+                ui.heading("Image information");
+                ui.separator();
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    if let Some(metadata) = app.file_metadata.clone() {
+                        app.render_file_metadata(ui, &metadata);
+                    } else {
+                        ui.label("Metadata is not available yet.");
+                        if let Some(path) = app.current_image_path.clone() {
+                            ui.label(path.display().to_string());
+                        }
+                    }
+                });
             } else {
                 app.queue_drop_rect = None;
 
@@ -330,37 +339,109 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             }
         });
 
-    // Keep metadata in a floating popup so toggling it never resizes the sidebar.
-    if app.file_metadata_open && !app.sidebar_queue_tab && !app.sidebar_favorites_tab {
-        let anchor = response.response.rect.left_top() + egui::vec2(12.0, 74.0);
-        let popup = egui::Area::new(egui::Id::new("sidebar_metadata_popup"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(anchor)
+    // Quick position editor: entering a 1-based position inserts the item there,
+    // shifting intervening entries rather than swapping them.
+    if let Some((collection, index, value)) = app.sidebar_number_edit.clone() {
+        let mut text = value;
+        let mut commit = false;
+        let mut cancel = false;
+        egui::Window::new("Move entry to position")
+            .id(egui::Id::new("sidebar_number_editor"))
+            .collapsible(false).resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style())
-                    .inner_margin(egui::Margin::same(8))
-                    .show(ui, |ui| {
-                        ui.set_max_width(320.0);
-                        ui.heading("Image information");
-                        ui.separator();
-                        egui::ScrollArea::vertical()
-                            .max_height(380.0)
-                            .show(ui, |ui| {
-                                if let Some(metadata) = app.file_metadata.clone() {
-                                    app.render_file_metadata(ui, &metadata);
-                                } else {
-                                    ui.label("Metadata is not available yet.");
-                                }
-                            });
-                    });
+                ui.label("Enter the new position (starting at 1):");
+                let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(100.0));
+                response.request_focus();
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) { commit = true; }
+                ui.horizontal(|ui| {
+                    if ui.button("Move").clicked() { commit = true; }
+                    if ui.button("Cancel").clicked() { cancel = true; }
+                });
             });
-        if ctx.input(|input| input.pointer.any_click()) {
-            if let Some(pos) = ctx.input(|input| input.pointer.interact_pos()) {
-                if !popup.response.rect.contains(pos) && !response.response.rect.contains(pos) {
-                    app.file_metadata_open = false;
+        if commit {
+            if let Ok(position) = text.trim().parse::<usize>() {
+                let target = position.saturating_sub(1);
+                match collection {
+                    0 if index < app.image_entries.len() && target < app.image_entries.len() => {
+                        let selected_path = app.current_image_path.clone();
+                        let item = app.image_entries.remove(index);
+                        app.image_entries.insert(target.min(app.image_entries.len()), item);
+                        if let Some(path) = selected_path {
+                            if let Some(new_index) = app.image_entries.iter().position(|e| matches!(e, ImageEntry::File(p) if p == &path)) { app.current_index = new_index; }
+                        }
+                        app.image_cache.clear(); app.preloading_indices.clear(); app.preload_tasks.clear();
+                        app.preload_generation = app.preload_generation.wrapping_add(1);
+                        if !app.image_entries.is_empty() { app.load_current_image_with_cache(); }
+                    }
+                    1 if index < app.queue_paths.len() && target < app.queue_paths.len() => {
+                        let item = app.queue_paths.remove(index); app.queue_paths.insert(target.min(app.queue_paths.len()), item);
+                    }
+                    2 if index < app.favorite_paths.len() && target < app.favorite_paths.len() => {
+                        let item = app.favorite_paths.remove(index); app.favorite_paths.insert(target.min(app.favorite_paths.len()), item); app.save_favorites_for_ui();
+                    }
+                    _ => { app.queue_status = Some("Position is outside the list.".into()); }
                 }
-            }
-        }
+            } else { app.queue_status = Some("Enter a valid whole number.".into()); }
+            app.sidebar_number_edit = None;
+        } else if cancel { app.sidebar_number_edit = None; }
+        else { app.sidebar_number_edit = Some((collection, index, text)); }
+    }
+
+    if let Some((path, value)) = app.rename_dialog.clone() {
+        let mut name = value;
+        let mut commit = false;
+        let mut cancel = false;
+        egui::Window::new("Rename file")
+            .id(egui::Id::new("rename_file_dialog"))
+            .collapsible(false).resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.label("New filename (extension is preserved):");
+                let response = ui.add(egui::TextEdit::singleline(&mut name).desired_width(280.0));
+                response.request_focus();
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) { commit = true; }
+                ui.horizontal(|ui| { if ui.button("Rename").clicked() { commit = true; } if ui.button("Cancel").clicked() { cancel = true; } });
+            });
+        if commit {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() && !trimmed.contains('/') && !trimmed.contains('\\') && trimmed != "." && trimmed != ".." {
+                let extension = path.extension().map(|e| e.to_os_string());
+                let mut new_path = path.with_file_name(trimmed);
+                if let Some(ext) = extension {
+                    if new_path.extension().is_none() { new_path.set_extension(ext); }
+                    else { new_path.set_extension(ext); }
+                }
+                if new_path != path {
+                    match std::fs::rename(&path, &new_path) {
+                        Ok(()) => {
+                            for entry in &mut app.image_entries { if let ImageEntry::File(p) = entry { if *p == path { *p = new_path.clone(); } } }
+                            for p in &mut app.queue_paths { if *p == path { *p = new_path.clone(); } }
+                            for p in &mut app.favorite_paths { if *p == path { *p = new_path.clone(); } }
+                            app.save_favorites_for_ui();
+                            app.current_image_path = Some(new_path.clone());
+                            app.update_current_image_path();
+                            app.sidebar_thumbnails.clear(); app.sidebar_thumbnail_attempted.clear(); app.sidebar_thumbnail_failed.clear();
+                            app.image_cache.clear(); app.preloading_indices.clear(); app.preload_tasks.clear();
+                            app.preload_generation = app.preload_generation.wrapping_add(1);
+                            app.queue_status = Some(format!("Renamed file to {}.", new_path.file_name().unwrap_or_default().to_string_lossy()));
+                        }
+                        Err(error) => app.queue_status = Some(format!("Rename failed: {error}")),
+                    }
+                }
+            } else { app.queue_status = Some("Enter a valid filename without path separators.".into()); }
+            app.rename_dialog = None;
+        } else if cancel { app.rename_dialog = None; }
+        else { app.rename_dialog = Some((path, name)); }
+    }
+
+    // Keep the pointer feedback active while a card is being dragged.
+    if app.sidebar_drag_index.is_some() {
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+    // Cancel an unfinished drag if the pointer is released outside a valid card.
+    if ctx.input(|input| input.pointer.any_released()) && app.sidebar_drag_index.is_some() {
+        app.sidebar_drag_index = None;
     }
 
     let width = response.response.rect.width().clamp(260.0, 2048.0);

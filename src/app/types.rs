@@ -221,6 +221,11 @@ pub struct ViewerApp {
     pub favorite_paths: Vec<PathBuf>,
     pub favorites_loaded: bool,
     pub sidebar_favorites_tab: bool,
+    pub sidebar_info_tab: bool,
+    /// Active quick-position editor: (collection: 0=browse, 1=queue, 2=favorites, index, text).
+    pub sidebar_number_edit: Option<(u8, usize, String)>,
+    /// Rename dialog for a filesystem image; the extension is preserved.
+    pub rename_dialog: Option<(PathBuf, String)>,
     pub queue_mode: bool,
     pub queue_shuffle: bool,
     pub queue_repeat: bool,
@@ -238,6 +243,7 @@ pub struct ViewerApp {
     pub queue_import_prompt: Option<(Vec<PathBuf>, Option<PathBuf>)>,
     /// Browse-sidebar drag source index, used to reorder image entries.
     pub sidebar_drag_index: Option<usize>,
+    pub sidebar_drag_collection: u8,
     /// Lazily generated thumbnail textures keyed by normalized path / entry id.
     pub sidebar_thumbnails: HashMap<String, egui::TextureHandle>,
     pub sidebar_thumbnail_attempted: HashSet<String>,
@@ -416,6 +422,9 @@ impl Default for ViewerApp {
             favorite_paths: Vec::new(),
             favorites_loaded: false,
             sidebar_favorites_tab: false,
+            sidebar_info_tab: false,
+            sidebar_number_edit: None,
+            rename_dialog: None,
             queue_mode: false,
             queue_shuffle: false,
             queue_repeat: true,
@@ -428,6 +437,7 @@ impl Default for ViewerApp {
             queue_drop_rect: None,
             queue_import_prompt: None,
             sidebar_drag_index: None,
+            sidebar_drag_collection: 0,
             sidebar_thumbnails: HashMap::new(),
             sidebar_thumbnail_attempted: HashSet::new(),
             sidebar_thumbnail_failed: HashSet::new(),

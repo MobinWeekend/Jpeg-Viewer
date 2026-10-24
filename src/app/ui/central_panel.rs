@@ -218,8 +218,8 @@ impl ViewerApp {
         progress: Option<f32>,
         show_extreme_ratio: bool,
     ) {
-        let center = ui.available_rect_before_wrap().center();
-        let rect = Self::loading_content_rect(center);
+        let available = ui.available_rect_before_wrap();
+        let rect = Self::loading_content_rect(available);
 
         ui.allocate_rect(rect, egui::Sense::hover());
 
@@ -245,9 +245,9 @@ impl ViewerApp {
         show_extreme_ratio: bool,
         style: &egui::Style,
     ) {
-        const SPINNER_SIZE: f32 = 48.0;
-        const TEXT_HEIGHT: f32 = 24.0;
-        const PROGRESS_HEIGHT: f32 = 40.0;
+        const SPINNER_SIZE: f32 = 22.0;
+        //const TEXT_HEIGHT: f32 = 16.0;
+        //const PROGRESS_HEIGHT: f32 = 16.0;
 
         let time = painter.ctx().input(|i| i.time);
 
@@ -256,19 +256,10 @@ impl ViewerApp {
         // -------------------------
 
         let angle = (time * 3.0) as f32;
-        let radius = SPINNER_SIZE * 0.3;
+        let radius = SPINNER_SIZE * 0.28;
         let segments = 8;
 
-        let spinner_center = egui::pos2(
-            center.x,
-            center.y
-                - (TEXT_HEIGHT / 2.0 + 8.0)
-                - if progress.is_some() {
-                    PROGRESS_HEIGHT / 2.0
-                } else {
-                    0.0
-                },
-        );
+        let spinner_center = egui::pos2(center.x - 76.0, center.y);
 
         for i in 0..segments {
             let angle_offset = (i as f32 / segments as f32) * std::f32::consts::TAU;
@@ -291,22 +282,14 @@ impl ViewerApp {
         // Message
         // -------------------------
 
-        let font_id = egui::FontId::proportional(18.0);
+        let font_id = egui::FontId::proportional(12.0);
         let text_color = style.visuals.text_color();
 
         let galley = painter.layout(message.to_owned(), font_id, text_color, f32::INFINITY);
 
-        let text_y = if progress.is_some() {
-            center.y + SPINNER_SIZE / 2.0 + 8.0 - PROGRESS_HEIGHT / 2.0
-        } else {
-            center.y + SPINNER_SIZE / 2.0 + 8.0
-        };
+        let text_y = center.y - galley.rect.height() / 2.0;
 
-        painter.galley(
-            egui::pos2(center.x - galley.rect.width() / 2.0, text_y),
-            galley,
-            text_color,
-        );
+        painter.galley(egui::pos2(center.x - 60.0, text_y), galley, text_color);
 
         // -------------------------
         // Progress bar
@@ -317,8 +300,8 @@ impl ViewerApp {
                 let progress = progress.clamp(0.0, 1.0);
 
                 let bar_rect = egui::Rect::from_center_size(
-                    egui::pos2(center.x, center.y + 60.0),
-                    egui::vec2(200.0, 8.0),
+                    egui::pos2(center.x + 24.0, center.y + 13.0),
+                    egui::vec2(112.0, 4.0),
                 );
 
                 painter.rect_filled(bar_rect, 4.0, style.visuals.widgets.noninteractive.bg_fill);
@@ -336,15 +319,15 @@ impl ViewerApp {
 
                 let percent_galley = painter.layout(
                     format!("{}%", percent),
-                    egui::FontId::proportional(12.0),
+                    egui::FontId::proportional(10.0),
                     text_color,
                     f32::INFINITY,
                 );
 
                 painter.galley(
                     egui::pos2(
-                        center.x - percent_galley.rect.width() / 2.0,
-                        bar_rect.max.y + 6.0,
+                        center.x + 24.0 - percent_galley.rect.width() / 2.0,
+                        bar_rect.max.y + 2.0,
                     ),
                     percent_galley,
                     text_color,
@@ -361,7 +344,7 @@ impl ViewerApp {
                     );
 
                     painter.galley(
-                        egui::pos2(center.x - galley.rect.width() / 2.0, bar_rect.max.y + 24.0),
+                        egui::pos2(center.x - galley.rect.width() / 2.0, bar_rect.max.y + 12.0),
                         galley,
                         text_color,
                     );
@@ -372,8 +355,8 @@ impl ViewerApp {
 
     // loading...
     fn draw_loading_overlay(painter: &egui::Painter, rect: egui::Rect, message: &str) {
-        let center = rect.center();
-        let content_rect = Self::loading_content_rect(center);
+        let content_rect = Self::loading_content_rect(rect);
+        let center = content_rect.center();
 
         let panel_fill = painter.ctx().style().visuals.panel_fill;
         let semi_transparent = panel_fill.linear_multiply(0.85);
@@ -390,10 +373,14 @@ impl ViewerApp {
         );
     }
 
-    fn loading_content_rect(center: egui::Pos2) -> egui::Rect {
-        const CONTENT_WIDTH: f32 = 217.0;
-        const CONTENT_HEIGHT: f32 = 163.0;
-
-        egui::Rect::from_center_size(center, egui::vec2(CONTENT_WIDTH, CONTENT_HEIGHT))
+    fn loading_content_rect(rect: egui::Rect) -> egui::Rect {
+        const CONTENT_WIDTH: f32 = 190.0;
+        const CONTENT_HEIGHT: f32 = 48.0;
+        let margin = egui::vec2(12.0, 12.0);
+        let pos = egui::pos2(
+            rect.right() - margin.x - CONTENT_WIDTH / 2.0,
+            rect.top() + margin.y + CONTENT_HEIGHT / 2.0,
+        );
+        egui::Rect::from_center_size(pos, egui::vec2(CONTENT_WIDTH, CONTENT_HEIGHT))
     }
 }

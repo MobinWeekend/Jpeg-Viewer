@@ -9,6 +9,21 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 impl ViewerApp {
+    pub fn begin_rename(&mut self, path: &Path) {
+        if !path.is_file() {
+            self.queue_status = Some("Only existing filesystem files can be renamed.".into());
+            return;
+        }
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        self.rename_dialog = Some((path.to_path_buf(), stem));
+    }
+
+    pub fn begin_rename_current(&mut self) {
+        let path = self.image_entries.get(self.current_index).and_then(entry_path).cloned();
+        if let Some(path) = path { self.begin_rename(&path); }
+        else { self.queue_status = Some("The current entry cannot be renamed as a filesystem file.".into()); }
+    }
+
 
     fn favorites_file_path(&self) -> PathBuf {
         self.settings_manager.path().parent().unwrap_or_else(|| Path::new(".")).join("favorites.jvq")
@@ -24,6 +39,10 @@ impl ViewerApp {
                 Err(error) => self.queue_status = Some(format!("Could not load favorites: {error}")),
             }
         }
+    }
+
+    pub(crate) fn save_favorites_for_ui(&mut self) {
+        self.save_favorites();
     }
 
     fn save_favorites(&mut self) {

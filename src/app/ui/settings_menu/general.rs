@@ -211,10 +211,26 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
     });
 
     if old_method != app.sort_method {
-        app.handle_command(ctx, ViewerCommand::RebuildIndex);
-
-        if let Some(path) = app.current_image_path.clone() {
-            app.open_path(path);
+        // Sort the collection currently shown, rather than reopening the current
+        // file's parent directory (which breaks queue/local-list views).
+        let selected_id = app.image_entries.get(app.current_index).map(|entry| entry.get_id());
+        if !app.image_entries.is_empty() {
+            crate::sort::sort_images(&mut app.image_entries, app.sort_method);
+            if let Some(id) = selected_id {
+                if let Some(index) = app.image_entries.iter().position(|entry| entry.get_id() == id) {
+                    app.current_index = index;
+                }
+            }
+        } else {
+            app.handle_command(ctx, ViewerCommand::RebuildIndex);
+        }
+        app.image_cache.clear();
+        app.preloading_indices.clear();
+        app.preload_tasks.clear();
+        app.preload_generation = app.preload_generation.wrapping_add(1);
+        app.sidebar_last_current_index = None;
+        if !app.image_entries.is_empty() {
+            app.load_current_image_with_cache();
         }
     }
 }

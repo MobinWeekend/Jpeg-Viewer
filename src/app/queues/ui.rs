@@ -177,8 +177,16 @@ impl ViewerApp {
                                     egui::Layout::top_down(egui::Align::Center),
                                     |ui| {
                                         card_clicked = self.render_thumbnail_card(
-                                            ui, path, &key, &label, false, false, card_size, None,
-                                            1, ctx,
+                                            ui,
+                                            path,
+                                            &key,
+                                            &label,
+                                            false,
+                                            false,
+                                            card_size,
+                                            Some(index),
+                                            1,
+                                            ctx,
                                         );
                                         // Queue controls, below the label.
                                         ui.horizontal(|ui| {
@@ -277,6 +285,7 @@ impl ViewerApp {
 
     pub fn render_favorites_sidebar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         self.ensure_favorites_loaded();
+        self.queue_drop_rect = Some(ui.available_rect_before_wrap());
         ui.heading("Favorites");
         ui.label(format!("{} saved item(s)", self.favorite_paths.len()));
         ui.horizontal(|ui| {
@@ -325,7 +334,15 @@ impl ViewerApp {
                                 egui::Layout::top_down(egui::Align::Center),
                                 |ui| {
                                     clicked = self.render_thumbnail_card(
-                                        ui, path, &key, &label, false, false, card_size, None, 2,
+                                        ui,
+                                        path,
+                                        &key,
+                                        &label,
+                                        false,
+                                        false,
+                                        card_size,
+                                        Some(index),
+                                        2,
                                         ctx,
                                     );
                                 },
@@ -453,13 +470,6 @@ impl ViewerApp {
                 }
             }
 
-            // Show the one-based list position over the thumbnail in Browse.
-            if let Some(index) = context_index {
-                let badge_rect = egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(28.0, 20.0));
-                ui.painter().rect_filled(badge_rect, 4.0, egui::Color32::from_black_alpha(190));
-                ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER, (index + 1).to_string(), egui::FontId::proportional(12.0), egui::Color32::WHITE);
-            }
-
             // Selection outline around the image area.
             if selected {
                 ui.painter().rect_stroke(
@@ -476,7 +486,7 @@ impl ViewerApp {
             }
 
             let response = response.on_hover_text(path.display().to_string());
-            if context_index.is_none() && (context_mode == 1 || context_mode == 2) {
+            if context_mode == 1 || context_mode == 2 {
                 response.clone().context_menu(|ui| {
                     if ui.button("Open image").clicked() {
                         if context_mode == 1 {
@@ -489,6 +499,7 @@ impl ViewerApp {
                         }
                         ui.close();
                     }
+                    if ui.button("Rename… (F2)").clicked() { self.begin_rename(path); ui.close(); }
                     if context_mode == 1 && ui.button("Add to favorites").clicked() {
                         self.add_favorite_path(path.to_path_buf());
                         ui.close();
@@ -513,66 +524,76 @@ impl ViewerApp {
             }
             clicked = response.clicked();
             if let Some(index) = context_index {
-                if response.drag_started() { self.sidebar_drag_index = Some(index); }
-                if self.sidebar_drag_index.is_some() && response.hovered() && ctx.input(|i| i.pointer.any_released()) {
+                // The numbered badge is interactive: click it to type a 1-based
+                // destination position for fast insertion-based reordering.
+                let badge_pos = rect.min + egui::vec2(4.0, 4.0);
+                egui::Area::new(egui::Id::new(("thumbnail_position", context_mode, key)))
+                    .order(egui::Order::Foreground)
+                    .fixed_pos(badge_pos)
+                    .show(ctx, |ui| {
+                        let badge = egui::Button::new(egui::RichText::new((index + 1).to_string()).size(12.0).color(egui::Color32::WHITE))
+                            .fill(egui::Color32::from_black_alpha(205))
+                            .min_size(egui::vec2(28.0, 20.0));
+                        if ui.add(badge).on_hover_text("Click to move this entry to a specific position").clicked() {
+                            self.sidebar_number_edit = Some((context_mode, index, (index + 1).to_string()));
+                        }
+                    });
+
+                if response.drag_started() {
+                    self.sidebar_drag_index = Some(index);
+                    self.sidebar_drag_collection = context_mode;
+                    ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+                if self.sidebar_drag_index.is_some() && self.sidebar_drag_collection == context_mode
+                    && response.hovered() && ctx.input(|i| i.pointer.any_released()) {
                     if let Some(from) = self.sidebar_drag_index.take() {
                         let to = index;
-                        if from != to && from < self.image_entries.len() && to < self.image_entries.len() {
-                            let selected_before = self.current_index;
-                            let item = self.image_entries.remove(from);
-                            self.image_entries.insert(to, item);
-                            self.current_index = if selected_before == from { to }
-                                else if from < selected_before && selected_before <= to { selected_before - 1 }
-                                else if to <= selected_before && selected_before < from { selected_before + 1 }
-                                else { selected_before };
-                            self.sidebar_last_current_index = None;
-                            // Cache entries are index-based; invalidate them after changing order.
-                            self.image_cache.clear();
-                            self.preloading_indices.clear();
-                            self.preload_tasks.clear();
-                            self.preload_generation = self.preload_generation.wrapping_add(1);
-                            self.current_index = usize::MAX;
-                            self.navigate_to_index(ctx, if selected_before == from { to } else if from < selected_before && selected_before <= to { selected_before - 1 } else if to <= selected_before && selected_before < from { selected_before + 1 } else { selected_before });
+                        let len = match context_mode { 0 => self.image_entries.len(), 1 => self.queue_paths.len(), 2 => self.favorite_paths.len(), _ => 0 };
+                        if from != to && from < len && to < len {
+                            match context_mode {
+                                0 => {
+                                    let selected_path = self.current_image_path.clone();
+                                    let item = self.image_entries.remove(from);
+                                    self.image_entries.insert(to.min(self.image_entries.len()), item);
+                                    if let Some(path) = selected_path {
+                                        if let Some(new_index) = self.image_entries.iter().position(|e| matches!(e, crate::image_entry::ImageEntry::File(p) if p == &path)) { self.current_index = new_index; }
+                                    }
+                                    self.sidebar_last_current_index = None;
+                                    self.image_cache.clear(); self.preloading_indices.clear(); self.preload_tasks.clear();
+                                    self.preload_generation = self.preload_generation.wrapping_add(1);
+                                    if !self.image_entries.is_empty() { self.load_current_image_with_cache(); }
+                                }
+                                1 => { let item = self.queue_paths.remove(from); self.queue_paths.insert(to.min(self.queue_paths.len()), item); }
+                                2 => { let item = self.favorite_paths.remove(from); self.favorite_paths.insert(to.min(self.favorite_paths.len()), item); self.save_favorites_for_ui(); }
+                                _ => {}
+                            }
                             self.queue_status = Some(format!("Moved item {} to position {}.", from + 1, to + 1));
                         }
                     }
                 }
-                if response.hovered() && self.sidebar_drag_index.is_some() {
-                    ui.painter().line_segment([rect.left_top(), rect.right_top()], egui::Stroke::new(3.0 as f32, ui.visuals().selection.bg_fill));
+                if response.hovered() && self.sidebar_drag_index.is_some() && self.sidebar_drag_collection == context_mode {
+                    let pointer_y = ctx.input(|i| i.pointer.hover_pos()).map(|p| p.y).unwrap_or(rect.center().y);
+                    let y = if pointer_y < rect.center().y { rect.top() } else { rect.bottom() };
+                    ui.painter().line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)], egui::Stroke::new(3.0 as f32, ui.visuals().selection.stroke.color));
+                    ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                 }
-                response.context_menu(|ui| {
-                    if ui.button("Open image").clicked() {
-                        self.navigate_to_index(ctx, index);
-                        ui.close();
-                    }
-                    if ui.button("Add to favorites").clicked() {
-                        self.add_favorite_path(path.to_path_buf());
-                        ui.close();
-                    }
-                    if ui.button("Add to queue").clicked() {
-                        let added = self.add_queue_path(path.to_path_buf());
-                        self.queue_status = Some(if added {
-                            "Added image to queue.".to_owned()
-                        } else {
-                            "Image is already in the queue.".to_owned()
-                        });
-                        ui.close();
-                    }
-                    if ui.button("Copy file path").clicked() {
-                        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
-                            Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
-                            Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
+
+                if context_mode == 0 {
+                    response.context_menu(|ui| {
+                        if ui.button("Open image").clicked() { self.navigate_to_index(ctx, index); ui.close(); }
+                        if ui.button("Rename… (F2)").clicked() { self.begin_rename(path); ui.close(); }
+                        if ui.button("Add to favorites").clicked() { self.add_favorite_path(path.to_path_buf()); ui.close(); }
+                        if ui.button("Add to queue").clicked() {
+                            let added = self.add_queue_path(path.to_path_buf());
+                            self.queue_status = Some(if added { "Added image to queue.".to_owned() } else { "Image is already in the queue.".to_owned() }); ui.close();
                         }
-                        ui.close();
-                    }
-                    if ui.button("Open containing folder").clicked() {
-                        let target = path.parent().unwrap_or(path);
-                        if let Err(error) = open::that(target) {
-                            self.queue_status = Some(format!("Could not open folder: {error}"));
+                        if ui.button("Copy file path").clicked() {
+                            match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) { Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()), Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")) }
+                            ui.close();
                         }
-                        ui.close();
-                    }
-                });
+                        if ui.button("Open containing folder").clicked() { if let Err(error) = open::that(path.parent().unwrap_or(path)) { self.queue_status = Some(format!("Could not open folder: {error}")); } ui.close(); }
+                    });
+                }
             }
 
             // Filename label — forced to a single line.
@@ -596,6 +617,7 @@ impl ViewerApp {
                         }
                         ui.close();
                     }
+                    if ui.button("Rename… (F2)").clicked() { self.begin_rename(path); ui.close(); }
                     if context_mode == 1 && ui.button("Add to favorites").clicked() {
                         self.toggle_favorite_path(path.to_path_buf());
                         ui.close();

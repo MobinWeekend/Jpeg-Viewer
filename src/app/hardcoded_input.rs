@@ -167,6 +167,14 @@ impl ViewerApp {
         // Handle Escape key for fullscreen toggle / close
         self.handle_escape_key(ctx);
 
+        // F2 renames the current filesystem image; the dialog preserves its extension.
+        if ctx.input(|i| i.key_pressed(egui::Key::F2)) && self.rename_dialog.is_none() && self.sidebar_number_edit.is_none() {
+            self.begin_rename_current();
+            if self.rename_dialog.is_some() {
+                let _ = self.settings_manager.update(|settings| settings.show_file_sidebar = true);
+            }
+        }
+
         // Standard keyboard shortcuts
         for command in handle_keyboard(ctx, &self.input_bindings) {
             self.handle_command(ctx, command);
@@ -229,10 +237,11 @@ impl ViewerApp {
         }
 
         let drop_position = ctx.input(|i| i.pointer.hover_pos().or_else(|| i.pointer.latest_pos()));
-        let dropped_on_queue = self.sidebar_queue_tab
-            && self
-                .queue_drop_rect
-                .is_some_and(|rect| drop_position.is_some_and(|position| rect.contains(position)));
+        let dropped_on_sidebar_collection = self
+            .queue_drop_rect
+            .is_some_and(|rect| drop_position.is_some_and(|position| rect.contains(position)));
+        let dropped_on_queue = self.sidebar_queue_tab && dropped_on_sidebar_collection;
+        let dropped_on_favorites = self.sidebar_favorites_tab && dropped_on_sidebar_collection;
 
         // Stop slideshow when dropping files
         if self.slideshow_enabled {
@@ -254,6 +263,32 @@ impl ViewerApp {
             self.open_queue_file(&paths[0], ctx, dropped_on_queue);
         } else if dropped_on_queue {
             self.add_dropped_paths_to_queue(paths);
+        } else if dropped_on_favorites {
+            let mut added = 0usize;
+            let mut ignored = 0usize;
+            for path in paths {
+                if path.is_dir() {
+                    let mut stack = vec![path];
+                    while let Some(dir) = stack.pop() {
+                        if let Ok(entries) = std::fs::read_dir(dir) {
+                            for entry in entries.flatten() {
+                                let child = entry.path();
+                                if child.is_dir() { stack.push(child); }
+                                else if child.is_file() && crate::helpers::is_supported_image(&child) {
+                                    let before = self.favorite_paths.len();
+                                    self.add_favorite_path(child);
+                                    added += usize::from(self.favorite_paths.len() > before);
+                                }
+                            }
+                        }
+                    }
+                } else if path.is_file() && crate::helpers::is_supported_image(&path) {
+                    let before = self.favorite_paths.len();
+                    self.add_favorite_path(path);
+                    added += usize::from(self.favorite_paths.len() > before);
+                } else { ignored += 1; }
+            }
+            self.queue_status = Some(format!("Added {added} favorite(s); ignored {ignored} unsupported item(s)."));
         } else if paths.len() == 1 {
             // Single file: open it (preserve the normal drop behavior outside the queue).
             if let Some(path) = paths.first() {

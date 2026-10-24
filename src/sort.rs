@@ -82,6 +82,28 @@ impl AsPath for Path {
     }
 }
 
+impl AsPath for crate::image_entry::ImageEntry {
+    fn as_path(&self) -> &Path {
+        use crate::image_entry::ImageEntry;
+        match self {
+            ImageEntry::File(path) => path.as_path(),
+            ImageEntry::Zip(item) => item.archive_path.as_path(),
+            ImageEntry::S7z(item) => item.archive_path.as_path(),
+            ImageEntry::Rar(item) => item.archive_path.as_path(),
+        }
+    }
+
+    fn get_file_name(&self) -> Option<&std::ffi::OsStr> {
+        use crate::image_entry::ImageEntry;
+        match self {
+            ImageEntry::File(path) => path.file_name(),
+            ImageEntry::Zip(item) => Path::new(&item.name).file_name(),
+            ImageEntry::S7z(item) => Path::new(&item.name).file_name(),
+            ImageEntry::Rar(item) => Path::new(&item.name).file_name(),
+        }
+    }
+}
+
 /// Sort images of type T using the specified method
 pub fn sort_images<T: AsPath>(images: &mut [T], method: SortMethod) {
     match method {
