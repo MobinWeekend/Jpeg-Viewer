@@ -34,10 +34,11 @@ impl ViewerApp {
         // to the queue without changing drops elsewhere in the application.
         self.queue_drop_rect = Some(ui.available_rect_before_wrap());
 
-        ui.heading("Selection & Queue");
-        ui.label(format!("{} item(s)", self.queue_paths.len()));
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("➕ Add files…").clicked() {
+        ui.heading("Queue");
+        ui.label(format!("{} items", self.queue_paths.len()));
+
+        ui.horizontal(|ui| {
+            if ui.button("＋ Add files").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     let mut added = 0;
                     for path in paths {
@@ -46,71 +47,90 @@ impl ViewerApp {
                     self.queue_status = Some(format!("Added {added} file(s)."));
                 }
             }
-            if ui.button("➕ Add current image").clicked() {
+            if ui.button("＋ Current image").clicked() {
                 self.add_current_image_to_queue();
             }
-            if ui.button("Add sidebar files if empty").on_hover_text(
-                "Adds all filesystem images currently listed in Browse, but only when the queue is empty."
-            ).clicked() {
+        });
+        ui.horizontal(|ui| {
+            if ui
+                .button("＋ Current view")
+                .on_hover_text("Add filesystem images currently shown in Browse")
+                .clicked()
+            {
+                self.add_current_folder_images();
+            }
+            if ui
+                .button("Use Browse list if empty")
+                .on_hover_text("Only fills the queue when it is empty")
+                .clicked()
+            {
                 if self.queue_paths.is_empty() {
                     self.add_current_folder_images();
                 } else {
-                    self.queue_status = Some("Queue is not empty; existing items were preserved.".into());
+                    self.queue_status =
+                        Some("Queue is not empty; existing items were preserved.".into());
                 }
             }
         });
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("📁 Add current folder images").clicked() {
-                self.add_current_folder_images();
-            }
-            if ui.button("Add folder recursively…").clicked() {
+        ui.horizontal(|ui| {
+            if ui
+                .button("＋ Folder…")
+                .on_hover_text("Add images from a folder and its subfolders")
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     let added = self.add_folder_recursively(&path);
                     self.queue_status = Some(format!("Added {added} image(s) from folder tree."));
                 }
             }
         });
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             if ui.button("Open queue").clicked() {
                 self.open_queue_in_viewer(ctx);
             }
-            if ui.button("Return to previous view").clicked() {
+            if ui
+                .button("Return")
+                .on_hover_text("Return to the previous browsing view")
+                .clicked()
+            {
                 self.return_to_previous_view(ctx);
             }
-            if ui.button("💾 Save…").clicked() {
+            if ui.button("Save…").clicked() {
                 self.save_queue_dialog();
             }
-            if ui.button("📥 Load…").clicked() {
+            if ui.button("Load…").clicked() {
                 self.load_queue_dialog();
             }
-            if ui.button("Export paths…").clicked() {
-                self.export_queue_paths();
-            }
         });
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("Remap missing root…").clicked() {
-                self.remap_missing_queue_root();
-            }
-            if ui.button("Remove unavailable").clicked() {
-                let before = self.queue_paths.len();
-                self.queue_paths.retain(|path| path.exists());
-                self.queue_status = Some(format!(
-                    "Removed {} unavailable queue item(s).",
-                    before - self.queue_paths.len()
-                ));
-            }
-            if ui.button("Clear queue").clicked() {
-                if self.queue_mode {
-                    self.return_to_previous_view(ctx);
+        ui.collapsing("Queue tools", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button("Export paths…").clicked() {
+                    self.export_queue_paths();
                 }
-                self.queue_paths.clear();
-                self.queue_mode = false;
-                self.queue_status = Some("Queue cleared.".into());
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.queue_shuffle, "Shuffle next");
-            ui.checkbox(&mut self.queue_repeat, "Repeat queue");
+                if ui.button("Remap missing root…").clicked() {
+                    self.remap_missing_queue_root();
+                }
+                if ui.button("Remove unavailable").clicked() {
+                    let before = self.queue_paths.len();
+                    self.queue_paths.retain(|path| path.exists());
+                    self.queue_status = Some(format!(
+                        "Removed {} unavailable item(s).",
+                        before - self.queue_paths.len()
+                    ));
+                }
+                if ui.button("Clear queue").clicked() {
+                    if self.queue_mode {
+                        self.return_to_previous_view(ctx);
+                    }
+                    self.queue_paths.clear();
+                    self.queue_mode = false;
+                    self.queue_status = Some("Queue cleared.".into());
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.queue_shuffle, "Shuffle next");
+                ui.checkbox(&mut self.queue_repeat, "Repeat queue");
+            });
         });
         ui.separator();
 
@@ -158,7 +178,7 @@ impl ViewerApp {
                                     |ui| {
                                         card_clicked = self.render_thumbnail_card(
                                             ui, path, &key, &label, false, false, card_size, None,
-                                            ctx,
+                                            1, ctx,
                                         );
                                         // Queue controls, below the label.
                                         ui.horizontal(|ui| {
@@ -255,6 +275,93 @@ impl ViewerApp {
         }
     }
 
+    pub fn render_favorites_sidebar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.ensure_favorites_loaded();
+        ui.heading("Favorites");
+        ui.label(format!("{} saved item(s)", self.favorite_paths.len()));
+        ui.horizontal(|ui| {
+            if ui.button("＋ Add current image").clicked() {
+                self.add_current_image_to_favorites();
+            }
+            if ui.button("＋ Add files…").clicked() {
+                if let Some(paths) = rfd::FileDialog::new().pick_files() {
+                    for path in paths {
+                        self.add_favorite_path(path);
+                    }
+                }
+            }
+        });
+        ui.separator();
+        if self.favorite_paths.is_empty() {
+            ui.label("No favorites yet. Right-click an image in Browse or Queue to add it here.");
+            return;
+        }
+        let items = self.favorite_paths.clone();
+        let available = ui.available_width().max(CELL_MIN);
+        let (columns, card_size) = fit_cards(available);
+        egui::ScrollArea::vertical()
+            .id_salt("favorites_sidebar_items")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                egui::Grid::new("favorites_sidebar_grid")
+                    .num_columns(columns)
+                    .spacing(egui::vec2(GAP, GAP))
+                    .show(ui, |ui| {
+                        for (index, path) in items.iter().enumerate() {
+                            let name = path
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .into_owned();
+                            let label = if path.exists() {
+                                name
+                            } else {
+                                format!("⚠ {name}")
+                            };
+                            let key = format!("file:{}", absolute_path(path).display());
+                            let mut clicked = false;
+                            ui.allocate_ui_with_layout(
+                                egui::vec2(card_size, 0.0),
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    clicked = self.render_thumbnail_card(
+                                        ui, path, &key, &label, false, false, card_size, None, 2,
+                                        ctx,
+                                    );
+                                },
+                            );
+                            if clicked {
+                                if path.exists() {
+                                    let favorite_entries = self
+                                        .favorite_paths
+                                        .iter()
+                                        .cloned()
+                                        .map(crate::image_entry::ImageEntry::File)
+                                        .collect();
+                                    let index = self
+                                        .favorite_paths
+                                        .iter()
+                                        .position(|p| super::storage::paths_equal(p, path))
+                                        .unwrap_or(0);
+                                    self.set_image_entries(favorite_entries, index);
+                                    self.queue_status =
+                                        Some("Opened favorites in the viewer.".into());
+                                } else {
+                                    self.queue_status =
+                                        Some("This favorite file is unavailable.".into());
+                                }
+                            }
+                            if (index + 1) % columns == 0 {
+                                ui.end_row();
+                            }
+                        }
+                        if items.len() % columns != 0 {
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
+
     /// Add dropped files to the queue without changing the current viewer contents.
     pub fn add_dropped_paths_to_queue(&mut self, paths: Vec<PathBuf>) {
         let mut added = 0;
@@ -285,6 +392,7 @@ impl ViewerApp {
         auto_scroll: bool,
         thumbnail_width: f32,
         context_index: Option<usize>,
+        context_mode: u8,
         ctx: &egui::Context,
     ) -> bool {
         let card_width = thumbnail_width.max(1.0);
@@ -297,10 +405,8 @@ impl ViewerApp {
             ui.set_width(card_width);
 
             // Image area. Leave unused space unpainted.
-            let (rect, response) = ui.allocate_exact_size(
-                egui::vec2(card_width, image_height),
-                egui::Sense::click_and_drag(),
-            );
+            let (rect, response) =
+                ui.allocate_exact_size(egui::vec2(card_width, image_height), egui::Sense::click_and_drag());
 
             if let Some(texture) = self.sidebar_thumbnails.get(key) {
                 let size = texture.size_vec2();
@@ -349,19 +455,9 @@ impl ViewerApp {
 
             // Show the one-based list position over the thumbnail in Browse.
             if let Some(index) = context_index {
-                let badge_rect = egui::Rect::from_min_size(
-                    rect.min + egui::vec2(4.0, 4.0),
-                    egui::vec2(28.0, 20.0),
-                );
-                ui.painter()
-                    .rect_filled(badge_rect, 4.0, egui::Color32::from_black_alpha(190));
-                ui.painter().text(
-                    badge_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    (index + 1).to_string(),
-                    egui::FontId::proportional(12.0),
-                    egui::Color32::WHITE,
-                );
+                let badge_rect = egui::Rect::from_min_size(rect.min + egui::vec2(4.0, 4.0), egui::vec2(28.0, 20.0));
+                ui.painter().rect_filled(badge_rect, 4.0, egui::Color32::from_black_alpha(190));
+                ui.painter().text(badge_rect.center(), egui::Align2::CENTER_CENTER, (index + 1).to_string(), egui::FontId::proportional(12.0), egui::Color32::WHITE);
             }
 
             // Selection outline around the image area.
@@ -380,33 +476,55 @@ impl ViewerApp {
             }
 
             let response = response.on_hover_text(path.display().to_string());
+            if context_index.is_none() && (context_mode == 1 || context_mode == 2) {
+                response.clone().context_menu(|ui| {
+                    if ui.button("Open image").clicked() {
+                        if context_mode == 1 {
+                            if let Some(index) = self.queue_paths.iter().position(|p| super::storage::paths_equal(p, path)) {
+                                self.open_queue_in_viewer_at(ctx, index);
+                            }
+                        } else if let Some(index) = self.favorite_paths.iter().position(|p| super::storage::paths_equal(p, path)) {
+                            let entries = self.favorite_paths.iter().cloned().map(crate::image_entry::ImageEntry::File).collect();
+                            self.set_image_entries(entries, index);
+                        }
+                        ui.close();
+                    }
+                    if context_mode == 1 && ui.button("Add to favorites").clicked() {
+                        self.add_favorite_path(path.to_path_buf());
+                        ui.close();
+                    }
+                    if context_mode == 2 && ui.button("Remove from favorites").clicked() {
+                        self.remove_favorite_path(path);
+                        ui.close();
+                    }
+                    if context_mode == 1 && ui.button("Remove from queue").clicked() {
+                        self.queue_paths.retain(|p| !super::storage::paths_equal(p, path));
+                        self.queue_status = Some("Removed item from queue.".into());
+                        ui.close();
+                    }
+                    if ui.button("Copy file path").clicked() {
+                        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
+                            Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
+                            Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
+                        }
+                        ui.close();
+                    }
+                });
+            }
             clicked = response.clicked();
             if let Some(index) = context_index {
-                if response.drag_started() {
-                    self.sidebar_drag_index = Some(index);
-                }
-                if self.sidebar_drag_index.is_some()
-                    && response.hovered()
-                    && ctx.input(|i| i.pointer.any_released())
-                {
+                if response.drag_started() { self.sidebar_drag_index = Some(index); }
+                if self.sidebar_drag_index.is_some() && response.hovered() && ctx.input(|i| i.pointer.any_released()) {
                     if let Some(from) = self.sidebar_drag_index.take() {
                         let to = index;
-                        if from != to
-                            && from < self.image_entries.len()
-                            && to < self.image_entries.len()
-                        {
+                        if from != to && from < self.image_entries.len() && to < self.image_entries.len() {
                             let selected_before = self.current_index;
                             let item = self.image_entries.remove(from);
                             self.image_entries.insert(to, item);
-                            self.current_index = if selected_before == from {
-                                to
-                            } else if from < selected_before && selected_before <= to {
-                                selected_before - 1
-                            } else if to <= selected_before && selected_before < from {
-                                selected_before + 1
-                            } else {
-                                selected_before
-                            };
+                            self.current_index = if selected_before == from { to }
+                                else if from < selected_before && selected_before <= to { selected_before - 1 }
+                                else if to <= selected_before && selected_before < from { selected_before + 1 }
+                                else { selected_before };
                             self.sidebar_last_current_index = None;
                             // Cache entries are index-based; invalidate them after changing order.
                             self.image_cache.clear();
@@ -414,32 +532,21 @@ impl ViewerApp {
                             self.preload_tasks.clear();
                             self.preload_generation = self.preload_generation.wrapping_add(1);
                             self.current_index = usize::MAX;
-                            self.navigate_to_index(
-                                ctx,
-                                if selected_before == from {
-                                    to
-                                } else if from < selected_before && selected_before <= to {
-                                    selected_before - 1
-                                } else if to <= selected_before && selected_before < from {
-                                    selected_before + 1
-                                } else {
-                                    selected_before
-                                },
-                            );
-                            self.queue_status =
-                                Some(format!("Moved item {} to position {}.", from + 1, to + 1));
+                            self.navigate_to_index(ctx, if selected_before == from { to } else if from < selected_before && selected_before <= to { selected_before - 1 } else if to <= selected_before && selected_before < from { selected_before + 1 } else { selected_before });
+                            self.queue_status = Some(format!("Moved item {} to position {}.", from + 1, to + 1));
                         }
                     }
                 }
                 if response.hovered() && self.sidebar_drag_index.is_some() {
-                    ui.painter().line_segment(
-                        [rect.left_top(), rect.right_top()],
-                        egui::Stroke::new(3.0 as f32, ui.visuals().selection.bg_fill),
-                    );
+                    ui.painter().line_segment([rect.left_top(), rect.right_top()], egui::Stroke::new(3.0 as f32, ui.visuals().selection.bg_fill));
                 }
                 response.context_menu(|ui| {
                     if ui.button("Open image").clicked() {
                         self.navigate_to_index(ctx, index);
+                        ui.close();
+                    }
+                    if ui.button("Add to favorites").clicked() {
+                        self.add_favorite_path(path.to_path_buf());
                         ui.close();
                     }
                     if ui.button("Add to queue").clicked() {
@@ -452,15 +559,9 @@ impl ViewerApp {
                         ui.close();
                     }
                     if ui.button("Copy file path").clicked() {
-                        match arboard::Clipboard::new().and_then(|mut clipboard| {
-                            clipboard.set_text(path.display().to_string())
-                        }) {
-                            Ok(()) => {
-                                self.queue_status = Some("Copied file path to clipboard.".into())
-                            }
-                            Err(error) => {
-                                self.queue_status = Some(format!("Could not copy path: {error}"))
-                            }
+                        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
+                            Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
+                            Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
                         }
                         ui.close();
                     }
@@ -483,7 +584,46 @@ impl ViewerApp {
                 egui::Button::selectable(selected, truncated).wrap_mode(egui::TextWrapMode::Extend), // no wrap, no extra ellipsis
             );
 
-            clicked |= text.on_hover_text(label).clicked();
+            let text = text.on_hover_text(label);
+            clicked |= text.clicked();
+            if context_mode == 1 || context_mode == 2 {
+                text.context_menu(|ui| {
+                    if ui.button("Open image").clicked() {
+                        if let Some(index) = self.image_entries.iter().position(|entry| matches!(entry, crate::image_entry::ImageEntry::File(p) if super::storage::paths_equal(p, path))) {
+                            self.navigate_to_index(ctx, index);
+                        } else if let Some(index) = self.queue_paths.iter().position(|p| super::storage::paths_equal(p, path)) {
+                            self.open_queue_in_viewer_at(ctx, index);
+                        }
+                        ui.close();
+                    }
+                    if context_mode == 1 && ui.button("Add to favorites").clicked() {
+                        self.toggle_favorite_path(path.to_path_buf());
+                        ui.close();
+                    }
+                    if context_mode == 2 && ui.button("Remove from favorites").clicked() {
+                        self.remove_favorite_path(path);
+                        ui.close();
+                    }
+                    if context_mode == 1 && ui.button("Remove from queue").clicked() {
+                        self.queue_paths.retain(|p| !super::storage::paths_equal(p, path));
+                        self.queue_status = Some("Removed item from queue.".into());
+                        ui.close();
+                    }
+                    if ui.button("Copy file path").clicked() {
+                        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
+                            Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
+                            Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Open containing folder").clicked() {
+                        if let Err(error) = open::that(path.parent().unwrap_or(path)) {
+                            self.queue_status = Some(format!("Could not open folder: {error}"));
+                        }
+                        ui.close();
+                    }
+                });
+            }
         });
 
         clicked

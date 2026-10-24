@@ -217,6 +217,10 @@ pub struct ViewerApp {
 
     // ====== QUEUE / SELECTION WORKFLOWS ======
     pub queue_paths: Vec<PathBuf>,
+    /// Persisted favorites, stored beside settings.ini in favorites.jvq.
+    pub favorite_paths: Vec<PathBuf>,
+    pub favorites_loaded: bool,
+    pub sidebar_favorites_tab: bool,
     pub queue_mode: bool,
     pub queue_shuffle: bool,
     pub queue_repeat: bool,
@@ -409,6 +413,9 @@ impl Default for ViewerApp {
             overwrite_is_save_as: false,
             confirm_discard_edits: false,
             queue_paths: Vec::new(),
+            favorite_paths: Vec::new(),
+            favorites_loaded: false,
+            sidebar_favorites_tab: false,
             queue_mode: false,
             queue_shuffle: false,
             queue_repeat: true,

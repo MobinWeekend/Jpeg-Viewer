@@ -9,6 +9,69 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 impl ViewerApp {
+
+    fn favorites_file_path(&self) -> PathBuf {
+        self.settings_manager.path().parent().unwrap_or_else(|| Path::new(".")).join("favorites.jvq")
+    }
+
+    pub fn ensure_favorites_loaded(&mut self) {
+        if self.favorites_loaded { return; }
+        self.favorites_loaded = true;
+        let path = self.favorites_file_path();
+        if path.is_file() {
+            match read_queue(&path) {
+                Ok((paths, _)) => self.favorite_paths = paths,
+                Err(error) => self.queue_status = Some(format!("Could not load favorites: {error}")),
+            }
+        }
+    }
+
+    fn save_favorites(&mut self) {
+        let path = self.favorites_file_path();
+        if let Some(parent) = path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                self.queue_status = Some(format!("Could not create favorites directory: {error}"));
+                return;
+            }
+        }
+        match write_queue(&path, &self.favorite_paths, None) {
+            Ok(()) => self.queue_status = Some(format!("Saved {} favorite(s).", self.favorite_paths.len())),
+            Err(error) => self.queue_status = Some(format!("Could not save favorites: {error}")),
+        }
+    }
+
+    pub fn add_current_image_to_favorites(&mut self) {
+        let path = self.image_entries.get(self.current_index).and_then(entry_path).cloned();
+        if let Some(path) = path { self.toggle_favorite_path(path); }
+        else { self.queue_status = Some("Only filesystem images can be favorites.".into()); }
+    }
+
+    pub fn add_favorite_path(&mut self, path: PathBuf) {
+        let normalized = absolute_path(&path);
+        if !self.favorite_paths.iter().any(|p| paths_equal(p, &normalized)) {
+            self.favorite_paths.push(normalized);
+            self.queue_status = Some("Added to favorites.".into());
+            self.save_favorites();
+        } else {
+            self.queue_status = Some("Image is already in favorites.".into());
+        }
+    }
+
+    pub fn toggle_favorite_path(&mut self, path: PathBuf) {
+        let normalized = absolute_path(&path);
+        if let Some(index) = self.favorite_paths.iter().position(|p| paths_equal(p, &normalized)) {
+            self.favorite_paths.remove(index);
+            self.queue_status = Some("Removed from favorites.".into());
+            self.save_favorites();
+        } else {
+            self.add_favorite_path(normalized);
+        }
+    }
+
+    pub fn remove_favorite_path(&mut self, path: &Path) {
+        self.favorite_paths.retain(|p| !paths_equal(p, path));
+        self.save_favorites();
+    }
     pub fn add_current_image_to_queue(&mut self) {
         let path = self
             .image_entries

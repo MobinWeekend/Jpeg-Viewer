@@ -34,6 +34,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     }
 
     app.collect_sidebar_thumbnails(ctx);
+    app.ensure_favorites_loaded();
 
     let default_width = app
         .settings_manager
@@ -68,25 +69,21 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(!app.sidebar_queue_tab, "Browse")
-                    .clicked()
-                {
+                if ui.selectable_label(!app.sidebar_queue_tab && !app.sidebar_favorites_tab, "Browse").clicked() {
                     app.sidebar_queue_tab = false;
+                    app.sidebar_favorites_tab = false;
                     app.queue_drop_rect = None;
                 }
-
-                if ui
-                    .selectable_label(
-                        app.sidebar_queue_tab,
-                        format!("Queue ({})", app.queue_paths.len()),
-                    )
-                    .clicked()
-                {
+                if ui.selectable_label(app.sidebar_queue_tab, format!("Queue ({})", app.queue_paths.len())).clicked() {
                     app.sidebar_queue_tab = true;
+                    app.sidebar_favorites_tab = false;
                 }
-
-                if !app.sidebar_queue_tab && ui.small_button("Info").clicked() {
+                if ui.selectable_label(app.sidebar_favorites_tab, format!("Favorites ({})", app.favorite_paths.len())).clicked() {
+                    app.sidebar_queue_tab = false;
+                    app.sidebar_favorites_tab = true;
+                    app.queue_drop_rect = None;
+                }
+                if !app.sidebar_queue_tab && !app.sidebar_favorites_tab && ui.small_button("Info").clicked() {
                     app.file_metadata_open = !app.file_metadata_open;
                 }
             });
@@ -96,6 +93,9 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             if app.sidebar_queue_tab {
                 app.sidebar_last_current_index = None;
                 app.render_queue_sidebar(ui, ctx);
+            } else if app.sidebar_favorites_tab {
+                app.sidebar_last_current_index = None;
+                app.render_favorites_sidebar(ui, ctx);
             } else {
                 app.queue_drop_rect = None;
 
@@ -152,6 +152,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             && index == app.current_index,
                                                         card_size,
                                                         Some(index),
+                                                        0,
                                                         ctx,
                                                     );
                                                 },
@@ -330,7 +331,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         });
 
     // Keep metadata in a floating popup so toggling it never resizes the sidebar.
-    if app.file_metadata_open && !app.sidebar_queue_tab {
+    if app.file_metadata_open && !app.sidebar_queue_tab && !app.sidebar_favorites_tab {
         let anchor = response.response.rect.left_top() + egui::vec2(12.0, 74.0);
         let popup = egui::Area::new(egui::Id::new("sidebar_metadata_popup"))
             .order(egui::Order::Foreground)
