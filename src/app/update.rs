@@ -116,6 +116,13 @@ impl eframe::App for ViewerApp {
                                     egui::ColorImage::from_rgba_unmultiplied(size, img.data());
                                 let options = self.get_texture_options();
                                 self.texture = Some(ctx.load_texture("image", color, options));
+                                if self.slideshow_previous_texture.is_some()
+                                    && self.slideshow_transition_started.is_none()
+                                    && self.slideshow_previous_texture.as_ref().map(egui::TextureHandle::id)
+                                        != self.texture.as_ref().map(egui::TextureHandle::id)
+                                {
+                                    self.slideshow_transition_started = Some(Instant::now());
+                                }
                                 self.gif_animation = None;
                                 self.is_gif = false;
                                 self.is_preview = false;

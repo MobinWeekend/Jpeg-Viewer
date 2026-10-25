@@ -21,6 +21,7 @@ pub enum ImageFormat {
     Heic,
     JpegXl,
     Svg,
+    CameraRaw,
 }
 
 impl ImageFormat {
@@ -43,6 +44,7 @@ impl ImageFormat {
         Self::Heic,
         Self::JpegXl,
         Self::Svg,
+        Self::CameraRaw,
     ];
 
     pub const fn extensions(self) -> &'static [&'static str] {
@@ -65,6 +67,7 @@ impl ImageFormat {
             Self::Heic => &["heic", "heif"],
             Self::JpegXl => &["jxl"],
             Self::Svg => &["svg"],
+            Self::CameraRaw => &["cr2", "cr3", "nef", "nrw", "arw", "dng", "raf", "orf", "rw2", "pef", "srw", "3fr", "fff", "iiq", "kdc", "mos", "mrw", "rwl", "x3f"],
         }
     }
 

@@ -14,6 +14,21 @@ impl ViewerApp {
         }
 
         self.sidebar_thumbnail_attempted.insert(key.clone());
+
+        // Developing a camera RAW file can allocate hundreds of megabytes.
+        // The current RAW backend develops the full-resolution image, so doing
+        // that again just to create a tiny sidebar thumbnail can compete with
+        // the main image load and make loading appear to never finish.
+        let is_raw = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .and_then(crate::image_core::ImageFormat::from_extension)
+            == Some(crate::image_core::ImageFormat::CameraRaw);
+        if is_raw {
+            self.sidebar_thumbnail_failed.insert(key);
+            return;
+        }
+
         self.sidebar_thumbnail_pending.insert(key.clone());
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -24,8 +39,20 @@ impl ViewerApp {
                 let bytes = fs::read(&path)
                     .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
-                let decoded = crate::decoder::decode_bytes(&bytes)
-                    .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?;
+                let is_raw = path.extension().and_then(|e| e.to_str())
+                    .and_then(crate::image_core::ImageFormat::from_extension)
+                    == Some(crate::image_core::ImageFormat::CameraRaw);
+                let decoded = if is_raw {
+                    match crate::decoder::format_detection::load_bytes_with_detection(
+                        bytes, Some(&path), 0, &crate::image_core::DecodeOptions::default(), None,
+                    ).map_err(|e| format!("Failed to decode {}: {e}", path.display()))? {
+                        crate::app::types::LoadedImage::Static(image) => image,
+                        _ => return Err(format!("Could not generate a static RAW preview for {}", path.display())),
+                    }
+                } else {
+                    crate::decoder::decode_bytes(&bytes)
+                        .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?
+                };
 
                 let source_width = decoded.width();
                 let source_height = decoded.height();

@@ -114,17 +114,13 @@ impl ViewerApp {
                         let features = vec![
                             "• View images from your computer, folders, and archives (.zip, .7z, .rar)",
                             "• Support for all major image formats (JPEG, PNG, GIF, WebP, BMP, TIFF, and more)",
+                            "• Camera RAW decoding in-process (no separate RAW converter required)",
                             "• Full GIF animation support with playback controls and speed adjustment",
-                            //"• Slideshow mode with adjustable timing, loop, and random order options",
-                            "• Smart image caching for smooth navigation through large image collections",
-                            //"• Preloading of adjacent images for instant switching",
-                            //"• Zoom, pan, and fit-to-window controls",
-                            //"• Fullscreen mode for distraction-free viewing",
-                            //"• Drag and drop support for images and folders",
+                            "• Slideshow transitions: instant, fade, slide, or random",
+                            "• Slideshow motion: smart pan, horizontal/vertical pan, and zoom effects",
+                            "• Smart image caching and background preloading for smooth navigation",
+                            "• Choose an application with Open With… or locate the file in your file manager",
                             "• Archive scanning without extracting files",
-                            //"• Delete images to trash/recycle bin",
-                            //"• Adjustable frame limiter for optimal performance and battery life",
-                            //"• Automatic file type detection and rename suggestion",
                             "• Support for extremely large images using tiled virtual texturing",
                         ];
 
@@ -167,6 +163,7 @@ impl ViewerApp {
                         ui.add_space(4.0);
                         Self::render_shortcut_row(ui, "F11 / F / Enter", "Toggle fullscreen");
                         Self::render_shortcut_row(ui, "Tab", "Open settings menu");
+                        Self::render_shortcut_row(ui, "F1", "Open this help window");
 
                         ui.add_space(4.0);
 
@@ -186,6 +183,7 @@ impl ViewerApp {
                         Self::render_shortcut_row(ui, "L", "Toggle slideshow on/off");
                         Self::render_shortcut_row(ui, ",", "Slideshow - slower speed (longer interval)");
                         Self::render_shortcut_row(ui, ".", "Slideshow - faster speed (shorter interval)");
+                        Self::render_shortcut_row(ui, "Settings", "Choose transition, motion effect, and motion strength");
 
                         ui.add_space(4.0);
 
@@ -222,6 +220,7 @@ impl ViewerApp {
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
                         Self::render_mouse_row(ui, "Alt + Left Drag", "Move window");
                         Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window");
+                        Self::render_mouse_row(ui, "Touchpad scroll", "Navigate images; Ctrl + scroll zooms");
 
                         ui.add_space(12.0);
                         ui.separator();

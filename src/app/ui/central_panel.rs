@@ -172,15 +172,126 @@ impl ViewerApp {
                 self.b_fit_to_window = false;
             }
 
-            let image_rect = self.get_image_rect(texture_size, center);
+            let base_image_rect = self.get_image_rect(texture_size, center);
+            let mut image_rect = base_image_rect;
+            let mut image_tint = egui::Color32::WHITE;
+            let mut outgoing_frame: Option<(egui::TextureHandle, egui::Rect, egui::Color32)> = None;
+
+            if self.slideshow_enabled {
+                // Image motion is a per-image presentation effect. It is not
+                // used as the transition itself; transitions happen only after
+                // the next image has actually become available.
+                let interval = self.slideshow_interval.as_secs_f32().max(0.5);
+                let motion_progress = (self.slideshow_last_advance.elapsed().as_secs_f32() / interval).clamp(0.0, 1.0);
+                let effect = if self.slideshow_motion == "random" {
+                    match self.current_index % 5 {
+                        0 => crate::slideshow::MotionEffect::PanHorizontal,
+                        1 => crate::slideshow::MotionEffect::PanVertical,
+                        2 => crate::slideshow::MotionEffect::ZoomIn,
+                        3 => crate::slideshow::MotionEffect::ZoomOut,
+                        _ => crate::slideshow::MotionEffect::Smart,
+                    }
+                } else {
+                    crate::slideshow::MotionEffect::from_setting(&self.slideshow_motion)
+                };
+                let frame = crate::slideshow::transform(
+                    base_image_rect,
+                    available_rect,
+                    motion_progress,
+                    effect,
+                    self.slideshow_motion_strength,
+                    false,
+                );
+                image_rect = frame.rect;
+
+                if motion_progress < 1.0 {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                }
+
+                // Cross-image transition lasts a short, fixed period after the
+                // incoming image is ready, rather than over its whole display interval.
+                const TRANSITION_DURATION: std::time::Duration = std::time::Duration::from_millis(450);
+                if let (Some(previous), Some(started)) = (
+                    self.slideshow_previous_texture.clone(),
+                    self.slideshow_transition_started,
+                ) {
+                    if previous.id() != texture_id {
+                        let elapsed = started.elapsed();
+                        if elapsed < TRANSITION_DURATION {
+                            let t = (elapsed.as_secs_f32() / TRANSITION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+                            let transition = match self.slideshow_transition.as_str() {
+                                "slide" => "slide",
+                                "random" if self.current_index % 2 == 1 => "slide",
+                                "none" => "none",
+                                _ => "fade",
+                            };
+                            if transition == "slide" {
+                                let offset = available_rect.width() * t;
+                                let old_size = previous.size_vec2();
+                                let old_scale = (available_rect.width() / old_size.x.max(1.0))
+                                    .min(available_rect.height() / old_size.y.max(1.0));
+                                // Prefer the outgoing image's exact last-rendered
+                                // rectangle so its zoom and pan don't snap to the
+                                // incoming image's view settings.
+                                let old_rect = self.slideshow_previous_rect.unwrap_or_else(|| {
+                                    egui::Rect::from_center_size(
+                                        available_rect.center(),
+                                        old_size * old_scale,
+                                    )
+                                }).translate(egui::vec2(-offset, 0.0));
+                                image_rect = frame.rect.translate(egui::vec2(available_rect.width() * (1.0 - t), 0.0));
+                                outgoing_frame = Some((previous, old_rect, egui::Color32::WHITE));
+                            } else if transition == "fade" {
+                                let old_size = previous.size_vec2();
+                                let old_scale = (available_rect.width() / old_size.x.max(1.0))
+                                    .min(available_rect.height() / old_size.y.max(1.0));
+                                let old_rect = self.slideshow_previous_rect.unwrap_or_else(|| {
+                                    egui::Rect::from_center_size(
+                                        available_rect.center(),
+                                        old_size * old_scale,
+                                    )
+                                });
+                                outgoing_frame = Some((
+                                    previous,
+                                    old_rect,
+                                    egui::Color32::from_white_alpha(((1.0 - t) * 255.0).round() as u8),
+                                ));
+                                image_tint = egui::Color32::from_white_alpha((t * 255.0).round() as u8);
+                            }
+                            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                        } else {
+                            self.slideshow_previous_texture = None;
+                            self.slideshow_previous_rect = None;
+                            self.slideshow_transition_started = None;
+                        }
+                    }
+                }
+            } else {
+                self.slideshow_previous_texture = None;
+                self.slideshow_previous_rect = None;
+                self.slideshow_transition_started = None;
+            }
+            // Remember the incoming image's actual rendered rectangle for the
+            // next navigation event. During a slide this may include the
+            // temporary offset; once the transition completes, the normal
+            // motion rectangle is stored again.
+            self.image_rect = Some(image_rect);
             let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
             let painter = ui.painter();
+            if let Some((previous_texture, previous_rect, previous_tint)) = outgoing_frame {
+                painter.image(
+                    previous_texture.id(),
+                    previous_rect,
+                    egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
+                    previous_tint,
+                );
+            }
             painter.image(
                 texture_id,
                 image_rect,
                 egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
-                egui::Color32::WHITE,
+                image_tint,
             );
 
             // Crop selection owns primary-button drags while editing. Other

@@ -57,6 +57,18 @@ impl ViewerApp {
                 egui::RichText::new("or a .zip, .7z, or .rar archive containing your photos.")
                     .size(24.0),
             );
+            ui.add_space(12.0);
+            ui.label(
+                egui::RichText::new("Also supports camera RAW files, GIF animation, and modern image formats.")
+                    .size(16.0)
+                    .color(ui.visuals().weak_text_color()),
+            );
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new("Press F1 for help · Press Tab for settings · Slideshow effects are configurable in settings")
+                    .size(14.0)
+                    .color(ui.visuals().weak_text_color()),
+            );
             //ui.label(egui::RichText::new("Emoji test: 😀 😂 ❤️ 🎨 🚀 🖥️").size(24.0));
             // For later work:
             //use super::settings_menu::general::general_settings;

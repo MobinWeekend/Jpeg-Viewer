@@ -28,6 +28,9 @@ pub struct AppSettings {
     pub slideshow_interval_ms: u64,
     pub slideshow_loop: bool,
     pub slideshow_random: bool,
+    pub slideshow_transition: String,
+    pub slideshow_motion: String,
+    pub slideshow_motion_strength: f32,
     // Startup settings
     pub start_fullscreen: bool,
     pub theme_preference: String,
@@ -63,6 +66,9 @@ impl Default for AppSettings {
             slideshow_interval_ms: 3000,
             slideshow_loop: true,
             slideshow_random: false,
+            slideshow_transition: "fade".to_string(),
+            slideshow_motion: "smart".to_string(),
+            slideshow_motion_strength: 20.0,
             start_fullscreen: false,
             theme_preference: "system".to_string(),
             virtual_texture_threshold: 8192,
@@ -291,6 +297,15 @@ impl SettingsManager {
                     if let Some(value) = section.get("slideshow_random") {
                         settings.slideshow_random = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("slideshow_transition") {
+                        if matches!(value, "none" | "fade" | "slide" | "random") { settings.slideshow_transition = value.to_string(); }
+                    }
+                    if let Some(value) = section.get("slideshow_motion") {
+                        if matches!(value, "none" | "smart" | "pan-horizontal" | "pan-vertical" | "zoom-in" | "zoom-out" | "random") { settings.slideshow_motion = value.to_string(); }
+                    }
+                    if let Some(value) = section.get("slideshow_motion_strength") {
+                        if let Ok(strength) = value.parse::<f32>() { settings.slideshow_motion_strength = strength.clamp(5.0, 40.0); }
+                    }
                     // Read startup settings
                     if let Some(value) = section.get("start_fullscreen") {
                         settings.start_fullscreen = Self::parse_bool(value);
@@ -470,6 +485,9 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set("slideshow_transition", settings.slideshow_transition.clone());
+        section.set("slideshow_motion", settings.slideshow_motion.clone());
+        section.set("slideshow_motion_strength", settings.slideshow_motion_strength.to_string());
         section.set(
             "start_fullscreen",
             if settings.start_fullscreen {

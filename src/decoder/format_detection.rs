@@ -12,6 +12,13 @@ use crate::image_core::{DecodeOptions, ImageError};
 /// Uses `infer` for common formats and falls back to custom
 /// signature checks for formats not recognized by `infer`.
 pub fn detect_format(bytes: &[u8]) -> Option<ImageFormat> {
+    // RAW containers often resemble TIFF and may not have a unique extension
+    // available (for example, when opened from an archive). Prefer the RAW
+    // classifier before generic signature detection.
+    if zenraw::is_raw_file(bytes) {
+        return Some(ImageFormat::CameraRaw);
+    }
+
     if let Some(kind) = infer::get(bytes) {
         if let Some(format) = map_infer_type(&kind) {
             return Some(format);
@@ -201,7 +208,7 @@ mod tests {
 /// `options` are decoder‑agnostic settings (currently empty).
 pub fn load_bytes_with_detection(
     bytes: Vec<u8>,
-    _path_hint: Option<&std::path::Path>,
+    path_hint: Option<&std::path::Path>,
     threshold: u32,
     options: &DecodeOptions,
     registry: Option<&DecoderRegistry>, // optional – if None, use default registry
@@ -225,10 +232,25 @@ pub fn load_bytes_with_detection(
     let threshold = threshold.min(MAX_TILE_SIZE);
 
     // 2. Detect format
-    let format = match detect_format(&bytes) {
-        Some(f) => f,
-        None => return Err(ImageError::UnknownFormat.to_string()),
-    };
+    let extension_format = path_hint
+        .and_then(std::path::Path::extension)
+        .and_then(|extension| extension.to_str())
+        .and_then(ImageFormat::from_extension);
+    // RAW files often use a TIFF-based container, so the filename extension
+    // must take precedence over generic TIFF signature detection.
+    let format = extension_format
+        .filter(|format| *format == ImageFormat::CameraRaw)
+        .or_else(|| detect_format(&bytes))
+        .or(extension_format)
+        .ok_or_else(|| ImageError::UnknownFormat.to_string())?;
+
+    // RAW development already produces a complete decoded frame. Decode once
+    // and bypass virtual-texture routing (which consumes original source bytes).
+    if format == ImageFormat::CameraRaw {
+        return registry.decode(&bytes, format, options)
+            .map(LoadedImage::Static)
+            .map_err(|error| error.to_string());
+    }
 
     // 3. Get dimensions (fast path)
     let (width, height) = match registry.dimensions(&bytes, format) {
@@ -237,7 +259,9 @@ pub fn load_bytes_with_detection(
     };
 
     // 4. Virtual‑texture routing
-    if threshold > 0 && (width >= threshold || height >= threshold) {
+    // RAW development currently produces a complete developed frame; do not
+    // route its source bytes into the generic virtual-texture decoder path.
+    if format != ImageFormat::CameraRaw && threshold > 0 && (width >= threshold || height >= threshold) {
         return Ok(LoadedImage::VirtualPending(bytes, width, height));
     }
 

@@ -170,6 +170,31 @@ impl ViewerApp {
         } else {
             (self.current_index + 1) % len
         };
+
+        // Keep the outgoing texture so the transition can blend/slide between
+        // two distinct images instead of animating only the incoming image.
+        let old_index = self.current_index;
+        let old_texture = self.texture.clone();
+        let should_transition = self.slideshow_enabled
+            && self.slideshow_transition != "none"
+            && old_texture.is_some();
+        self.slideshow_previous_texture = if should_transition { old_texture.clone() } else { None };
+        // Capture the exact rectangle used to render the outgoing image. The
+        // next image resets zoom/pan for its own view, but this snapshot keeps
+        // the outgoing image visually stable throughout the transition.
+        self.slideshow_previous_rect = if should_transition { self.image_rect } else { None };
+        self.slideshow_transition_started = None;
+
         self.navigate_to_index(ctx, new_index);
+
+        // Cache hits replace the texture synchronously. For uncached images the
+        // start time is set when the loader installs the incoming texture.
+        if self.current_index != old_index {
+            let old_id = old_texture.as_ref().map(egui::TextureHandle::id);
+            let new_id = self.texture.as_ref().map(egui::TextureHandle::id);
+            if self.slideshow_previous_texture.is_some() && old_id != new_id {
+                self.slideshow_transition_started = Some(std::time::Instant::now());
+            }
+        }
     }
 }

@@ -506,6 +506,18 @@ impl ViewerApp {
             let response = response.on_hover_text(path.display().to_string());
             if context_mode == 1 || context_mode == 2 {
                 response.clone().context_menu(|ui| {
+                    if ui.button("Open With…").clicked() {
+                        if let Err(error) = super::super::external_open::open_with(path) {
+                            self.queue_status = Some(format!("Could not open external application: {error}"));
+                        }
+                        ui.close();
+                    }
+                    if ui.button("Locate in File Manager").clicked() {
+                        if let Err(error) = super::super::external_open::reveal_in_file_manager(path) {
+                            self.queue_status = Some(format!("Could not locate file: {error}"));
+                        }
+                        ui.close();
+                    }
                     if ui.button("Open image").clicked() {
                         if context_mode == 1 {
                             if let Some(index) = self.queue_paths.iter().position(|p| super::storage::paths_equal(p, path)) {
@@ -583,6 +595,18 @@ impl ViewerApp {
 
                 if context_mode == 0 {
                     response.context_menu(|ui| {
+                        if ui.button("Open With…").clicked() {
+                            if let Err(error) = super::super::external_open::open_with(path) {
+                                self.queue_status = Some(format!("Could not open the Open With dialog: {error}"));
+                            }
+                            ui.close();
+                        }
+                        if ui.button("Locate in File Manager").clicked() {
+                            if let Err(error) = super::super::external_open::reveal_in_file_manager(path) {
+                                self.queue_status = Some(format!("Could not locate file: {error}"));
+                            }
+                            ui.close();
+                        }
                         if ui.button("Open image").clicked() { self.navigate_to_index(ctx, index); ui.close(); }
                         if ui.button("Rename… (F2)").clicked() { self.begin_rename(path); ui.close(); }
                         if ui.button("Add to favorites").clicked() { self.add_favorite_path(path.to_path_buf()); ui.close(); }

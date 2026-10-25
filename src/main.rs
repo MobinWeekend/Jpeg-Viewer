@@ -12,6 +12,7 @@ mod loader;
 mod settings;
 mod shortcuts;
 mod sort;
+mod slideshow;
 
 use app::ViewerApp;
 use eframe::egui;

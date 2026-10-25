@@ -8,6 +8,7 @@ mod heic;
 mod image_rs;
 mod jpeg_xl;
 mod registry;
+mod raw;
 mod svg;
 mod tga;
 mod zenavif;
@@ -16,6 +17,7 @@ pub use heic::HeicDecoder;
 pub use image_rs::ImageRsDecoder;
 pub use jpeg_xl::JpegXlDecoder;
 pub use registry::DecoderRegistry;
+pub use raw::CameraRawDecoder;
 pub use svg::SvgDecoder;
 pub use tga::TgaDecoder;
 pub use zenavif::ZenAvifDecoder;
@@ -27,6 +29,9 @@ pub use zenavif::ZenAvifDecoder;
 /// for that format.
 pub fn default_registry() -> DecoderRegistry {
     let mut registry = DecoderRegistry::new();
+
+    // Camera RAW formats are developed in-process by zenraw (rawler backend).
+    registry.register(Box::new(CameraRawDecoder::new()));
 
     // Standard formats:
     // JPEG, PNG, GIF, WebP, BMP, TIFF, etc.

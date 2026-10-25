@@ -142,8 +142,17 @@ pub struct ViewerApp {
     pub slideshow_interval: Duration,
     pub slideshow_loop: bool,
     pub slideshow_random: bool,
+    pub slideshow_transition: String,
+    pub slideshow_motion: String,
+    pub slideshow_motion_strength: f32,
     pub slideshow_last_advance: Instant,
     pub slideshow_has_advanced: bool,
+    /// Outgoing image retained while the next slideshow image transitions in.
+    pub slideshow_previous_texture: Option<egui::TextureHandle>,
+    /// Last rendered destination rectangle for the outgoing image, preserving its zoom and pan.
+    pub slideshow_previous_rect: Option<egui::Rect>,
+    /// Starts when the incoming image is ready, not when navigation begins.
+    pub slideshow_transition_started: Option<Instant>,
 
     // ====== VIRTUAL TEXTURE ======
     pub virtual_texture: Option<VirtualTexture>,
@@ -348,9 +357,15 @@ impl Default for ViewerApp {
             slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
             slideshow_loop: settings.slideshow_loop,
             slideshow_random: settings.slideshow_random,
+            slideshow_transition: settings.slideshow_transition.clone(),
+            slideshow_motion: settings.slideshow_motion.clone(),
+            slideshow_motion_strength: settings.slideshow_motion_strength,
 
             slideshow_last_advance: now,
             slideshow_has_advanced: false,
+            slideshow_previous_texture: None,
+            slideshow_previous_rect: None,
+            slideshow_transition_started: None,
 
             // ====== VIRTUAL TEXTURE ======
             virtual_texture: None,
@@ -587,6 +602,9 @@ impl ViewerApp {
 
         self.slideshow_loop = settings.slideshow_loop;
         self.slideshow_random = settings.slideshow_random;
+        self.slideshow_transition = settings.slideshow_transition.clone();
+        self.slideshow_motion = settings.slideshow_motion.clone();
+        self.slideshow_motion_strength = settings.slideshow_motion_strength;
     }
 
     // ====== ASPECT RATIO ======

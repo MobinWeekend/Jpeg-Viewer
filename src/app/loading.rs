@@ -1,8 +1,6 @@
 use super::types::{LoadedImage, LoadingState, ViewerApp};
-use crate::decoder::decode_bytes;
-use crate::decoder::default_registry;
-use crate::decoder::format_detection::detect_format;
-use crate::gif::detection::is_gif_bytes;
+use crate::decoder::format_detection::load_bytes_with_detection;
+use crate::image_core::DecodeOptions;
 use crate::image_entry::ImageEntry;
 use crate::loader::load_directory_images;
 use crate::sort::SortMethod;
@@ -306,7 +304,7 @@ impl ViewerApp {
 
 // ====== ENTRY LOADING ======
 
-/// Load one entry using `decode_bytes` plus our own GIF/VT logic.
+/// Load an entry through the shared format-detection and decoding pipeline.
 ///
 /// This function runs on a background worker and must not touch UI state.
 fn load_entry_content(entry: ImageEntry, threshold: u32) -> Result<LoadedImage, String> {
@@ -363,31 +361,18 @@ fn load_entry_content(entry: ImageEntry, threshold: u32) -> Result<LoadedImage, 
         }
     };
 
-    // ---- GIF detection ----
-    if is_gif_bytes(&bytes) {
-        // Try to load GIF animation (use your existing GIF loader)
-        // For simplicity, we attempt to load from bytes directly.
-        // If you have a function that returns GifAnimation from bytes, use it.
-        if let Ok(gif) = crate::gif::animation::GifAnimation::from_bytes(&bytes) {
-            return Ok(LoadedImage::Animated(gif, false));
-        }
-        // If that fails, fall through to static decode (will show first frame)
-    }
+    let path_hint = match &entry {
+        ImageEntry::File(path) => Some(path.as_path()),
+        ImageEntry::Zip(item) => Some(std::path::Path::new(&item.name)),
+        ImageEntry::S7z(item) => Some(std::path::Path::new(&item.name)),
+        ImageEntry::Rar(item) => Some(std::path::Path::new(&item.name)),
+    };
 
-    // ---- Virtual‑texture check ----
-    // We need dimensions without full decode – use the registry.
-    let registry = default_registry();
-    let format = detect_format(&bytes).ok_or("Unknown image format")?;
-    let (width, height) = registry
-        .dimensions(&bytes, format)
-        .map_err(|e| e.to_string())?;
-
-    let use_virtual = threshold > 0 && (width >= threshold || height >= threshold);
-    if use_virtual {
-        return Ok(LoadedImage::VirtualPending(bytes, width, height));
-    }
-
-    // ---- Normal static decode ----
-    let decoded = decode_bytes(&bytes).map_err(|e| e.to_string())?;
-    Ok(LoadedImage::Static(decoded))
+    load_bytes_with_detection(
+        bytes,
+        path_hint,
+        threshold,
+        &DecodeOptions::default(),
+        None,
+    )
 }

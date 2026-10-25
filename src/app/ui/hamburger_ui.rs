@@ -70,6 +70,36 @@ impl ViewerApp {
                     self.hamburger_menu_open = false;
                 }
 
+                // Let the OS choose an application for the original file. Archive entries
+                // remain in the viewer because they do not have a persistent standalone path.
+                if let Some(path) = self.current_image_path.clone() {
+                    if ui.add(
+                        egui::Button::new(egui::RichText::new("↗  Open With…").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
+                    ).on_hover_text("Choose an application using the operating system's Open With dialog").clicked() {
+                        if let Err(error) = super::super::external_open::open_with(&path) {
+                            self.queue_status = Some(format!("Could not open external application: {error}"));
+                        }
+                        self.hamburger_menu_open = false;
+                    }
+                }
+
+                if let Some(path) = self.current_image_path.clone() {
+                    if ui.add(
+                        egui::Button::new(egui::RichText::new("📂  Locate in File Manager").size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
+                    ).clicked() {
+                        if let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
+                            self.queue_status = Some(format!("Could not locate file: {error}"));
+                        }
+                        self.hamburger_menu_open = false;
+                    }
+                }
+
                 // Open Folder
                 if ui
                     .add(

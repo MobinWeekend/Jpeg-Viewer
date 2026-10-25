@@ -1,3 +1,4 @@
+mod external_open;
 mod aspect_ratio;
 mod cache;
 mod commands;

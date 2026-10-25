@@ -366,6 +366,25 @@ impl ViewerApp {
         max_concurrent.saturating_sub(self.preload_workers)
     }
 
+    /// Whether an entry is a camera RAW image. The current RAW decoder must
+    /// develop the complete sensor image, which is too expensive to do speculatively
+    /// for adjacent images while another RAW image is being opened.
+    fn is_raw_index(&self, idx: usize) -> bool {
+        let name = match self.image_entries.get(idx) {
+            Some(ImageEntry::File(path)) => path.to_string_lossy(),
+            Some(ImageEntry::Zip(item)) => std::borrow::Cow::Borrowed(item.name.as_str()),
+            Some(ImageEntry::S7z(item)) => std::borrow::Cow::Borrowed(item.name.as_str()),
+            Some(ImageEntry::Rar(item)) => std::borrow::Cow::Borrowed(item.name.as_str()),
+            None => return false,
+        };
+
+        std::path::Path::new(name.as_ref())
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .and_then(crate::image_core::ImageFormat::from_extension)
+            == Some(crate::image_core::ImageFormat::CameraRaw)
+    }
+
     /// Start preload workers until all available slots are filled.
     fn start_available_preloads(&mut self, desired_ordered: Vec<usize>, slots: usize) -> usize {
         let mut started = 0;
@@ -376,6 +395,13 @@ impl ViewerApp {
             }
 
             if self.is_gif_index(idx) {
+                continue;
+            }
+
+            // RAW files are loaded on demand only. Preloading them would run
+            // multiple costly full-resolution sensor developments in parallel.
+            if self.is_raw_index(idx) {
+                self.preload_skipped.insert(idx);
                 continue;
             }
 
