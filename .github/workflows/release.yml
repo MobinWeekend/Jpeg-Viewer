@@ -186,6 +186,7 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             pkg-config \
+            libdbus-1-dev \
             libx11-dev \
             libxkbcommon-dev \
             libwayland-dev \
@@ -291,6 +292,7 @@ jobs:
           sudo apt-get install -y \
             build-essential \
             pkg-config \
+            libdbus-1-dev \
             libx11-dev \
             libxkbcommon-dev \
             libwayland-dev \
@@ -398,6 +400,7 @@ jobs:
             pkg-config \
             dpkg \
             dpkg-dev \
+            libdbus-1-dev \
             libx11-dev \
             libxkbcommon-dev \
             libwayland-dev \
@@ -479,6 +482,7 @@ jobs:
             pkg-config \
             dpkg \
             dpkg-dev \
+            libdbus-1-dev \
             libx11-dev \
             libxkbcommon-dev \
             libwayland-dev \
