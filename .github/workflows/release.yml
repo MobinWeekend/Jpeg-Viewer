@@ -74,7 +74,7 @@ jobs:
           }
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package
         shell: pwsh
@@ -150,7 +150,7 @@ jobs:
           }
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package
         shell: pwsh
@@ -246,7 +246,7 @@ jobs:
           fi
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package
         run: |
@@ -351,7 +351,7 @@ jobs:
           fi
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Package
         run: |
@@ -431,7 +431,7 @@ jobs:
         run: cargo check
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Install cargo-deb
         run: cargo install cargo-deb
@@ -512,7 +512,7 @@ jobs:
         run: cargo check
 
       - name: Build
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Install cargo-deb
         run: cargo install cargo-deb
