@@ -45,9 +45,10 @@ arboard = "3.4"
 thiserror = "2"
 chrono = "0.4.45"
 kamadak-exif = "0.6.1"
-
-# In-process camera RAW development
+# In-process camera RAW development (no darktable/dcraw executable required).
 zenraw = { version = "0.2.0", features = ["rawler"] }
+# Use rawler directly for its format-aware embedded preview/thumbnail API.
+rawler = "=0.7.2"
 enough = "0.4.3"
 
 [target.'cfg(not(windows))'.dependencies]

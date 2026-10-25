@@ -79,6 +79,7 @@ impl ViewerApp {
         self.gif_animation = None;
         self.is_gif = false;
         self.is_preview = false;
+        self.showing_raw_developed = false;
 
         // Cancel old loading operations
         self.receiver = None;

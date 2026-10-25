@@ -14,15 +14,16 @@ More formats, improvements, and features are coming as the project continues to 
 ## Features
 
 - **GPU-accelerated rendering** using `egui` and `wgpu`
-- **Wide image format support** including modern formats such as AVIF, HEIC, JPEG XL, and SVG
+- **Wide image format support** including AVIF, HEIC, JPEG XL, SVG, and camera RAW formats
 - **Archive support**: View images inside `.zip`, `.7z`, and `.rar` archives without extracting
 - **GIF animation support** with speed control and playback controls
-- **Slideshow mode** with adjustable timing, loop, and random order options
+- **Slideshow mode** with adjustable timing, loop controls, fade/slide transitions, and independent pan/zoom motion effects
 - **Smart caching system** with configurable cache radius for smooth navigation
 - **Background preloading** of adjacent images for seamless browsing
 - **Virtual texturing** for extremely large images
 - **Fullscreen mode** for immersive viewing
 - **Persistent settings** saved automatically
+- **Open With…** to choose an application using the operating system’s application chooser, plus **Locate in File Manager** to reveal and select the file where supported
 - **Drag and drop** support for images, folders, and archives
 - **Trash/Recycle Bin integration** for deleting images
 - **Adjustable frame limiter** for performance and battery efficiency
@@ -50,6 +51,12 @@ More formats, improvements, and features are coming as the project continues to 
 - **TGA** (`.tga`)
 - **TIFF** (`.tif`, `.tiff`)
 - **WebP** (`.webp`)
+
+### Camera RAW Images
+
+Camera RAW files are decoded and developed in-process using the Rust `zenraw` library and its `rawler` backend. No separately installed RAW converter such as darktable or dcraw is required.
+
+Recognized extensions include `.cr2`, `.cr3`, `.nef`, `.nrw`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.iiq`, `.kdc`, `.mos`, `.mrw`, `.rwl`, and `.x3f`. Actual decoding support varies by camera model and RAW variant, so not every file using these extensions is guaranteed to decode.
 
 ### Vector Images
 
@@ -95,6 +102,7 @@ Archives do not need to be extracted before viewing.
 |---|---|
 | Toggle fullscreen | `F11` / `F` / `Enter` |
 | Open settings menu | `Tab` |
+| Open help | `F1` |
 
 ### GIF Controls
 
@@ -157,6 +165,8 @@ jpeg_viewer image.jpg
 - If the app detects a mismatch between a file's extension and its actual format, a rename suggestion will appear in the toolbar
 - Very large images are rendered using tiled virtual textures for smooth performance
 - SVG files are rasterized automatically for display
+- Camera RAW files are developed in-process; support depends on the camera model and RAW variant
+- Use **Open With…** in the menu to choose an application for the current file, or **Locate in File Manager** to reveal and select it where supported
 
 ## Caching & Performance
 
@@ -171,13 +181,17 @@ JPEG Viewer uses an intelligent caching and preloading system to keep navigation
 
 ## Slideshow
 
-The slideshow feature allows you to view images automatically with:
+The slideshow feature advances through the current image collection automatically. Configure it in the settings menu:
 
 - Adjustable interval (0.5s to 60s)
-- Loop mode to repeat from the beginning
-- Random order for varied viewing
+- Optional loop mode
+- Transition: instant, fade, slide, or random
+- Image motion: off, smart (based on aspect ratio), horizontal/vertical pan, zoom in/out, or random
+- Adjustable motion strength
 - Speed controls in the toolbar (`↘` for slower, `↗` for faster)
 - Toggle with the `L` key or the slideshow button in the toolbar
+
+Transitions are applied between the outgoing and incoming images. The outgoing image retains its last rendered zoom and pan while it transitions away; image motion is a separate effect and does not depend on the decoder.
 
 ## Frame Limiter
 

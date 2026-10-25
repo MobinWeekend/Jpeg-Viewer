@@ -58,17 +58,21 @@ impl ViewerApp {
                     .size(24.0),
             );
             ui.add_space(12.0);
+            /*
             ui.label(
-                egui::RichText::new("Also supports camera RAW files, GIF animation, and modern image formats.")
+                egui::RichText::new("Press F1 for help · Press F3 for sidebar")
                     .size(16.0)
                     .color(ui.visuals().weak_text_color()),
             );
             ui.add_space(4.0);
             ui.label(
-                egui::RichText::new("Press F1 for help · Press Tab for settings · Slideshow effects are configurable in settings")
-                    .size(14.0)
-                    .color(ui.visuals().weak_text_color()),
+                egui::RichText::new(
+                    "Slideshow effects are configurable in settings by pressing F5",
+                )
+                .size(14.0)
+                .color(ui.visuals().weak_text_color()),
             );
+             */
             //ui.label(egui::RichText::new("Emoji test: 😀 😂 ❤️ 🎨 🚀 🖥️").size(24.0));
             // For later work:
             //use super::settings_menu::general::general_settings;
@@ -101,11 +105,12 @@ impl ViewerApp {
                     ui.add_space(8.0);
 
                     let shortcuts = [
-                        ("◀/▶", "Navigate"),
-                        ("F11/F", "Fullscreen"),
-                        ("+/-", "Zoom"),
-                        ("Tab", "Settings"),
                         ("F1", "Help"),
+                        ("F2", "Rename"),
+                        ("F3", "Sidebar"),
+                        ("F4", "Compact UI"),
+                        ("F5", "Settings"),
+                        ("F11", "Fullscreen"),
                     ];
 
                     for (i, (key, action)) in shortcuts.iter().enumerate() {

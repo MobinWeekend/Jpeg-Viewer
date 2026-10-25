@@ -136,6 +136,19 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                         ui.cursor().min,
                                         egui::vec2(card_size, card_size),
                                     );
+
+                                    // Scroll to the selected entry even when it is
+                                    // currently virtualized outside the viewport. The
+                                    // previous visibility guard skipped the scroll
+                                    // request for off-screen entries, which made
+                                    // navigation toward earlier entries unreliable.
+                                    if index == app.current_index
+                                        && auto_scroll_current
+                                        && !ui.clip_rect().contains_rect(estimated_rect)
+                                    {
+                                        ui.scroll_to_rect(estimated_rect, Some(egui::Align::Min));
+                                    }
+
                                     let clicked = if !ui.is_rect_visible(estimated_rect) {
                                         ui.allocate_space(egui::vec2(card_size, card_size));
                                         false

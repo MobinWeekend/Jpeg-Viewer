@@ -83,6 +83,8 @@ pub struct ViewerApp {
 
     pub is_gif: bool,
     pub is_preview: bool,
+    /// True when the user explicitly requested full RAW sensor development.
+    pub showing_raw_developed: bool,
     pub image_error: Option<String>,
 
     // ====== IMAGE VIEW ======
@@ -292,6 +294,7 @@ impl Default for ViewerApp {
 
             is_gif: false,
             is_preview: false,
+            showing_raw_developed: false,
             image_error: None,
 
             // ====== IMAGE VIEW ======

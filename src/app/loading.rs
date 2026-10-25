@@ -141,8 +141,18 @@ impl ViewerApp {
 
     // ====== IMAGE LOADING ======
 
-    /// Load the current image without using the cache.
+    /// Load the current image without using the cache, preferring fast embedded RAW previews.
     pub fn load_current_image(&mut self) {
+        self.load_current_image_mode(false);
+    }
+
+    /// Develop the actual RAW sensor data for the currently selected image.
+    pub fn load_current_image_as_raw(&mut self) {
+        self.load_current_image_mode(true);
+    }
+
+    fn load_current_image_mode(&mut self, develop_raw: bool) {
+        self.showing_raw_developed = develop_raw;
         self.clear_current_image_state();
 
         let entry = match self.image_entries.get(self.current_index).cloned() {
@@ -165,7 +175,7 @@ impl ViewerApp {
 
         let (tx, rx) = channel();
         spawn(move || {
-            let result = load_entry_content(entry, threshold);
+            let result = load_entry_content(entry, threshold, develop_raw);
             let _ = tx.send(result);
         });
         self.receiver = Some(rx);
@@ -220,7 +230,7 @@ impl ViewerApp {
         let (tx, rx) = channel();
 
         spawn(move || {
-            let result = load_entry_content(entry, threshold);
+            let result = load_entry_content(entry, threshold, false);
             let _ = tx.send(result);
         });
         self.receiver = Some(rx);
@@ -307,7 +317,7 @@ impl ViewerApp {
 /// Load an entry through the shared format-detection and decoding pipeline.
 ///
 /// This function runs on a background worker and must not touch UI state.
-fn load_entry_content(entry: ImageEntry, threshold: u32) -> Result<LoadedImage, String> {
+fn load_entry_content(entry: ImageEntry, threshold: u32, develop_raw: bool) -> Result<LoadedImage, String> {
     // Helper to read bytes from any entry.
     let bytes = match &entry {
         ImageEntry::File(path) => {
@@ -367,6 +377,45 @@ fn load_entry_content(entry: ImageEntry, threshold: u32) -> Result<LoadedImage, 
         ImageEntry::S7z(item) => Some(std::path::Path::new(&item.name)),
         ImageEntry::Rar(item) => Some(std::path::Path::new(&item.name)),
     };
+
+    let extension_is_raw = path_hint
+        .and_then(std::path::Path::extension)
+        .and_then(|extension| extension.to_str())
+        .and_then(crate::image_core::ImageFormat::from_extension)
+        == Some(crate::image_core::ImageFormat::CameraRaw);
+    // Some RAW files arrive from archives or have misleading extensions. Use
+    // Rawler/zenraw's content detection as a second signal before deciding to
+    // run the expensive sensor-development path.
+    let content_is_raw = zenraw::is_raw_file(&bytes);
+    let is_raw = extension_is_raw || content_is_raw;
+
+    if is_raw && !develop_raw {
+        let source_name = path_hint
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "archive entry".to_string());
+        eprintln!(
+            "[RAW preview] Trying embedded preview for {source_name} ({} bytes; extension-recognized={extension_is_raw}, content-recognized={content_is_raw})",
+            bytes.len()
+        );
+        match crate::decoder::extract_raw_preview_diagnostic(&bytes, path_hint) {
+            Ok(Some(preview)) => {
+                eprintln!("[RAW preview] Embedded preview extracted for {source_name} ({} bytes)", preview.len());
+                return load_bytes_with_detection(
+                    preview,
+                    Some(std::path::Path::new("embedded-preview.jpg")),
+                    threshold,
+                    &DecodeOptions::default(),
+                    None,
+                );
+            }
+            Ok(None) => eprintln!(
+                "[RAW preview] Rawler reported no preview/full image/thumbnail for {source_name}; falling back to full RAW development"
+            ),
+            Err(error) => eprintln!(
+                "[RAW preview] Extraction failed for {source_name}: {error}; falling back to full RAW development"
+            ),
+        }
+    }
 
     load_bytes_with_detection(
         bytes,

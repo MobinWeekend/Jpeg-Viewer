@@ -4,6 +4,28 @@ use eframe::egui;
 use std::fs;
 use std::path::PathBuf;
 
+
+/// Decode a sidebar source without ever invoking full RAW sensor development.
+/// RAW entries use Rawler's embedded thumbnail API, including archive entries.
+fn decode_sidebar_image(bytes: &[u8], name: &str, is_raw: bool, source_path: Option<&std::path::Path>) -> Result<image::RgbaImage, String> {
+    if is_raw {
+        let thumbnail = crate::decoder::extract_raw_thumbnail(bytes, source_path)
+            .ok_or_else(|| format!("No embedded RAW thumbnail found in {name}"))?;
+        return image::load_from_memory(&thumbnail)
+            .map(|image| image.to_rgba8())
+            .map_err(|error| format!("Failed to decode embedded RAW thumbnail in {name}: {error}"));
+    }
+
+    let decoded = crate::decoder::decode_bytes(bytes).map_err(|e| e.to_string())?;
+    let width = decoded.width();
+    let height = decoded.height();
+    if width == 0 || height == 0 {
+        return Err(format!("Empty image: {name}"));
+    }
+    image::RgbaImage::from_raw(width, height, decoded.data().to_vec())
+        .ok_or_else(|| format!("Invalid decoded image data: {name}"))
+}
+
 impl ViewerApp {
     pub(super) fn request_sidebar_thumbnail(&mut self, path: PathBuf, key: String) {
         if !path.is_file()
@@ -15,20 +37,6 @@ impl ViewerApp {
 
         self.sidebar_thumbnail_attempted.insert(key.clone());
 
-        // Developing a camera RAW file can allocate hundreds of megabytes.
-        // The current RAW backend develops the full-resolution image, so doing
-        // that again just to create a tiny sidebar thumbnail can compete with
-        // the main image load and make loading appear to never finish.
-        let is_raw = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .and_then(crate::image_core::ImageFormat::from_extension)
-            == Some(crate::image_core::ImageFormat::CameraRaw);
-        if is_raw {
-            self.sidebar_thumbnail_failed.insert(key);
-            return;
-        }
-
         self.sidebar_thumbnail_pending.insert(key.clone());
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -39,63 +47,17 @@ impl ViewerApp {
                 let bytes = fs::read(&path)
                     .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
+                // Detect RAW by extension and file content. Use Rawler's dedicated
+                // thumbnail API for sidebar cards; never develop the full sensor data
+                // just to populate a small thumbnail.
                 let is_raw = path.extension().and_then(|e| e.to_str())
                     .and_then(crate::image_core::ImageFormat::from_extension)
-                    == Some(crate::image_core::ImageFormat::CameraRaw);
-                let decoded = if is_raw {
-                    match crate::decoder::format_detection::load_bytes_with_detection(
-                        bytes, Some(&path), 0, &crate::image_core::DecodeOptions::default(), None,
-                    ).map_err(|e| format!("Failed to decode {}: {e}", path.display()))? {
-                        crate::app::types::LoadedImage::Static(image) => image,
-                        _ => return Err(format!("Could not generate a static RAW preview for {}", path.display())),
-                    }
-                } else {
-                    crate::decoder::decode_bytes(&bytes)
-                        .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?
-                };
+                    == Some(crate::image_core::ImageFormat::CameraRaw)
+                    || zenraw::is_raw_file(&bytes);
+                let rgba = decode_sidebar_image(&bytes, &path.display().to_string(), is_raw, Some(&path))?;
 
-                let source_width = decoded.width();
-                let source_height = decoded.height();
-
-                if source_width == 0 || source_height == 0 {
-                    return Err(format!(
-                        "Invalid source dimensions for {}: {}x{}",
-                        path.display(),
-                        source_width,
-                        source_height
-                    ));
-                }
-
-                let expected_bytes = (source_width as usize)
-                    .checked_mul(source_height as usize)
-                    .and_then(|pixels| pixels.checked_mul(4))
-                    .ok_or_else(|| "Source image dimensions overflow".to_string())?;
-
-                let source_pixels = decoded.data();
-
-                if source_pixels.len() != expected_bytes {
-                    return Err(format!(
-                        "Invalid RGBA data for {}: dimensions {}x{} require {} bytes, got {}",
-                        path.display(),
-                        source_width,
-                        source_height,
-                        expected_bytes,
-                        source_pixels.len()
-                    ));
-                }
-                /*
-                eprintln!(
-                    "[sidebar thumbnail] Source: {} — {}x{}",
-                    path.display(),
-                    source_width,
-                    source_height
-                );
-                */
-                let rgba =
-                    image::RgbaImage::from_raw(source_width, source_height, source_pixels.to_vec())
-                        .ok_or_else(|| {
-                            format!("Could not construct RGBA image for {}", path.display())
-                        })?;
+                let source_width = rgba.width();
+                let source_height = rgba.height();
 
                 // Fit within a max box while preserving the source aspect ratio.
                 // `image::imageops::thumbnail` does NOT preserve AR — it forces exactly
@@ -195,14 +157,23 @@ impl ViewerApp {
                         }
                     }
                 };
-                let decoded = crate::decoder::decode_bytes(&bytes).map_err(|e| e.to_string())?;
-                let w = decoded.width();
-                let h = decoded.height();
+                let name = match &entry {
+                    crate::image_entry::ImageEntry::File(path) => path.display().to_string(),
+                    crate::image_entry::ImageEntry::Zip(item) => item.name.clone(),
+                    crate::image_entry::ImageEntry::S7z(item) => item.name.clone(),
+                    crate::image_entry::ImageEntry::Rar(item) => item.name.clone(),
+                };
+                let is_raw = std::path::Path::new(&name)
+                    .extension().and_then(|e| e.to_str())
+                    .and_then(crate::image_core::ImageFormat::from_extension)
+                    == Some(crate::image_core::ImageFormat::CameraRaw)
+                    || zenraw::is_raw_file(&bytes);
+                let rgba = decode_sidebar_image(&bytes, &name, is_raw, None)?;
+                let w = rgba.width();
+                let h = rgba.height();
                 if w == 0 || h == 0 {
                     return Err("Empty image".into());
                 }
-                let rgba = image::RgbaImage::from_raw(w, h, decoded.data().to_vec())
-                    .ok_or_else(|| "Invalid decoded image data".to_string())?;
                 let scale = (256.0 / w as f32).min(256.0 / h as f32);
                 let tw = ((w as f32 * scale).round() as u32).max(1);
                 let th = ((h as f32 * scale).round() as u32).max(1);

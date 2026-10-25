@@ -70,6 +70,38 @@ impl ViewerApp {
                     self.hamburger_menu_open = false;
                 }
 
+                // RAW files open quickly using their largest embedded JPEG preview.
+                // Offer full sensor development as an explicit user action.
+                let current_is_raw = self.image_entries.get(self.current_index).is_some_and(|entry| {
+                    let name = match entry {
+                        crate::image_entry::ImageEntry::File(path) => path.as_path(),
+                        crate::image_entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
+                        crate::image_entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
+                        crate::image_entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
+                    };
+                    name.extension()
+                        .and_then(|extension| extension.to_str())
+                        .and_then(crate::image_core::ImageFormat::from_extension)
+                        == Some(crate::image_core::ImageFormat::CameraRaw)
+                });
+                if current_is_raw {
+                    let label = if self.showing_raw_developed {
+                        "🖼  RAW developed (full resolution)"
+                    } else {
+                        "📷  View RAW (full quality)"
+                    };
+                    if ui.add_enabled(
+                        !self.showing_raw_developed && !self.is_loading(),
+                        egui::Button::new(egui::RichText::new(label).size(14.0))
+                            .min_size(egui::vec2(180.0, 30.0))
+                            .fill(egui::Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE),
+                    ).on_hover_text("Develop the actual RAW sensor data instead of its embedded JPEG preview").clicked() {
+                        self.load_current_image_as_raw();
+                        self.hamburger_menu_open = false;
+                    }
+                }
+
                 // Let the OS choose an application for the original file. Archive entries
                 // remain in the viewer because they do not have a persistent standalone path.
                 if let Some(path) = self.current_image_path.clone() {
