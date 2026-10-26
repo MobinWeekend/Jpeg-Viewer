@@ -624,7 +624,7 @@ jobs:
           cp "target/${{ matrix.rust_target }}/release/jpeg_viewer" AppDir/usr/bin/jpeg_viewer
           cp packaging/linux/com.jpegviewer.JpegViewer.desktop AppDir/com.jpegviewer.JpegViewer.desktop
           cp packaging/linux/com.jpegviewer.JpegViewer.desktop AppDir/usr/share/applications/com.jpegviewer.JpegViewer.desktop
-          cp assets/icons/icon.png AppDir/jpeg_viewer.png
+          cp packaging/icons/512x512/com.jpegviewer.JpegViewer.png AppDir/jpeg_viewer.png
           cp assets/icons/icon.png AppDir/usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
           printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/jpeg_viewer" "$@"\n' > AppDir/AppRun
           chmod +x AppDir/AppRun AppDir/usr/bin/jpeg_viewer
@@ -720,17 +720,18 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           IMAGE=archlinux:latest
           if [ "${{ matrix.arch }}" = "ARM64" ]; then IMAGE=menci/archlinuxarm:base-devel; fi
-          docker run --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
+          docker run --privileged --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
             if [ "$(uname -m)" = "aarch64" ]; then pacman-key --init; pacman-key --populate archlinuxarm || true; fi
             pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git
             useradd -m builder || true
             sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
             sed -i "s|source=.*|source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${GITHUB_REF_NAME}')|" packaging/arch/PKGBUILD
-            cp packaging/arch/PKGBUILD PKGBUILD
-            chown -R builder:builder /src
-            su builder -c "makepkg --syncdeps --noconfirm --cleanbuild"
+            mkdir -p /tmp/arch-build
+            cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
+            chown -R builder:builder /tmp/arch-build
+            su builder -c "cd /tmp/arch-build && makepkg --syncdeps --noconfirm --cleanbuild"
             mkdir -p /src/out
-            cp /src/*.pkg.tar.zst /src/out/
+            cp /tmp/arch-build/*.pkg.tar.zst /src/out/
           '
           cp out/*.pkg.tar.zst "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst"
       - uses: actions/upload-artifact@v6
@@ -762,7 +763,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
           sudo flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install --system --noninteractive -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
+          sudo flatpak install --system --noninteractive -y flathub org.gnome.Platform//48 org.gnome.Sdk//48 org.freedesktop.Sdk.Extension.rust-stable//24.08
       - name: Generate Flatpak Cargo sources
         run: |
           python3 -m pip install --user --break-system-packages requests tomlkit aiohttp

@@ -1,11 +1,11 @@
 app-id: com.jpegviewer.JpegViewer
 
 runtime: org.gnome.Platform
-runtime-version: "49"
+runtime-version: "48"
 sdk: org.gnome.Sdk
 
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable//25.08
+  - org.freedesktop.Sdk.Extension.rust-stable//24.08
 
 command: jpeg_viewer
 
