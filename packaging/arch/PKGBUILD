@@ -1,0 +1,25 @@
+# Maintainer: MobinWeekend
+pkgname=jpeg-viewer
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='GPU-accelerated desktop image viewer written in Rust'
+arch=('x86_64' 'aarch64')
+url='https://github.com/MobinWeekend/Jpeg-Viewer'
+license=('GPL-3.0-only')
+depends=('gcc-libs' 'glibc' 'libx11' 'libxkbcommon' 'wayland' 'mesa' 'dbus')
+makedepends=('rust' 'cargo' 'pkgconf')
+source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git')
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/jpeg-viewer"
+  cargo build --release --locked
+}
+
+package() {
+  cd "$srcdir/jpeg-viewer"
+  install -Dm755 target/release/jpeg_viewer "$pkgdir/usr/bin/jpeg_viewer"
+  install -Dm644 packaging/linux/com.jpegviewer.JpegViewer.desktop "$pkgdir/usr/share/applications/com.jpegviewer.JpegViewer.desktop"
+  install -Dm644 assets/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

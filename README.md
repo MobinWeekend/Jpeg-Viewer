@@ -72,6 +72,17 @@ Recognized extensions include `.cr2`, `.cr3`, `.nef`, `.nrw`, `.arw`, `.dng`, `.
 
 Images can be opened directly from **ZIP** (`.zip`), **7z** (`.7z`), and **RAR** (`.rar`) archives without extracting the archive first.
 
+## Downloads and supported platforms
+
+Tagged GitHub releases publish downloadable builds for:
+
+- **Windows:** x64 and ARM64 executables
+- **macOS:** Intel (x86_64) and Apple Silicon (ARM64) app bundles
+- **Linux portable:** x64 and ARM64 tarballs, AppImages, and Flatpak bundles
+- **Linux distribution packages:** Debian/Ubuntu `.deb` packages, Fedora-compatible `.rpm` packages, and Arch Linux `.pkg.tar.zst` packages (x64 and ARM64 where built)
+
+Open the [GitHub Releases page](https://github.com/MobinWeekend/Jpeg-Viewer/releases) and choose the asset matching your operating system and processor architecture. Linux packages may require system libraries supplied by your distribution. macOS bundles are currently unsigned and may require approval in macOS security settings.
+
 ## Building from source
 
 ### Requirements

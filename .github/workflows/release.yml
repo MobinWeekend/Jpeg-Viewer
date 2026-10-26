@@ -542,6 +542,246 @@ jobs:
           path: JPEG-View-Linux-ARM64.deb
 
 
+
+  # ============================================================
+  # macOS Intel and Apple Silicon
+  # ============================================================
+
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: Intel-x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+          - arch: Apple-Silicon-ARM64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Set version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cargo set-version "$VERSION"
+      - name: Build
+        run: cargo build --release --locked --target "${{ matrix.rust_target }}"
+      - name: Package app bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP="JPEG Viewer.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp "target/${{ matrix.rust_target }}/release/jpeg_viewer" "$APP/Contents/MacOS/jpeg_viewer"
+          mkdir -p icon.iconset
+          for size in 16 32 64 128 256 512; do sips -z "$size" "$size" assets/icons/icon.png --out "icon.iconset/icon_${size}x${size}.png" >/dev/null; done
+          iconutil -c icns icon.iconset -o "$APP/Contents/Resources/jpeg_viewer.icns"
+          sed -e "s/0.0.0/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+          chmod +x "$APP/Contents/MacOS/jpeg_viewer"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "JPEG-View-macOS-${{ matrix.arch }}.zip"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: JPEG-View-macOS-${{ matrix.arch }}
+          path: JPEG-View-macOS-${{ matrix.arch }}.zip
+
+  # ============================================================
+  # Linux AppImage x64 and ARM64
+  # ============================================================
+
+  build-appimage:
+    name: Build AppImage ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+            appimage_arch: x86_64
+          - arch: ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+            appimage_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libdbus-1-dev libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev wget file
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Set version
+        run: cargo set-version "${GITHUB_REF_NAME#v}"
+      - name: Build
+        run: cargo build --release --locked --target "${{ matrix.rust_target }}"
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/512x512/apps
+          cp "target/${{ matrix.rust_target }}/release/jpeg_viewer" AppDir/usr/bin/jpeg_viewer
+          cp packaging/linux/com.jpegviewer.JpegViewer.desktop AppDir/com.jpegviewer.JpegViewer.desktop
+          cp packaging/linux/com.jpegviewer.JpegViewer.desktop AppDir/usr/share/applications/com.jpegviewer.JpegViewer.desktop
+          cp assets/icons/icon.png AppDir/jpeg_viewer.png
+          cp assets/icons/icon.png AppDir/usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/jpeg_viewer" "$@"\n' > AppDir/AppRun
+          chmod +x AppDir/AppRun AppDir/usr/bin/jpeg_viewer
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage_arch }}.AppImage" -O linuxdeploy.AppImage
+          chmod +x linuxdeploy.AppImage
+          ARCH="${{ matrix.appimage_arch }}" ./linuxdeploy.AppImage --appdir AppDir --desktop-file AppDir/com.jpegviewer.JpegViewer.desktop --icon-file AppDir/jpeg_viewer.png --output appimage
+          mv JPEG-Viewer*.AppImage "JPEG-View-Linux-${{ matrix.arch }}.AppImage"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: JPEG-View-Linux-${{ matrix.arch }}-AppImage
+          path: JPEG-View-Linux-${{ matrix.arch }}.AppImage
+
+  # ============================================================
+  # Linux RPM packages (Fedora-compatible)
+  # ============================================================
+
+  build-rpm:
+    name: Build Fedora RPM ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+          - arch: ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libdbus-1-dev libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo set-version "${GITHUB_REF_NAME#v}"
+      - run: cargo build --release --locked --target "${{ matrix.rust_target }}"
+      - name: Create RPM staging tree
+        run: |
+          mkdir -p stage/usr/bin stage/usr/share/applications stage/usr/share/icons/hicolor/512x512/apps
+          cp "target/${{ matrix.rust_target }}/release/jpeg_viewer" stage/usr/bin/jpeg_viewer
+          cp packaging/linux/com.jpegviewer.JpegViewer.desktop stage/usr/share/applications/
+          cp assets/icons/icon.png stage/usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
+          tar -czf stage.tar.gz -C stage .
+          cat > packaging/linux/jpeg-viewer.spec <<'EOF'
+          Name: jpeg-viewer
+          Version: 0.1.0
+          Release: 1%{?dist}
+          Summary: GPU-accelerated image viewer
+          License: GPL-3.0-only
+          BuildArch: noarch
+          %description
+          JPEG Viewer is a GPU-accelerated desktop image viewer.
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          install -m755 %{_sourcedir}/jpeg_viewer %{buildroot}/usr/bin/jpeg_viewer
+          %files
+          /usr/bin/jpeg_viewer
+          EOF
+      - name: Build RPM using fpm
+        run: |
+          sudo gem install --no-document fpm
+          fpm -s dir -t rpm -n jpeg-viewer -v "${GITHUB_REF_NAME#v}" --license 'GPL-3.0-only' --description 'GPU-accelerated image viewer' --architecture "$( [ '${{ matrix.arch }}' = 'x64' ] && echo x86_64 || echo aarch64 )" -C stage .
+          mv jpeg-viewer-*.rpm "JPEG-View-Fedora-${{ matrix.arch }}.rpm"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: JPEG-View-Fedora-${{ matrix.arch }}-RPM
+          path: JPEG-View-Fedora-${{ matrix.arch }}.rpm
+
+  # ============================================================
+  # Arch Linux package
+  # ============================================================
+
+  build-arch:
+    name: Build Arch Linux package ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: ARM64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Build package in Arch Linux container
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          docker run --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -v "$PWD:/src" -w /src archlinux:latest bash -lc '
+            pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git
+            useradd -m builder || true
+            sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
+            sed -i "s|source=.*|source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${GITHUB_REF_NAME}')|" packaging/arch/PKGBUILD
+            cp packaging/arch/PKGBUILD PKGBUILD
+            chown -R builder:builder /src
+            su builder -c "makepkg --syncdeps --noconfirm --cleanbuild"
+            mkdir -p /src/out
+            cp /src/*.pkg.tar.zst /src/out/
+          '
+          cp out/*.pkg.tar.zst "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: JPEG-View-Arch-${{ matrix.arch }}
+          path: JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst
+
+  # ============================================================
+  # Flatpak bundles
+  # ============================================================
+
+  build-flatpak:
+    name: Build Flatpak ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: ARM64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install Flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak --user install -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
+      - name: Generate Flatpak Cargo sources
+        run: |
+          python3 -m pip install --user --break-system-packages requests tomlkit
+          curl -fsSL https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py -o /tmp/flatpak-cargo-generator.py
+          python3 /tmp/flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+      - name: Build Flatpak bundle
+        run: |
+          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir packaging/flatpak/com.jpegviewer.JpegViewer.yml
+          flatpak build-bundle repo "JPEG-View-Linux-${{ matrix.arch }}.flatpak" com.jpegviewer.JpegViewer
+      - uses: actions/upload-artifact@v6
+        with:
+          name: JPEG-View-Linux-${{ matrix.arch }}-Flatpak
+          path: JPEG-View-Linux-${{ matrix.arch }}.flatpak
+
+
   # ============================================================
   # GitHub Release
   # ============================================================
@@ -556,6 +796,11 @@ jobs:
       - build-linux-arm64
       - build-debian-x64
       - build-debian-arm64
+      - build-macos
+      - build-appimage
+      - build-rpm
+      - build-arch
+      - build-flatpak
 
     runs-on: ubuntu-24.04
 
@@ -641,19 +886,31 @@ jobs:
 
             ## Downloads
 
+            Assets below are attached to this release. Select the package matching your operating system and CPU architecture.
+
             ### Windows
+            - [Windows x64 (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Windows-x64.exe)
+            - [Windows ARM64 (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Windows-ARM64.exe)
 
-            - **Windows x64** — `JPEG-View-Windows-x64.exe`
-            - **Windows ARM64** — `JPEG-View-Windows-ARM64.exe`
+            ### macOS
+            - [Intel Mac (.zip app bundle)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-macOS-Intel-x64.zip)
+            - [Apple Silicon M-series (.zip app bundle)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-macOS-Apple-Silicon-ARM64.zip)
 
-            Portable executables. No installation required.
+            ### Linux — portable
+            - [Linux x64 (.tar.gz)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.tar.gz)
+            - [Linux ARM64 (.tar.gz)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.tar.gz)
+            - [AppImage x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.AppImage)
+            - [AppImage ARM64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.AppImage)
+            - [Flatpak x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.flatpak)
+            - [Flatpak ARM64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.flatpak)
 
-            ### Linux
-
-            - **Linux x64 Portable** — `JPEG-View-Linux-x64.tar.gz`
-            - **Linux ARM64 Portable** — `JPEG-View-Linux-ARM64.tar.gz`
-            - **Debian / Ubuntu x64** — `JPEG-View-Linux-x64.deb`
-            - **Debian / Ubuntu ARM64** — `JPEG-View-Linux-ARM64.deb`
+            ### Linux — distribution packages
+            - [Debian / Ubuntu x64 (.deb)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.deb)
+            - [Debian / Ubuntu ARM64 (.deb)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.deb)
+            - [Fedora x64 (.rpm)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Fedora-x64.rpm)
+            - [Fedora ARM64 (.rpm)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Fedora-ARM64.rpm)
+            - [Arch Linux x64 (.pkg.tar.zst)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Arch-x64.pkg.tar.zst)
+            - [Arch Linux ARM64 (.pkg.tar.zst)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Arch-ARM64.pkg.tar.zst)
 
             ## What's Changed
 

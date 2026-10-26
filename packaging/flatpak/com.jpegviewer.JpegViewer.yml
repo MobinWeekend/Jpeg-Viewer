@@ -29,7 +29,6 @@ modules:
         CARGO_NET_OFFLINE: "true"
 
     build-commands:
-      - cargo --offline fetch --manifest-path Cargo.toml --verbose
       - cargo build --offline --release --locked
       - install -Dm755 target/release/jpeg_viewer /app/bin/jpeg_viewer
 
@@ -42,7 +41,5 @@ modules:
       - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/jpeg-viewer/LICENSE
 
     sources:
-      - cargo-sources.json
-
       - type: dir
         path: ../..
