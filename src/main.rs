@@ -34,12 +34,14 @@ fn main() -> eframe::Result<()> {
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_icon(icon)
-        .with_min_inner_size(egui::vec2(128.0, 128.0))
+        .with_min_inner_size(egui::vec2(512.0, 512.0))
         .with_decorations(app_settings.show_titlebar)
         .with_resizable(true);
 
-    if let Some(pos) = app_settings.window_pos {
-        viewport = viewport.with_position(pos);
+    if !app_settings.start_centered {
+        if let Some(pos) = app_settings.window_pos {
+            viewport = viewport.with_position(pos);
+        }
     }
 
     if let Some(size) = app_settings.window_size {

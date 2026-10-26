@@ -268,20 +268,9 @@ impl ViewerApp {
             let mut ignored = 0usize;
             for path in paths {
                 if path.is_dir() {
-                    let mut stack = vec![path];
-                    while let Some(dir) = stack.pop() {
-                        if let Ok(entries) = std::fs::read_dir(dir) {
-                            for entry in entries.flatten() {
-                                let child = entry.path();
-                                if child.is_dir() { stack.push(child); }
-                                else if child.is_file() && crate::helpers::is_supported_image(&child) {
-                                    let before = self.favorite_paths.len();
-                                    self.add_favorite_path(child);
-                                    added += usize::from(self.favorite_paths.len() > before);
-                                }
-                            }
-                        }
-                    }
+                    let before = self.favorite_paths.len();
+                    self.add_favorite_path(path);
+                    added += usize::from(self.favorite_paths.len() > before);
                 } else if path.is_file() && crate::helpers::is_supported_image(&path) {
                     let before = self.favorite_paths.len();
                     self.add_favorite_path(path);

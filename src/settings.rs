@@ -15,6 +15,8 @@ pub struct AppSettings {
     pub cache_delta_factor: f32,
     pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
+    /// Number of background workers used for sidebar thumbnail generation (1-8).
+    pub thumbnail_workers: usize,
     pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches
     // Frame limiter settings
@@ -33,6 +35,7 @@ pub struct AppSettings {
     pub slideshow_motion_strength: f32,
     // Startup settings
     pub start_fullscreen: bool,
+    pub start_centered: bool,
     pub theme_preference: String,
     // virtual texture
     pub virtual_texture_threshold: u32,
@@ -43,6 +46,10 @@ pub struct AppSettings {
     pub file_sidebar_width: f32,
     pub settings_sidebar_width: f32,
     pub compact_mode: bool,
+    /// Thumbnail entry size for the Browse, Queue, and Favorites lists.
+    pub browse_entry_size: f32,
+    pub queue_entry_size: f32,
+    pub favorites_entry_size: f32,
 }
 
 impl Default for AppSettings {
@@ -55,6 +62,7 @@ impl Default for AppSettings {
             cache_delta_factor: 0.6,
             navigation_pause_ms: 1200,
             max_cache_task: 4,
+            thumbnail_workers: 3,
             texture_filter: "linear".to_string(),
             preload_throttle_ms: 100,
             max_fps: 30.0,
@@ -70,6 +78,7 @@ impl Default for AppSettings {
             slideshow_motion: "smart".to_string(),
             slideshow_motion_strength: 20.0,
             start_fullscreen: false,
+            start_centered: false,
             theme_preference: "system".to_string(),
             virtual_texture_threshold: 8192,
             tile_size: 1024,
@@ -78,6 +87,9 @@ impl Default for AppSettings {
             file_sidebar_width: 250.0,
             settings_sidebar_width: 360.0,
             compact_mode: false,
+            browse_entry_size: 176.0,
+            queue_entry_size: 176.0,
+            favorites_entry_size: 176.0,
         }
     }
 }
@@ -226,6 +238,11 @@ impl SettingsManager {
                             }
                         }
                     }
+                    if let Some(value) = section.get("thumbnail_workers") {
+                        if let Ok(workers) = value.parse::<usize>() {
+                            if (1..=8).contains(&workers) { settings.thumbnail_workers = workers; }
+                        }
+                    }
                     // Read texture_filter
                     if let Some(value) = section.get("texture_filter") {
                         if matches!(value, "nearest" | "linear" | "mipmap") {
@@ -310,6 +327,9 @@ impl SettingsManager {
                     if let Some(value) = section.get("start_fullscreen") {
                         settings.start_fullscreen = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("start_centered") {
+                        settings.start_centered = Self::parse_bool(value);
+                    }
                     // Read virtual_texture_threshold
                     if let Some(value) = section.get("virtual_texture_threshold") {
                         if let Ok(v) = value.parse::<u32>() {
@@ -349,6 +369,19 @@ impl SettingsManager {
                     }
                     if let Some(value) = section.get("compact_mode") {
                         settings.compact_mode = Self::parse_bool(value);
+                    }
+                    for (key, target) in [
+                        ("browse_entry_size", &mut settings.browse_entry_size),
+                        ("queue_entry_size", &mut settings.queue_entry_size),
+                        ("favorites_entry_size", &mut settings.favorites_entry_size),
+                    ] {
+                        if let Some(value) = section.get(key) {
+                            if let Ok(size) = value.parse::<f32>() {
+                                if size.is_finite() && (64.0..=240.0).contains(&size) {
+                                    *target = size;
+                                }
+                            }
+                        }
                     }
                     // theme
                     if let Some(value) = section.get("theme_preference") {
@@ -437,6 +470,7 @@ impl SettingsManager {
             settings.navigation_pause_ms.to_string(),
         );
         section.set("max_cache_task", settings.max_cache_task.to_string());
+        section.set("thumbnail_workers", settings.thumbnail_workers.to_string());
         section.set("texture_filter", &settings.texture_filter);
         section.set(
             "preload_throttle_ms",
@@ -488,6 +522,7 @@ impl SettingsManager {
         section.set("slideshow_transition", settings.slideshow_transition.clone());
         section.set("slideshow_motion", settings.slideshow_motion.clone());
         section.set("slideshow_motion_strength", settings.slideshow_motion_strength.to_string());
+        section.set("start_centered", if settings.start_centered { "true" } else { "false" });
         section.set(
             "start_fullscreen",
             if settings.start_fullscreen {
@@ -534,6 +569,9 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set("browse_entry_size", settings.browse_entry_size.to_string());
+        section.set("queue_entry_size", settings.queue_entry_size.to_string());
+        section.set("favorites_entry_size", settings.favorites_entry_size.to_string());
 
         Self::write_ini_safely(path, &conf)
     }

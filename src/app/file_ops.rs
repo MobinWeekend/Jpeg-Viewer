@@ -10,7 +10,11 @@ use std::path::PathBuf;
 
 impl ViewerApp {
     pub fn open_path(&mut self, path: PathBuf) {
-        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
+        if self
+            .edit_session
+            .as_ref()
+            .is_some_and(|session| session.dirty)
+        {
             self.edit_status = Some(
                 "Save or discard the unsaved working copy before opening another path.".into(),
             );
@@ -205,7 +209,11 @@ impl ViewerApp {
     }
 
     pub fn load_dropped_files(&mut self, paths: Vec<PathBuf>) {
-        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
+        if self
+            .edit_session
+            .as_ref()
+            .is_some_and(|session| session.dirty)
+        {
             self.edit_status = Some(
                 "Save or discard the unsaved working copy before opening dropped files.".into(),
             );

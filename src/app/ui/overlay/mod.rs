@@ -35,8 +35,11 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 
     // Floating controls are offset by the docked sidebars so they never sit
     // underneath a panel.
+    // Use the actual panel allocation, not the saved preference: egui may
+    // clamp the panel on a narrow window, and overlay controls must begin past
+    // the rendered sidebar edge to avoid drawing over it.
     let left_offset = if app.settings_manager.get().show_file_sidebar {
-        app.settings_manager.get().file_sidebar_width
+        app.sidebar_actual_width
     } else {
         0.0
     };

@@ -8,7 +8,43 @@ use eframe::egui;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Collect supported images recursively from a folder in stable path order.
+pub(super) fn collect_folder_images(root: &Path) -> Vec<PathBuf> {
+    let mut stack = vec![root.to_path_buf()];
+    let mut found = Vec::new();
+    while let Some(folder) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&folder) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else { continue };
+            if file_type.is_dir() { stack.push(path); }
+            else if file_type.is_file() && is_supported_image(&path) { found.push(path); }
+        }
+    }
+    found.sort();
+    found
+}
+
 impl ViewerApp {
+    /// Show a folder's current images in Browse without adding the folder itself as a Browse entry.
+    pub(super) fn show_folder_contents(&mut self, folder: &Path, ctx: &egui::Context) {
+        self.sidebar_queue_tab = false;
+        self.sidebar_favorites_tab = false;
+        self.sidebar_info_tab = false;
+        self.queue_drop_rect = None;
+        self.queue_mode = false;
+        let paths = collect_folder_images(folder);
+        if paths.is_empty() {
+            self.queue_status = Some(format!("No supported images found in {}.", folder.display()));
+            return;
+        }
+        let count = paths.len();
+        self.current_directory = Some(folder.to_path_buf());
+        self.load_dropped_files(paths);
+        self.queue_status = Some(format!("Showing {count} image(s) from {}.", folder.display()));
+        ctx.request_repaint();
+    }
+
     pub fn begin_rename(&mut self, path: &Path) {
         if !path.is_file() {
             self.queue_status = Some("Only existing filesystem files can be renamed.".into());
@@ -130,30 +166,7 @@ impl ViewerApp {
     }
 
     pub(super) fn add_folder_recursively(&mut self, root: &Path) -> usize {
-        let mut stack = vec![root.to_path_buf()];
-        let mut found = Vec::new();
-        while let Some(folder) = stack.pop() {
-            let Ok(entries) = fs::read_dir(&folder) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let Ok(file_type) = entry.file_type() else {
-                    continue;
-                };
-                if file_type.is_dir() {
-                    stack.push(path);
-                } else if file_type.is_file() && is_supported_image(&path) {
-                    found.push(path);
-                }
-            }
-        }
-        found.sort();
-        let mut added = 0;
-        for path in found {
-            added += usize::from(self.add_queue_path(path));
-        }
-        added
+        collect_folder_images(root).into_iter().map(|path| usize::from(self.add_queue_path(path))).sum()
     }
 
     pub fn add_queue_path(&mut self, path: PathBuf) -> bool {
@@ -191,13 +204,24 @@ impl ViewerApp {
             self.queue_previous_index = self.current_index;
         }
         self.queue_mode = true;
-        let entries = self
-            .queue_paths
-            .iter()
-            .cloned()
-            .map(ImageEntry::File)
-            .collect();
-        self.set_image_entries(entries, index.min(self.queue_paths.len() - 1));
+        let mut entries = Vec::new();
+        let mut target_index = 0usize;
+        for (queue_index, path) in self.queue_paths.iter().enumerate() {
+            if queue_index < index {
+                target_index += if path.is_dir() { collect_folder_images(path).len() } else { 1 };
+            }
+            if path.is_dir() {
+                entries.extend(collect_folder_images(path).into_iter().map(ImageEntry::File));
+            } else {
+                entries.push(ImageEntry::File(path.clone()));
+            }
+        }
+        if entries.is_empty() {
+            self.queue_status = Some("Queue has no readable images. Folder entries may be empty or unavailable.".into());
+            return false;
+        }
+        let target_index = target_index.min(entries.len().saturating_sub(1));
+        self.set_image_entries(entries, target_index);
         self.queue_status = Some("Browsing queue order. Missing files remain in the queue and show an unavailable warning.".into());
         ctx.request_repaint();
         true

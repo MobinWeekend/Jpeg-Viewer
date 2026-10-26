@@ -48,6 +48,49 @@ impl eframe::App for ViewerApp {
             self.load_slideshow_settings();
         }
 
+        // ========== STARTUP WINDOW PLACEMENT ==========
+        // Check the first reported native geometry once the platform has created the window.
+        // egui reports the current monitor size; clamp saved positions back onto that monitor
+        // when a monitor was removed or its resolution changed.
+        if !self.startup_window_placement_handled {
+            let (monitor_size, outer_rect, inner_size) = ctx.input(|input| {
+                let viewport = input.viewport();
+                (viewport.monitor_size, viewport.outer_rect, viewport.inner_rect.map(|r| r.size()))
+            });
+            if let (Some(monitor_size), Some(outer_rect), Some(inner_size)) = (monitor_size, outer_rect, inner_size) {
+                let mut pos = outer_rect.min;
+                let settings = self.settings_manager.get();
+                if settings.start_centered {
+                    pos = egui::pos2(
+                        ((monitor_size.x - outer_rect.width()) * 0.5).max(0.0),
+                        ((monitor_size.y - outer_rect.height()) * 0.5).max(0.0),
+                    );
+                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+                } else {
+                    let max_x = (monitor_size.x - outer_rect.width()).max(0.0);
+                    let max_y = (monitor_size.y - outer_rect.height()).max(0.0);
+                    let clamped = egui::pos2(pos.x.clamp(0.0, max_x), pos.y.clamp(0.0, max_y));
+                    if (clamped - pos).length_sq() > 1.0 {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(clamped));
+                    }
+                }
+                // If the restored window is larger than the monitor, shrink it so it can fit.
+                // Respect the app's 512×512 minimum on normal desktop monitors.
+                // If a monitor is smaller than that, prioritize fitting the window
+                // on-screen rather than placing it partly outside the monitor.
+                let min_width = if monitor_size.x >= 512.0 { 512.0 } else { monitor_size.x };
+                let min_height = if monitor_size.y >= 512.0 { 512.0 } else { monitor_size.y };
+                let target_size = egui::vec2(
+                    inner_size.x.min(monitor_size.x).max(min_width),
+                    inner_size.y.min(monitor_size.y).max(min_height),
+                );
+                if (target_size - inner_size).length_sq() > 1.0 {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(target_size));
+                }
+                self.startup_window_placement_handled = true;
+            }
+        }
+
         // ========== STARTUP FULLSCREEN ==========
         if !self.startup_fullscreen_handled {
             self.startup_fullscreen_handled = true;

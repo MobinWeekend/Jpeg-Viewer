@@ -3,31 +3,89 @@ use super::super::types::ViewerApp;
 use eframe::egui;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{mpsc::{self, SyncSender, TrySendError}, Arc, Mutex, OnceLock};
 
+type ThumbnailJob = Box<dyn FnOnce() + Send + 'static>;
 
-/// Decode a sidebar source without ever invoking full RAW sensor development.
-/// RAW entries use Rawler's embedded thumbnail API, including archive entries.
-fn decode_sidebar_image(bytes: &[u8], name: &str, is_raw: bool, source_path: Option<&std::path::Path>) -> Result<image::RgbaImage, String> {
+/// A small dedicated pool keeps thumbnail work from flooding the CPU and avoids
+/// creating one OS thread per visible image. The bounded queue applies backpressure.
+fn thumbnail_job_sender(worker_count: usize) -> &'static SyncSender<ThumbnailJob> {
+    static SENDER: OnceLock<SyncSender<ThumbnailJob>> = OnceLock::new();
+    SENDER.get_or_init(|| {
+        let (sender, receiver) = mpsc::sync_channel::<ThumbnailJob>(32);
+        let receiver = Arc::new(Mutex::new(receiver));
+        for worker_index in 0..worker_count.clamp(1, 8) {
+            let receiver = Arc::clone(&receiver);
+            let _ = std::thread::Builder::new()
+                .name(format!("thumbnail-worker-{worker_index}"))
+                .spawn(move || loop {
+                    let job = receiver.lock().expect("thumbnail receiver poisoned").recv();
+                    match job { Ok(job) => job(), Err(_) => break }
+                });
+        }
+        sender
+    })
+}
+
+const THUMB_MAX_SIDE: u32 = 128;
+/// Reject suspiciously large decoded sources before asking a decoder to allocate
+/// a full-resolution RGBA buffer. This is a safety ceiling, not a target size.
+const MAX_THUMB_SOURCE_PIXELS: u64 = 32_000_000;
+
+fn fit_thumbnail(rgba: image::RgbaImage) -> Result<(usize, usize, Vec<u8>), String> {
+    let source_width = rgba.width();
+    let source_height = rgba.height();
+    if source_width == 0 || source_height == 0 {
+        return Err("Empty image".into());
+    }
+    let scale = (THUMB_MAX_SIDE as f64 / source_width as f64)
+        .min(THUMB_MAX_SIDE as f64 / source_height as f64)
+        .min(1.0);
+    let target_w = ((source_width as f64 * scale).round() as u32).max(1);
+    let target_h = ((source_height as f64 * scale).round() as u32).max(1);
+    // Triangle is a fast downscaling filter; Lanczos is unnecessary for tiny previews.
+    let thumbnail = image::imageops::resize(
+        &rgba, target_w, target_h, image::imageops::FilterType::Triangle,
+    );
+    Ok((thumbnail.width() as usize, thumbnail.height() as usize, thumbnail.into_raw()))
+}
+
+fn decode_checked_sidebar_image(
+    bytes: &[u8], name: &str, is_raw: bool, source_path: Option<&std::path::Path>,
+) -> Result<image::RgbaImage, String> {
     if is_raw {
         let thumbnail = crate::decoder::extract_raw_thumbnail(bytes, source_path)
             .ok_or_else(|| format!("No embedded RAW thumbnail found in {name}"))?;
-        return image::load_from_memory(&thumbnail)
-            .map(|image| image.to_rgba8())
-            .map_err(|error| format!("Failed to decode embedded RAW thumbnail in {name}: {error}"));
+        let image = image::load_from_memory(&thumbnail)
+            .map_err(|error| format!("Failed to decode embedded RAW thumbnail in {name}: {error}"))?;
+        return Ok(image.to_rgba8());
     }
 
-    let decoded = crate::decoder::decode_bytes(bytes).map_err(|e| e.to_string())?;
-    let width = decoded.width();
-    let height = decoded.height();
-    if width == 0 || height == 0 {
-        return Err(format!("Empty image: {name}"));
+    let format = crate::decoder::format_detection::detect_format(bytes)
+        .ok_or_else(|| format!("Unknown image format: {name}"))?;
+    let registry = crate::decoder::default_registry();
+    let (width, height) = registry.dimensions(bytes, format).map_err(|e| e.to_string())?;
+    let pixels = u64::from(width).checked_mul(u64::from(height))
+        .ok_or_else(|| format!("Image dimensions overflow: {name}"))?;
+    let rgba_bytes = pixels.checked_mul(4)
+        .ok_or_else(|| format!("Decoded image size overflow: {name}"))?;
+    if width == 0 || height == 0 || pixels > MAX_THUMB_SOURCE_PIXELS {
+        return Err(format!("Image too large for safe thumbnail decoding ({width}x{height}): {name}"));
     }
-    image::RgbaImage::from_raw(width, height, decoded.data().to_vec())
+    // Guard the allocation size explicitly before invoking the full decoder.
+    if rgba_bytes > MAX_THUMB_SOURCE_PIXELS * 4 {
+        return Err(format!("Decoded image would exceed thumbnail memory limit: {name}"));
+    }
+    let decoded = registry.decode(bytes, format, &crate::image_core::DecodeOptions::default())
+        .map_err(|e| e.to_string())?;
+    image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.into_data())
         .ok_or_else(|| format!("Invalid decoded image data: {name}"))
 }
 
+
+
 impl ViewerApp {
-    pub(super) fn request_sidebar_thumbnail(&mut self, path: PathBuf, key: String) {
+    pub(super) fn request_sidebar_thumbnail(&mut self, path: PathBuf, key: String, ctx: &egui::Context) {
         if !path.is_file()
             || self.sidebar_thumbnail_attempted.contains(&key)
             || self.sidebar_thumbnail_pending.contains(&key)
@@ -42,7 +100,9 @@ impl ViewerApp {
         let (tx, rx) = std::sync::mpsc::channel();
         self.sidebar_thumbnail_receivers.push(rx);
 
-        std::thread::spawn(move || {
+        let job_key = key.clone();
+        let repaint_ctx = ctx.clone();
+        let job = Box::new(move || {
             let result = (|| -> Result<(usize, usize, Vec<u8>), String> {
                 let bytes = fs::read(&path)
                     .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
@@ -54,46 +114,21 @@ impl ViewerApp {
                     .and_then(crate::image_core::ImageFormat::from_extension)
                     == Some(crate::image_core::ImageFormat::CameraRaw)
                     || zenraw::is_raw_file(&bytes);
-                let rgba = decode_sidebar_image(&bytes, &path.display().to_string(), is_raw, Some(&path))?;
-
-                let source_width = rgba.width();
-                let source_height = rgba.height();
-
-                // Fit within a max box while preserving the source aspect ratio.
-                // `image::imageops::thumbnail` does NOT preserve AR — it forces exactly
-                // the given dimensions — so compute the contained size ourselves.
-                const THUMB_MAX_W: u32 = 256;
-                const THUMB_MAX_H: u32 = 256;
-
-                let scale = (THUMB_MAX_W as f32 / source_width as f32)
-                    .min(THUMB_MAX_H as f32 / source_height as f32);
-                let target_w = ((source_width as f32 * scale).round() as u32).max(1);
-                let target_h = ((source_height as f32 * scale).round() as u32).max(1);
-
-                let thumbnail = image::imageops::thumbnail(&rgba, target_w, target_h);
-
-                let width = thumbnail.width() as usize;
-                let height = thumbnail.height() as usize;
-
-                if width == 0 || height == 0 {
-                    return Err(format!(
-                        "Thumbnail has invalid dimensions for {}",
-                        path.display()
-                    ));
-                }
-                /*
-                eprintln!(
-                    "[sidebar thumbnail] Result: {} — {}x{}",
-                    path.display(),
-                    width,
-                    height
-                );
-                 */
-                Ok((width, height, thumbnail.into_raw()))
+                let rgba = decode_checked_sidebar_image(&bytes, &path.display().to_string(), is_raw, Some(&path))?;
+                fit_thumbnail(rgba)
             })();
 
             let _ = tx.send((key, result));
-        });
+            repaint_ctx.request_repaint();
+        }) as ThumbnailJob;
+        match thumbnail_job_sender(self.settings_manager.get().thumbnail_workers).try_send(job) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
+                self.sidebar_thumbnail_pending.remove(&job_key);
+                self.sidebar_thumbnail_attempted.remove(&job_key);
+                self.sidebar_thumbnail_receivers.pop();
+            }
+        }
     }
 
     #[allow(unused_assignments)]
@@ -101,6 +136,7 @@ impl ViewerApp {
         &mut self,
         entry: crate::image_entry::ImageEntry,
         key: String,
+        ctx: &egui::Context,
     ) {
         if self.sidebar_thumbnail_attempted.contains(&key)
             || self.sidebar_thumbnail_pending.contains(&key)
@@ -111,7 +147,9 @@ impl ViewerApp {
         self.sidebar_thumbnail_pending.insert(key.clone());
         let (tx, rx) = std::sync::mpsc::channel();
         self.sidebar_thumbnail_receivers.push(rx);
-        std::thread::spawn(move || {
+        let job_key = key.clone();
+        let repaint_ctx = ctx.clone();
+        let job = Box::new(move || {
             let result = (|| -> Result<(usize, usize, Vec<u8>), String> {
                 use std::io::Read;
                 let bytes = match &entry {
@@ -168,24 +206,20 @@ impl ViewerApp {
                     .and_then(crate::image_core::ImageFormat::from_extension)
                     == Some(crate::image_core::ImageFormat::CameraRaw)
                     || zenraw::is_raw_file(&bytes);
-                let rgba = decode_sidebar_image(&bytes, &name, is_raw, None)?;
-                let w = rgba.width();
-                let h = rgba.height();
-                if w == 0 || h == 0 {
-                    return Err("Empty image".into());
-                }
-                let scale = (256.0 / w as f32).min(256.0 / h as f32);
-                let tw = ((w as f32 * scale).round() as u32).max(1);
-                let th = ((h as f32 * scale).round() as u32).max(1);
-                let thumb = image::imageops::thumbnail(&rgba, tw, th);
-                Ok((
-                    thumb.width() as usize,
-                    thumb.height() as usize,
-                    thumb.into_raw(),
-                ))
+                let rgba = decode_checked_sidebar_image(&bytes, &name, is_raw, None)?;
+                fit_thumbnail(rgba)
             })();
             let _ = tx.send((key, result));
-        });
+            repaint_ctx.request_repaint();
+        }) as ThumbnailJob;
+        match thumbnail_job_sender(self.settings_manager.get().thumbnail_workers).try_send(job) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {
+                self.sidebar_thumbnail_pending.remove(&job_key);
+                self.sidebar_thumbnail_attempted.remove(&job_key);
+                self.sidebar_thumbnail_receivers.pop();
+            }
+        }
     }
     pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
         let mut completed = Vec::new();
@@ -208,7 +242,15 @@ impl ViewerApp {
                         color,
                         egui::TextureOptions::LINEAR,
                     );
-                    self.sidebar_thumbnails.insert(key, texture);
+                    // Keep the texture cache within its ~16 MiB worst-case pixel
+                    // budget (256 thumbnails × 128 × 128 × 4 bytes). Explicitly
+                    // observe evictions so an evicted item can be requested again.
+                    if self.sidebar_thumbnails.len() >= 256 {
+                        if let Some((evicted_key, _texture)) = self.sidebar_thumbnails.pop_lru() {
+                            self.sidebar_thumbnail_attempted.remove(&evicted_key);
+                        }
+                    }
+                    self.sidebar_thumbnails.put(key, texture);
                 }
                 Err(_) => {
                     self.sidebar_thumbnail_failed.insert(key);

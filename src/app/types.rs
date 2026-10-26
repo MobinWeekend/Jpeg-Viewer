@@ -10,7 +10,7 @@ use crate::shortcuts::InputBindings;
 use crate::sort::SortMethod;
 use eframe::egui;
 use lru::LruCache;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -186,6 +186,12 @@ pub struct ViewerApp {
 
     // ====== WINDOW ======
     pub startup_fullscreen_handled: bool,
+    pub startup_window_placement_handled: bool,
+    pub sidebar_width_needs_save: bool,
+    /// Actual width allocated to the left sidebar this frame, used to position overlays.
+    pub sidebar_actual_width: f32,
+    /// True only when the user began dragging the sidebar resize handle.
+    pub sidebar_resize_dragging: bool,
     pub window_always_on_top: bool,
 
     // ====== FPS ======
@@ -255,8 +261,9 @@ pub struct ViewerApp {
     /// Browse-sidebar drag source index, used to reorder image entries.
     pub sidebar_drag_index: Option<usize>,
     pub sidebar_drag_collection: u8,
-    /// Lazily generated thumbnail textures keyed by normalized path / entry id.
-    pub sidebar_thumbnails: HashMap<String, egui::TextureHandle>,
+    /// LRU cache of thumbnail textures. At 128x128 RGBA and 256 entries, the
+    /// worst-case pixel payload is about 16 MiB; evicted handles release textures.
+    pub sidebar_thumbnails: LruCache<String, egui::TextureHandle>,
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
@@ -400,6 +407,10 @@ impl Default for ViewerApp {
 
             // ====== WINDOW ======
             startup_fullscreen_handled: false,
+            startup_window_placement_handled: false,
+            sidebar_width_needs_save: false,
+            sidebar_actual_width: 0.0,
+            sidebar_resize_dragging: false,
             window_always_on_top: false,
 
             // ====== FPS ======
@@ -456,7 +467,9 @@ impl Default for ViewerApp {
             queue_import_prompt: None,
             sidebar_drag_index: None,
             sidebar_drag_collection: 0,
-            sidebar_thumbnails: HashMap::new(),
+            sidebar_thumbnails: LruCache::new(
+                NonZeroUsize::new(256).expect("non-zero thumbnail cache capacity"),
+            ),
             sidebar_thumbnail_attempted: HashSet::new(),
             sidebar_thumbnail_failed: HashSet::new(),
             sidebar_thumbnail_pending: HashSet::new(),

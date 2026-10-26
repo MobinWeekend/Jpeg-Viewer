@@ -4,7 +4,7 @@ use crate::image_entry::ImageEntry;
 use eframe::egui;
 
 /// Maximum side length of each thumbnail cell.
-const CELL_MAX: f32 = 128.0;
+const CELL_MAX: f32 = 240.0;
 /// Minimum side length of each thumbnail cell.
 const CELL_MIN: f32 = 64.0;
 /// Gap between grid cells (both axes).
@@ -15,14 +15,16 @@ const GAP: f32 = 10.0;
 /// Cards stay between CELL_MIN and CELL_MAX whenever the available width
 /// permits it. The layout uses the fewest columns that can fill the width
 /// without exceeding CELL_MAX.
-fn fit_cards(available: f32) -> (usize, f32) {
+fn fit_cards(available: f32, preferred_size: f32) -> (usize, f32) {
     let available = available.max(CELL_MIN);
-
-    let columns = (((available + GAP) / (CELL_MAX + GAP)).ceil() as usize).clamp(1, 24);
-
-    let card_size =
-        ((available - GAP * (columns as f32 - 1.0)) / columns as f32).clamp(CELL_MIN, CELL_MAX);
-
+    let preferred_size = preferred_size.clamp(CELL_MIN, CELL_MAX);
+    if preferred_size < 112.0 {
+        return (1, available.min(2048.0));
+    }
+    let columns = (((available + GAP) / (preferred_size + GAP)).floor() as usize).max(1).min(24);
+    let card_size = ((available - GAP * (columns as f32 - 1.0)) / columns as f32)
+        .min(preferred_size)
+        .clamp(CELL_MIN, CELL_MAX);
     (columns, card_size)
 }
 
@@ -30,23 +32,38 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     if !app.settings_manager.get().show_file_sidebar {
         app.queue_drop_rect = None;
         app.sidebar_last_current_index = None;
+        app.sidebar_actual_width = 0.0;
+        app.sidebar_resize_dragging = false;
         return;
     }
 
     app.collect_sidebar_thumbnails(ctx);
     app.ensure_favorites_loaded();
 
-    let default_width = app
-        .settings_manager
-        .get()
-        .file_sidebar_width
-        .clamp(260.0, 2048.0);
+    let window_width = ctx.input(|input| {
+        input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+    });
+    // The 50% value is a ceiling, not the target width. Keep the user's
+    // saved width whenever it fits, with a modest minimum for usable controls.
+    let max_sidebar_width = (window_width * 0.5).max(1.0);
+    let min_sidebar_width = 90.0_f32.min(max_sidebar_width);
+    let default_width = app.settings_manager.get().file_sidebar_width
+        .clamp(min_sidebar_width, max_sidebar_width);
 
     let response = egui::SidePanel::left("file_sidebar")
         .resizable(true)
         .default_width(default_width)
-        .width_range(260.0..=2048.0)
+        .width_range(min_sidebar_width..=max_sidebar_width)
         .show(ctx, |ui| {
+            // Lock this frame's content UI to the width allocated by SidePanel.
+            // Individual tabs contain different controls (some with long labels);
+            // those controls must wrap/clip within this width rather than
+            // establishing a new minimum width for the sidebar when tabs change.
+            let sidebar_content_width = ui.available_width().max(0.0);
+            ui.set_width(sidebar_content_width);
+            ui.set_min_width(0.0);
+            ui.set_max_width(sidebar_content_width);
+
             ui.horizontal(|ui| {
                 ui.heading("JPEG Viewer");
 
@@ -68,22 +85,56 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
             ui.separator();
 
-            ui.horizontal_wrapped(|ui| {
-                if ui.selectable_label(!app.sidebar_queue_tab && !app.sidebar_favorites_tab && !app.sidebar_info_tab, "Browse").clicked() {
-                    app.sidebar_queue_tab = false; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false; app.queue_drop_rect = None;
-                }
-                if ui.selectable_label(app.sidebar_queue_tab, format!("Queue ({})", app.queue_paths.len())).clicked() {
-                    app.sidebar_queue_tab = true; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false;
-                }
-                if ui.selectable_label(app.sidebar_favorites_tab, format!("Favorites ({})", app.favorite_paths.len())).clicked() {
-                    app.sidebar_queue_tab = false; app.sidebar_favorites_tab = true; app.sidebar_info_tab = false;
-                }
-                if ui.selectable_label(app.sidebar_info_tab, "Info").clicked() {
-                    app.sidebar_queue_tab = false; app.sidebar_favorites_tab = false; app.sidebar_info_tab = true; app.queue_drop_rect = None;
-                }
-            });
+            // The tab strip always occupies exactly the sidebar's inner width.
+            // Keep the row and its buttons from imposing a wider minimum size on
+            // the SidePanel; labels are shortened before the buttons can overflow.
+            let tab_available_width = ui.available_width().max(0.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(tab_available_width, 30.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_min_width(0.0);
+                    ui.set_max_width(tab_available_width);
+                    ui.spacing_mut().item_spacing.x = 1.0;
+                    ui.spacing_mut().button_padding.x = 1.0;
+
+                    let tab_width = ((tab_available_width - 3.0).max(0.0) / 4.0).max(0.0);
+                    let (browse_label, queue_label, favorites_label, info_label) = if tab_width >= 118.0 {
+                        ("▦ Browse", "↕ Queue", "★ Favorites", "ⓘ Info")
+                    } else if tab_width >= 72.0 {
+                        ("Browse", "Queue", "Favorites", "Info")
+                    } else if tab_width >= 42.0 {
+                        ("Brw", "Que", "Fav", "Info")
+                    } else {
+                        ("▦", "↕", "★", "ⓘ")
+                    };
+                    let browse = !app.sidebar_queue_tab && !app.sidebar_favorites_tab && !app.sidebar_info_tab;
+                    if ui.add_sized([tab_width, 30.0], egui::Button::selectable(browse, browse_label))
+                        .on_hover_text("Browse images").clicked() {
+                        app.sidebar_queue_tab = false; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false; app.queue_drop_rect = None;
+                    }
+                    if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_queue_tab, queue_label))
+                        .on_hover_text(format!("Queue ({})", app.queue_paths.len())).clicked() {
+                        app.sidebar_queue_tab = true; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false;
+                    }
+                    if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_favorites_tab, favorites_label))
+                        .on_hover_text(format!("Favorites ({})", app.favorite_paths.len())).clicked() {
+                        app.sidebar_queue_tab = false; app.sidebar_favorites_tab = true; app.sidebar_info_tab = false;
+                    }
+                    if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_info_tab, info_label))
+                        .on_hover_text("Image information").clicked() {
+                        app.sidebar_queue_tab = false; app.sidebar_favorites_tab = false; app.sidebar_info_tab = true; app.queue_drop_rect = None;
+                    }
+                },
+            );
 
             ui.separator();
+
+            // Keep every tab's content area tied to the panel width. This is
+            // intentionally independent of the active tab's widget contents.
+            let tab_content_width = ui.available_width().max(0.0);
+            ui.set_min_width(0.0);
+            ui.set_max_width(tab_content_width);
 
             if app.sidebar_queue_tab {
                 app.sidebar_last_current_index = None;
@@ -109,10 +160,18 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 app.queue_drop_rect = None;
 
                 ui.label(format!("{} images", app.image_entries.len()));
+                let mut entry_size = app.settings_manager.get().browse_entry_size;
+                ui.horizontal(|ui| {
+                    ui.label("Entry size");
+                    if ui.add(egui::Slider::new(&mut entry_size, 64.0..=240.0).show_value(false).step_by(8.0)).changed() {
+                        let _ = app.settings_manager.update(|settings| settings.browse_entry_size = entry_size);
+                    }
+                    ui.label(if entry_size < 104.0 { "Compact" } else if entry_size < 176.0 { "Medium" } else { "Large" });
+                });
 
                 let entries = app.image_entries.clone();
                 let available = ui.available_width();
-                let (columns, card_size) = fit_cards(available);
+                let (columns, card_size) = fit_cards(available, app.settings_manager.get().browse_entry_size);
 
                 let auto_scroll_current =
                     app.sidebar_last_current_index != Some(app.current_index);
@@ -132,9 +191,15 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                     // don't build thumbnail widgets for rows outside the viewport.
                                     // This is a lightweight form of virtualization: it preserves
                                     // scrolling geometry while avoiding per-card work off-screen.
+                                    let compact_entry = app.settings_manager.get().browse_entry_size < 112.0;
+                                    let estimated_height = if compact_entry {
+                                        card_size / 8.0
+                                    } else {
+                                        card_size
+                                    };
                                     let estimated_rect = egui::Rect::from_min_size(
                                         ui.cursor().min,
-                                        egui::vec2(card_size, card_size),
+                                        egui::vec2(card_size, estimated_height),
                                     );
 
                                     // Scroll to the selected entry even when it is
@@ -150,7 +215,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                     }
 
                                     let clicked = if !ui.is_rect_visible(estimated_rect) {
-                                        ui.allocate_space(egui::vec2(card_size, card_size));
+                                        ui.allocate_space(egui::vec2(card_size, estimated_height));
                                         false
                                     } else {
                                         let name = entry_name(entry);
@@ -164,7 +229,10 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                             // stay consistent between Browse and Queue.
                                             let mut clicked = false;
                                             ui.allocate_ui_with_layout(
-                                                egui::vec2(card_size, card_size),
+                                                egui::vec2(
+                                                    card_size,
+                                                    if entry_size < 112.0 { card_size / 8.0 } else { card_size },
+                                                ),
                                                 egui::Layout::centered_and_justified(
                                                     egui::Direction::TopDown,
                                                 ),
@@ -178,6 +246,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         auto_scroll_current
                                                             && index == app.current_index,
                                                         card_size,
+                                                        entry_size,
                                                         Some(index),
                                                         0,
                                                         ctx,
@@ -280,6 +349,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             app.request_sidebar_archive_thumbnail(
                                                                 entry.clone(),
                                                                 key.clone(),
+                                                                ctx,
                                                             );
                                                         }
                                                     }
@@ -537,13 +607,48 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         app.sidebar_drag_index = None;
     }
 
-    let width = response.response.rect.width().clamp(260.0, 2048.0);
-    let previous = app.settings_manager.get().file_sidebar_width;
+    let panel_rect = response.response.rect;
+    let width = panel_rect.width().clamp(min_sidebar_width, max_sidebar_width);
+    app.sidebar_actual_width = width;
 
-    if !ctx.input(|input| input.pointer.any_down()) && (width - previous).abs() > 2.0 {
-        let _ = app
-            .settings_manager
-            .update(|settings| settings.file_sidebar_width = width);
+    // Track resizing only when the initial pointer press lands on the panel's
+    // right-edge resize grip. A generic panel drag can also be triggered by
+    // dragging cards or selecting content, which caused width changes to be
+    // accidentally persisted during ordinary sidebar interaction.
+    let (primary_pressed, primary_down, any_released, press_origin) = ctx.input(|input| (
+        input.pointer.button_pressed(egui::PointerButton::Primary),
+        input.pointer.button_down(egui::PointerButton::Primary),
+        input.pointer.any_released(),
+        input.pointer.press_origin(),
+    ));
+
+    if primary_pressed {
+        app.sidebar_resize_dragging = press_origin.is_some_and(|origin| {
+            (origin.x - panel_rect.right()).abs() <= 14.0
+                && origin.y >= panel_rect.top()
+                && origin.y <= panel_rect.bottom()
+        });
+    }
+
+    if app.sidebar_resize_dragging && primary_down {
+        let previous = app.settings_manager.get().file_sidebar_width;
+        if (width - previous).abs() > 1.0 {
+            app.settings_manager.settings.file_sidebar_width = width;
+            app.sidebar_width_needs_save = true;
+        }
+    }
+
+    if app.sidebar_resize_dragging && any_released {
+        if app.sidebar_width_needs_save {
+            let _ = app.settings_manager.save();
+        }
+        app.sidebar_width_needs_save = false;
+        app.sidebar_resize_dragging = false;
+    } else if !primary_down && !ctx.input(|input| input.pointer.any_down()) && app.sidebar_width_needs_save {
+        // Recovery path if the release happened outside the application window.
+        let _ = app.settings_manager.save();
+        app.sidebar_width_needs_save = false;
+        app.sidebar_resize_dragging = false;
     }
 }
 

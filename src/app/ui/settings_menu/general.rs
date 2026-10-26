@@ -36,6 +36,31 @@ pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
 
     render_startup_fullscreen(app, ui);
     ui.add_space(4.0);
+    render_start_centered(app, ui);
+    ui.add_space(8.0);
+    render_thumbnail_workers(app, ui);
+    ui.add_space(8.0);
+}
+
+
+fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut centered = app.settings_manager.get().start_centered;
+    if ui.checkbox(&mut centered, "Start centered on screen").changed() {
+        let _ = app.settings_manager.update(|settings| settings.start_centered = centered);
+    }
+}
+
+fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let current = app.settings_manager.get().thumbnail_workers;
+    let mut workers = current as u32;
+    ui.horizontal(|ui| {
+        ui.label("Thumbnail workers");
+        ui.add(egui::Slider::new(&mut workers, 1..=8).show_value(true));
+    });
+    if workers as usize != current {
+        let _ = app.settings_manager.update(|settings| settings.thumbnail_workers = workers as usize);
+    }
+    ui.label("Default: 3. Restart the app to apply worker-count changes.");
 }
 
 // Invert Scroll Zoom

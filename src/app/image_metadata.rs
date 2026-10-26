@@ -262,30 +262,13 @@ impl ViewerApp {
 }
 
 fn metadata_row(ui: &mut egui::Ui, label: &str, value: &str) {
-    ui.horizontal(|ui| {
+    ui.horizontal_top(|ui| {
         ui.label(egui::RichText::new(label).size(11.0).weak());
         ui.add_space(6.0);
-        let available = ui.available_width().max(24.0);
-        let max_chars = (available / 7.0).floor() as usize;
-        let display = middle_ellipsis(value, max_chars);
-        ui.add(egui::Label::new(egui::RichText::new(display).size(12.0)))
+        ui.add(egui::Label::new(egui::RichText::new(value).size(12.0)).wrap())
             .on_hover_text(value);
     });
     ui.add_space(3.0);
-}
-
-fn middle_ellipsis(value: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = value.chars().collect();
-    if chars.len() <= max_chars {
-        return value.to_string();
-    }
-    if max_chars < 5 {
-        return chars.into_iter().take(max_chars).collect();
-    }
-    let keep = max_chars - 3;
-    let left = (keep * 3 + 2) / 5;
-    let right = keep - left;
-    format!("{}...{}", chars[..left].iter().collect::<String>(), chars[chars.len() - right..].iter().collect::<String>())
 }
 
 fn format_number(value: u64) -> String {
@@ -356,20 +339,29 @@ fn read_exif(bytes: &[u8]) -> (Vec<(String, String)>, Option<(f64, f64)>) {
         "Model",
         "LensModel",
         "DateTimeOriginal",
+        "DateTimeDigitized",
         "ExposureTime",
         "FNumber",
         "PhotographicSensitivity",
         "ISOSpeedRatings",
         "FocalLength",
+        "FocalLengthIn35mmFilm",
         "ExposureBiasValue",
         "Flash",
         "Orientation",
         "Software",
         "Artist",
         "Copyright",
+        "WhiteBalance",
+        "MeteringMode",
+        "ExposureProgram",
+        "ColorSpace",
+        "ImageDescription",
+        "PixelXDimension",
+        "PixelYDimension",
     ];
 
-    let mut fields = Vec::new();
+    let mut fields: Vec<(String, String)> = Vec::new();
     for field in exif.fields() {
         let tag_name = format!("{:?}", field.tag);
         if wanted.iter().any(|name| *name == tag_name) {
@@ -377,15 +369,18 @@ fn read_exif(bytes: &[u8]) -> (Vec<(String, String)>, Option<(f64, f64)>) {
             if !value.is_empty() {
                 let display_name = match tag_name.as_str() {
                     "PhotographicSensitivity" | "ISOSpeedRatings" => "ISO",
-                    "DateTimeOriginal" => "Date Taken",
+                    "DateTimeOriginal" | "DateTimeDigitized" => "Date Taken",
                     "LensModel" => "Lens",
+                    "FocalLengthIn35mmFilm" => "35mm Focal Length",
+                    "ImageDescription" => "Description",
+                    "PixelXDimension" => "EXIF Width",
+                    "PixelYDimension" => "EXIF Height",
                     "FNumber" => "Aperture",
                     "ExposureTime" => "Shutter Speed",
                     "FocalLength" => "Focal Length",
                     "ExposureBiasValue" => "Exposure Bias",
                     other => other,
                 };
-                let mut fields: Vec<(String, String)> = Vec::new();
                 if !fields.iter().any(|entry| entry.0 == display_name) {
                     fields.push((display_name.to_string(), value));
                 }
