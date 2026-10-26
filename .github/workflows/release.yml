@@ -631,7 +631,13 @@ jobs:
           wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.appimage_arch }}.AppImage" -O linuxdeploy.AppImage
           chmod +x linuxdeploy.AppImage
           ARCH="${{ matrix.appimage_arch }}" ./linuxdeploy.AppImage --appdir AppDir --desktop-file AppDir/com.jpegviewer.JpegViewer.desktop --icon-file AppDir/jpeg_viewer.png --output appimage
-          mv JPEG-Viewer*.AppImage "JPEG-View-Linux-${{ matrix.arch }}.AppImage"
+          APPIMAGE_FILE="$(find . -maxdepth 1 -type f -iname '*.appimage' ! -name 'linuxdeploy.AppImage' -print -quit)"
+          if [ -z "$APPIMAGE_FILE" ]; then
+            echo "linuxdeploy did not produce an AppImage; files in workspace:"
+            find . -maxdepth 2 -type f -print
+            exit 1
+          fi
+          mv "$APPIMAGE_FILE" "JPEG-View-Linux-${{ matrix.arch }}.AppImage"
       - uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Linux-${{ matrix.arch }}-AppImage
@@ -725,6 +731,7 @@ jobs:
             pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git
             useradd -m builder || true
             sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
+            sed -i "s/cargo build --release --locked/cargo build --release/" packaging/arch/PKGBUILD
             sed -i "s|source=.*|source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${GITHUB_REF_NAME}')|" packaging/arch/PKGBUILD
             mkdir -p /tmp/arch-build
             cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
@@ -763,7 +770,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
           sudo flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install --system --noninteractive -y flathub org.gnome.Platform//48 org.gnome.Sdk//48 org.freedesktop.Sdk.Extension.rust-stable//24.08
+          sudo flatpak install --system --noninteractive -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
       - name: Generate Flatpak Cargo sources
         run: |
           python3 -m pip install --user --break-system-packages requests tomlkit aiohttp
