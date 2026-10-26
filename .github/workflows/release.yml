@@ -726,35 +726,39 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           IMAGE=archlinux:latest
           if [ "${{ matrix.arch }}" = "ARM64" ]; then IMAGE=menci/archlinuxarm:base-devel; fi
-          docker run --privileged --rm --user 0:0 -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
+          docker run --rm --user 0:0 -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
             if [ "$(uname -m)" = "aarch64" ]; then pacman-key --init; pacman-key --populate archlinuxarm || true; fi
-            pacman -Syu --noconfirm --needed base-devel shadow rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar
-            # Install shadow explicitly: it provides useradd/userdel on minimal
-            # Arch container images. Use a fresh account name rather than relying
-            # on the image's pre-existing builder accounts.
-            if getent passwd jpegviewbuild >/dev/null; then userdel -r jpegviewbuild || true; fi
-            if getent group jpegviewbuild >/dev/null; then groupdel jpegviewbuild || true; fi
-            useradd --create-home --user-group --shell /bin/bash jpegviewbuild
-            getent passwd jpegviewbuild | awk -F: 'NF == 7 && $1 == "jpegviewbuild" && $7 == "/bin/bash" { found=1 } END { exit !found }'
-            getent group jpegviewbuild >/dev/null
+            # Install all PKGBUILD runtime/build dependencies as root. makepkg
+            # itself must run as an unprivileged user; pacman sync-deps is not
+            # needed because the full dependency set is installed here.
+            pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar
+            getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
             sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
             sed -i "s/cargo build --release --locked/cargo build --release/" packaging/arch/PKGBUILD
-            sed -i "s|source=.*|source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${GITHUB_REF_NAME}')|" packaging/arch/PKGBUILD
-            mkdir -p /tmp/arch-build
+            sed -i "s|^source=.*|source=(\"jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${GITHUB_REF_NAME}\")|" packaging/arch/PKGBUILD
+            mkdir -p /tmp/arch-build /tmp/arch-home /src/out
             cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
-            chown -R jpegviewbuild:jpegviewbuild /tmp/arch-build
-            # Build with a clean environment so host cross-linker settings do not leak
-            # into the native Arch build. Cargo's native C dependencies must use
-            # the toolchain provided by the Arch container.
-            su jpegviewbuild -c "cd /tmp/arch-build && env -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_RUSTFLAGS -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS makepkg --syncdeps --noconfirm --cleanbuild"
-            mkdir -p /src/out
-            su jpegviewbuild -c "cd /tmp/arch-build && makepkg --packagelist" | while IFS= read -r PACKAGE_PATH; do
-              case "$PACKAGE_PATH" in
-                /*) ;;
-                *) PACKAGE_PATH="/tmp/arch-build/$PACKAGE_PATH" ;;
-              esac
-              [ -f "$PACKAGE_PATH" ] && cp "$PACKAGE_PATH" /src/out/
-            done
+            chown -R nobody:nobody /tmp/arch-build /tmp/arch-home
+            # The ArchWiki explicitly recommends runuser -u nobody when no
+            # regular build account is available. This avoids useradd and writes
+            # to /etc/passwd, which failed in the hosted container.
+            cd /tmp/arch-build
+            runuser -u nobody -- env \
+              -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
+              -u CARGO_BUILD_RUSTFLAGS \
+              -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER \
+              -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER \
+              -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
+              -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
+              HOME=/tmp/arch-home USER=nobody LOGNAME=nobody \
+              makepkg --noconfirm --cleanbuild
+            PACKAGE_FILE="$(find /tmp/arch-build -maxdepth 1 -type f -name "*.pkg.tar.zst" ! -name "*-debug-*.pkg.tar.zst" -print -quit)"
+            if [ -z "$PACKAGE_FILE" ]; then
+              echo "No Arch package produced; build directory contents:"
+              find /tmp/arch-build -maxdepth 2 -type f -print
+              exit 1
+            fi
+            cp "$PACKAGE_FILE" /src/out/
           '
           PACKAGE_FILE="$(find out -maxdepth 1 -type f -name '*.pkg.tar.zst' ! -name '*-debug-*.pkg.tar.zst' -print -quit)"
           if [ -z "$PACKAGE_FILE" ]; then
