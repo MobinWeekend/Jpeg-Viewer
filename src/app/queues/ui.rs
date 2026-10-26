@@ -618,7 +618,6 @@ impl ViewerApp {
                             match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) { Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()), Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")) }
                             ui.close();
                         }
-                        if ui.button("Open containing folder").clicked() { if let Err(error) = open::that(path.parent().unwrap_or(path)) { self.queue_status = Some(format!("Could not open folder: {error}")); } ui.close(); }
                     });
                 }
             }
@@ -662,12 +661,6 @@ impl ViewerApp {
                         match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(path.display().to_string())) {
                             Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
                             Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
-                        }
-                        ui.close();
-                    }
-                    if ui.button("Open containing folder").clicked() {
-                        if let Err(error) = open::that(path.parent().unwrap_or(path)) {
-                            self.queue_status = Some(format!("Could not open folder: {error}"));
                         }
                         ui.close();
                     }
