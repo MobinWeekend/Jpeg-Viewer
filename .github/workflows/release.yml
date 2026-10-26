@@ -756,7 +756,11 @@ jobs:
               -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
               HOME=/tmp/arch-home USER=nobody LOGNAME=nobody \
               makepkg --noconfirm --cleanbuild
-            PACKAGE_FILE="$(find /tmp/arch-build -maxdepth 1 -type f -name "*.pkg.tar.zst" ! -name "*-debug-*.pkg.tar.zst" -print -quit)"
+            # Arch Linux ARM may configure makepkg to emit .pkg.tar.xz while
+            # x86_64 emits .pkg.tar.zst. Accept either supported package format.
+            PACKAGE_FILE="$(find /tmp/arch-build -maxdepth 1 -type f \
+              \( -name "*.pkg.tar.zst" -o -name "*.pkg.tar.xz" \) \
+              ! -name "*-debug-*.pkg.tar.*" -print -quit)"
             if [ -z "$PACKAGE_FILE" ]; then
               echo "No Arch package produced; build directory contents:"
               find /tmp/arch-build -maxdepth 2 -type f -print
@@ -764,17 +768,20 @@ jobs:
             fi
             cp "$PACKAGE_FILE" /src/out/
           '
-          PACKAGE_FILE="$(find out -maxdepth 1 -type f -name '*.pkg.tar.zst' ! -name '*-debug-*.pkg.tar.zst' -print -quit)"
+          PACKAGE_FILE="$(find out -maxdepth 1 -type f \
+            \( -name '*.pkg.tar.zst' -o -name '*.pkg.tar.xz' \) \
+            ! -name '*-debug-*.pkg.tar.*' -print -quit)"
           if [ -z "$PACKAGE_FILE" ]; then
             echo "No Arch package found; output directory contents:"
             find out -maxdepth 1 -type f -print
             exit 1
           fi
-          cp "$PACKAGE_FILE" "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst"
+          PACKAGE_SUFFIX="${PACKAGE_FILE##*.pkg.tar}"
+          cp "$PACKAGE_FILE" "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar${PACKAGE_SUFFIX}"
       - uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Arch-${{ matrix.arch }}
-          path: JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst
+          path: JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.*
 
   # ============================================================
   # Flatpak bundles
