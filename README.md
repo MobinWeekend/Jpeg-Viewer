@@ -18,7 +18,8 @@ A GPU-accelerated image viewer written in Rust, built to keep image browsing res
 - **Broad image-format support**, including AVIF, HEIC/HEIF, JPEG XL, SVG, and camera RAW formats
 - **Archive browsing** for images in ZIP, 7z, and RAR archives without extracting them first
 - **GIF playback** with playback and speed controls
-- **Configurable slideshows** with timing, looping, transitions, and pan/zoom motion effects
+- **Configurable slideshows** with timing, looping, transitions, pan/zoom motion effects, and optional system-sleep prevention (enabled by default)
+- **Session-only slideshow playback** so closing and reopening the app never resumes playback automatically
 - **Browse, Queue, and Favorites** collections for navigating and organizing image selections
 - **Image editing** with crop, rotate, flip, color adjustments, and export options for supported images
 - **Background decoding and preloading** for smoother navigation

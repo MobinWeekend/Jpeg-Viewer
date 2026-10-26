@@ -44,8 +44,9 @@ impl eframe::App for ViewerApp {
         }
 
         // Load slideshow settings on first run
-        if !self.slideshow_has_advanced {
+        if !self.slideshow_settings_loaded {
             self.load_slideshow_settings();
+            self.slideshow_settings_loaded = true;
         }
 
         // ========== STARTUP WINDOW PLACEMENT ==========
@@ -128,13 +129,15 @@ impl eframe::App for ViewerApp {
                     ctx.request_repaint();
                 } else {
                     self.slideshow_enabled = false;
-                    let _ = self.settings_manager.update(|settings| {
-                        settings.slideshow_enabled = false;
-                    });
                     self.update_window_title(ctx);
                 }
             }
         }
+
+        // Prevent system sleep only while slideshow playback is active and the option is enabled.
+        let prevent_sleep = self.slideshow_enabled
+            && self.settings_manager.get().prevent_sleep_during_slideshow;
+        self.power_inhibitor.set_active(prevent_sleep);
 
         // ========== PRELOAD TASKS ==========
         self.process_preload_tasks(ctx);

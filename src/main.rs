@@ -10,6 +10,7 @@ mod image_core;
 mod image_entry;
 mod loader;
 mod settings;
+mod power;
 mod shortcuts;
 mod sort;
 mod slideshow;

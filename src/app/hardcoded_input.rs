@@ -246,9 +246,6 @@ impl ViewerApp {
         // Stop slideshow when dropping files
         if self.slideshow_enabled {
             self.slideshow_enabled = false;
-            let _ = self.settings_manager.update(|settings| {
-                settings.slideshow_enabled = false;
-            });
             self.update_window_title(ctx);
         }
 

@@ -156,7 +156,6 @@ impl ViewerApp {
          */
         if self.queue_mode && !self.queue_repeat && self.current_index + 1 >= len {
             self.slideshow_enabled = false;
-            let _ = self.settings_manager.update(|settings| settings.slideshow_enabled = false);
             self.update_window_title(ctx);
             return;
         }

@@ -13,12 +13,21 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             let mut enabled = app.slideshow_enabled;
             if crate::ui_theme::switch(ui, &mut enabled, "Enable Slideshow") {
                 app.slideshow_enabled = enabled;
-                let _ = app.settings_manager.update(|settings| {
-                    settings.slideshow_enabled = enabled;
-                });
                 app.update_window_title(ctx);
             }
         });
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+            let mut prevent_sleep = app.settings_manager.get().prevent_sleep_during_slideshow;
+            if crate::ui_theme::switch(ui, &mut prevent_sleep, "Prevent system sleep") {
+                let _ = app.settings_manager.update(|settings| {
+                    settings.prevent_sleep_during_slideshow = prevent_sleep;
+                });
+            }
+        });
+        ui.label(egui::RichText::new("Keeps the computer awake while a slideshow is playing.").small().weak());
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {

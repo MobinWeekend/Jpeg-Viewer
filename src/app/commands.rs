@@ -40,9 +40,6 @@ impl ViewerApp {
                 // Stop slideshow when manually navigating
                 if self.slideshow_enabled {
                     self.slideshow_enabled = false;
-                    let _ = self.settings_manager.update(|settings| {
-                        settings.slideshow_enabled = false;
-                    });
                     self.update_window_title(ctx);
                 }
                 self.navigate_images(ctx, 1);
@@ -51,9 +48,6 @@ impl ViewerApp {
                 // Stop slideshow when manually navigating
                 if self.slideshow_enabled {
                     self.slideshow_enabled = false;
-                    let _ = self.settings_manager.update(|settings| {
-                        settings.slideshow_enabled = false;
-                    });
                     self.update_window_title(ctx);
                 }
                 self.navigate_images(ctx, -1);
@@ -93,10 +87,6 @@ impl ViewerApp {
                     // Stop slideshow when jumping
                     if self.slideshow_enabled {
                         self.slideshow_enabled = false;
-
-                        let _ = self.settings_manager.update(|settings| {
-                            settings.slideshow_enabled = false;
-                        });
                     }
 
                     self.navigate_to_index(ctx, 0);
@@ -107,10 +97,6 @@ impl ViewerApp {
                     // Stop slideshow when jumping
                     if self.slideshow_enabled {
                         self.slideshow_enabled = false;
-
-                        let _ = self.settings_manager.update(|settings| {
-                            settings.slideshow_enabled = false;
-                        });
                     }
 
                     self.navigate_to_index(ctx, self.image_entries.len() - 1);

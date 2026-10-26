@@ -39,9 +39,6 @@ impl ViewerApp {
         }
         if self.slideshow_enabled {
             self.slideshow_enabled = false;
-            let _ = self
-                .settings_manager
-                .update(|settings| settings.slideshow_enabled = false);
         }
         if self.is_loading() || self.is_gif || self.virtual_texture.is_some() {
             self.edit_status = Some(

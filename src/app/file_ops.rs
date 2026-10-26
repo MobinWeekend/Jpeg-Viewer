@@ -78,9 +78,6 @@ impl ViewerApp {
     fn stop_slideshow(&mut self) {
         if self.slideshow_enabled {
             self.slideshow_enabled = false;
-            let _ = self.settings_manager.update(|settings| {
-                settings.slideshow_enabled = false;
-            });
         }
     }
 

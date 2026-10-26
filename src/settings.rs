@@ -26,7 +26,8 @@ pub struct AppSettings {
     pub unfocused_idle_timeout_ms: u64, // Timeout when window is unfocused
     pub unfocused_idle_fps_limit: f32,  // FPS limit when window is unfocused and idle
     // Slideshow settings
-    pub slideshow_enabled: bool,
+    /// Whether slideshow playback should inhibit system sleep.
+    pub prevent_sleep_during_slideshow: bool,
     pub slideshow_interval_ms: u64,
     pub slideshow_loop: bool,
     pub slideshow_random: bool,
@@ -84,7 +85,7 @@ impl Default for AppSettings {
             idle_timeout_ms: 1000,
             unfocused_idle_timeout_ms: 500,
             unfocused_idle_fps_limit: 0.0,
-            slideshow_enabled: false,
+            prevent_sleep_during_slideshow: true,
             slideshow_interval_ms: 3000,
             slideshow_loop: true,
             slideshow_random: false,
@@ -318,9 +319,9 @@ impl SettingsManager {
                             }
                         }
                     }
-                    // Read slideshow settings
-                    if let Some(value) = section.get("slideshow_enabled") {
-                        settings.slideshow_enabled = Self::parse_bool(value);
+                    // Slideshow playback state is intentionally transient and is never restored.
+                    if let Some(value) = section.get("prevent_sleep_during_slideshow") {
+                        settings.prevent_sleep_during_slideshow = Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("slideshow_interval_ms") {
                         if let Ok(interval) = value.parse::<u64>() {
@@ -539,12 +540,8 @@ impl SettingsManager {
 
         // Slideshow settings
         section.set(
-            "slideshow_enabled",
-            if settings.slideshow_enabled {
-                "true"
-            } else {
-                "false"
-            },
+            "prevent_sleep_during_slideshow",
+            if settings.prevent_sleep_during_slideshow { "true" } else { "false" },
         );
         section.set(
             "slideshow_interval_ms",
@@ -894,7 +891,7 @@ mod tests {
         assert_eq!(settings.idle_timeout_ms, 1000);
         assert_eq!(settings.unfocused_idle_timeout_ms, 500);
         assert_eq!(settings.unfocused_idle_fps_limit, 0.0);
-        assert!(!settings.slideshow_enabled);
+        assert!(settings.prevent_sleep_during_slideshow);
         assert_eq!(settings.slideshow_interval_ms, 3000);
         assert!(settings.slideshow_loop);
         assert!(!settings.slideshow_random);

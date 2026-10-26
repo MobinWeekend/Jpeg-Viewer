@@ -110,7 +110,8 @@ Open Settings with **Tab**. Settings are saved automatically unless otherwise no
 
 | Option | What it does |
 |---|---|
-| **Enable Slideshow** | Starts/stops automatic image advance. Shortcut: **L**. |
+| **Enable Slideshow** | Starts/stops automatic image advance for the current session. Shortcut: **L**. Playback does not resume after restarting the app. |
+| **Prevent system sleep** | Keeps the computer awake during slideshow playback. Enabled by default. |
 | **Interval** | Sets how long each image remains on screen, from 0.5 to 60 seconds. |
 | **Loop** | Restarts the slideshow after the last image. |
 | **Transition — Instant** | Switches images without a transition. |

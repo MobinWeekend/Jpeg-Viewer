@@ -141,6 +141,7 @@ pub struct ViewerApp {
 
     // ====== SLIDESHOW ======
     pub slideshow_enabled: bool,
+    pub power_inhibitor: crate::power::PowerInhibitor,
     pub slideshow_interval: Duration,
     pub slideshow_loop: bool,
     pub slideshow_random: bool,
@@ -149,6 +150,7 @@ pub struct ViewerApp {
     pub slideshow_motion_strength: f32,
     pub slideshow_last_advance: Instant,
     pub slideshow_has_advanced: bool,
+    pub slideshow_settings_loaded: bool,
     /// Outgoing image retained while the next slideshow image transitions in.
     pub slideshow_previous_texture: Option<egui::TextureHandle>,
     /// Last rendered destination rectangle for the outgoing image, preserving its zoom and pan.
@@ -363,7 +365,8 @@ impl Default for ViewerApp {
             is_animating: false,
 
             // ====== SLIDESHOW ======
-            slideshow_enabled: settings.slideshow_enabled,
+            slideshow_enabled: false,
+            power_inhibitor: crate::power::PowerInhibitor::default(),
             slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
             slideshow_loop: settings.slideshow_loop,
             slideshow_random: settings.slideshow_random,
@@ -373,6 +376,7 @@ impl Default for ViewerApp {
 
             slideshow_last_advance: now,
             slideshow_has_advanced: false,
+            slideshow_settings_loaded: false,
             slideshow_previous_texture: None,
             slideshow_previous_rect: None,
             slideshow_transition_started: None,
@@ -570,11 +574,6 @@ impl ViewerApp {
             self.slideshow_has_advanced = false;
         }
 
-        let enabled = self.slideshow_enabled;
-
-        let _ = self.settings_manager.update(|settings| {
-            settings.slideshow_enabled = enabled;
-        });
     }
 
     pub fn toggle_compactui(&mut self) {
@@ -612,7 +611,7 @@ impl ViewerApp {
     pub fn load_slideshow_settings(&mut self) {
         let settings = self.settings_manager.get();
 
-        self.slideshow_enabled = settings.slideshow_enabled;
+        self.slideshow_enabled = false;
 
         self.slideshow_interval = Duration::from_millis(settings.slideshow_interval_ms);
 
