@@ -726,7 +726,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           IMAGE=archlinux:latest
           if [ "${{ matrix.arch }}" = "ARM64" ]; then IMAGE=menci/archlinuxarm:base-devel; fi
-          docker run --privileged --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
+          docker run --privileged --rm --user 0:0 -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
             if [ "$(uname -m)" = "aarch64" ]; then pacman-key --init; pacman-key --populate archlinuxarm || true; fi
             pacman -Syu --noconfirm --needed base-devel shadow rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar
             # Install shadow explicitly: it provides useradd/userdel on minimal
