@@ -32,7 +32,7 @@ modules:
       - cargo build --offline --release --locked
       - install -Dm755 target/release/jpeg_viewer /app/bin/jpeg_viewer
 
-      - install -Dm644 assets/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
+      - install -Dm644 packaging/icons/512x512/com.jpegviewer.JpegViewer.png /app/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
 
       - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.metainfo.xml /app/share/metainfo/com.jpegviewer.JpegViewer.metainfo.xml
 

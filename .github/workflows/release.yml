@@ -729,22 +729,25 @@ jobs:
           docker run --privileged --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
             if [ "$(uname -m)" = "aarch64" ]; then pacman-key --init; pacman-key --populate archlinuxarm || true; fi
             pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar
-            # Create a complete non-root account for makepkg (required on both Arch images).
-            if ! getent passwd builder >/dev/null; then useradd --create-home --user-group --shell /bin/bash builder; fi
-            getent passwd builder >/dev/null
-            getent group builder >/dev/null
+            # Use a dedicated account instead of relying on a possibly malformed
+            # pre-existing "builder" entry in the upstream container image.
+            if getent passwd jvbuilder >/dev/null; then userdel -r jvbuilder || true; fi
+            if getent group jvbuilder >/dev/null; then groupdel jvbuilder || true; fi
+            useradd --create-home --user-group --shell /bin/bash jvbuilder
+            test "$(getent passwd jvbuilder | cut -d: -f7)" = "/bin/bash"
+            getent group jvbuilder >/dev/null
             sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
             sed -i "s/cargo build --release --locked/cargo build --release/" packaging/arch/PKGBUILD
             sed -i "s|source=.*|source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${GITHUB_REF_NAME}')|" packaging/arch/PKGBUILD
             mkdir -p /tmp/arch-build
             cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
-            chown -R builder:builder /tmp/arch-build
+            chown -R jvbuilder:jvbuilder /tmp/arch-build
             # Build with a clean environment so host cross-linker settings do not leak
             # into the native Arch build. Cargo's native C dependencies must use
             # the toolchain provided by the Arch container.
-            su builder -c "cd /tmp/arch-build && env -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_RUSTFLAGS -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS makepkg --syncdeps --noconfirm --cleanbuild"
+            su jvbuilder -c "cd /tmp/arch-build && env -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_RUSTFLAGS -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS makepkg --syncdeps --noconfirm --cleanbuild"
             mkdir -p /src/out
-            su builder -c "cd /tmp/arch-build && makepkg --packagelist" | while IFS= read -r PACKAGE_PATH; do
+            su jvbuilder -c "cd /tmp/arch-build && makepkg --packagelist" | while IFS= read -r PACKAGE_PATH; do
               case "$PACKAGE_PATH" in
                 /*) ;;
                 *) PACKAGE_PATH="/tmp/arch-build/$PACKAGE_PATH" ;;
