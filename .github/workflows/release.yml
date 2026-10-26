@@ -568,10 +568,6 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Set version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cargo set-version "$VERSION"
       - name: Build
         run: cargo build --release --locked --target "${{ matrix.rust_target }}"
       - name: Package app bundle
@@ -620,8 +616,6 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
       - uses: Swatinem/rust-cache@v2
-      - name: Set version
-        run: cargo set-version "${GITHUB_REF_NAME#v}"
       - name: Build
         run: cargo build --release --locked --target "${{ matrix.rust_target }}"
       - name: Build AppImage
@@ -669,7 +663,6 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo set-version "${GITHUB_REF_NAME#v}"
       - run: cargo build --release --locked --target "${{ matrix.rust_target }}"
       - name: Create RPM staging tree
         run: |
@@ -725,7 +718,7 @@ jobs:
       - name: Build package in Arch Linux container
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          docker run --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -v "$PWD:/src" -w /src archlinux:latest bash -lc '
+          docker run --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src archlinux:latest bash -lc '
             pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git
             useradd -m builder || true
             sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
@@ -764,9 +757,9 @@ jobs:
       - name: Install Flatpak tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
-          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak --user install -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          sudo flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --system --noninteractive -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.rust-stable//25.08
       - name: Generate Flatpak Cargo sources
         run: |
           python3 -m pip install --user --break-system-packages requests tomlkit
@@ -774,7 +767,7 @@ jobs:
           python3 /tmp/flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
       - name: Build Flatpak bundle
         run: |
-          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build-dir packaging/flatpak/com.jpegviewer.JpegViewer.yml
+          flatpak-builder --force-clean --install-deps-from=flathub --repo=repo build-dir packaging/flatpak/com.jpegviewer.JpegViewer.yml
           flatpak build-bundle repo "JPEG-View-Linux-${{ matrix.arch }}.flatpak" com.jpegviewer.JpegViewer
       - uses: actions/upload-artifact@v6
         with:
