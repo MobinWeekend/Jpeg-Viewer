@@ -736,12 +736,22 @@ jobs:
             mkdir -p /tmp/arch-build
             cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
             chown -R builder:builder /tmp/arch-build
-            su builder -c "cd /tmp/arch-build && unset CC CXX RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER && makepkg --syncdeps --noconfirm --cleanbuild"
+            # Build with a clean environment so host cross-linker settings do not leak
+            # into the native Arch build. Cargo's native C dependencies must use
+            # the toolchain provided by the Arch container.
+            su builder -c "cd /tmp/arch-build && env -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_RUSTFLAGS -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS makepkg --syncdeps --noconfirm --cleanbuild"
             mkdir -p /src/out
-            PACKAGE_PATH="$(su builder -c "cd /tmp/arch-build && makepkg --packagelist")"
-            cp "$PACKAGE_PATH" /src/out/
+            su builder -c "cd /tmp/arch-build && makepkg --packagelist" | while IFS= read -r PACKAGE_PATH; do
+              [ -f "$PACKAGE_PATH" ] && cp "$PACKAGE_PATH" /src/out/
+            done
           '
-          cp out/*.pkg.tar.zst "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst"
+          PACKAGE_FILE="$(find out -maxdepth 1 -type f -name '*.pkg.tar.zst' ! -name '*-debug-*.pkg.tar.zst' -print -quit)"
+          if [ -z "$PACKAGE_FILE" ]; then
+            echo "No Arch package found; output directory contents:"
+            find out -maxdepth 1 -type f -print
+            exit 1
+          fi
+          cp "$PACKAGE_FILE" "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst"
       - uses: actions/upload-artifact@v6
         with:
           name: JPEG-View-Arch-${{ matrix.arch }}

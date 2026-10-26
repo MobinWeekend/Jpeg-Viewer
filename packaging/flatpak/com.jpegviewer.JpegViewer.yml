@@ -41,5 +41,6 @@ modules:
       - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/jpeg-viewer/LICENSE
 
     sources:
+      - cargo-sources.json
       - type: dir
         path: ../..
