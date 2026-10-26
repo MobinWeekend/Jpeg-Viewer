@@ -8,10 +8,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
         let mut show_titlebar = app.settings_manager.get().show_titlebar;
-        if ui
-            .checkbox(&mut show_titlebar, "Show Title Bar - WIP")
-            .changed()
-        {
+        if crate::ui_theme::switch(ui, &mut show_titlebar, "Show Title Bar - WIP") {
             let _ = app.settings_manager.update(|settings| {
                 settings.show_titlebar = show_titlebar;
             });

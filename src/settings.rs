@@ -37,6 +37,20 @@ pub struct AppSettings {
     pub start_fullscreen: bool,
     pub start_centered: bool,
     pub theme_preference: String,
+    /// Global UI zoom factor (0.75–1.50).
+    pub ui_scale: f32,
+    /// Text-only scale multiplier (0.80–1.40).
+    pub ui_text_scale: f32,
+    /// Accent color preset: teal, blue, purple, orange, rose.
+    pub ui_accent_color: String,
+    /// Main image-view background: dark, light, or custom:#RRGGBB.
+    pub main_view_background: String,
+    /// Show a checkerboard behind images to reveal transparent pixels.
+    pub show_alpha_checkerboard: bool,
+    /// Checkerboard tile size in logical points (8-64).
+    pub alpha_checkerboard_size: f32,
+    /// Checkerboard contrast multiplier (0.25-1.5).
+    pub alpha_checkerboard_brightness: f32,
     // virtual texture
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
@@ -80,6 +94,13 @@ impl Default for AppSettings {
             start_fullscreen: false,
             start_centered: false,
             theme_preference: "system".to_string(),
+            ui_scale: 1.0,
+            ui_text_scale: 1.0,
+            ui_accent_color: "teal".to_string(),
+            main_view_background: "dark".to_string(),
+            show_alpha_checkerboard: true,
+            alpha_checkerboard_size: 18.0,
+            alpha_checkerboard_brightness: 1.0,
             virtual_texture_threshold: 8192,
             tile_size: 1024,
             show_titlebar: true,
@@ -383,6 +404,32 @@ impl SettingsManager {
                             }
                         }
                     }
+                    if let Some(value) = section.get("ui_scale") {
+                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() && (0.75..=1.50).contains(&v) { settings.ui_scale = v; } }
+                    }
+                    if let Some(value) = section.get("ui_text_scale") {
+                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() && (0.80..=1.40).contains(&v) { settings.ui_text_scale = v; } }
+                    }
+                    if let Some(value) = section.get("ui_accent_color") {
+                        if ["teal", "blue", "purple", "orange", "rose"].contains(&value)
+                            || (value.starts_with("custom:#") && value.len() == 14 && value[8..].chars().all(|c| c.is_ascii_hexdigit())) {
+                            settings.ui_accent_color = value.to_string();
+                        }
+                    }
+                    if let Some(value) = section.get("main_view_background") {
+                        if value == "dark" || value == "light" || value == "theme" || (value.starts_with("custom:#") && value.len() == 14 && value[8..].chars().all(|c| c.is_ascii_hexdigit())) {
+                            settings.main_view_background = value.to_string();
+                        }
+                    }
+                    if let Some(value) = section.get("show_alpha_checkerboard") {
+                        settings.show_alpha_checkerboard = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("alpha_checkerboard_size") {
+                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() { settings.alpha_checkerboard_size = v.clamp(8.0, 64.0); } }
+                    }
+                    if let Some(value) = section.get("alpha_checkerboard_brightness") {
+                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() { settings.alpha_checkerboard_brightness = v.clamp(0.25, 1.5); } }
+                    }
                     // theme
                     if let Some(value) = section.get("theme_preference") {
                         if value == "system" || value == "light" || value == "dark" {
@@ -545,6 +592,13 @@ impl SettingsManager {
             },
         );
         section.set("theme_preference", &settings.theme_preference);
+        section.set("ui_scale", settings.ui_scale.to_string());
+        section.set("ui_text_scale", settings.ui_text_scale.to_string());
+        section.set("ui_accent_color", &settings.ui_accent_color);
+        section.set("main_view_background", &settings.main_view_background);
+        section.set("show_alpha_checkerboard", if settings.show_alpha_checkerboard { "true" } else { "false" });
+        section.set("alpha_checkerboard_size", settings.alpha_checkerboard_size.to_string());
+        section.set("alpha_checkerboard_brightness", settings.alpha_checkerboard_brightness.to_string());
         section.set(
             "show_file_sidebar",
             if settings.show_file_sidebar {

@@ -2,6 +2,7 @@
 use super::super::types::ViewerApp;
 use super::storage::absolute_path;
 use crate::helpers::is_supported_image;
+use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 use std::path::{Path, PathBuf};
 
@@ -173,8 +174,8 @@ impl ViewerApp {
                 }
             });
             ui.horizontal(|ui| {
-                ui.checkbox(&mut self.queue_shuffle, "Shuffle next");
-                ui.checkbox(&mut self.queue_repeat, "Repeat queue");
+                crate::ui_theme::switch(ui, &mut self.queue_shuffle, "Shuffle next");
+                crate::ui_theme::switch(ui, &mut self.queue_repeat, "Repeat queue");
             });
         });
         ui.separator();
@@ -556,8 +557,14 @@ impl ViewerApp {
             egui::vec2(card_width, card_height),
             egui::Sense::click_and_drag(),
         );
-        let painter = ui.painter();
         let visuals = ui.visuals().clone();
+        // Short hover animation adds depth without changing layout or hitboxes.
+        let hover_t = ctx.animate_bool_with_time(
+            egui::Id::new(("thumbnail-card-hover", key)),
+            response.hovered(),
+            0.14,
+        );
+        let painter = ui.painter();
         let inner = cell_rect.shrink(3.0);
         let image_rect = if compact {
             let number_width = if context_index.is_some() { 20.0 } else { 0.0 };
@@ -582,11 +589,23 @@ impl ViewerApp {
             )
         };
 
+        if hover_t > 0.01 || selected {
+            let shadow_alpha = (hover_t * 34.0).round() as u8;
+            if shadow_alpha > 0 {
+                painter.rect_filled(
+                    cell_rect.translate(egui::vec2(0.0, 2.0 + hover_t)),
+                    9.0,
+                    egui::Color32::from_black_alpha(shadow_alpha),
+                );
+            }
+        }
         painter.rect_filled(
             cell_rect,
-            4.0,
+            9.0,
             if selected {
                 visuals.selection.bg_fill
+            } else if hover_t > 0.01 {
+                visuals.widgets.hovered.bg_fill
             } else {
                 visuals.widgets.noninteractive.bg_fill
             },
@@ -597,7 +616,7 @@ impl ViewerApp {
                 image_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "📁 Folder",
-                egui::FontId::proportional(14.0),
+                egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0)),
                 visuals.text_color(),
             );
         } else if let Some(texture) = self.sidebar_thumbnails.get(key) {
@@ -627,7 +646,7 @@ impl ViewerApp {
                 image_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 message,
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(scaled_text_size(ui.ctx(), 11.0)),
                 visuals.weak_text_color(),
             );
             if !path.is_dir() && ui.is_rect_visible(image_rect) {
@@ -650,7 +669,7 @@ impl ViewerApp {
                 text_rect.left_center(),
                 egui::Align2::LEFT_CENTER,
                 fit_label(ui, label, (text_rect.width() - 4.0).max(4.0)),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(scaled_text_size(ui.ctx(), 12.0)),
                 visuals.text_color(),
             );
         } else {
@@ -660,7 +679,7 @@ impl ViewerApp {
                 label_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 fit_label(ui, label, (label_rect.width() - 8.0).max(8.0)),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(scaled_text_size(ui.ctx(), 12.0)),
                 visuals.text_color(),
             );
         }
@@ -693,15 +712,20 @@ impl ViewerApp {
         if selected {
             painter.rect_stroke(
                 cell_rect.shrink(1.0),
-                4.0,
+                9.0,
                 egui::Stroke::new(2.0 as f32, visuals.selection.stroke.color),
                 egui::StrokeKind::Inside,
             );
         } else {
+            let border_color = if hover_t > 0.01 {
+                visuals.widgets.hovered.bg_stroke.color
+            } else {
+                visuals.widgets.noninteractive.bg_stroke.color
+            };
             painter.rect_stroke(
                 cell_rect,
-                4.0,
-                egui::Stroke::new(1.0 as f32, visuals.widgets.noninteractive.bg_stroke.color),
+                9.0,
+                egui::Stroke::new(1.0 + hover_t * 0.5, border_color),
                 egui::StrokeKind::Inside,
             );
         }

@@ -11,7 +11,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             let mut enabled = app.slideshow_enabled;
-            if ui.checkbox(&mut enabled, "Enable Slideshow").changed() {
+            if crate::ui_theme::switch(ui, &mut enabled, "Enable Slideshow") {
                 app.slideshow_enabled = enabled;
                 let _ = app.settings_manager.update(|settings| {
                     settings.slideshow_enabled = enabled;
@@ -49,7 +49,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             let mut loop_enabled = app.slideshow_loop;
-            if ui.checkbox(&mut loop_enabled, "Loop").changed() {
+            if crate::ui_theme::switch(ui, &mut loop_enabled, "Loop") {
                 app.slideshow_loop = loop_enabled;
                 let _ = app.settings_manager.update(|settings| {
                     settings.slideshow_loop = loop_enabled;
@@ -61,7 +61,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             let mut random_enabled = app.slideshow_random;
-            if ui.checkbox(&mut random_enabled, "Random Order").changed() {
+            if crate::ui_theme::switch(ui, &mut random_enabled, "Random Order") {
                 app.slideshow_random = random_enabled;
                 let _ = app.settings_manager.update(|settings| {
                     settings.slideshow_random = random_enabled;

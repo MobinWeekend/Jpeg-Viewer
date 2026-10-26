@@ -48,9 +48,9 @@ impl ViewerApp {
                     .inner_margin(egui::Margin::same(8))
                     .show(ui, |ui| {
                         egui::ScrollArea::both()
-                            .max_height(900.0)
-                            .max_width(320.0)
-                            .auto_shrink([true, true])
+                            .max_height(768.0)
+                            .max_width(420.0)
+                            .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 if let Some(metadata) = &self.file_metadata {
                                     self.render_file_metadata(ui, metadata);

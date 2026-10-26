@@ -1,6 +1,7 @@
 use crate::app::types::ViewerApp;
 use crate::app::ui::toolbar_frame;
 use crate::shortcuts::ViewerCommand;
+use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
 const MENU_OFFSET: f32 = 8.0;
@@ -13,7 +14,7 @@ impl ViewerApp {
 
         let button = ui
             .add(
-                egui::Button::new(egui::RichText::new(icon).size(24.0))
+                egui::Button::new(egui::RichText::new(icon).size(scaled_text_size(ui.ctx(), 24.0)))
                     .min_size(egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE))
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -36,7 +37,7 @@ impl ViewerApp {
                 ui.horizontal(|ui| {
                     if ui
                         .add(
-                            egui::Button::new(egui::RichText::new("📋 Copy").size(14.0))
+                            egui::Button::new(egui::RichText::new("📋 Copy").size(scaled_text_size(ui.ctx(), 14.0)))
                                 .min_size(egui::vec2(28.0, 28.0))
                                 .fill(egui::Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::NONE),
@@ -58,7 +59,7 @@ impl ViewerApp {
                 // Open File
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("📄 Open File").size(14.0))
+                        egui::Button::new(egui::RichText::new("📄 Open File").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -92,7 +93,7 @@ impl ViewerApp {
                     };
                     if ui.add_enabled(
                         !self.showing_raw_developed && !self.is_loading(),
-                        egui::Button::new(egui::RichText::new(label).size(14.0))
+                        egui::Button::new(egui::RichText::new(label).size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -106,7 +107,7 @@ impl ViewerApp {
                 // remain in the viewer because they do not have a persistent standalone path.
                 if let Some(path) = self.current_image_path.clone() {
                     if ui.add(
-                        egui::Button::new(egui::RichText::new("↗  Open With…").size(14.0))
+                        egui::Button::new(egui::RichText::new("↗  Open With…").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -120,7 +121,7 @@ impl ViewerApp {
 
                 if let Some(path) = self.current_image_path.clone() {
                     if ui.add(
-                        egui::Button::new(egui::RichText::new("📂  Locate in File Manager").size(14.0))
+                        egui::Button::new(egui::RichText::new("📂  Locate in File Manager").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -135,7 +136,7 @@ impl ViewerApp {
                 // Open Folder
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("📁  Open Folder").size(14.0))
+                        egui::Button::new(egui::RichText::new("📁  Open Folder").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -179,24 +180,25 @@ impl ViewerApp {
                 } else {
                     "✂️  Edit Image"
                 };
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new(edit_label).size(14.0))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Toggle editing mode. Unsaved work stays in a working copy until saved or discarded.")
-                    .clicked()
-                {
-                    self.start_editing(ctx);
-                    self.hamburger_menu_open = false;
-                }
-
+                if !self.image_entries.is_empty() {
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)))
+                                .min_size(egui::vec2(180.0, 30.0))
+                                .fill(egui::Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::NONE),
+                        )
+                        .on_hover_text("Toggle editing mode. Unsaved work stays in a working copy until saved or discarded.")
+                        .clicked()
+                    {
+                        self.start_editing(ctx);
+                        self.hamburger_menu_open = false;
+                    }
+                };
                 // Settings
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("⚙  Settings").size(14.0))
+                        egui::Button::new(egui::RichText::new("⚙  Settings").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -211,7 +213,7 @@ impl ViewerApp {
                 // Help
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("❓  Help").size(14.0))
+                        egui::Button::new(egui::RichText::new("❓  Help").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),
@@ -229,7 +231,7 @@ impl ViewerApp {
 
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
-                        ui.label(egui::RichText::new("Loading...").size(12.0));
+                        ui.label(egui::RichText::new("Loading...").size(scaled_text_size(ui.ctx(), 12.0)));
                     });
                 }
 
@@ -238,7 +240,7 @@ impl ViewerApp {
 
                 if ui
                     .add(
-                        egui::Button::new(egui::RichText::new("X  Exit").size(14.0))
+                        egui::Button::new(egui::RichText::new("X  Exit").size(scaled_text_size(ui.ctx(), 14.0)))
                             .min_size(egui::vec2(180.0, 30.0))
                             .fill(egui::Color32::TRANSPARENT)
                             .stroke(egui::Stroke::NONE),

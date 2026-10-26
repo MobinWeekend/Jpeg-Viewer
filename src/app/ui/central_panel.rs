@@ -1,10 +1,16 @@
 use crate::app::types::{LoadingState, ViewerApp};
+use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
 impl ViewerApp {
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
         let style = ctx.style();
-        let frame = egui::Frame::central_panel(&style).inner_margin(0.0);
+        let settings = self.settings_manager.get().clone();
+        let view_bg =
+            parse_view_background(&settings.main_view_background, style.visuals.dark_mode);
+        let frame = egui::Frame::central_panel(&style)
+            .inner_margin(0.0)
+            .fill(view_bg);
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             // Check for error first
             let error = self.image_error.clone();
@@ -182,7 +188,9 @@ impl ViewerApp {
                 // used as the transition itself; transitions happen only after
                 // the next image has actually become available.
                 let interval = self.slideshow_interval.as_secs_f32().max(0.5);
-                let motion_progress = (self.slideshow_last_advance.elapsed().as_secs_f32() / interval).clamp(0.0, 1.0);
+                let motion_progress = (self.slideshow_last_advance.elapsed().as_secs_f32()
+                    / interval)
+                    .clamp(0.0, 1.0);
                 let effect = if self.slideshow_motion == "random" {
                     match self.current_index % 5 {
                         0 => crate::slideshow::MotionEffect::PanHorizontal,
@@ -210,7 +218,8 @@ impl ViewerApp {
 
                 // Cross-image transition lasts a short, fixed period after the
                 // incoming image is ready, rather than over its whole display interval.
-                const TRANSITION_DURATION: std::time::Duration = std::time::Duration::from_millis(450);
+                const TRANSITION_DURATION: std::time::Duration =
+                    std::time::Duration::from_millis(450);
                 if let (Some(previous), Some(started)) = (
                     self.slideshow_previous_texture.clone(),
                     self.slideshow_transition_started,
@@ -218,7 +227,8 @@ impl ViewerApp {
                     if previous.id() != texture_id {
                         let elapsed = started.elapsed();
                         if elapsed < TRANSITION_DURATION {
-                            let t = (elapsed.as_secs_f32() / TRANSITION_DURATION.as_secs_f32()).clamp(0.0, 1.0);
+                            let t = (elapsed.as_secs_f32() / TRANSITION_DURATION.as_secs_f32())
+                                .clamp(0.0, 1.0);
                             let transition = match self.slideshow_transition.as_str() {
                                 "slide" => "slide",
                                 "random" if self.current_index % 2 == 1 => "slide",
@@ -233,13 +243,18 @@ impl ViewerApp {
                                 // Prefer the outgoing image's exact last-rendered
                                 // rectangle so its zoom and pan don't snap to the
                                 // incoming image's view settings.
-                                let old_rect = self.slideshow_previous_rect.unwrap_or_else(|| {
-                                    egui::Rect::from_center_size(
-                                        available_rect.center(),
-                                        old_size * old_scale,
-                                    )
-                                }).translate(egui::vec2(-offset, 0.0));
-                                image_rect = frame.rect.translate(egui::vec2(available_rect.width() * (1.0 - t), 0.0));
+                                let old_rect = self
+                                    .slideshow_previous_rect
+                                    .unwrap_or_else(|| {
+                                        egui::Rect::from_center_size(
+                                            available_rect.center(),
+                                            old_size * old_scale,
+                                        )
+                                    })
+                                    .translate(egui::vec2(-offset, 0.0));
+                                image_rect = frame
+                                    .rect
+                                    .translate(egui::vec2(available_rect.width() * (1.0 - t), 0.0));
                                 outgoing_frame = Some((previous, old_rect, egui::Color32::WHITE));
                             } else if transition == "fade" {
                                 let old_size = previous.size_vec2();
@@ -254,9 +269,12 @@ impl ViewerApp {
                                 outgoing_frame = Some((
                                     previous,
                                     old_rect,
-                                    egui::Color32::from_white_alpha(((1.0 - t) * 255.0).round() as u8),
+                                    egui::Color32::from_white_alpha(
+                                        ((1.0 - t) * 255.0).round() as u8
+                                    ),
                                 ));
-                                image_tint = egui::Color32::from_white_alpha((t * 255.0).round() as u8);
+                                image_tint =
+                                    egui::Color32::from_white_alpha((t * 255.0).round() as u8);
                             }
                             ctx.request_repaint_after(std::time::Duration::from_millis(16));
                         } else {
@@ -279,6 +297,15 @@ impl ViewerApp {
             let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
             let painter = ui.painter();
+            if settings.show_alpha_checkerboard && !self.slideshow_enabled {
+                paint_checkerboard(
+                    painter,
+                    image_rect,
+                    settings.alpha_checkerboard_size,
+                    settings.alpha_checkerboard_brightness,
+                    style.visuals.dark_mode,
+                );
+            }
             if let Some((previous_texture, previous_rect, previous_tint)) = outgoing_frame {
                 painter.image(
                     previous_texture.id(),
@@ -393,7 +420,7 @@ impl ViewerApp {
         // Message
         // -------------------------
 
-        let font_id = egui::FontId::proportional(12.0);
+        let font_id = egui::FontId::proportional(scaled_text_size(painter.ctx(), 12.0));
         let text_color = style.visuals.text_color();
 
         let galley = painter.layout(message.to_owned(), font_id, text_color, f32::INFINITY);
@@ -430,7 +457,7 @@ impl ViewerApp {
 
                 let percent_galley = painter.layout(
                     format!("{}%", percent),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(scaled_text_size(painter.ctx(), 10.0)),
                     text_color,
                     f32::INFINITY,
                 );
@@ -449,7 +476,7 @@ impl ViewerApp {
                 if show_extreme_ratio {
                     let galley = painter.layout(
                         "Extreme aspect ratio - showing at 1:1".to_string(),
-                        egui::FontId::proportional(12.0),
+                        egui::FontId::proportional(scaled_text_size(painter.ctx(), 12.0)),
                         text_color,
                         f32::INFINITY,
                     );
@@ -493,5 +520,77 @@ impl ViewerApp {
             rect.top() + margin.y + CONTENT_HEIGHT / 2.0,
         );
         egui::Rect::from_center_size(pos, egui::vec2(CONTENT_WIDTH, CONTENT_HEIGHT))
+    }
+}
+
+fn parse_view_background(value: &str, dark: bool) -> egui::Color32 {
+    if value == "light" {
+        return egui::Color32::from_rgb(245, 245, 245);
+    }
+    if value == "theme" {
+        return if dark {
+            egui::Color32::from_rgb(18, 18, 18)
+        } else {
+            egui::Color32::from_rgb(238, 238, 238)
+        };
+    }
+    if let Some(hex) = value.strip_prefix("custom:#") {
+        if hex.len() == 6 {
+            if let (Ok(r), Ok(g), Ok(b)) = (
+                u8::from_str_radix(&hex[0..2], 16),
+                u8::from_str_radix(&hex[2..4], 16),
+                u8::from_str_radix(&hex[4..6], 16),
+            ) {
+                return egui::Color32::from_rgb(r, g, b);
+            }
+        }
+    }
+    if dark {
+        egui::Color32::from_rgb(18, 18, 18)
+    } else {
+        egui::Color32::from_rgb(38, 38, 38)
+    }
+}
+
+fn paint_checkerboard(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    cell: f32,
+    brightness: f32,
+    dark: bool,
+) {
+    // Zooming can make the image rect much larger than the visible viewport.
+    // Clip before iterating so we only paint checker tiles the user can see.
+    let rect = rect.intersect(painter.clip_rect());
+    if !rect.is_positive() {
+        return;
+    }
+    let cell = cell.clamp(8.0, 64.0);
+    let brightness = brightness.clamp(0.25, 1.5);
+    let tone = |base: f32| (base * brightness).clamp(0.0, 255.0) as u8;
+    let a = if dark {
+        egui::Color32::from_gray(tone(45.0))
+    } else {
+        egui::Color32::from_gray(tone(210.0))
+    };
+    let b = if dark {
+        egui::Color32::from_gray(tone(65.0))
+    } else {
+        egui::Color32::from_gray(tone(240.0))
+    };
+    let x0 = (rect.left() / cell).floor() as i32;
+    let y0 = (rect.top() / cell).floor() as i32;
+    let x1 = (rect.right() / cell).ceil() as i32;
+    let y1 = (rect.bottom() / cell).ceil() as i32;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let tile = egui::Rect::from_min_max(
+                egui::pos2(x as f32 * cell, y as f32 * cell).max(rect.min),
+                egui::pos2((x + 1) as f32 * cell, (y + 1) as f32 * cell).min(rect.max),
+            );
+            if tile.is_positive() {
+                painter.rect_filled(tile, 0.0, if (x + y) % 2 == 0 { a } else { b });
+            }
+        }
     }
 }

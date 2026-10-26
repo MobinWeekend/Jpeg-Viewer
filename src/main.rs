@@ -13,6 +13,7 @@ mod settings;
 mod shortcuts;
 mod sort;
 mod slideshow;
+mod ui_theme;
 
 use app::ViewerApp;
 use eframe::egui;
@@ -143,6 +144,10 @@ fn main() -> eframe::Result<()> {
                 _ => egui::ThemePreference::System,
             };
             cc.egui_ctx.set_theme(theme_pref);
+            {
+                let settings = app.settings_manager.get().clone();
+                crate::ui_theme::apply_polished_style_with_options(&cc.egui_ctx, &settings.ui_accent_color, settings.ui_scale, settings.ui_text_scale);
+            }
 
             let startup_paths: Vec<std::path::PathBuf> = std::env::args_os().skip(1).map(Into::into).collect();
             if startup_paths.len() == 1 && startup_paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {

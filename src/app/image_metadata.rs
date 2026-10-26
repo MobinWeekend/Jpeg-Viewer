@@ -3,6 +3,7 @@ use crate::decoder::default_registry;
 use crate::decoder::format_detection::detect_format;
 use crate::image_core::ImageFormat;
 use crate::image_entry::ImageEntry;
+use crate::ui_theme::scaled_text_size;
 use chrono::{DateTime, Local};
 use eframe::egui;
 use exif::{Reader as ExifReader, Value as ExifValue};
@@ -221,7 +222,7 @@ impl ViewerApp {
                     "⚠ Extension '{}' does not match detected format",
                     current
                 ))
-                .size(11.0)
+                .size(scaled_text_size(ui.ctx(), 11.0))
                 .color(egui::Color32::YELLOW),
             );
         }
@@ -230,7 +231,11 @@ impl ViewerApp {
             ui.add_space(8.0);
             ui.separator();
             ui.add_space(4.0);
-            ui.label(egui::RichText::new("EXIF").size(12.0).strong());
+            ui.label(
+                egui::RichText::new("EXIF")
+                    .size(scaled_text_size(ui.ctx(), 12.0))
+                    .strong(),
+            );
             ui.add_space(4.0);
 
             for (name, value) in &metadata.exif {
@@ -263,10 +268,17 @@ impl ViewerApp {
 
 fn metadata_row(ui: &mut egui::Ui, label: &str, value: &str) {
     ui.horizontal_top(|ui| {
-        ui.label(egui::RichText::new(label).size(11.0).weak());
+        ui.label(
+            egui::RichText::new(label)
+                .size(scaled_text_size(ui.ctx(), 11.0))
+                .weak(),
+        );
         ui.add_space(6.0);
-        ui.add(egui::Label::new(egui::RichText::new(value).size(12.0)).wrap())
-            .on_hover_text(value);
+        ui.add(
+            egui::Label::new(egui::RichText::new(value).size(scaled_text_size(ui.ctx(), 12.0)))
+                .wrap(),
+        )
+        .on_hover_text(value);
     });
     ui.add_space(3.0);
 }

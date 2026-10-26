@@ -30,6 +30,8 @@ pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
 
     render_theme(app, ui, ctx);
     ui.add_space(4.0);
+    render_ui_appearance(app, ui, ctx);
+    ui.add_space(4.0);
 
     ui.separator();
     ui.add_space(4.0);
@@ -42,11 +44,12 @@ pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     ui.add_space(8.0);
 }
 
-
 fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut centered = app.settings_manager.get().start_centered;
-    if ui.checkbox(&mut centered, "Start centered on screen").changed() {
-        let _ = app.settings_manager.update(|settings| settings.start_centered = centered);
+    if crate::ui_theme::switch(ui, &mut centered, "Start centered on screen") {
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.start_centered = centered);
     }
 }
 
@@ -58,7 +61,9 @@ fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
         ui.add(egui::Slider::new(&mut workers, 1..=8).show_value(true));
     });
     if workers as usize != current {
-        let _ = app.settings_manager.update(|settings| settings.thumbnail_workers = workers as usize);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.thumbnail_workers = workers as usize);
     }
     ui.label("Default: 3. Restart the app to apply worker-count changes.");
 }
@@ -68,9 +73,9 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
 
-        let response = ui.checkbox(&mut app.b_ctrl_invert, "Invert Scroll Zoom");
+        let response = crate::ui_theme::switch(ui, &mut app.b_ctrl_invert, "Invert Scroll Zoom");
 
-        if response.changed() {
+        if response {
             let value = app.b_ctrl_invert;
 
             let _ = app.settings_manager.update(|settings| {
@@ -90,9 +95,9 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
 fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        let compact = ui.checkbox(&mut app.compactui, "Compact mode");
+        let compact = crate::ui_theme::switch(ui, &mut app.compactui, "Compact mode");
 
-        if compact.changed() {
+        if compact {
             let value = app.compactui;
             let _ = app.settings_manager.update(|settings| {
                 settings.compact_mode = value;
@@ -185,8 +190,203 @@ fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 _ => egui::ThemePreference::System,
             };
             ctx.set_theme(theme_pref);
+            let s = app.settings_manager.get().clone();
+            crate::ui_theme::apply_polished_style_with_options(
+                ctx,
+                &s.ui_accent_color,
+                s.ui_scale,
+                s.ui_text_scale,
+            );
         }
     });
+}
+
+fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    ui.separator();
+    ui.label(egui::RichText::new("UI appearance").strong());
+    let current = app.settings_manager.get().clone();
+
+    // Keep the UI-scale draft in egui temporary data while the slider is being dragged.
+    let scale_id = egui::Id::new("ui_scale_draft");
+    let mut scale = ctx
+        .data(|d| d.get_temp::<f32>(scale_id))
+        .unwrap_or(current.ui_scale);
+    ui.horizontal(|ui| {
+        ui.label("UI scale");
+        let response = ui.add(
+            egui::Slider::new(&mut scale, 0.75..=1.50)
+                .step_by(0.05)
+                .suffix("×"),
+        );
+        ctx.data_mut(|d| d.insert_temp(scale_id, scale));
+        if response.drag_stopped() || (response.changed() && !response.dragged()) {
+            let _ = app.settings_manager.update(|s| s.ui_scale = scale);
+            let s = app.settings_manager.get().clone();
+            crate::ui_theme::apply_polished_style_with_options(
+                ctx,
+                &s.ui_accent_color,
+                s.ui_scale,
+                s.ui_text_scale,
+            );
+            ctx.data_mut(|d| d.remove::<f32>(scale_id));
+        }
+    });
+
+    let saved_text_scale = app.settings_manager.get().ui_text_scale;
+    let text_scale_id = egui::Id::new("ui_text_scale_draft");
+    let mut text_scale = ctx
+        .data(|d| d.get_temp::<f32>(text_scale_id))
+        .unwrap_or(saved_text_scale);
+    ui.horizontal(|ui| {
+        ui.label("Text size");
+        let response = ui.add(
+            egui::Slider::new(&mut text_scale, 0.80..=1.40)
+                .step_by(0.05)
+                .suffix("×"),
+        );
+        ctx.data_mut(|d| d.insert_temp(text_scale_id, text_scale));
+        if response.drag_stopped() || (response.changed() && !response.dragged()) {
+            let _ = app
+                .settings_manager
+                .update(|s| s.ui_text_scale = text_scale);
+            let s = app.settings_manager.get().clone();
+            crate::ui_theme::apply_polished_style_with_options(
+                ctx,
+                &s.ui_accent_color,
+                s.ui_scale,
+                s.ui_text_scale,
+            );
+            ctx.data_mut(|d| d.remove::<f32>(text_scale_id));
+        }
+    });
+
+    let current_accent = app.settings_manager.get().ui_accent_color.clone();
+    let mut accent = current_accent.clone();
+    ui.horizontal(|ui| {
+        ui.label("Main color");
+        egui::ComboBox::from_id_salt("ui_accent_color")
+            .selected_text(if accent.starts_with("custom:#") {
+                "Custom"
+            } else {
+                match accent.as_str() {
+                    "blue" => "Blue",
+                    "purple" => "Purple",
+                    "orange" => "Orange",
+                    "rose" => "Rose",
+                    _ => "Teal",
+                }
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut accent, "teal".to_string(), "Teal");
+                ui.selectable_value(&mut accent, "blue".to_string(), "Blue");
+                ui.selectable_value(&mut accent, "purple".to_string(), "Purple");
+                ui.selectable_value(&mut accent, "orange".to_string(), "Orange");
+                ui.selectable_value(&mut accent, "rose".to_string(), "Rose");
+                ui.selectable_value(&mut accent, "custom:#00857B".to_string(), "Custom");
+            });
+    });
+    if accent.starts_with("custom:#") {
+        let mut color = parse_setting_color(&accent);
+        ui.horizontal(|ui| {
+            ui.label("Custom accent");
+            if ui.color_edit_button_srgba(&mut color).changed() {
+                accent = format!(
+                    "custom:#{:02X}{:02X}{:02X}",
+                    color.r(),
+                    color.g(),
+                    color.b()
+                );
+            }
+        });
+    }
+    if accent != current_accent {
+        let _ = app.settings_manager.update(|s| s.ui_accent_color = accent);
+        let s = app.settings_manager.get().clone();
+        crate::ui_theme::apply_polished_style_with_options(
+            ctx,
+            &s.ui_accent_color,
+            s.ui_scale,
+            s.ui_text_scale,
+        );
+    }
+
+    ui.separator();
+    ui.label(egui::RichText::new("Main view").strong());
+    let settings = app.settings_manager.get().clone();
+    let mut bg = settings.main_view_background.clone();
+    ui.horizontal(|ui| {
+        ui.label("Background");
+        egui::ComboBox::from_id_salt("main_view_background")
+            .selected_text(if bg.starts_with("custom:#") {
+                "Custom"
+            } else if bg == "light" {
+                "Light"
+            } else if bg == "theme" {
+                "Follow theme"
+            } else {
+                "Dark"
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut bg, "theme".to_string(), "Follow theme");
+                ui.selectable_value(&mut bg, "dark".to_string(), "Dark");
+                ui.selectable_value(&mut bg, "light".to_string(), "Light");
+                ui.selectable_value(&mut bg, "custom:#202020".to_string(), "Custom");
+            });
+        if bg.starts_with("custom:#") {
+            let mut color = parse_setting_color(&bg);
+            if ui.color_edit_button_srgba(&mut color).changed() {
+                bg = format!(
+                    "custom:#{:02X}{:02X}{:02X}",
+                    color.r(),
+                    color.g(),
+                    color.b()
+                );
+            }
+        }
+    });
+    if bg != settings.main_view_background {
+        let _ = app.settings_manager.update(|s| s.main_view_background = bg);
+    }
+    let mut checker = settings.show_alpha_checkerboard;
+    if crate::ui_theme::switch(ui, &mut checker, "Show transparency checkerboard") {
+        let _ = app
+            .settings_manager
+            .update(|s| s.show_alpha_checkerboard = checker);
+    }
+    let settings = app.settings_manager.get().clone();
+    let mut checker_size = settings.alpha_checkerboard_size;
+    ui.add(
+        egui::Slider::new(&mut checker_size, 12.0..=64.0)
+            .step_by(2.0)
+            .text("Checker size"),
+    );
+    let mut checker_brightness = settings.alpha_checkerboard_brightness;
+    ui.add(
+        egui::Slider::new(&mut checker_brightness, 0.25..=1.5)
+            .step_by(0.05)
+            .text("Checker brightness"),
+    );
+    if checker_size != settings.alpha_checkerboard_size
+        || checker_brightness != settings.alpha_checkerboard_brightness
+    {
+        let _ = app.settings_manager.update(|s| {
+            s.alpha_checkerboard_size = checker_size;
+            s.alpha_checkerboard_brightness = checker_brightness;
+        });
+    }
+}
+
+fn parse_setting_color(value: &str) -> egui::Color32 {
+    let hex = value.split_once('#').map(|(_, h)| h).unwrap_or("00857B");
+    if hex.len() == 6 {
+        egui::Color32::from_rgb(
+            u8::from_str_radix(&hex[0..2], 16).unwrap_or(0),
+            u8::from_str_radix(&hex[2..4], 16).unwrap_or(133),
+            u8::from_str_radix(&hex[4..6], 16).unwrap_or(123),
+        )
+    } else {
+        egui::Color32::from_rgb(0, 133, 123)
+    }
 }
 
 fn theme_label_str(theme: &str) -> &'static str {
@@ -205,10 +405,7 @@ fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
 
         let mut start_fs = app.settings_manager.get().start_fullscreen;
 
-        if ui
-            .checkbox(&mut start_fs, "Start in Fullscreen Mode")
-            .changed()
-        {
+        if crate::ui_theme::switch(ui, &mut start_fs, "Start in Fullscreen Mode") {
             let _ = app.settings_manager.update(|settings| {
                 settings.start_fullscreen = start_fs;
             });
@@ -238,11 +435,18 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
     if old_method != app.sort_method {
         // Sort the collection currently shown, rather than reopening the current
         // file's parent directory (which breaks queue/local-list views).
-        let selected_id = app.image_entries.get(app.current_index).map(|entry| entry.get_id());
+        let selected_id = app
+            .image_entries
+            .get(app.current_index)
+            .map(|entry| entry.get_id());
         if !app.image_entries.is_empty() {
             crate::sort::sort_images(&mut app.image_entries, app.sort_method);
             if let Some(id) = selected_id {
-                if let Some(index) = app.image_entries.iter().position(|entry| entry.get_id() == id) {
+                if let Some(index) = app
+                    .image_entries
+                    .iter()
+                    .position(|entry| entry.get_id() == id)
+                {
                     app.current_index = index;
                 }
             }

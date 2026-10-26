@@ -1,6 +1,7 @@
 //use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::shortcuts::ViewerCommand;
+use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
 impl ViewerApp {
@@ -12,7 +13,7 @@ impl ViewerApp {
     pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("◀").size(22.0))
+                egui::Button::new(egui::RichText::new("◀").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -26,7 +27,7 @@ impl ViewerApp {
     pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("▶").size(22.0))
+                egui::Button::new(egui::RichText::new("▶").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -56,10 +57,12 @@ impl ViewerApp {
 
         let button = ui
             .add(
-                egui::Button::new(egui::RichText::new(slideshow_icon).size(22.0))
-                    .min_size(self.btn_size())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                egui::Button::new(
+                    egui::RichText::new(slideshow_icon).size(scaled_text_size(ui.ctx(), 22.0)),
+                )
+                .min_size(self.btn_size())
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
             )
             .on_hover_text(slideshow_tooltip);
 
@@ -77,12 +80,15 @@ impl ViewerApp {
         let interval_secs = self.slideshow_interval.as_secs_f32();
         let interval_mins = 60.0 / interval_secs;
 
-        ui.label(egui::RichText::new(format!("{:1} Photo per min", interval_mins)).size(12.0));
+        ui.label(
+            egui::RichText::new(format!("{:1} Photo per min", interval_mins))
+                .size(scaled_text_size(ui.ctx(), 12.0)),
+        );
 
         // Slower
         let slower_button = ui
             .add(
-                egui::Button::new(egui::RichText::new("↘").size(24.0))
+                egui::Button::new(egui::RichText::new("↘").size(scaled_text_size(ui.ctx(), 24.0)))
                     .min_size(self.btn_size_medium())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -96,7 +102,7 @@ impl ViewerApp {
         // Faster
         let faster_button = ui
             .add(
-                egui::Button::new(egui::RichText::new("↗").size(22.0))
+                egui::Button::new(egui::RichText::new("↗").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size_medium())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -108,7 +114,7 @@ impl ViewerApp {
         }
 
         if self.slideshow_random {
-            ui.label(egui::RichText::new("Random").size(12.0));
+            ui.label(egui::RichText::new("Random").size(scaled_text_size(ui.ctx(), 12.0)));
         }
     }
 
@@ -124,7 +130,7 @@ impl ViewerApp {
 
         let response = ui
             .add(
-                egui::Button::new(egui::RichText::new(text).size(14.0))
+                egui::Button::new(egui::RichText::new(text).size(scaled_text_size(ui.ctx(), 14.0)))
                     .min_size(egui::vec2(50.0, 24.0))
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -144,7 +150,7 @@ impl ViewerApp {
     pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("+").size(22.0))
+                egui::Button::new(egui::RichText::new("+").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -159,7 +165,7 @@ impl ViewerApp {
     pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("−").size(22.0))
+                egui::Button::new(egui::RichText::new("−").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -176,10 +182,12 @@ impl ViewerApp {
         if self.b_zoom_used {
             if ui
                 .add(
-                    egui::Button::new(egui::RichText::new("⊞").size(14.0))
-                        .min_size(self.btn_size_medium())
-                        .fill(egui::Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::NONE),
+                    egui::Button::new(
+                        egui::RichText::new("⊞").size(scaled_text_size(ui.ctx(), 14.0)),
+                    )
+                    .min_size(self.btn_size_medium())
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
                 )
                 .on_hover_text("Fit")
                 .clicked()
@@ -188,10 +196,12 @@ impl ViewerApp {
             }
         } else if ui
             .add(
-                egui::Button::new(egui::RichText::new("1:1").size(14.0))
-                    .min_size(self.btn_size_medium())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                egui::Button::new(
+                    egui::RichText::new("1:1").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(self.btn_size_medium())
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Make 1:1 Ratio")
             .clicked()
@@ -228,10 +238,12 @@ impl ViewerApp {
 
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(play_text).size(22.0))
-                    .min_size(btn)
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                egui::Button::new(
+                    egui::RichText::new(play_text).size(scaled_text_size(ui.ctx(), 22.0)),
+                )
+                .min_size(btn)
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
             )
             .clicked()
         {
@@ -249,10 +261,12 @@ impl ViewerApp {
 
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(&speed_text).size(12.0))
-                    .min_size(egui::vec2(40.0, 24.0))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                egui::Button::new(
+                    egui::RichText::new(&speed_text).size(scaled_text_size(ui.ctx(), 12.0)),
+                )
+                .min_size(egui::vec2(40.0, 24.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
             )
             .clicked()
         {
@@ -294,11 +308,11 @@ impl ViewerApp {
                 gif.get_current_frame_index() + 1,
                 gif.frame_count()
             ))
-            .size(12.0),
+            .size(scaled_text_size(ui.ctx(), 12.0)),
         );
 
         if self.is_preview {
-            ui.label(egui::RichText::new("Loading...").size(12.0));
+            ui.label(egui::RichText::new("Loading...").size(scaled_text_size(ui.ctx(), 12.0)));
         }
     }
 
@@ -306,7 +320,7 @@ impl ViewerApp {
     pub fn fullscreen_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add(
-                egui::Button::new(egui::RichText::new("⛶").size(14.0))
+                egui::Button::new(egui::RichText::new("⛶").size(scaled_text_size(ui.ctx(), 14.0)))
                     .min_size(self.btn_size_small())
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
@@ -329,7 +343,7 @@ impl ViewerApp {
 
         if ui
             .add(
-                egui::Button::new(egui::RichText::new(icon).size(14.0))
+                egui::Button::new(egui::RichText::new(icon).size(scaled_text_size(ui.ctx(), 14.0)))
                     .min_size(self.btn_size_small())
                     .fill(fill)
                     .stroke(egui::Stroke::NONE),

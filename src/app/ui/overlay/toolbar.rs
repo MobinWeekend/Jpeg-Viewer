@@ -1,5 +1,5 @@
 use crate::app::types::ViewerApp;
-use crate::app::ui::settings_menu::general::sort_method_horizontal_ui;
+//use crate::app::ui::settings_menu::general::sort_method_horizontal_ui;
 use eframe::egui;
 
 const TOOLBAR_BG_ALPHA: u8 = 217;
@@ -18,14 +18,16 @@ fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
         TOOLBAR_BG_ALPHA,
     );
 
+    //let border = ctx.style().visuals.widgets.noninteractive.bg_stroke.color;
     egui::Frame::new()
         .fill(background)
+        //.stroke(egui::Stroke::new(1.0 as f32, border))
         .inner_margin(if compact {
-            egui::Margin::symmetric(3, 1)
+            egui::Margin::symmetric(4, -4)
         } else {
-            egui::Margin::symmetric(12, 6)
+            egui::Margin::symmetric(6, 3)
         })
-        .corner_radius(egui::CornerRadius::same(if compact { 5 } else { 20 }))
+        .corner_radius(egui::CornerRadius::same(if compact { 8 } else { 24 }))
 }
 
 fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
@@ -56,8 +58,8 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f3
                 //this.fullscreen_ui(ctx, ui);
                 //this.pin_window_ui(ctx, ui);
                 if !compact {
-                    separator(ui, space);
-                    sort_method_horizontal_ui(this, ctx, ui);
+                    //separator(ui, space);
+                    //sort_method_horizontal_ui(this, ctx, ui);
 
                     separator(ui, space);
                     //this.image_info_ui(ui);

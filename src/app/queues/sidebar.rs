@@ -21,7 +21,9 @@ fn fit_cards(available: f32, preferred_size: f32) -> (usize, f32) {
     if preferred_size < 112.0 {
         return (1, available.min(2048.0));
     }
-    let columns = (((available + GAP) / (preferred_size + GAP)).floor() as usize).max(1).min(24);
+    let columns = (((available + GAP) / (preferred_size + GAP)).floor() as usize)
+        .max(1)
+        .min(24);
     let card_size = ((available - GAP * (columns as f32 - 1.0)) / columns as f32)
         .min(preferred_size)
         .clamp(CELL_MIN, CELL_MAX);
@@ -41,13 +43,20 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     app.ensure_favorites_loaded();
 
     let window_width = ctx.input(|input| {
-        input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+        input
+            .viewport()
+            .inner_rect
+            .map(|rect| rect.width())
+            .unwrap_or(1280.0)
     });
     // The 50% value is a ceiling, not the target width. Keep the user's
     // saved width whenever it fits, with a modest minimum for usable controls.
     let max_sidebar_width = (window_width * 0.5).max(1.0);
     let min_sidebar_width = 90.0_f32.min(max_sidebar_width);
-    let default_width = app.settings_manager.get().file_sidebar_width
+    let default_width = app
+        .settings_manager
+        .get()
+        .file_sidebar_width
         .clamp(min_sidebar_width, max_sidebar_width);
 
     let response = egui::SidePanel::left("file_sidebar")
@@ -159,7 +168,12 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             } else {
                 app.queue_drop_rect = None;
 
-                ui.label(format!("{} images", app.image_entries.len()));
+                ui.horizontal(|ui| {
+                    ui.label(format!("{} images  |  ", app.image_entries.len()));
+
+                    //sorting
+                    crate::app::ui::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
+                });
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
                 ui.horizontal(|ui| {
                     ui.label("Entry size");
@@ -342,7 +356,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             } else {
                                                                 "Loading…"
                                                             },
-                                                            egui::FontId::proportional(11.0),
+                                                            egui::FontId::proportional(crate::ui_theme::scaled_text_size(ui.ctx(), 11.0)),
                                                             ui.visuals().weak_text_color(),
                                                         );
                                                         if ui.is_rect_visible(rect) {
@@ -608,19 +622,23 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     }
 
     let panel_rect = response.response.rect;
-    let width = panel_rect.width().clamp(min_sidebar_width, max_sidebar_width);
+    let width = panel_rect
+        .width()
+        .clamp(min_sidebar_width, max_sidebar_width);
     app.sidebar_actual_width = width;
 
     // Track resizing only when the initial pointer press lands on the panel's
     // right-edge resize grip. A generic panel drag can also be triggered by
     // dragging cards or selecting content, which caused width changes to be
     // accidentally persisted during ordinary sidebar interaction.
-    let (primary_pressed, primary_down, any_released, press_origin) = ctx.input(|input| (
-        input.pointer.button_pressed(egui::PointerButton::Primary),
-        input.pointer.button_down(egui::PointerButton::Primary),
-        input.pointer.any_released(),
-        input.pointer.press_origin(),
-    ));
+    let (primary_pressed, primary_down, any_released, press_origin) = ctx.input(|input| {
+        (
+            input.pointer.button_pressed(egui::PointerButton::Primary),
+            input.pointer.button_down(egui::PointerButton::Primary),
+            input.pointer.any_released(),
+            input.pointer.press_origin(),
+        )
+    });
 
     if primary_pressed {
         app.sidebar_resize_dragging = press_origin.is_some_and(|origin| {
@@ -644,7 +662,10 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         }
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
-    } else if !primary_down && !ctx.input(|input| input.pointer.any_down()) && app.sidebar_width_needs_save {
+    } else if !primary_down
+        && !ctx.input(|input| input.pointer.any_down())
+        && app.sidebar_width_needs_save
+    {
         // Recovery path if the release happened outside the application window.
         let _ = app.settings_manager.save();
         app.sidebar_width_needs_save = false;

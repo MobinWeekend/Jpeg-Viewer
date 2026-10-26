@@ -336,6 +336,7 @@ impl ViewerApp {
                 .default_width(default_width)
                 .width_range(280.0..=560.0)
                 .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.heading("Image editor");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -514,6 +515,7 @@ impl ViewerApp {
                         ui.separator();
                         ui.label(status);
                     }
+                    });
                 });
 
             let width = panel_response.response.rect.width().clamp(280.0, 560.0);
