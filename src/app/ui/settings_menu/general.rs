@@ -39,8 +39,13 @@ pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     render_startup_fullscreen(app, ui);
     ui.add_space(4.0);
     render_start_centered(app, ui);
-    ui.add_space(8.0);
+    ui.add_space(4.0);
+
+    ui.separator();
+    ui.add_space(4.0);
+
     render_thumbnail_workers(app, ui);
+    ui.separator();
     ui.add_space(8.0);
 }
 
