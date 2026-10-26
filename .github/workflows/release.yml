@@ -728,7 +728,7 @@ jobs:
           if [ "${{ matrix.arch }}" = "ARM64" ]; then IMAGE=menci/archlinuxarm:base-devel; fi
           docker run --privileged --rm -e GITHUB_REF_NAME="$GITHUB_REF_NAME" -e VERSION="$VERSION" -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
             if [ "$(uname -m)" = "aarch64" ]; then pacman-key --init; pacman-key --populate archlinuxarm || true; fi
-            pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git
+            pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar
             useradd -m builder || true
             sed -i "s/^pkgver=.*/pkgver=$VERSION/" packaging/arch/PKGBUILD
             sed -i "s/cargo build --release --locked/cargo build --release/" packaging/arch/PKGBUILD
@@ -736,9 +736,10 @@ jobs:
             mkdir -p /tmp/arch-build
             cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
             chown -R builder:builder /tmp/arch-build
-            su builder -c "cd /tmp/arch-build && makepkg --syncdeps --noconfirm --cleanbuild"
+            su builder -c "cd /tmp/arch-build && unset CC CXX RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER && makepkg --syncdeps --noconfirm --cleanbuild"
             mkdir -p /src/out
-            cp /tmp/arch-build/*.pkg.tar.zst /src/out/
+            PACKAGE_PATH="$(su builder -c "cd /tmp/arch-build && makepkg --packagelist")"
+            cp "$PACKAGE_PATH" /src/out/
           '
           cp out/*.pkg.tar.zst "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.zst"
       - uses: actions/upload-artifact@v6

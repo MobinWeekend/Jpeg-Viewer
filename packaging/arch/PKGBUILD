@@ -6,8 +6,8 @@ pkgdesc='GPU-accelerated desktop image viewer written in Rust'
 arch=('x86_64' 'aarch64')
 url='https://github.com/MobinWeekend/Jpeg-Viewer'
 license=('GPL-3.0-only')
-depends=('gcc-libs' 'glibc' 'libx11' 'libxkbcommon' 'wayland' 'mesa' 'dbus')
-makedepends=('rust' 'cargo' 'pkgconf')
+depends=('gcc-libs' 'glibc' 'libx11' 'libxkbcommon' 'wayland' 'mesa' 'dbus' 'zstd' 'unrar')
+makedepends=('rust' 'cargo' 'pkgconf' 'zstd' 'unrar')
 source=('jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git')
 sha256sums=('SKIP')
 
