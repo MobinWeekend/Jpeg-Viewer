@@ -11,6 +11,19 @@ The tool should just stay a tool and the user should use it to enjoy the content
 
 More formats, improvements, and features are coming as the project continues to grow.
 
+## Quick Start
+
+New users should start with **[QUICK_START.md](QUICK_START.md)**. It covers opening images, navigation, the Browse/Queue/Favorites sidebar, editing, and a short explanation of every settings option.
+
+### At a glance
+
+- Open an image with `Ctrl+O`, or a folder with `Ctrl+Shift+O`.
+- Drag images, folders, or supported archives into the window.
+- Navigate with `A` / `D` or the arrow keys; zoom with `+` / `-` or `Ctrl+Scroll`.
+- Press `Tab` to open Settings, `F4` to toggle Compact mode, and `L` to toggle the slideshow.
+- Use the sidebar to browse thumbnails, create a queue, or maintain Favorites.
+- Use Edit mode for crop, rotation, flips, color adjustments, and export on supported images.
+
 ## Features
 
 - **GPU-accelerated rendering** using `egui` and `wgpu`
@@ -73,6 +86,8 @@ Images can be opened directly from:
 - RAR archives (`.rar`)
 
 Archives do not need to be extracted before viewing.
+
+For a practical walkthrough of the controls and a concise explanation of every setting, see **[Quick Start Guide](QUICK_START.md)**.
 
 ## Keyboard Shortcuts
 
