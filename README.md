@@ -1,329 +1,152 @@
 # JPEG Viewer
-Open it. View it. Move on.
 
-<img width="851" height="686" alt="image" src="https://github.com/user-attachments/assets/26e2fe70-7222-42a9-9ea7-b558ecd58899" />
+**Open it. View it. Move on.**
 
-A GPU-accelerated image viewer written in Rust focused on responsiveness.
+A GPU-accelerated image viewer written in Rust, built to keep image browsing responsive and the interface out of the way.
 
-the project started with this quote in mind:
-"Do I look like I know what a JPEG is?!"
-The tool should just stay a tool and the user should use it to enjoy the content.
+<img width="851" height="686" alt="JPEG Viewer screenshot" src="https://github.com/user-attachments/assets/26e2fe70-7222-42a9-9ea7-b558ecd58899" />
 
-More formats, improvements, and features are coming as the project continues to grow.
+> “Do I look like I know what a JPEG is?!”
+>
+> The goal is simple: the application should stay a tool, so you can focus on enjoying the content.
 
-## Quick Start
-
-New users should start with **[QUICK_START.md](QUICK_START.md)**. It covers opening images, navigation, the Browse/Queue/Favorites sidebar, editing, and a short explanation of every settings option.
-
-### At a glance
-
-- Open an image with `Ctrl+O`, or a folder with `Ctrl+Shift+O`.
-- Drag images, folders, or supported archives into the window.
-- Navigate with `A` / `D` or the arrow keys; zoom with `+` / `-` or `Ctrl+Scroll`.
-- Press `Tab` to open Settings, `F4` to toggle Compact mode, and `L` to toggle the slideshow.
-- Use the sidebar to browse thumbnails, create a queue, or maintain Favorites.
-- Use Edit mode for crop, rotation, flips, color adjustments, and export on supported images.
+**New to JPEG Viewer?** Start with the **[Quick Start Guide](QUICK_START.md)** for common workflows, controls, editing, and a short explanation of the settings.
 
 ## Features
 
-- **GPU-accelerated rendering** using `egui` and `wgpu`
-- **Wide image format support** including AVIF, HEIC, JPEG XL, SVG, and camera RAW formats
-- **Archive support**: View images inside `.zip`, `.7z`, and `.rar` archives without extracting
-- **GIF animation support** with speed control and playback controls
-- **Slideshow mode** with adjustable timing, loop controls, fade/slide transitions, and independent pan/zoom motion effects
-- **Smart caching system** with configurable cache radius for smooth navigation
-- **Background preloading** of adjacent images for seamless browsing
-- **Virtual texturing** for extremely large images
-- **Fullscreen mode** for immersive viewing
-- **Persistent settings** saved automatically
-- **Open With…** to choose an application using the operating system’s application chooser, plus **Locate in File Manager** to reveal and select the file where supported
-- **Drag and drop** support for images, folders, and archives
-- **Trash/Recycle Bin integration** for deleting images
-- **Adjustable frame limiter** for performance and battery efficiency
-- **File type detection**: Automatically detects when a file extension does not match its actual contents and offers to rename it
-- **Aspect ratio labeling**: Displays common aspect ratio names (e.g. 16:9, 4:3, CinemaScope) for quick reference
-- **Decoder abstraction**: Image decoding is isolated behind a common interface, making the format support easier to extend
+- **GPU-accelerated rendering** with `egui` and `wgpu`
+- **Broad image-format support**, including AVIF, HEIC/HEIF, JPEG XL, SVG, and camera RAW formats
+- **Archive browsing** for images in ZIP, 7z, and RAR archives without extracting them first
+- **GIF playback** with playback and speed controls
+- **Configurable slideshows** with timing, looping, transitions, and pan/zoom motion effects
+- **Browse, Queue, and Favorites** collections for navigating and organizing image selections
+- **Image editing** with crop, rotate, flip, color adjustments, and export options for supported images
+- **Background decoding and preloading** for smoother navigation
+- **Configurable caching** to balance responsiveness and memory use
+- **Virtual texturing** for very large images
+- **Fullscreen and compact modes**
+- **Persistent settings** for appearance, behavior, and performance
+- **Drag-and-drop** support for images, folders, and supported archives
+- **File type mismatch detection** when the file extension does not match its contents
+- **File actions** including Open With, Locate in File Manager, and trash/recycle-bin integration where supported
+- **Adjustable frame limiting** for performance and battery efficiency
+- **Aspect-ratio labels** for common ratios such as 16:9, 4:3, and CinemaScope
 
-## Supported Formats
+## Supported formats
 
-### Raster & Animated Images
+Support can vary by decoder and, for camera RAW files, by camera model and file variant.
 
-- **AVIF** (`.avif`)
-- **BMP** (`.bmp`)
-- **DDS** (`.dds`)
-- **EXR** (`.exr`)
-- **GIF** (`.gif`) — animation and playback controls
-- **HDR** (`.hdr`)
-- **HEIC / HEIF** (`.heic`, `.heif`)
-- **ICO** (`.ico`)
-- **JPEG / JPG** (`.jpg`, `.jpeg`)
-- **JPEG XL** (`.jxl`)
-- **PNG** (`.png`)
-- **PNM** (`.pnm`)
-- **QOI** (`.qoi`)
-- **TGA** (`.tga`)
-- **TIFF** (`.tif`, `.tiff`)
-- **WebP** (`.webp`)
+### Raster and animated images
 
-### Camera RAW Images
-
-Camera RAW files are decoded and developed in-process using the Rust `zenraw` library and its `rawler` backend. No separately installed RAW converter such as darktable or dcraw is required.
-
-Recognized extensions include `.cr2`, `.cr3`, `.nef`, `.nrw`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.iiq`, `.kdc`, `.mos`, `.mrw`, `.rwl`, and `.x3f`. Actual decoding support varies by camera model and RAW variant, so not every file using these extensions is guaranteed to decode.
-
-### Vector Images
-
-- **SVG** (`.svg`)
-
-SVG files are rasterized for GPU-based display. Extremely large SVGs are automatically rasterized at a maximum dimension of 4096×4096 pixels to prevent excessive memory usage.
-
-### Archive Support
-
-Images can be opened directly from:
-
-- ZIP archives (`.zip`)
-- 7-Zip archives (`.7z`)
-- RAR archives (`.rar`)
-
-Archives do not need to be extracted before viewing.
-
-For a practical walkthrough of the controls and a concise explanation of every setting, see **[Quick Start Guide](QUICK_START.md)**.
-
-## Keyboard Shortcuts
-
-### Navigation
-
-| Action | Shortcut |
+| Format | Extensions |
 |---|---|
-| Previous / Next image | `◀` / `▶` |
-| Previous / Next image | `A` / `D` |
-| Jump to first image | `Home` |
-| Jump to last image | `End` |
-| Jump to first / last image | `Ctrl+◀` / `Ctrl+▶` |
+| AVIF | `.avif` |
+| BMP | `.bmp` |
+| DDS | `.dds` |
+| EXR | `.exr` |
+| GIF | `.gif` |
+| HDR | `.hdr` |
+| HEIC / HEIF | `.heic`, `.heif` |
+| ICO | `.ico` |
+| JPEG | `.jpg`, `.jpeg` |
+| JPEG XL | `.jxl` |
+| PNG | `.png` |
+| PNM | `.pnm` |
+| QOI | `.qoi` |
+| TGA | `.tga` |
+| TIFF | `.tif`, `.tiff` |
+| WebP | `.webp` |
 
-### Zoom & View
+### Camera RAW
 
-| Action | Shortcut |
-|---|---|
-| Zoom in / Zoom out | `+` / `-` |
-| Reset zoom to 100% | `W` / `↑` |
-| Fit image to window | `S` / `↓` / `0` |
-| Navigate images | `Scroll` |
-| Zoom while navigating | `Ctrl + Scroll` |
+RAW decoding and development are handled in-process through the Rust `zenraw` library and its `rawler` backend; a separately installed converter such as darktable or dcraw is not required.
 
-### Display
+Recognized extensions include `.cr2`, `.cr3`, `.nef`, `.nrw`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.iiq`, `.kdc`, `.mos`, `.mrw`, `.rwl`, and `.x3f`. Recognition does not guarantee that every camera model or RAW variant can be decoded.
 
-| Action | Shortcut |
-|---|---|
-| Toggle fullscreen | `F11` / `F` / `Enter` |
-| Open settings menu | `Tab` |
-| Open help | `F1` |
+### Vector images
 
-### GIF Controls
+- **SVG** (`.svg`): rasterized for GPU display. Extremely large SVGs are rasterized with a maximum dimension of 4096 × 4096 pixels to limit memory use.
 
-| Action | Shortcut |
-|---|---|
-| Play / Pause GIF animation | `Space` |
-| Slow down GIF (0.5× speed) | `[` |
-| Speed up GIF (2× speed) | `]` |
-| Reset GIF speed to 1× | `P` |
+### Archives
 
-### Slideshow
+Images can be opened directly from **ZIP** (`.zip`), **7z** (`.7z`), and **RAR** (`.rar`) archives without extracting the archive first.
 
-| Action | Shortcut |
-|---|---|
-| Toggle slideshow on/off | `L` |
-| Slideshow — slower speed | `,` |
-| Slideshow — faster speed | `.` |
+## Building from source
 
-### File Management
+### Requirements
 
-| Action | Shortcut |
-|---|---|
-| Open file dialog | `Ctrl+O` |
-| Open folder dialog | `Ctrl+Shift+O` |
-| Move current image to trash | `Delete` |
-| Copy image to clipboard | `Ctrl+C` |
-| Copy image path to clipboard | `Ctrl+Shift+C` |
+- [Rust and Cargo](https://rustup.rs)
+- The platform dependencies required by `eframe`/`wgpu` for your operating system and graphics stack
 
-### General
-
-| Action | Shortcut |
-|---|---|
-| Exit fullscreen / Close window | `Escape` |
-
-## Mouse Controls
-
-| Action | Mouse Input |
-|---|---|
-| Navigate between images | `Scroll` |
-| Zoom in/out | `Ctrl + Scroll` |
-| Pan image | `Left Drag` |
-| Zoom in/out | `Right Drag` |
-| Open file dialog (on empty screen) | `Double-click Left` |
-| Toggle fullscreen | `Middle Click` |
-| Fit image to window | `Double-click Right` |
-
-## Tips
-
-- Drag and drop images, folders, or archive files directly into the window
-- The app remembers your window position and settings between sessions
-- Adjust the cache radius in settings for smoother navigation on large collections
-- GIFs load a preview frame first, then the full animation in the background
-- Use the settings menu to customize performance and behavior
-- Start the app with an image path as an argument:
-
-```bash
-jpeg_viewer image.jpg
-```
-
-- If the app detects a mismatch between a file's extension and its actual format, a rename suggestion will appear in the toolbar
-- Very large images are rendered using tiled virtual textures for smooth performance
-- SVG files are rasterized automatically for display
-- Camera RAW files are developed in-process; support depends on the camera model and RAW variant
-- Use **Open With…** in the menu to choose an application for the current file, or **Locate in File Manager** to reveal and select it where supported
-
-## Caching & Performance
-
-JPEG Viewer uses an intelligent caching and preloading system to keep navigation responsive.
-
-- **Configurable cache radius** (1–100): Controls how many images are kept in memory on each side of the current image
-- **Delta threshold**: Prioritizes images near the current position
-- **Navigation timer**: Controls when the cache origin shifts after navigation
-- **Background preloading**: Loads nearby images without blocking the UI
-- **Memory-efficient eviction**: Images outside the active cache range are automatically removed
-- **Virtual texturing**: Extremely large images can be handled using tiled loading instead of keeping the entire decoded image in memory
-
-## Slideshow
-
-The slideshow feature advances through the current image collection automatically. Configure it in the settings menu:
-
-- Adjustable interval (0.5s to 60s)
-- Optional loop mode
-- Transition: instant, fade, slide, or random
-- Image motion: off, smart (based on aspect ratio), horizontal/vertical pan, zoom in/out, or random
-- Adjustable motion strength
-- Speed controls in the toolbar (`↘` for slower, `↗` for faster)
-- Toggle with the `L` key or the slideshow button in the toolbar
-
-Transitions are applied between the outgoing and incoming images. The outgoing image retains its last rendered zoom and pan while it transitions away; image motion is a separate effect and does not depend on the decoder.
-
-## Frame Limiter
-
-To optimize performance and battery life, JPEG Viewer includes adjustable frame limiting:
-
-- **Max FPS**: Maximum rendering rate (`0` = unlimited)
-- **Idle FPS**: FPS limit when the application is idle
-- **Idle Timeout**: Time of inactivity before entering idle mode
-- **Unfocused FPS**: Separate FPS limit when the window is unfocused
-- **Unfocused Idle Timeout**: Separate inactivity timeout for unfocused windows
-
-The viewer dynamically requests repaints based on user interaction, image loading, animations, slideshows, and overlay visibility rather than continuously rendering at maximum speed when it is not necessary.
-
-## File Type Detection
-
-JPEG Viewer detects the actual image format from the file contents rather than relying solely on the filename extension.
-
-For example, if a file is named:
-
-```text
-photo.jpg
-```
-
-but its contents are actually PNG data, JPEG Viewer can detect the mismatch and offer to rename the file to the appropriate extension.
-
-This helps prevent incorrectly named image files from causing loading problems.
-
-## Large Image Support
-
-JPEG Viewer supports extremely large images through tiled virtual texturing.
-
-Instead of decoding and keeping the entire image in memory, large images can be divided into smaller tiles and loaded as needed.
-
-This makes it possible to work with images that would otherwise require hundreds of megabytes or several gigabytes of memory.
-
-## Decoder Architecture
-
-Image decoding is isolated behind a common decoder interface.
-
-The loading pipeline is:
-
-```text
-ImageEntry
-    │
-    ▼
-Raw Bytes
-    │
-    ▼
-Format Detection
-    │
-    ▼
-Decoder Registry
-    │
-    ▼
-Image Decoder
-    │
-    ▼
-DecodedImage
-    │
-    ▼
-Application / Cache / Renderer
-```
-
-The application works with a format-independent `DecodedImage` representation rather than directly depending on individual image decoding libraries.
-
-This makes it easier to add or replace decoders without changing the rest of the application.
-
-## Building from Source
-
-### 1. Install Rust
-
-Install Rust and Cargo using **rustup**:
-
-[Install Rustup](https://rustup.rs)
-
-Follow the instructions for your operating system.
-
-### 2. Clone the repository
-
-Clone the repository and enter its directory:
+### Clone the repository
 
 ```bash
 git clone https://github.com/MobinWeekend/Jpeg-Viewer.git
 cd Jpeg-Viewer
 ```
 
-### 3. Build and run
-
-Open a terminal in the repository directory and run:
+### Run in release mode
 
 ```bash
 cargo run --release
 ```
 
-That's it! Cargo will download the required dependencies, build the application, and launch it.
-
-### Building without running
-
-If you only want to build the application:
+### Build without running
 
 ```bash
 cargo build --release
 ```
 
-The compiled executable will be located in:
+The executable is placed in `target/release/`.
 
-```text
-target/release/
+To open a specific image from the command line, pass its path as an argument:
+
+```bash
+jpeg_viewer image.jpg
 ```
 
-## Selection and queues
+## Architecture notes
 
-Open **Menu → Selection & Queue** to build an ordered list of filesystem image files. Add individual files, the current image, images in the current view, or recursively scan a folder tree. Queue entries can be reordered, removed, browsed in queue order, and configured for shuffle-on-next and repeat behavior. Saved `.jvq` files use a versioned text format with hexadecimal-encoded UTF-8 paths, relative paths when they are inside the queue file's directory, absolute paths otherwise, and a stored root path for missing-file remapping. Missing items are retained on load and marked unavailable; use **Remap missing root** to resolve moved directory trees. **Export paths** writes a plain-text path list.
+### Image decoding
 
-Queues currently include standalone filesystem image files only; images inside ZIP/7z/RAR archives are not added to queues. Batch actions are limited to queue management and path export; destructive batch image operations are intentionally not included in this phase.
+Image decoding is isolated behind a common decoder interface. The loading pipeline is approximately:
 
+```text
+ImageEntry
+    ↓
+Raw bytes
+    ↓
+Format detection
+    ↓
+Decoder registry
+    ↓
+Image decoder
+    ↓
+DecodedImage
+    ↓
+Application / cache / renderer
+```
 
-### Sidebar thumbnails and selection queue
+The application works with a format-independent `DecodedImage` representation instead of depending directly on each decoder implementation. This makes it easier to add or replace decoders without changing the rest of the application.
 
-The left sidebar has **Browse** and **Queue** tabs. Browse displays image thumbnails with filenames underneath; thumbnails are decoded in background tasks as needed. The Queue tab manages queued files in the same sidebar. Use **Add sidebar files if empty** to add all filesystem images currently shown in Browse only when the queue has no entries. Dropping image files or folders onto the visible Queue pane adds supported images to the queue; dropping elsewhere retains the normal open/load behavior.
+### Large images and virtual texturing
+
+Very large images can be split into tiles and loaded as needed, rather than requiring the entire decoded image to remain in memory at once. The virtual-texture threshold and tile size can be adjusted in Advanced settings; these settings trade memory use against rendering and loading behavior.
+
+### Caching and preloading
+
+The viewer caches nearby images and preloads adjacent items in background tasks. Cache radius, task concurrency, and preload timing can be tuned in Advanced settings to balance navigation speed, background activity, and memory consumption.
+
+## Queue format and limitations
+
+Queue files use the `.jvq` extension and a versioned text format. Paths can be stored relative to the queue file's directory or as absolute paths, with a root path available to help remap files when a directory tree moves. Missing entries can be retained and resolved later with **Remap missing root**. **Export paths** writes the queue's paths to a plain-text file.
+
+Queues currently contain standalone filesystem image files only; images inside ZIP, 7z, and RAR archives are not added to queues. Queue batch actions are focused on queue management and path export; destructive batch image operations are not included.
+
+## Documentation
+
+- **[Quick Start Guide](QUICK_START.md)** — opening images, navigation, mouse and keyboard controls, Browse/Queue/Favorites, editing, settings, and troubleshooting
+
+## License
+
+See [LICENSE](LICENSE) for license details.
