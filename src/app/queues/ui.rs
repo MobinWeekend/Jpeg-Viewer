@@ -46,10 +46,10 @@ impl ViewerApp {
             ui.label("Entry size");
             if ui
                 .add(
-                    egui::Slider::new(&mut entry_size, 64.0..=240.0)
+                    crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut entry_size, 64.0..=240.0)
                         .show_value(false)
                         .step_by(8.0),
-                )
+                ))
                 .changed()
             {
                 let _ = self
@@ -174,7 +174,6 @@ impl ViewerApp {
                 }
             });
             ui.horizontal(|ui| {
-                crate::ui_theme::switch(ui, &mut self.queue_shuffle, "Shuffle next");
                 crate::ui_theme::switch(ui, &mut self.queue_repeat, "Repeat queue");
             });
         });
@@ -373,10 +372,10 @@ impl ViewerApp {
             ui.label("Entry size");
             if ui
                 .add(
-                    egui::Slider::new(&mut entry_size, 64.0..=240.0)
+                    crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut entry_size, 64.0..=240.0)
                         .show_value(false)
                         .step_by(8.0),
-                )
+                ))
                 .changed()
             {
                 let _ = self
@@ -599,17 +598,23 @@ impl ViewerApp {
                 );
             }
         }
-        painter.rect_filled(
-            cell_rect,
-            9.0,
-            if selected {
-                visuals.selection.bg_fill
-            } else if hover_t > 0.01 {
-                visuals.widgets.hovered.bg_fill
-            } else {
-                visuals.widgets.noninteractive.bg_fill
-            },
-        );
+        let card_fill = if selected {
+            visuals.selection.bg_fill
+        } else if hover_t > 0.01 {
+            visuals.widgets.hovered.bg_fill
+        } else {
+            visuals.widgets.noninteractive.bg_fill
+        };
+        painter.rect_filled(cell_rect, 9.0, card_fill);
+        // Thumbnail/card labels are custom-painted rather than standard egui labels,
+        // so egui's widget foreground resolver cannot adjust them for the selected or
+        // hovered fill. Derive their foreground from the fill actually painted here.
+        let card_text_color = crate::ui_theme::contrast_foreground(card_fill);
+        let card_weak_text_color = if crate::ui_theme::contrast_prefers_light_text(card_fill) {
+            egui::Color32::from_rgb(220, 225, 232)
+        } else {
+            egui::Color32::from_rgb(78, 82, 88)
+        };
 
         if path.is_dir() {
             painter.text(
@@ -617,7 +622,7 @@ impl ViewerApp {
                 egui::Align2::CENTER_CENTER,
                 "📁 Folder",
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0)),
-                visuals.text_color(),
+                card_text_color,
             );
         } else if let Some(texture) = self.sidebar_thumbnails.get(key) {
             let size = texture.size_vec2();
@@ -647,7 +652,7 @@ impl ViewerApp {
                 egui::Align2::CENTER_CENTER,
                 message,
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 11.0)),
-                visuals.weak_text_color(),
+                card_weak_text_color,
             );
             if !path.is_dir() && ui.is_rect_visible(image_rect) {
                 self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string(), ctx);
@@ -670,7 +675,7 @@ impl ViewerApp {
                 egui::Align2::LEFT_CENTER,
                 fit_label(ui, label, (text_rect.width() - 4.0).max(4.0)),
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 12.0)),
-                visuals.text_color(),
+                card_text_color,
             );
         } else {
             let label_rect =
@@ -680,7 +685,7 @@ impl ViewerApp {
                 egui::Align2::CENTER_CENTER,
                 fit_label(ui, label, (label_rect.width() - 8.0).max(8.0)),
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 12.0)),
-                visuals.text_color(),
+                card_text_color,
             );
         }
 
@@ -699,7 +704,7 @@ impl ViewerApp {
             } else {
                 egui::Rect::from_min_size(image_rect.min + egui::vec2(3.0, 3.0), badge_size)
             };
-            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_black_alpha(205));
+            painter.rect_filled(badge_rect, 3.0, egui::Color32::from_black_alpha(188));
             painter.text(
                 badge_rect.center(),
                 egui::Align2::CENTER_CENTER,

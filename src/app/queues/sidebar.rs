@@ -74,22 +74,24 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             ui.set_max_width(sidebar_content_width);
 
             ui.horizontal(|ui| {
-                ui.heading("JPEG Viewer");
-
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        if ui
-                            .small_button("×")
-                            .on_hover_text("Hide file sidebar")
-                            .clicked()
-                        {
-                            let _ = app.settings_manager.update(|settings| {
-                                settings.show_file_sidebar = false;
-                            });
-                        }
-                    },
+                // Drawer toggle belongs to the sidebar edge, not the navigation
+                // toolbar. Use a panel-and-arrow glyph to show the action clearly.
+                let hide_sidebar = ui.add(
+                    egui::Button::new("")
+                        .frame(false)
+                        .min_size(egui::vec2(30.0, 28.0)),
                 );
+                crate::app::ui::helpers::paint_sidebar_drawer_icon(
+                    ui,
+                    hide_sidebar.rect,
+                    false,
+                );
+                if hide_sidebar.on_hover_text("Hide sidebar").clicked() {
+                    let _ = app.settings_manager.update(|settings| {
+                        settings.show_file_sidebar = false;
+                    });
+                }
+                ui.heading("JPEG Viewer");
             });
 
             ui.separator();
@@ -177,7 +179,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
                 ui.horizontal(|ui| {
                     ui.label("Entry size");
-                    if ui.add(egui::Slider::new(&mut entry_size, 64.0..=240.0).show_value(false).step_by(8.0)).changed() {
+                    if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut entry_size, 64.0..=240.0).show_value(false).step_by(8.0))).changed() {
                         let _ = app.settings_manager.update(|settings| settings.browse_entry_size = entry_size);
                     }
                     ui.label(if entry_size < 104.0 { "Compact" } else if entry_size < 176.0 { "Medium" } else { "Large" });
@@ -378,15 +380,36 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         );
                                                     }
 
+                                                    let label_selected = index == app.current_index;
+                                                    let label_position = ui.cursor().min;
+                                                    let label_rect = egui::Rect::from_min_size(
+                                                        label_position,
+                                                        egui::vec2(card_size, label_h),
+                                                    );
+                                                    let pointer_over_label = ctx.input(|input| {
+                                                        input.pointer.hover_pos().is_some_and(|pos| label_rect.contains(pos))
+                                                    });
+                                                    let label_text_color = if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                                                        let visuals = ui.visuals();
+                                                        let fill = if label_selected {
+                                                            visuals.selection.bg_fill
+                                                        } else if pointer_over_label {
+                                                            visuals.widgets.hovered.bg_fill
+                                                        } else {
+                                                            visuals.widgets.inactive.bg_fill
+                                                        };
+                                                        crate::ui_theme::contrast_foreground(fill)
+                                                    } else {
+                                                        ui.visuals().text_color()
+                                                    };
+                                                    let label = egui::RichText::new(middle_ellipsis(
+                                                        &name,
+                                                        (card_size / 6.0) as usize,
+                                                    ))
+                                                    .color(label_text_color);
                                                     let text = ui.add_sized(
                                                         [card_size, label_h],
-                                                        egui::Button::selectable(
-                                                            index == app.current_index,
-                                                            middle_ellipsis(
-                                                                &name,
-                                                                (card_size / 6.0) as usize,
-                                                            ),
-                                                        ),
+                                                        egui::Button::selectable(label_selected, label),
                                                     );
 
                                                     clicked = response.clicked()

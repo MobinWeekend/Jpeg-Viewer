@@ -6,8 +6,14 @@ impl ViewerApp {
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
         let style = ctx.style();
         let settings = self.settings_manager.get().clone();
-        let view_bg =
+        let mut view_bg =
             parse_view_background(&settings.main_view_background, style.visuals.dark_mode);
+        if crate::ui_theme::os_background_blur_enabled(ctx) {
+            let [r, g, b, _] = view_bg.to_srgba_unmultiplied();
+            let opacity = (settings.main_view_background_opacity.clamp(0.15, 1.0) * 255.0)
+                .round() as u8;
+            view_bg = egui::Color32::from_rgba_unmultiplied(r, g, b, opacity);
+        }
         let frame = egui::Frame::central_panel(&style)
             .inner_margin(0.0)
             .fill(view_bg);
@@ -54,21 +60,29 @@ impl ViewerApp {
                 return;
             }
 
-            // Get the available rect
+            // Get the available rect. Platform-style fit mode reserves a little space
+            // around the image and for the top/bottom centered toolbar.
             let available_rect = ui.available_rect_before_wrap();
-            let center = available_rect.center();
+            let image_viewport_rect = fitted_image_viewport_rect(
+                available_rect,
+                ctx,
+                &settings,
+                !self.b_zoom_used,
+            );
 
             if self.texture.is_none() && self.virtual_texture.is_none() {
                 // Handle loading states when no texture and no virtual texture
                 if self.is_loading() {
-                    let painter = ui.painter();
-                    let message = match self.loading_state {
-                        LoadingState::Indexing => "Indexing...",
-                        LoadingState::LoadingFullGif => "Loading full GIF...",
-                        LoadingState::VirtualTextureLoading => "Loading large image...",
-                        _ => "Loading...",
-                    };
-                    Self::draw_loading_overlay(&painter, available_rect, message);
+                    if !crate::app::ui::uses_desktop_menu_bar(ctx) {
+                        let painter = ui.painter();
+                        let message = match self.loading_state {
+                            LoadingState::Indexing => "Indexing...",
+                            LoadingState::LoadingFullGif => "Loading full GIF...",
+                            LoadingState::VirtualTextureLoading => "Loading large image...",
+                            _ => "Loading...",
+                        };
+                        Self::draw_loading_overlay(&painter, available_rect, message);
+                    }
                     return;
                 }
                 let error = self.image_error.clone();
@@ -121,8 +135,7 @@ impl ViewerApp {
                 let texture_size = egui::vec2(vt_width as f32, vt_height as f32);
                 // Update fit-to-window if needed for virtual texture
                 if self.b_fit_to_window {
-                    let available = ui.available_size();
-                    self.calculate_fit_zoom(texture_size, available);
+                    self.calculate_fit_zoom(texture_size, image_viewport_rect.size());
                     self.b_fit_to_window = false;
                 }
 
@@ -140,7 +153,7 @@ impl ViewerApp {
                         &painter,
                         self.zoom,
                         self.pan,
-                        available_rect,
+                        image_viewport_rect,
                         texture_options,
                     );
                 }
@@ -151,7 +164,7 @@ impl ViewerApp {
                 self.handle_image_mouse_input(ctx, &response);
 
                 // Show loading indicator overlay if still loading
-                if self.is_loading() {
+                if self.is_loading() && !crate::app::ui::uses_desktop_menu_bar(ctx) {
                     let painter = ui.painter();
                     Self::draw_loading_overlay(&painter, available_rect, "Loading...");
                 }
@@ -173,12 +186,11 @@ impl ViewerApp {
             };
 
             if self.b_fit_to_window {
-                let available = ui.available_size();
-                self.calculate_fit_zoom(texture_size, available);
+                self.calculate_fit_zoom(texture_size, image_viewport_rect.size());
                 self.b_fit_to_window = false;
             }
 
-            let base_image_rect = self.get_image_rect(texture_size, center);
+            let base_image_rect = self.get_image_rect(texture_size, image_viewport_rect.center());
             let mut image_rect = base_image_rect;
             let mut image_tint = egui::Color32::WHITE;
             let mut outgoing_frame: Option<(egui::TextureHandle, egui::Rect, egui::Color32)> = None;
@@ -204,7 +216,7 @@ impl ViewerApp {
                 };
                 let frame = crate::slideshow::transform(
                     base_image_rect,
-                    available_rect,
+                    image_viewport_rect,
                     motion_progress,
                     effect,
                     self.slideshow_motion_strength,
@@ -236,10 +248,10 @@ impl ViewerApp {
                                 _ => "fade",
                             };
                             if transition == "slide" {
-                                let offset = available_rect.width() * t;
+                                let offset = image_viewport_rect.width() * t;
                                 let old_size = previous.size_vec2();
-                                let old_scale = (available_rect.width() / old_size.x.max(1.0))
-                                    .min(available_rect.height() / old_size.y.max(1.0));
+                                let old_scale = (image_viewport_rect.width() / old_size.x.max(1.0))
+                                    .min(image_viewport_rect.height() / old_size.y.max(1.0));
                                 // Prefer the outgoing image's exact last-rendered
                                 // rectangle so its zoom and pan don't snap to the
                                 // incoming image's view settings.
@@ -247,22 +259,22 @@ impl ViewerApp {
                                     .slideshow_previous_rect
                                     .unwrap_or_else(|| {
                                         egui::Rect::from_center_size(
-                                            available_rect.center(),
+                                            image_viewport_rect.center(),
                                             old_size * old_scale,
                                         )
                                     })
                                     .translate(egui::vec2(-offset, 0.0));
                                 image_rect = frame
                                     .rect
-                                    .translate(egui::vec2(available_rect.width() * (1.0 - t), 0.0));
+                                    .translate(egui::vec2(image_viewport_rect.width() * (1.0 - t), 0.0));
                                 outgoing_frame = Some((previous, old_rect, egui::Color32::WHITE));
                             } else if transition == "fade" {
                                 let old_size = previous.size_vec2();
-                                let old_scale = (available_rect.width() / old_size.x.max(1.0))
-                                    .min(available_rect.height() / old_size.y.max(1.0));
+                                let old_scale = (image_viewport_rect.width() / old_size.x.max(1.0))
+                                    .min(image_viewport_rect.height() / old_size.y.max(1.0));
                                 let old_rect = self.slideshow_previous_rect.unwrap_or_else(|| {
                                     egui::Rect::from_center_size(
-                                        available_rect.center(),
+                                        image_viewport_rect.center(),
                                         old_size * old_scale,
                                     )
                                 });
@@ -297,7 +309,12 @@ impl ViewerApp {
             let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
             let painter = ui.painter();
-            if settings.show_alpha_checkerboard && !self.slideshow_enabled {
+            let dialup_settings = self.settings_manager.get().clone();
+            let current_profile = crate::ui_theme::current_look_profile(ctx);
+            let dialup_active = current_profile == "win98" && dialup_settings.win98_dialup_enabled;
+            // Dial-up replaces the checkerboard with the progressive-download effect;
+            // keep the user's checkerboard preference intact for when Dial-up is disabled.
+            if settings.show_alpha_checkerboard && !self.slideshow_enabled && !dialup_active {
                 paint_checkerboard(
                     painter,
                     image_rect,
@@ -314,12 +331,60 @@ impl ViewerApp {
                     previous_tint,
                 );
             }
-            painter.image(
-                texture_id,
-                image_rect,
-                egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
-                image_tint,
-            );
+            if dialup_active && self.win98_dialup_reveal_started.is_some() {
+                let elapsed = self.win98_dialup_reveal_started.unwrap().elapsed().as_secs_f32();
+                let kbps = dialup_settings.win98_dialup_connection_kbps.clamp(1, 56) as f32;
+                // 28.8 kbps takes about 2.5 seconds. Every strip starts only after
+                // the prior strip's scheduled start, with bounded per-row timing jitter.
+                let duration = (2.5 * 28.8 / kbps).clamp(1.25, 18.0);
+                // Bound the scanline count so each complete strip is visible before
+                // the next begins, even at 60 Hz. Very thin rows would otherwise be
+                // scheduled only a few milliseconds apart and appear in batches.
+                let band_height = (image_rect.height() / 100.0).max(6.0_f32);
+                let full_uv = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE);
+                let visible_rect = image_rect.intersect(painter.clip_rect());
+                if !visible_rect.is_negative() {
+                    let row_count = (image_rect.height() / band_height).ceil().max(1.0) as usize;
+                    let first_row = (((visible_rect.top() - image_rect.top()) / band_height).floor().max(0.0) as usize).min(row_count);
+                    let last_row = (((visible_rect.bottom() - image_rect.top()) / band_height).ceil().max(0.0) as usize).min(row_count);
+                    let total_weight = (0..row_count).map(dialup_row_weight).sum::<f32>().max(1.0);
+                    let mut elapsed_weight = 0.0_f32;
+                    // Iterate from the first row even when the image is scrolled: earlier
+                    // rows still contribute to the schedule, so reveal order never reverses.
+                    for row in 0..last_row {
+                        let reveal_at = duration * (elapsed_weight / total_weight);
+                        if row >= first_row && elapsed >= reveal_at {
+                            let y0 = image_rect.top() + row as f32 * band_height;
+                            let y1 = (y0 + band_height).min(image_rect.bottom());
+                            let strip = egui::Rect::from_min_max(
+                                egui::pos2(image_rect.left(), y0),
+                                egui::pos2(image_rect.right(), y1),
+                            );
+                            painter.with_clip_rect(strip).image(texture_id, image_rect, full_uv, image_tint);
+                        }
+                        elapsed_weight += dialup_row_weight(row);
+                    }
+                }
+                if elapsed < duration + 0.07 {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                } else {
+                    self.win98_dialup_reveal_started = None;
+                    self.win98_dialup_previous_texture_id = None;
+                }
+            } else {
+                // Turning the effect off cancels any in-progress reveal.
+                if !dialup_settings.win98_dialup_enabled || current_profile != "win98" {
+                    self.win98_dialup_reveal_started = None;
+                    self.win98_dialup_reveal_pending = false;
+                    self.win98_dialup_previous_texture_id = None;
+                }
+                painter.image(
+                    texture_id,
+                    image_rect,
+                    egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
+                    image_tint,
+                );
+            }
 
             // Crop selection owns primary-button drags while editing. Other
             // mouse bindings remain available when the crop tool is inactive.
@@ -336,7 +401,7 @@ impl ViewerApp {
                 self.handle_image_mouse_input(ctx, &response);
             }
 
-            if self.is_loading() {
+            if self.is_loading() && !crate::app::ui::uses_desktop_menu_bar(ctx) {
                 let painter = ui.painter();
                 let message = match self.loading_state {
                     LoadingState::LoadingFullGif => "Loading full GIF...",
@@ -356,6 +421,11 @@ impl ViewerApp {
         progress: Option<f32>,
         show_extreme_ratio: bool,
     ) {
+        // In desktop-menu-bar mode the single loading indicator lives on the
+        // far-right side of the bar instead of covering the image viewport.
+        if crate::app::ui::uses_desktop_menu_bar(ui.ctx()) {
+            return;
+        }
         let available = ui.available_rect_before_wrap();
         let rect = Self::loading_content_rect(available);
 
@@ -523,6 +593,20 @@ impl ViewerApp {
     }
 }
 
+/// Deterministic high-variance reveal timing for a single Dial-up scanline.
+/// Every weight remains positive, so later rows never start before prior rows;
+/// the broad 0.25x–2.0x range makes simulated modem fluctuations much more visible.
+fn dialup_row_weight(row: usize) -> f32 {
+    let mut noise = (row as u32)
+        .wrapping_mul(1_664_525)
+        .wrapping_add(1_013_904_223);
+    noise ^= noise >> 13;
+    noise = noise.wrapping_mul(1_274_126_177);
+    noise ^= noise >> 16;
+    let jitter_unit = (noise & 0xFFFF) as f32 / 65_535.0;
+    0.25 + jitter_unit * 1.75
+}
+
 fn parse_view_background(value: &str, dark: bool) -> egui::Color32 {
     if value == "light" {
         return egui::Color32::from_rgb(245, 245, 245);
@@ -593,4 +677,56 @@ fn paint_checkerboard(
             }
         }
     }
+}
+
+
+/// Reserve non-overlapping room for centered platform toolbars only while the
+/// image is in fit-to-window mode. The original JPEG Viewer layout is unchanged.
+fn fitted_image_viewport_rect(
+    available: egui::Rect,
+    ctx: &egui::Context,
+    settings: &crate::settings::AppSettings,
+    fit_mode: bool,
+) -> egui::Rect {
+    if !fit_mode {
+        return available;
+    }
+
+    let profile = crate::ui_theme::current_look_profile(ctx);
+    if profile != "cosmic" && profile != "gnome" && profile != "win98" {
+        return available;
+    }
+
+    const EDGE_PADDING: f32 = 12.0;
+    const TOOLBAR_CLEARANCE: f32 = 58.0;
+    let placement = crate::ui_theme::resolve_main_ui_placement(
+        &settings.main_ui_placement_preference,
+        ctx,
+    );
+    let mut top = EDGE_PADDING;
+    let mut bottom = EDGE_PADDING;
+    match placement {
+        "cosmic" => bottom += TOOLBAR_CLEARANCE,
+        "gnome" | "win98" => top += TOOLBAR_CLEARANCE,
+        // With the original split toolbar, leave room at both ends so neither
+        // the zoom controls nor the bottom navigation overlap a fitted image.
+        _ => {
+            top += 40.0;
+            bottom += 40.0;
+        }
+    }
+
+    let max_vertical_inset = (available.height() - 1.0).max(0.0);
+    let vertical_total = top + bottom;
+    if vertical_total > max_vertical_inset && vertical_total > 0.0 {
+        let factor = max_vertical_inset / vertical_total;
+        top *= factor;
+        bottom *= factor;
+    }
+
+    let horizontal = EDGE_PADDING.min((available.width() - 1.0).max(0.0) * 0.5);
+    egui::Rect::from_min_max(
+        egui::pos2(available.left() + horizontal, available.top() + top),
+        egui::pos2(available.right() - horizontal, available.bottom() - bottom),
+    )
 }

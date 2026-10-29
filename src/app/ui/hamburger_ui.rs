@@ -8,19 +8,45 @@ const MENU_OFFSET: f32 = 8.0;
 const HAMBURGER_SIZE: f32 = 28.0;
 
 impl ViewerApp {
-    /// Render the hamburger button.
+    /// Render the application menu button. The sidebar drawer is a separate
+    /// window-edge affordance and is intentionally not repeated in this toolbar.
     pub fn render_hamburger_ui(&mut self, ui: &mut egui::Ui) {
-        let icon = "☰";
-
+        let platform_profile = crate::ui_theme::current_look_profile(ui.ctx());
+        let button_label = if platform_profile == "cosmic" || platform_profile == "gnome" {
+            "☰ Menu"
+        } else {
+            "☰"
+        };
+        let win98 = platform_profile == "win98";
+        let button_fill = if win98 {
+            ui.visuals().widgets.inactive.bg_fill
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        let button_stroke = if win98 {
+            ui.visuals().widgets.inactive.bg_stroke
+        } else {
+            egui::Stroke::NONE
+        };
         let button = ui
             .add(
-                egui::Button::new(egui::RichText::new(icon).size(scaled_text_size(ui.ctx(), 24.0)))
-                    .min_size(egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                egui::Button::new(
+                    egui::RichText::new(button_label).size(scaled_text_size(ui.ctx(), 20.0)),
+                )
+                .min_size(egui::vec2(
+                    if platform_profile == "cosmic" || platform_profile == "gnome" {
+                        76.0
+                    } else {
+                        HAMBURGER_SIZE
+                    },
+                    HAMBURGER_SIZE,
+                ))
+                .fill(button_fill)
+                .stroke(button_stroke),
             )
             .on_hover_text("Menu");
 
+        self.hamburger_button_rect = Some(button.rect);
         if button.clicked() {
             self.hamburger_menu_open = !self.hamburger_menu_open;
         }
@@ -32,6 +58,20 @@ impl ViewerApp {
         }
 
         toolbar_frame(ctx).show(ui, |ui| {
+            // Hamburger/popup actions sit over arbitrary photographs, so their
+            // surfaces are intentionally almost opaque when glass is enabled.
+            // With glass disabled, preserve the selected theme's original opaque palette.
+            if crate::ui_theme::os_background_blur_enabled(ctx) {
+                let style = ui.style_mut();
+                let visuals = &mut style.visuals;
+                visuals.window_fill = crate::ui_theme::with_alpha(visuals.window_fill, 250);
+                visuals.extreme_bg_color = crate::ui_theme::with_alpha(visuals.extreme_bg_color, 250);
+                visuals.text_edit_bg_color = Some(crate::ui_theme::with_alpha(visuals.text_edit_bg_color(), 250));
+                visuals.widgets.inactive.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.inactive.bg_fill, 246);
+                visuals.widgets.hovered.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.hovered.bg_fill, 248);
+                visuals.widgets.active.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.active.bg_fill, 250);
+                visuals.widgets.open.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.open.bg_fill, 248);
+            }
             ui.vertical(|ui| {
                 //Controls
                 ui.horizontal(|ui| {
@@ -221,7 +261,7 @@ impl ViewerApp {
                     .on_hover_text("Keyboard shortcuts and features")
                     .clicked()
                 {
-                    self.toggle_help_menu();
+                    self.toggle_help_menu(ctx);
                     self.hamburger_menu_open = false;
                 }
 
@@ -259,10 +299,12 @@ impl ViewerApp {
         ctx.input(|input| {
             if let Some(pointer_pos) = input.pointer.interact_pos() {
                 if input.pointer.any_pressed() {
-                    let hamburger_rect = egui::Rect::from_min_size(
-                        egui::pos2(MENU_OFFSET, MENU_OFFSET),
-                        egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE),
-                    );
+                    let hamburger_rect = self.hamburger_button_rect.unwrap_or_else(|| {
+                        egui::Rect::from_min_size(
+                            egui::pos2(MENU_OFFSET, MENU_OFFSET),
+                            egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE),
+                        )
+                    });
 
                     if !menu_rect.contains(pointer_pos) && !hamburger_rect.contains(pointer_pos) {
                         self.hamburger_menu_open = false;

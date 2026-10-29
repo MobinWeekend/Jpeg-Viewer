@@ -2572,6 +2572,7 @@ dependencies = [
  "open_with",
  "pollster 1.0.1",
  "rand 0.8.8",
+ "raw-window-handle",
  "rawler",
  "rayon",
  "resvg",

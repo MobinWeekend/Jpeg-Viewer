@@ -13,6 +13,8 @@ categories = ["multimedia::images"]
 # GUI / rendering
 eframe = "0.33" # do not update this one!
 egui = "0.36.1"
+# Direct handle access for optional native window backdrop effects.
+raw-window-handle = "0.6.2"
 
 # Image formats
 image = { version = "0.25.10", features = ["default"] }
@@ -30,7 +32,9 @@ unrar = "0.5"
 
 # Application
 rayon = "1.12.0"
-rfd = "0.17.2"
+# Prefer the runtime-selected XDG Desktop Portal on Linux when available. This avoids a
+# hard GTK link; Windows and macOS retain their native file dialogs.
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
 pollster = "1.0.1"
 rust-ini = "0.21.3"
 trash = "5.2.6"

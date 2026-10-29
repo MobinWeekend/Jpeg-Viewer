@@ -39,6 +39,8 @@ impl ViewerApp {
         egui::Rect::from_center_size(center + self.pan * self.zoom, display_size)
     }
 }
+
+/*
 pub fn render_drag_area(ctx: &egui::Context, ui: &mut egui::Ui) {
     let drag_response = ui.interact(
         ui.max_rect(),
@@ -53,6 +55,7 @@ pub fn render_drag_area(ctx: &egui::Context, ui: &mut egui::Ui) {
         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
 }
+ */
 
 pub fn format_file_size(bytes: u64) -> String {
     const KB: f64 = 1024.0;
@@ -80,4 +83,44 @@ pub fn icon_button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Respon
             .stroke(egui::Stroke::NONE),
     )
     .on_hover_text(tooltip)
+}
+
+/// Paint a scale-independent sidebar/drawer glyph using vector primitives so it
+/// does not depend on a particular symbol font being installed. `show_sidebar`
+/// points the arrow into the window; `false` points it back toward the left edge.
+pub fn paint_sidebar_drawer_icon(ui: &egui::Ui, rect: egui::Rect, show_sidebar: bool) {
+    let painter = ui.painter();
+    let color = ui.visuals().text_color();
+    let stroke = egui::Stroke::new(1.4_f32, color);
+    let frame = rect.shrink2(egui::vec2(6.0, 8.0));
+    let corner_radius = if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {
+        egui::CornerRadius::ZERO
+    } else {
+        egui::CornerRadius::same(2)
+    };
+    painter.rect_stroke(frame, corner_radius, stroke, egui::StrokeKind::Inside);
+
+    let divider_x = frame.left() + frame.width() * 0.32;
+    painter.line_segment(
+        [
+            egui::pos2(divider_x, frame.top() + 1.5),
+            egui::pos2(divider_x, frame.bottom() - 1.5),
+        ],
+        stroke,
+    );
+
+    let center_y = frame.center().y;
+    if show_sidebar {
+        let start = egui::pos2(divider_x + 2.0, center_y);
+        let tip = egui::pos2(frame.right() - 2.0, center_y);
+        painter.line_segment([start, tip], stroke);
+        painter.line_segment([egui::pos2(tip.x - 3.0, tip.y - 2.5), tip], stroke);
+        painter.line_segment([egui::pos2(tip.x - 3.0, tip.y + 2.5), tip], stroke);
+    } else {
+        let start = egui::pos2(frame.right() - 2.0, center_y);
+        let tip = egui::pos2(divider_x + 2.0, center_y);
+        painter.line_segment([start, tip], stroke);
+        painter.line_segment([egui::pos2(tip.x + 3.0, tip.y - 2.5), tip], stroke);
+        painter.line_segment([egui::pos2(tip.x + 3.0, tip.y + 2.5), tip], stroke);
+    }
 }

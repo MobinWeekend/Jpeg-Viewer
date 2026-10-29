@@ -39,7 +39,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
         ui.add_space(8.0);
         let mut threshold = app.settings_manager.get().virtual_texture_threshold;
         if ui
-            .add(egui::Slider::new(&mut threshold, 4096..=16384).text("px"))
+            .add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut threshold, 4096..=16384).text("px")))
             .changed()
         {
             if threshold != app.settings_manager.get().virtual_texture_threshold {

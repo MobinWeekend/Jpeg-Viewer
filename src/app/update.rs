@@ -6,6 +6,35 @@ use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // Keep context-only layout helpers synchronized with the persisted setting.
+        crate::app::ui::set_desktop_menu_bar_preference(
+            ctx,
+            &self.settings_manager.get().desktop_menu_bar_preference,
+        );
+        let appearance_settings = self.settings_manager.get().clone();
+        let mut backdrop_preference_changed = false;
+        if crate::ui_theme::os_background_blur_preference(ctx) != appearance_settings.os_background_blur {
+            crate::ui_theme::set_os_background_blur_preference(ctx, appearance_settings.os_background_blur);
+            backdrop_preference_changed = true;
+        }
+        if crate::ui_theme::disable_os_background_blur_in_fullscreen_preference(ctx)
+            != appearance_settings.disable_os_background_blur_in_fullscreen
+        {
+            crate::ui_theme::set_disable_os_background_blur_in_fullscreen(
+                ctx,
+                appearance_settings.disable_os_background_blur_in_fullscreen,
+            );
+            backdrop_preference_changed = true;
+        }
+        let backdrop_effective_changed = crate::ui_theme::sync_os_background_blur(ctx);
+        if backdrop_preference_changed || backdrop_effective_changed {
+            crate::ui_theme::apply_polished_style_with_options(
+                ctx,
+                &appearance_settings.ui_accent_color,
+                appearance_settings.ui_scale,
+                appearance_settings.ui_text_scale,
+            );
+        }
         // Indexing process so ui would load fast
         self.process_indexing();
         // ========== UPDATE CURRENT FPS (throttled to 0.5s) ==========
@@ -54,39 +83,61 @@ impl eframe::App for ViewerApp {
         // egui reports the current monitor size; clamp saved positions back onto that monitor
         // when a monitor was removed or its resolution changed.
         if !self.startup_window_placement_handled {
-            let (monitor_size, outer_rect, inner_size) = ctx.input(|input| {
+            let (monitor_size, outer_rect, inner_size, maximized, fullscreen) = ctx.input(|input| {
                 let viewport = input.viewport();
-                (viewport.monitor_size, viewport.outer_rect, viewport.inner_rect.map(|r| r.size()))
+                (
+                    viewport.monitor_size,
+                    viewport.outer_rect,
+                    viewport.inner_rect.map(|r| r.size()),
+                    viewport.maximized.unwrap_or(false),
+                    viewport.fullscreen.unwrap_or(false),
+                )
             });
             if let (Some(monitor_size), Some(outer_rect), Some(inner_size)) = (monitor_size, outer_rect, inner_size) {
-                let mut pos = outer_rect.min;
                 let settings = self.settings_manager.get();
                 if settings.start_centered {
-                    pos = egui::pos2(
+                    // Center once using the actual outer frame dimensions. The saved
+                    // normal position is left untouched when start-centered is off.
+                    let pos = egui::pos2(
                         ((monitor_size.x - outer_rect.width()) * 0.5).max(0.0),
                         ((monitor_size.y - outer_rect.height()) * 0.5).max(0.0),
                     );
                     ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
                 } else {
+                    // `with_position` and `OuterPosition` both use the outer frame's
+                    // top-left. Clamp only when a frame edge is actually outside the
+                    // current monitor, and ignore sub-point decoration/DPI rounding so
+                    // a correctly restored window does not creep each time it opens.
                     let max_x = (monitor_size.x - outer_rect.width()).max(0.0);
                     let max_y = (monitor_size.y - outer_rect.height()).max(0.0);
-                    let clamped = egui::pos2(pos.x.clamp(0.0, max_x), pos.y.clamp(0.0, max_y));
-                    if (clamped - pos).length_sq() > 1.0 {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(clamped));
+                    let out_of_bounds = outer_rect.min.x < -2.0
+                        || outer_rect.min.y < -2.0
+                        || outer_rect.max.x > monitor_size.x + 2.0
+                        || outer_rect.max.y > monitor_size.y + 2.0;
+                    if out_of_bounds {
+                        let pos = egui::pos2(
+                            outer_rect.min.x.clamp(0.0, max_x),
+                            outer_rect.min.y.clamp(0.0, max_y),
+                        );
+                        if (pos - outer_rect.min).length_sq() > 4.0 {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+                        }
                     }
                 }
-                // If the restored window is larger than the monitor, shrink it so it can fit.
-                // Respect the app's 512×512 minimum on normal desktop monitors.
-                // If a monitor is smaller than that, prioritize fitting the window
-                // on-screen rather than placing it partly outside the monitor.
-                let min_width = if monitor_size.x >= 512.0 { 512.0 } else { monitor_size.x };
-                let min_height = if monitor_size.y >= 512.0 { 512.0 } else { monitor_size.y };
-                let target_size = egui::vec2(
-                    inner_size.x.min(monitor_size.x).max(min_width),
-                    inner_size.y.min(monitor_size.y).max(min_height),
-                );
-                if (target_size - inner_size).length_sq() > 1.0 {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(target_size));
+
+                // Only shrink when the actual client size exceeds the current monitor.
+                // Never issue InnerSize for a size that already fits: the app persists its
+                // own geometry, and repeated native resize commands can compound rounding.
+                if !maximized && !fullscreen
+                    && (inner_size.x > monitor_size.x + 1.0 || inner_size.y > monitor_size.y + 1.0)
+                {
+                    let target_size = egui::vec2(
+                        inner_size.x.min(monitor_size.x).max(100.0),
+                        inner_size.y.min(monitor_size.y).max(100.0),
+                    );
+                    if (target_size - inner_size).length_sq() > 1.0 {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(target_size));
+                    }
                 }
                 self.startup_window_placement_handled = true;
             }
@@ -162,6 +213,7 @@ impl eframe::App for ViewerApp {
                                     egui::ColorImage::from_rgba_unmultiplied(size, img.data());
                                 let options = self.get_texture_options();
                                 self.texture = Some(ctx.load_texture("image", color, options));
+                                self.mark_win98_dialup_texture_ready(false);
                                 if self.slideshow_previous_texture.is_some()
                                     && self.slideshow_transition_started.is_none()
                                     && self.slideshow_previous_texture.as_ref().map(egui::TextureHandle::id)
@@ -437,6 +489,14 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== UI RENDERING ==========
+        // The menu bar is a top panel and must be registered before sidebars and
+        // the central canvas so it reserves layout space instead of covering them.
+        self.hamburger_button_rect = None;
+        self.right_sidebar_actual_width = 0.0;
+        // Custom title-bar chrome is a real top-panel reservation, not just a
+        // foreground overlay; it therefore pushes the menu and central UI downward.
+        crate::app::ui::reserve_custom_titlebar_space(self, ctx);
+        crate::app::ui::render_desktop_menu_bar(self, ctx);
         // Docked panels must be registered before the central panel so the image
         // canvas is laid out in the remaining space rather than underneath them.
         crate::app::queues::render_left_sidebar(self, ctx);
@@ -486,6 +546,20 @@ impl eframe::App for ViewerApp {
                 });
         }
     }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if cfg!(any(target_os = "windows", target_os = "macos"))
+            && self.settings_manager.get().os_background_blur
+            && crate::platform_backdrop::is_active()
+        {
+            egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
+        } else {
+            // If the OS cannot provide a backdrop, keep the native window opaque.
+            // Translucent egui surfaces still compose over this solid fallback.
+            let [r, g, b, _] = visuals.panel_fill.to_srgba_unmultiplied();
+            egui::Color32::from_rgb(r, g, b).to_normalized_gamma_f32()
+        }
+    }
 }
 
 impl Drop for ViewerApp {
@@ -502,13 +576,18 @@ impl Drop for ViewerApp {
 impl ViewerApp {
     pub fn update_gif_texture(&mut self, ctx: &egui::Context) {
         let options = self.get_texture_options();
+        let mut texture_updated = false;
 
+        // Keep the mutable borrow of the GIF animation scoped to frame extraction and
+        // playback scheduling. Dial-up state needs `&mut self`, so update it only after
+        // the GIF borrow has ended.
         if let Some(gif) = &mut self.gif_animation {
             if let Some(frame) = gif.get_current_frame() {
                 let size = [frame.width() as usize, frame.height() as usize];
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
 
                 self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
+                texture_updated = true;
 
                 if gif.is_playing && gif.is_animated() {
                     let current_delay = if gif.current_frame < gif.delays.len() {
@@ -527,5 +606,10 @@ impl ViewerApp {
                 }
             }
         }
+
+        if texture_updated {
+            self.mark_win98_dialup_texture_ready(false);
+        }
     }
+
 }

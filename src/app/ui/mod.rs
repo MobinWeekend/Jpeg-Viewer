@@ -1,14 +1,16 @@
 mod central_panel;
+mod desktop_menu_bar;
 mod editing;
 mod error_ui;
 mod hamburger_ui;
 mod help_window;
-mod helpers;
+pub(crate) mod helpers;
 mod metainfo;
 mod navigation_ui;
 mod overlay;
 pub mod settings_menu;
 mod welcome_ui;
 
-pub use overlay::{render_overlay_ui, toolbar_frame, update_overlay_visibility};
+pub use desktop_menu_bar::{desktop_menu_bar_height, render_desktop_menu_bar, set_desktop_menu_bar_preference, uses_desktop_menu_bar, desktop_menu_bar_generation_for_help, bump_help_window_generation};
+pub use overlay::{render_overlay_ui, reserve_custom_titlebar_space, toolbar_frame, update_overlay_visibility};
 pub use settings_menu::{render_settings_menu, toggle_settings_menu};

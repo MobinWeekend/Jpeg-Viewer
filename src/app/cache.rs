@@ -44,6 +44,7 @@ impl ViewerApp {
                 self.image_cache.put(image_id.clone(), updated_cached);
                 if let Some(updated_cached) = self.image_cache.get(&image_id).cloned() {
                     self.texture = Some(updated_cached.texture.clone());
+                    self.mark_win98_dialup_texture_ready(true);
                     self.is_gif = updated_cached.is_gif;
                     self.is_preview = updated_cached.is_preview;
                     self.b_fit_to_window = true;
@@ -55,6 +56,7 @@ impl ViewerApp {
                 return false;
             }
             self.texture = Some(cached.texture);
+            self.mark_win98_dialup_texture_ready(true);
             self.is_gif = cached.is_gif;
             self.is_preview = cached.is_preview;
             self.b_fit_to_window = true;

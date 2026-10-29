@@ -5,19 +5,32 @@ impl ViewerApp {
     pub fn render_help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_help_menu;
         let close_requested = false;
+        let content_rect = ctx.available_rect();
+        let default_size = egui::vec2(512.0, 512.0);
+        let default_pos = egui::pos2(
+            (content_rect.center().x - default_size.x * 0.5).max(content_rect.left()),
+            (content_rect.center().y - default_size.y * 0.5).max(content_rect.top()),
+        );
 
+        let generation = crate::app::ui::desktop_menu_bar_generation_for_help(ctx);
         egui::Window::new("Help - JPEG Viewer")
+            .id(egui::Id::new(("jpeg_viewer_help_window", generation)))
             .title_bar(true)
             .collapsible(false)
             .resizable(true)
-            .default_size([512.0, 512.0])
+            .movable(true)
+            .default_pos(default_pos)
+            .default_size(default_size)
             .min_size([400.0, 400.0])
             .max_size([700.0, 800.0])
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .open(&mut open)
             .show(ctx, |ui| {
+                // Keep the application version pinned to the help window's bottom edge.
+                const FOOTER_HEIGHT: f32 = 28.0;
+                let scroll_height = (ui.available_height() - FOOTER_HEIGHT).max(0.0);
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
+                    .max_height(scroll_height)
                     .show(ui, |ui| {
                         ui.add_space(8.0);
 
@@ -27,38 +40,20 @@ impl ViewerApp {
                             ui.label(egui::RichText::new("A fast, lightweight image viewer").size(16.0));
                             ui.add_space(4.0);
                             ui.label(egui::RichText::new("By Mobin Sasanpour").size(13.0).italics());
-                            ui.label(egui::RichText::new("@artofweekend").size(13.0).italics().color(egui::Color32::LIGHT_BLUE));
+                            ui.label(egui::RichText::new("@artofweekend").size(13.0).italics().color(ui.visuals().hyperlink_color));
 
                             // Social links
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
                                 ui.add_space(8.0);
 
-                                // Theme-aware link colors
-                                let dark_mode = ui.visuals().dark_mode;
-
-                                let instagram_color = if dark_mode {
-                                    egui::Color32::from_rgb(255, 90, 140)
-                                } else {
-                                    egui::Color32::from_rgb(190, 45, 105)
-                                };
-
-                                let x_color = if dark_mode {
-                                    egui::Color32::from_rgb(220, 220, 220)
-                                } else {
-                                    egui::Color32::from_rgb(60, 60, 60)
-                                };
-
-                                let github_color = if dark_mode {
-                                    egui::Color32::from_rgb(130, 180, 230)
-                                } else {
-                                    egui::Color32::from_rgb(55, 105, 160)
-                                };
+                                // Use the theme's contrast-checked hyperlink color on all surfaces.
+                                let link_color = ui.visuals().hyperlink_color;
 
                                 // Instagram
                                 let instagram_text = egui::RichText::new("📸  Instagram")
                                     .size(13.0)
-                                    .color(instagram_color);
+                                    .color(link_color);
 
                                 let instagram_link = ui.link(instagram_text);
 
@@ -73,7 +68,7 @@ impl ViewerApp {
                                 // X (Twitter)
                                 let x_text = egui::RichText::new("𝕏 X (Twitter)")
                                     .size(13.0)
-                                    .color(x_color);
+                                    .color(link_color);
 
                                 let x_link = ui.link(x_text);
 
@@ -88,7 +83,7 @@ impl ViewerApp {
                                 // GitHub
                                 let github_text = egui::RichText::new("💻  GitHub")
                                     .size(13.0)
-                                    .color(github_color);
+                                    .color(link_color);
 
                                 let github_link = ui.link(github_text);
 
@@ -257,6 +252,14 @@ impl ViewerApp {
 
                         ui.add_space(8.0);
                     });
+                ui.separator();
+                ui.vertical_centered(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
+                            .size(12.0)
+                            .weak(),
+                    );
+                });
             });
 
         // Update the actual state after the window closes
@@ -267,7 +270,10 @@ impl ViewerApp {
         }
     }
 
-    pub fn toggle_help_menu(&mut self) {
+    pub fn toggle_help_menu(&mut self, ctx: &egui::Context) {
+        if !self.show_help_menu {
+            crate::app::ui::bump_help_window_generation(ctx);
+        }
         self.show_help_menu = !self.show_help_menu;
     }
 
@@ -275,7 +281,7 @@ impl ViewerApp {
     fn render_shortcut_row(ui: &mut egui::Ui, key: &str, description: &str) {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
-            ui.colored_label(egui::Color32::LIGHT_GREEN, key);
+            ui.label(egui::RichText::new(key).strong().color(ui.visuals().hyperlink_color));
             ui.add_space(8.0);
             ui.label("=");
             ui.add_space(8.0);
@@ -288,7 +294,7 @@ impl ViewerApp {
     fn render_mouse_row(ui: &mut egui::Ui, control: &str, action: &str) {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
-            ui.colored_label(egui::Color32::LIGHT_BLUE, control);
+            ui.label(egui::RichText::new(control).strong().color(ui.visuals().hyperlink_color));
             ui.add_space(8.0);
             ui.label("=");
             ui.add_space(8.0);

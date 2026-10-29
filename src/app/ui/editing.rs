@@ -127,6 +127,60 @@ impl ViewerApp {
         self.refresh_edit_texture(ctx);
     }
 
+    /// Enter image-edit mode and activate the interactive crop selection tool.
+    /// This is shared by the Edit panel and the desktop menu bar.
+    pub fn start_crop_tool(&mut self, ctx: &egui::Context) {
+        if self.edit_session.is_none() {
+            self.start_editing(ctx);
+        } else {
+            self.show_edit_menu = true;
+            self.show_settings_menu = false;
+        }
+
+        if self.edit_session.is_some() {
+            self.crop_tool_active = true;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
+            self.edit_status = Some("Crop mode: drag across the image to select a crop region.".into());
+            self.show_edit_menu = true;
+            self.show_settings_menu = false;
+            ctx.request_repaint();
+        }
+    }
+
+    /// Rotate the current image clockwise using the existing non-destructive edit session.
+    /// If editing has not started yet, this opens a working copy first.
+    pub fn rotate_current_clockwise(&mut self, ctx: &egui::Context) {
+        self.rotate_current_image(ctx, true);
+    }
+
+    /// Rotate the current image counterclockwise using the existing non-destructive edit session.
+    pub fn rotate_current_counterclockwise(&mut self, ctx: &egui::Context) {
+        self.rotate_current_image(ctx, false);
+    }
+
+    fn rotate_current_image(&mut self, ctx: &egui::Context, clockwise: bool) {
+        if self.edit_session.is_none() {
+            self.start_editing(ctx);
+        }
+
+        let Some(session) = self.edit_session.as_mut() else {
+            // start_editing already reported why this image cannot be edited.
+            return;
+        };
+
+        if clockwise {
+            session.rotate_right();
+        } else {
+            session.rotate_left();
+        }
+        self.crop_selection = None;
+        self.crop_drag_start_image = None;
+        self.show_edit_menu = true;
+        self.show_settings_menu = false;
+        self.refresh_edit_texture(ctx);
+    }
+
     fn refresh_edit_texture(&mut self, ctx: &egui::Context) {
         let Some(session) = self.edit_session.as_ref() else {
             return;
@@ -447,22 +501,22 @@ impl ViewerApp {
 
                         ui.separator();
                         ui.label(egui::RichText::new("🎨 Colour adjustments").strong());
-                        let response = ui.add(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("☀️ Brightness"));
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("☀️ Brightness")));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("◐ Contrast"));
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("◐ Contrast")));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(egui::Slider::new(&mut adjustments.saturation, 0..=200).text("🌈 Saturation"));
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.saturation, 0..=200).text("🌈 Saturation")));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(egui::Slider::new(&mut adjustments.hue, -180..=180).text("🎨 Hue"));
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.hue, -180..=180).text("🎨 Hue")));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
@@ -484,7 +538,7 @@ impl ViewerApp {
                                 }
                             });
                         if output_format == EditOutputFormat::Jpeg {
-                            ui.add(egui::Slider::new(&mut quality, 1..=100).text("JPEG quality"));
+                            ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut quality, 1..=100).text("JPEG quality")));
                             ui.small("Higher quality reduces compression artifacts and usually increases file size.");
                         } else {
                             ui.small("Quality is adjustable for JPEG. Other formats use their normal encoder settings.");
@@ -515,6 +569,7 @@ impl ViewerApp {
                     });
                 });
 
+            self.right_sidebar_actual_width = panel_response.response.rect.width().max(0.0);
             let width = panel_response.response.rect.width().clamp(280.0, 560.0);
             let previous_width = self.settings_manager.get().settings_sidebar_width;
             if !ctx.input(|input| input.pointer.any_down()) && (width - previous_width).abs() > 2.0

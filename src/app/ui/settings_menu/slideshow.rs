@@ -121,7 +121,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.add_space(8.0);
             ui.label("Motion strength:");
             let mut strength = app.slideshow_motion_strength;
-            if ui.add(egui::Slider::new(&mut strength, 5.0..=40.0).suffix("%")).changed() {
+            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut strength, 5.0..=40.0).suffix("%"))).changed() {
                 app.slideshow_motion_strength = strength;
                 let _ = app.settings_manager.update(|s| s.slideshow_motion_strength = strength);
             }
@@ -135,11 +135,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.add_space(8.0);
             ui.label("Shortcuts:");
             ui.add_space(4.0);
-            ui.colored_label(egui::Color32::LIGHT_GREEN, "L");
+            ui.colored_label(ui.visuals().hyperlink_color, "L");
             ui.label("= Toggle, ");
-            ui.colored_label(egui::Color32::LIGHT_GREEN, ",");
+            ui.colored_label(ui.visuals().hyperlink_color, ",");
             ui.label("= Slower, ");
-            ui.colored_label(egui::Color32::LIGHT_GREEN, ".");
+            ui.colored_label(ui.visuals().hyperlink_color, ".");
             ui.label("= Faster");
         });
         ui.add_space(4.0);

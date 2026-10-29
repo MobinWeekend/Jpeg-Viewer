@@ -2,7 +2,6 @@ use eframe::egui;
 use std::time::{Duration, Instant};
 
 use super::types::ViewerApp;
-use crate::constants::OVERLAY_HIDE_DELAY;
 
 impl ViewerApp {
     // ─── Repaint scheduling ──────────────────────────────────────
@@ -96,19 +95,25 @@ impl ViewerApp {
 
     /// Returns `true` if this function scheduled the next repaint.
     fn handle_overlay_repaint(&self, ctx: &egui::Context) -> bool {
-        if !self.overlay_visible || self.hamburger_menu_open || self.image_entries.is_empty() {
+        let settings = self.settings_manager.get();
+        if !crate::ui_theme::navigation_auto_hide_enabled(settings, ctx)
+            || !self.overlay_visible
+            || self.hamburger_menu_open
+            || self.image_entries.is_empty()
+        {
             return false;
         }
 
+        let hide_delay = Duration::from_millis(settings.navigation_ui_auto_hide_ms.clamp(500, 5000));
         let elapsed = self.last_interaction_time.elapsed();
 
-        if elapsed >= OVERLAY_HIDE_DELAY {
+        if elapsed >= hide_delay {
             // The timeout has been reached.
             ctx.request_repaint();
             true
         } else {
             // Wake up when the overlay timeout is reached.
-            ctx.request_repaint_after(OVERLAY_HIDE_DELAY - elapsed);
+            ctx.request_repaint_after(hide_delay - elapsed);
             true
         }
     }

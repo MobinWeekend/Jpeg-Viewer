@@ -11,6 +11,7 @@ mod image_entry;
 mod loader;
 mod settings;
 mod power;
+mod platform_backdrop;
 mod shortcuts;
 mod sort;
 mod slideshow;
@@ -18,7 +19,7 @@ mod ui_theme;
 
 use app::ViewerApp;
 use eframe::egui;
-//use fontdb::{Database, Family, Source};
+use raw_window_handle::HasWindowHandle;
 
 fn main() -> eframe::Result<()> {
     let settings_manager = settings::SettingsManager::new();
@@ -38,6 +39,9 @@ fn main() -> eframe::Result<()> {
         .with_icon(icon)
         .with_min_inner_size(egui::vec2(512.0, 512.0))
         .with_decorations(app_settings.show_titlebar)
+        // Keep the native window alpha-capable on platforms that implement system
+        // backdrops. The preference decides whether alpha is actually used.
+        .with_transparent(cfg!(any(target_os = "windows", target_os = "macos")))
         .with_resizable(true);
 
     if !app_settings.start_centered {
@@ -52,101 +56,52 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport,
+        // Window geometry is persisted in the app's settings.ini using viewport
+        // geometry directly. Disable eframe's second persistence path because its
+        // zoom-factor conversion can accumulate size/position drift when UI scale != 1.
+        persist_window: false,
         ..Default::default()
     };
+    // Build fonts once before starting the event loop. Desktop font discovery is
+    // runtime-only and silently falls back to egui defaults when unavailable.
+    let initial_font_definitions =
+        crate::ui_theme::font_definitions_for_profile(&app_settings.look_preference);
 
     eframe::run_native(
         "JPEG Viewer",
         options,
-        Box::new(|cc| {
-            // Keep egui's default fonts for all normal text and use Noto Emoji
-            // only as a fallback for glyphs those fonts do not contain.
-            let mut fonts = egui::FontDefinitions::default();
-            fonts.font_data.insert(
-                "noto_emoji".to_owned(),
-                egui::FontData::from_static(include_bytes!("../assets/fonts/NotoEmoji-Regular.ttf")).into(),
+        Box::new(move |cc| {
+            cc.egui_ctx.set_fonts(initial_font_definitions);
+            crate::platform_backdrop::initialize(
+                cc.window_handle().ok().map(|window| window.as_raw()),
             );
-
-            for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
-                fonts
-                    .families
-                    .entry(family)
-                    .or_default()
-                    .push("noto_emoji".to_owned());
-            }
-
-            cc.egui_ctx.set_fonts(fonts);
-
-            /*
-            // Set the default font to the system's default sans-serif font
-            let mut fonts = egui::FontDefinitions::default();
-
-            // Search installed system fonts
-            let mut db = Database::new();
-            db.load_system_fonts();
-
-            // Try to find the platform's default sans-serif font
-            if let Some(id) = db.query(&fontdb::Query {
-                families: &[Family::SansSerif],
-                ..Default::default()
-            }) {
-                if let Some(face) = db.face(id) {
-                    match &face.source {
-                        Source::File(path) => {
-                            if let Ok(data) = std::fs::read(path) {
-                                fonts.font_data.insert(
-                                    "system".to_owned(),
-                                    egui::FontData::from_owned(data).into(),
-                                );
-
-                                fonts
-                                    .families
-                                    .get_mut(&egui::FontFamily::Proportional)
-                                    .unwrap()
-                                    .insert(0, "system".to_owned());
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            cc.egui_ctx.set_fonts(fonts);
-            */
-            // windows only, use Segoe UI as the default font
-            /*
-            let mut fonts = egui::FontDefinitions::default();
-
-            #[cfg(target_os = "windows")]
-            {
-                if let Ok(data) = std::fs::read(r"C:\Windows\Fonts\segoeui.ttf") {
-                    fonts.font_data.insert(
-                        "Segoe UI".to_owned(),
-                        egui::FontData::from_owned(data).into(),
-                    );
-
-                    fonts
-                        .families
-                        .get_mut(&egui::FontFamily::Proportional)
-                        .unwrap()
-                        .insert(0, "Segoe UI".to_owned());
-                }
-            }
-
-            cc.egui_ctx.set_fonts(fonts);
-            */
 
             let mut app = ViewerApp::default();
 
             // Apply saved theme
-            let theme_pref = match app.settings_manager.get().theme_preference.as_str() {
-                "light" => egui::ThemePreference::Light,
-                "dark" => egui::ThemePreference::Dark,
-                _ => egui::ThemePreference::System,
-            };
+            let saved_settings = app.settings_manager.get().clone();
+            let theme_pref = crate::ui_theme::effective_theme_preference(
+                &saved_settings.theme_preference,
+                &saved_settings.look_preference,
+            );
             cc.egui_ctx.set_theme(theme_pref);
             {
                 let settings = app.settings_manager.get().clone();
+                crate::ui_theme::set_look_profile(&cc.egui_ctx, &settings.look_preference);
+                // Apply the master setting first to avoid briefly enabling a backdrop
+                // for users who have explicitly disabled it in their saved preferences.
+                crate::ui_theme::set_os_background_blur_preference(
+                    &cc.egui_ctx,
+                    settings.os_background_blur,
+                );
+                crate::ui_theme::set_disable_os_background_blur_in_fullscreen(
+                    &cc.egui_ctx,
+                    settings.disable_os_background_blur_in_fullscreen,
+                );
+                crate::app::ui::set_desktop_menu_bar_preference(
+                    &cc.egui_ctx,
+                    &settings.desktop_menu_bar_preference,
+                );
                 crate::ui_theme::apply_polished_style_with_options(&cc.egui_ctx, &settings.ui_accent_color, settings.ui_scale, settings.ui_text_scale);
             }
 

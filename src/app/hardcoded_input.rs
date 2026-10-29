@@ -164,8 +164,11 @@ impl ViewerApp {
 
         crate::app::ui::update_overlay_visibility(self, ctx);
 
-        // Handle Escape key for fullscreen toggle / close
-        self.handle_escape_key(ctx);
+        // Escape first stops playback and consumes the key; it must not also
+        // toggle fullscreen or close the application on the same keypress.
+        if self.handle_escape_key(ctx) {
+            return;
+        }
 
         // F2 renames the current filesystem image; the dialog preserves its extension.
         if ctx.input(|i| i.key_pressed(egui::Key::F2)) && self.rename_dialog.is_none() && self.sidebar_number_edit.is_none() {
@@ -188,9 +191,17 @@ impl ViewerApp {
     }
 
     /// Handle Escape key: toggle fullscreen or close window
-    fn handle_escape_key(&mut self, ctx: &egui::Context) {
+    fn handle_escape_key(&mut self, ctx: &egui::Context) -> bool {
         if !ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            return;
+            return false;
+        }
+
+        if self.slideshow_enabled {
+            self.slideshow_enabled = false;
+            self.slideshow_last_advance = std::time::Instant::now();
+            self.update_window_title(ctx);
+            ctx.request_repaint();
+            return true;
         }
 
         let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
@@ -209,6 +220,7 @@ impl ViewerApp {
             self.save_window_state(ctx);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        true
     }
 
     /// Handle Delete key - triggers on key release

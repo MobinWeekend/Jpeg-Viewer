@@ -1,8 +1,8 @@
 mod cache;
 mod frame_limiter;
-mod reset_all;
+pub(super) mod reset_all;
 mod virtual_texture;
-mod window;
+pub(super) mod window;
 
 use crate::app::types::ViewerApp;
 use eframe::egui;
@@ -16,8 +16,6 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(4.0);
         cache::render(app, ui);
         frame_limiter::render(app, ui, ctx);
-        window::render(app, ui, ctx);
-        reset_all::render(app, ui, ctx);
 
         ui.add_space(4.0);
     });

@@ -3,7 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 2;
+const SETTINGS_SCHEMA_VERSION: u32 = 3;
 
 /// Application settings stored in INI format
 #[derive(Debug, Clone)]
@@ -34,18 +34,41 @@ pub struct AppSettings {
     pub slideshow_transition: String,
     pub slideshow_motion: String,
     pub slideshow_motion_strength: f32,
+    /// Enables the Windows 98-inspired modem-style image reveal animation.
+    pub win98_dialup_enabled: bool,
+    /// Internal migration marker: true after the default or user preference has been migrated.
+    pub win98_dialup_preference_configured: bool,
+    /// Simulated modem connection speed in kbps (1-56).
+    pub win98_dialup_connection_kbps: u32,
     // Startup settings
     pub start_fullscreen: bool,
     pub start_centered: bool,
     pub theme_preference: String,
+    /// Visual design profile: auto, native, cosmic, or gnome.
+    pub look_preference: String,
+    /// Placement preset for the main toolbar and image-navigation controls: auto, native, cosmic, or gnome.
+    pub main_ui_placement_preference: String,
+    /// Desktop-style application menu bar preference: auto, on, or off.
+    pub desktop_menu_bar_preference: String,
+    /// Auto-hide mode for navigation overlays: auto, on, or off.
+    /// Automatic only hides controls when the main UI uses the original JPEG Viewer placement.
+    pub navigation_ui_auto_hide_preference: String,
+    /// Inactivity delay before navigation/overlay controls are hidden (500–5000 ms).
+    pub navigation_ui_auto_hide_ms: u64,
+    /// Enables native window backdrop effects when supported, plus translucent UI fallbacks.
+    pub os_background_blur: bool,
+    /// Temporarily disable OS/DE blur while fullscreen to reduce visual overhead.
+    pub disable_os_background_blur_in_fullscreen: bool,
     /// Global UI zoom factor (0.75–1.50).
     pub ui_scale: f32,
     /// Text-only scale multiplier (0.80–1.40).
     pub ui_text_scale: f32,
-    /// Accent color preset: teal, blue, purple, orange, rose.
+    /// Accent color preset: auto, teal, blue, purple, orange, rose, green, yellow, red.
     pub ui_accent_color: String,
     /// Main image-view background: dark, light, or custom:#RRGGBB.
     pub main_view_background: String,
+    /// Main image-view background opacity when OS/DE glass is enabled (0.15-1.0).
+    pub main_view_background_opacity: f32,
     /// Show a checkerboard behind images to reveal transparent pixels.
     pub show_alpha_checkerboard: bool,
     /// Checkerboard tile size in logical points (8-64).
@@ -56,6 +79,8 @@ pub struct AppSettings {
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
     pub show_titlebar: bool,
+    /// Thickness in logical points of the custom window border and resize hit areas (2-12).
+    pub custom_window_frame_thickness: f32,
     // Sidebar and compact-view preferences
     pub show_file_sidebar: bool,
     pub file_sidebar_width: f32,
@@ -92,19 +117,31 @@ impl Default for AppSettings {
             slideshow_transition: "fade".to_string(),
             slideshow_motion: "smart".to_string(),
             slideshow_motion_strength: 20.0,
+            win98_dialup_enabled: true,
+            win98_dialup_preference_configured: false,
+            win98_dialup_connection_kbps: 28,
             start_fullscreen: false,
             start_centered: false,
             theme_preference: "system".to_string(),
+            look_preference: "auto".to_string(),
+            main_ui_placement_preference: "auto".to_string(),
+            desktop_menu_bar_preference: "auto".to_string(),
+            navigation_ui_auto_hide_preference: "auto".to_string(),
+            navigation_ui_auto_hide_ms: 1400,
+            os_background_blur: true,
+            disable_os_background_blur_in_fullscreen: true,
             ui_scale: 1.0,
             ui_text_scale: 1.0,
-            ui_accent_color: "teal".to_string(),
+            ui_accent_color: "auto".to_string(),
             main_view_background: "dark".to_string(),
+            main_view_background_opacity: 0.75,
             show_alpha_checkerboard: true,
             alpha_checkerboard_size: 18.0,
             alpha_checkerboard_brightness: 1.0,
             virtual_texture_threshold: 8192,
             tile_size: 1024,
             show_titlebar: true,
+            custom_window_frame_thickness: 6.0,
             show_file_sidebar: true,
             file_sidebar_width: 250.0,
             settings_sidebar_width: 360.0,
@@ -345,6 +382,26 @@ impl SettingsManager {
                     if let Some(value) = section.get("slideshow_motion_strength") {
                         if let Ok(strength) = value.parse::<f32>() { settings.slideshow_motion_strength = strength.clamp(5.0, 40.0); }
                     }
+                    if let Some(value) = section.get("win98_dialup_enabled") {
+                        settings.win98_dialup_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("win98_dialup_preference_configured") {
+                        settings.win98_dialup_preference_configured = Self::parse_bool(value);
+                    }
+                    // Earlier releases defaulted Dial-up to off and persisted that
+                    // default. Migrate those legacy values to the new default-on
+                    // behavior once; a preference chosen in this version is retained.
+                    if !settings.win98_dialup_preference_configured {
+                        settings.win98_dialup_enabled = true;
+                        settings.win98_dialup_preference_configured = true;
+                    }
+                    if let Some(value) = section.get("win98_dialup_connection_kbps") {
+                        if let Ok(speed) = value.parse::<u32>() {
+                            if (1..=56).contains(&speed) {
+                                settings.win98_dialup_connection_kbps = speed;
+                            }
+                        }
+                    }
                     // Read startup settings
                     if let Some(value) = section.get("start_fullscreen") {
                         settings.start_fullscreen = Self::parse_bool(value);
@@ -371,6 +428,13 @@ impl SettingsManager {
                     // Titlebar visibility
                     if let Some(value) = section.get("show_titlebar") {
                         settings.show_titlebar = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("custom_window_frame_thickness") {
+                        if let Ok(thickness) = value.parse::<f32>() {
+                            if thickness.is_finite() && (2.0..=12.0).contains(&thickness) {
+                                settings.custom_window_frame_thickness = thickness;
+                            }
+                        }
                     }
                     if let Some(value) = section.get("show_file_sidebar") {
                         settings.show_file_sidebar = Self::parse_bool(value);
@@ -412,7 +476,7 @@ impl SettingsManager {
                         if let Ok(v) = value.parse::<f32>() { if v.is_finite() && (0.80..=1.40).contains(&v) { settings.ui_text_scale = v; } }
                     }
                     if let Some(value) = section.get("ui_accent_color") {
-                        if ["teal", "blue", "purple", "orange", "rose"].contains(&value)
+                        if ["auto", "teal", "blue", "purple", "orange", "rose", "green", "yellow", "red", "win98blue"].contains(&value)
                             || (value.starts_with("custom:#") && value.len() == 14 && value[8..].chars().all(|c| c.is_ascii_hexdigit())) {
                             settings.ui_accent_color = value.to_string();
                         }
@@ -420,6 +484,13 @@ impl SettingsManager {
                     if let Some(value) = section.get("main_view_background") {
                         if value == "dark" || value == "light" || value == "theme" || (value.starts_with("custom:#") && value.len() == 14 && value[8..].chars().all(|c| c.is_ascii_hexdigit())) {
                             settings.main_view_background = value.to_string();
+                        }
+                    }
+                    if let Some(value) = section.get("main_view_background_opacity") {
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() {
+                                settings.main_view_background_opacity = v.clamp(0.15, 1.0);
+                            }
                         }
                     }
                     if let Some(value) = section.get("show_alpha_checkerboard") {
@@ -435,6 +506,49 @@ impl SettingsManager {
                     if let Some(value) = section.get("theme_preference") {
                         if value == "system" || value == "light" || value == "dark" {
                             settings.theme_preference = value.to_string();
+                        }
+                    }
+                    // Look profile. Invalid or absent values safely fall back to automatic detection.
+                    if let Some(value) = section.get("look_preference") {
+                        if ["auto", "native", "cosmic", "gnome", "win98"].contains(&value) {
+                            settings.look_preference = value.to_string();
+                        }
+                    }
+                    // Desktop menu bar can follow the Look profile or be explicitly enabled/disabled.
+                    if let Some(value) = section.get("desktop_menu_bar_preference") {
+                        if ["auto", "on", "off"].contains(&value) {
+                            settings.desktop_menu_bar_preference = value.to_string();
+                        }
+                    }
+                    // Read the newer three-state preference first. In older INI files,
+                    // `true` was the default and maps to Automatic; an explicit `false`
+                    // remains Off so a user's prior opt-out is preserved.
+                    if let Some(value) = section.get("navigation_ui_auto_hide_preference") {
+                        if ["auto", "on", "off"].contains(&value) {
+                            settings.navigation_ui_auto_hide_preference = value.to_string();
+                        }
+                    } else if let Some(value) = section.get("navigation_ui_auto_hide") {
+                        settings.navigation_ui_auto_hide_preference = if Self::parse_bool(value) {
+                            "auto".to_string()
+                        } else {
+                            "off".to_string()
+                        };
+                    }
+                    if let Some(value) = section.get("navigation_ui_auto_hide_ms") {
+                        if let Ok(ms) = value.parse::<u64>() {
+                            if (500..=5000).contains(&ms) { settings.navigation_ui_auto_hide_ms = ms; }
+                        }
+                    }
+                    if let Some(value) = section.get("os_background_blur") {
+                        settings.os_background_blur = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("disable_os_background_blur_in_fullscreen") {
+                        settings.disable_os_background_blur_in_fullscreen = Self::parse_bool(value);
+                    }
+                    // Main toolbar/navigation placement is independently selectable.
+                    if let Some(value) = section.get("main_ui_placement_preference") {
+                        if ["auto", "native", "cosmic", "gnome"].contains(&value) {
+                            settings.main_ui_placement_preference = value.to_string();
                         }
                     }
                 }
@@ -566,6 +680,9 @@ impl SettingsManager {
         section.set("slideshow_transition", settings.slideshow_transition.clone());
         section.set("slideshow_motion", settings.slideshow_motion.clone());
         section.set("slideshow_motion_strength", settings.slideshow_motion_strength.to_string());
+        section.set("win98_dialup_enabled", if settings.win98_dialup_enabled { "true" } else { "false" });
+        section.set("win98_dialup_preference_configured", if settings.win98_dialup_preference_configured { "true" } else { "false" });
+        section.set("win98_dialup_connection_kbps", settings.win98_dialup_connection_kbps.to_string());
         section.set("start_centered", if settings.start_centered { "true" } else { "false" });
         section.set(
             "start_fullscreen",
@@ -588,11 +705,26 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set("custom_window_frame_thickness", settings.custom_window_frame_thickness.to_string());
         section.set("theme_preference", &settings.theme_preference);
+        section.set("look_preference", &settings.look_preference);
+        section.set(
+            "main_ui_placement_preference",
+            &settings.main_ui_placement_preference,
+        );
+        section.set("desktop_menu_bar_preference", &settings.desktop_menu_bar_preference);
+        section.set("navigation_ui_auto_hide_preference", &settings.navigation_ui_auto_hide_preference);
+        section.set("navigation_ui_auto_hide_ms", settings.navigation_ui_auto_hide_ms.to_string());
+        section.set("os_background_blur", if settings.os_background_blur { "true" } else { "false" });
+        section.set(
+            "disable_os_background_blur_in_fullscreen",
+            if settings.disable_os_background_blur_in_fullscreen { "true" } else { "false" },
+        );
         section.set("ui_scale", settings.ui_scale.to_string());
         section.set("ui_text_scale", settings.ui_text_scale.to_string());
         section.set("ui_accent_color", &settings.ui_accent_color);
         section.set("main_view_background", &settings.main_view_background);
+        section.set("main_view_background_opacity", settings.main_view_background_opacity.to_string());
         section.set("show_alpha_checkerboard", if settings.show_alpha_checkerboard { "true" } else { "false" });
         section.set("alpha_checkerboard_size", settings.alpha_checkerboard_size.to_string());
         section.set("alpha_checkerboard_brightness", settings.alpha_checkerboard_brightness.to_string());
@@ -823,7 +955,50 @@ mod tests {
 
         SettingsManager::save_to_file(&path, &loaded).unwrap();
         let saved = fs::read_to_string(&path).unwrap();
-        assert!(saved.contains("schema_version=2"));
+        assert!(saved.contains("schema_version=3"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn main_ui_placement_preference_round_trips() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir()
+            .join(format!("jpeg-viewer-settings-placement-{}.ini", unique));
+        let mut settings = AppSettings::default();
+        settings.main_ui_placement_preference = "cosmic".to_string();
+        settings.desktop_menu_bar_preference = "off".to_string();
+        settings.look_preference = "win98".to_string();
+        settings.main_view_background_opacity = 0.45;
+        settings.win98_dialup_enabled = false;
+        settings.win98_dialup_preference_configured = true;
+        settings.win98_dialup_connection_kbps = 56;
+
+        SettingsManager::save_to_file(&path, &settings).unwrap();
+        let mut error: Option<String> = None;
+        let loaded = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
+        assert_eq!(loaded.main_ui_placement_preference, "cosmic");
+        assert_eq!(loaded.desktop_menu_bar_preference, "off");
+        assert_eq!(loaded.look_preference, "win98");
+        assert_eq!(loaded.main_view_background_opacity, 0.45);
+        assert!(!loaded.win98_dialup_enabled);
+        assert!(loaded.win98_dialup_preference_configured);
+        assert_eq!(loaded.win98_dialup_connection_kbps, 56);
+        settings.navigation_ui_auto_hide_preference = "off".to_string();
+        settings.navigation_ui_auto_hide_ms = 2300;
+        settings.os_background_blur = false;
+        settings.disable_os_background_blur_in_fullscreen = false;
+        SettingsManager::save_to_file(&path, &settings).unwrap();
+        let loaded = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
+        assert_eq!(loaded.navigation_ui_auto_hide_preference, "off");
+        assert_eq!(loaded.navigation_ui_auto_hide_ms, 2300);
+        assert!(!loaded.os_background_blur);
+        assert!(!loaded.disable_os_background_blur_in_fullscreen);
+
         let _ = fs::remove_file(path);
     }
 
@@ -875,6 +1050,49 @@ mod tests {
     }
 
     #[test]
+    fn legacy_navigation_auto_hide_setting_is_migrated() {
+        for (legacy, expected) in [("true", "auto"), ("false", "off")] {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir()
+                .join(format!("jpeg-viewer-settings-auto-hide-{}-{}.ini", legacy, unique));
+            fs::write(&path, format!("[Settings]\nnavigation_ui_auto_hide={}\n", legacy)).unwrap();
+            let mut error: Option<String> = None;
+            let loaded = SettingsManager::load_from_file(&path, &mut error);
+            assert!(error.is_none());
+            assert_eq!(loaded.navigation_ui_auto_hide_preference, expected);
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn legacy_dialup_default_migrates_to_enabled() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir()
+            .join(format!("jpeg-viewer-settings-dialup-migration-{}.ini", unique));
+        fs::write(
+            &path,
+            "[Settings]\nschema_version=2\nwin98_dialup_enabled=false\nwin98_dialup_connection_kbps=28\n",
+        )
+        .unwrap();
+
+        let mut error = None;
+        let loaded = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
+        assert!(loaded.win98_dialup_enabled);
+        assert!(loaded.win98_dialup_preference_configured);
+        SettingsManager::save_to_file(&path, &loaded).unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("win98_dialup_preference_configured=true"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn test_default_settings() {
         let settings = AppSettings::default();
         assert!(!settings.b_ctrl_invert);
@@ -892,6 +1110,16 @@ mod tests {
         assert_eq!(settings.unfocused_idle_timeout_ms, 500);
         assert_eq!(settings.unfocused_idle_fps_limit, 0.0);
         assert!(settings.prevent_sleep_during_slideshow);
+        assert_eq!(settings.look_preference, "auto");
+        assert_eq!(settings.main_ui_placement_preference, "auto");
+        assert_eq!(settings.desktop_menu_bar_preference, "auto");
+        assert_eq!(settings.navigation_ui_auto_hide_preference, "auto");
+        assert_eq!(settings.navigation_ui_auto_hide_ms, 1400);
+        assert_eq!(settings.main_view_background_opacity, 0.75);
+        assert!(settings.os_background_blur);
+        assert!(settings.win98_dialup_enabled);
+        assert!(!settings.win98_dialup_preference_configured);
+        assert_eq!(settings.win98_dialup_connection_kbps, 28);
         assert_eq!(settings.slideshow_interval_ms, 3000);
         assert!(settings.slideshow_loop);
         assert!(!settings.slideshow_random);

@@ -157,6 +157,12 @@ pub struct ViewerApp {
     pub slideshow_previous_rect: Option<egui::Rect>,
     /// Starts when the incoming image is ready, not when navigation begins.
     pub slideshow_transition_started: Option<Instant>,
+    /// Pending Dial-up reveal after a navigation event; waits until the new texture is ready.
+    pub win98_dialup_reveal_pending: bool,
+    /// Previous texture ID lets the async loader distinguish the incoming image from the retained image.
+    pub win98_dialup_previous_texture_id: Option<egui::TextureId>,
+    /// Time when the incoming image started its simulated row-by-row reveal.
+    pub win98_dialup_reveal_started: Option<Instant>,
 
     // ====== VIRTUAL TEXTURE ======
     pub virtual_texture: Option<VirtualTexture>,
@@ -182,6 +188,8 @@ pub struct ViewerApp {
 
     pub dialog_open: bool,
     pub hamburger_menu_open: bool,
+    /// Screen-space rectangle of the hamburger button from the most recent UI frame.
+    pub hamburger_button_rect: Option<egui::Rect>,
     pub overlay_visible: bool,
 
     pub compactui: bool,
@@ -192,6 +200,8 @@ pub struct ViewerApp {
     pub sidebar_width_needs_save: bool,
     /// Actual width allocated to the left sidebar this frame, used to position overlays.
     pub sidebar_actual_width: f32,
+    /// Actual width allocated to the active right-side panel (Settings or Edit) this frame.
+    pub right_sidebar_actual_width: f32,
     /// True only when the user began dragging the sidebar resize handle.
     pub sidebar_resize_dragging: bool,
     pub window_always_on_top: bool,
@@ -246,7 +256,6 @@ pub struct ViewerApp {
     /// Rename dialog for a filesystem image; the extension is preserved.
     pub rename_dialog: Option<(PathBuf, String)>,
     pub queue_mode: bool,
-    pub queue_shuffle: bool,
     pub queue_repeat: bool,
     pub queue_root: Option<PathBuf>,
     pub queue_status: Option<String>,
@@ -380,6 +389,9 @@ impl Default for ViewerApp {
             slideshow_previous_texture: None,
             slideshow_previous_rect: None,
             slideshow_transition_started: None,
+            win98_dialup_reveal_pending: false,
+            win98_dialup_previous_texture_id: None,
+            win98_dialup_reveal_started: None,
 
             // ====== VIRTUAL TEXTURE ======
             virtual_texture: None,
@@ -405,6 +417,7 @@ impl Default for ViewerApp {
 
             dialog_open: false,
             hamburger_menu_open: false,
+            hamburger_button_rect: None,
             overlay_visible: true,
 
             compactui: settings.compact_mode,
@@ -414,6 +427,7 @@ impl Default for ViewerApp {
             startup_window_placement_handled: false,
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
+            right_sidebar_actual_width: 0.0,
             sidebar_resize_dragging: false,
             window_always_on_top: false,
 
@@ -459,7 +473,6 @@ impl Default for ViewerApp {
             sidebar_number_edit: None,
             rename_dialog: None,
             queue_mode: false,
-            queue_shuffle: false,
             queue_repeat: true,
             queue_root: None,
             queue_status: None,
@@ -516,6 +529,21 @@ impl ViewerApp {
             ImageEntry::S7z(s7z) => s7z.name.clone(),
 
             ImageEntry::Rar(rar) => rar.name.clone(),
+        }
+    }
+
+    /// Start the Win98 Dial-up animation once a navigation's incoming texture is installed.
+    /// `force` is used for cache hits, where the requested image is already known to be ready.
+    pub fn mark_win98_dialup_texture_ready(&mut self, force: bool) {
+        if !self.win98_dialup_reveal_pending {
+            return;
+        }
+        let current_id = self.texture.as_ref().map(egui::TextureHandle::id);
+        if let Some(current_id) = current_id {
+            if force || Some(current_id) != self.win98_dialup_previous_texture_id {
+                self.win98_dialup_reveal_started = Some(Instant::now());
+                self.win98_dialup_reveal_pending = false;
+            }
         }
     }
 
@@ -590,6 +618,7 @@ impl ViewerApp {
         let new_interval = (current.max(500) / 2).max(500);
 
         self.slideshow_interval = Duration::from_millis(new_interval);
+        self.slideshow_last_advance = Instant::now();
 
         let _ = self.settings_manager.update(|settings| {
             settings.slideshow_interval_ms = new_interval;
@@ -602,6 +631,7 @@ impl ViewerApp {
         let new_interval = current.saturating_mul(2).min(60_000);
 
         self.slideshow_interval = Duration::from_millis(new_interval);
+        self.slideshow_last_advance = Instant::now();
 
         let _ = self.settings_manager.update(|settings| {
             settings.slideshow_interval_ms = new_interval;

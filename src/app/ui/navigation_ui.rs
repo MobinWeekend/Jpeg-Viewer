@@ -4,6 +4,22 @@ use crate::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
+/// Render toolbar buttons with the classic raised/sunken bevel in the Windows 98
+/// profile, while delegating the actual interaction and state handling to egui.
+trait ProfileToolbarButtonExt {
+    fn add_profile_button<'a>(&mut self, button: egui::Button<'a>) -> egui::Response;
+}
+
+impl ProfileToolbarButtonExt for egui::Ui {
+    fn add_profile_button<'a>(&mut self, button: egui::Button<'a>) -> egui::Response {
+        let response = self.add(button);
+        if crate::ui_theme::current_look_profile(self.ctx()) == "win98" {
+            crate::ui_theme::paint_win98_bevel(self, response.rect, response.is_pointer_button_down_on());
+        }
+        response
+    }
+}
+
 impl ViewerApp {
     // Render all navigation-related controls.
     // Individual sections can also be called separately when needed.
@@ -12,11 +28,11 @@ impl ViewerApp {
     /// Previous and next image buttons.
     pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(egui::RichText::new("◀").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Previous")
             .clicked()
@@ -26,11 +42,11 @@ impl ViewerApp {
     }
     pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(egui::RichText::new("▶").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Next")
             .clicked()
@@ -56,13 +72,13 @@ impl ViewerApp {
         };
 
         let button = ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(
                     egui::RichText::new(slideshow_icon).size(scaled_text_size(ui.ctx(), 22.0)),
                 )
                 .min_size(self.btn_size())
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text(slideshow_tooltip);
 
@@ -70,51 +86,170 @@ impl ViewerApp {
             self.handle_command(ctx, ViewerCommand::ToggleSlideshow);
         }
 
-        if self.slideshow_enabled {
-            self.slideshow_speed_ui(ctx, ui);
-        }
     }
 
-    /// Slideshow interval, speed and random indicator.
+    /// Slideshow options row, rendered beside the navigation bar while playback is active.
+    /// The second row uses the same switches and persisted controls as Settings > Slideshow.
     pub fn slideshow_speed_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let interval_secs = self.slideshow_interval.as_secs_f32();
-        let interval_mins = 60.0 / interval_secs;
+        use crate::sort::SortMethod;
 
-        ui.label(
-            egui::RichText::new(format!("{:1} Photo per min", interval_mins))
-                .size(scaled_text_size(ui.ctx(), 12.0)),
+        let interval_ms = self.slideshow_interval.as_millis().max(500) as u64;
+        let mut photos_per_min = ((60_000.0 / interval_ms as f64).round() as i32).clamp(1, 120);
+
+        ui.label(egui::RichText::new("Photos/min").size(scaled_text_size(ui.ctx(), 12.0)));
+        let speed_edit = ui.add_sized(
+            egui::vec2(58.0, ui.spacing().interact_size.y),
+            egui::DragValue::new(&mut photos_per_min)
+                .range(1..=120)
+                .speed(1),
         );
+        if speed_edit.changed() {
+            let interval_ms = (60_000_u64 / photos_per_min.clamp(1, 120) as u64).clamp(500, 60_000);
+            self.slideshow_interval = std::time::Duration::from_millis(interval_ms);
+            self.slideshow_last_advance = std::time::Instant::now();
+            let _ = self.settings_manager.update(|settings| {
+                settings.slideshow_interval_ms = interval_ms;
+            });
+        }
 
-        // Slower
         let slower_button = ui
-            .add(
-                egui::Button::new(egui::RichText::new("↘").size(scaled_text_size(ui.ctx(), 24.0)))
+            .add_profile_button(
+                egui::Button::new(egui::RichText::new("−").size(scaled_text_size(ui.ctx(), 16.0)))
                     .min_size(self.btn_size_medium())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Slower slideshow");
-
+            .on_hover_text("Fewer photos per minute");
         if slower_button.clicked() {
             self.handle_command(ctx, ViewerCommand::SlideshowSpeedDown);
         }
 
-        // Faster
         let faster_button = ui
-            .add(
-                egui::Button::new(egui::RichText::new("↗").size(scaled_text_size(ui.ctx(), 22.0)))
+            .add_profile_button(
+                egui::Button::new(egui::RichText::new("+").size(scaled_text_size(ui.ctx(), 16.0)))
                     .min_size(self.btn_size_medium())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Faster slideshow");
-
+            .on_hover_text("More photos per minute");
         if faster_button.clicked() {
             self.handle_command(ctx, ViewerCommand::SlideshowSpeedUp);
         }
 
-        if self.slideshow_random {
-            ui.label(egui::RichText::new("Random").size(scaled_text_size(ui.ctx(), 12.0)));
+        ui.separator();
+        let mut loop_enabled = self.slideshow_loop;
+        if crate::ui_theme::switch(ui, &mut loop_enabled, "Loop") {
+            self.slideshow_loop = loop_enabled;
+            let _ = self.settings_manager.update(|settings| settings.slideshow_loop = loop_enabled);
+        }
+
+        ui.separator();
+        let mut selected_sort = self.sort_method;
+        let sort_label = match selected_sort {
+            SortMethod::Natural => "Natural",
+            SortMethod::DateNewest => "Newest",
+            SortMethod::DateOldest => "Oldest",
+            SortMethod::Shuffle => "Shuffle",
+        };
+        ui.label("Sort:");
+        egui::ComboBox::from_id_salt("slideshow_sort_method")
+            .selected_text(sort_label)
+            .width(88.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut selected_sort, SortMethod::Natural, "Natural");
+                ui.selectable_value(&mut selected_sort, SortMethod::DateNewest, "Newest");
+                ui.selectable_value(&mut selected_sort, SortMethod::DateOldest, "Oldest");
+                ui.selectable_value(&mut selected_sort, SortMethod::Shuffle, "Shuffle");
+            });
+        if selected_sort != self.sort_method {
+            self.sort_method = selected_sort;
+            // The selected sort controls the actual collection order, including when
+            // viewing a queue or a local list. Keep the current image selected.
+            let selected_id = self
+                .image_entries
+                .get(self.current_index)
+                .map(|entry| entry.get_id());
+            if !self.image_entries.is_empty() {
+                crate::sort::sort_images(&mut self.image_entries, self.sort_method);
+                if let Some(id) = selected_id {
+                    if let Some(index) = self.image_entries.iter().position(|entry| entry.get_id() == id) {
+                        self.current_index = index;
+                    }
+                }
+            }
+            // Shuffle now means shuffle the collection once, not a separate random
+            // jump on every slideshow tick.
+            self.slideshow_random = false;
+            let _ = self.settings_manager.update(|settings| settings.slideshow_random = false);
+            self.image_cache.clear();
+            self.preloading_indices.clear();
+            self.preload_tasks.clear();
+            self.preload_generation = self.preload_generation.wrapping_add(1);
+            self.sidebar_last_current_index = None;
+            if !self.image_entries.is_empty() {
+                self.load_current_image_with_cache();
+            }
+            ctx.request_repaint();
+        }
+
+        ui.separator();
+        let mut transition = self.slideshow_transition.clone();
+        ui.label("Transition:");
+        egui::ComboBox::from_id_salt("slideshow_toolbar_transition")
+            .selected_text(match transition.as_str() {
+                "none" => "Instant",
+                "slide" => "Slide",
+                "random" => "Random",
+                _ => "Fade",
+            })
+            .width(78.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut transition, "none".to_owned(), "Instant");
+                ui.selectable_value(&mut transition, "fade".to_owned(), "Fade");
+                ui.selectable_value(&mut transition, "slide".to_owned(), "Slide");
+                ui.selectable_value(&mut transition, "random".to_owned(), "Random");
+            });
+        if transition != self.slideshow_transition {
+            self.slideshow_transition = transition.clone();
+            let _ = self.settings_manager.update(|settings| settings.slideshow_transition = transition);
+        }
+
+        let mut motion = self.slideshow_motion.clone();
+        ui.label("Motion:");
+        egui::ComboBox::from_id_salt("slideshow_toolbar_motion")
+            .selected_text(match motion.as_str() {
+                "none" => "Off",
+                "pan-horizontal" => "Pan wide",
+                "pan-vertical" => "Pan tall",
+                "zoom-in" => "Zoom in",
+                "zoom-out" => "Zoom out",
+                "random" => "Random",
+                _ => "Smart",
+            })
+            .width(82.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut motion, "none".to_owned(), "Off");
+                ui.selectable_value(&mut motion, "smart".to_owned(), "Smart");
+                ui.selectable_value(&mut motion, "pan-horizontal".to_owned(), "Pan wide images");
+                ui.selectable_value(&mut motion, "pan-vertical".to_owned(), "Pan tall images");
+                ui.selectable_value(&mut motion, "zoom-in".to_owned(), "Zoom in");
+                ui.selectable_value(&mut motion, "zoom-out".to_owned(), "Zoom out");
+                ui.selectable_value(&mut motion, "random".to_owned(), "Random");
+            });
+        if motion != self.slideshow_motion {
+            self.slideshow_motion = motion.clone();
+            let _ = self.settings_manager.update(|settings| settings.slideshow_motion = motion);
+        }
+
+        ui.separator();
+        ui.label("Strength:");
+        let mut strength = self.slideshow_motion_strength;
+        let strength_slider = egui::Slider::new(&mut strength, 5.0..=40.0)
+            .suffix("%")
+            .show_value(true);
+        if ui.add(crate::ui_theme::BorderedSlider::new(strength_slider)).changed() {
+            self.slideshow_motion_strength = strength;
+            let _ = self.settings_manager.update(|settings| settings.slideshow_motion_strength = strength);
         }
     }
 
@@ -128,14 +263,22 @@ impl ViewerApp {
             "Click for 100%"
         };
 
-        let response = ui
-            .add(
-                egui::Button::new(egui::RichText::new(text).size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(egui::vec2(50.0, 24.0))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
-            )
-            .on_hover_text(tooltip);
+        // Keep the layout slot fixed-width even for very large percentages. The
+        // percentage is painted independently so its text may visually overflow the
+        // slot instead of forcing neighboring toolbar controls to shift.
+        let (zoom_rect, response) = ui.allocate_exact_size(
+            egui::vec2(50.0, 24.0),
+            egui::Sense::click(),
+        );
+        let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0));
+        ui.painter().text(
+            zoom_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            font_id,
+            ui.visuals().text_color(),
+        );
+        let response = response.on_hover_text(tooltip);
 
         if response.clicked() {
             if self.b_zoom_used {
@@ -149,11 +292,11 @@ impl ViewerApp {
     // Zoom in
     pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(egui::RichText::new("+").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size_small())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Zoom in")
             .clicked()
@@ -164,11 +307,11 @@ impl ViewerApp {
     // Zoom out
     pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(egui::RichText::new("−").size(scaled_text_size(ui.ctx(), 22.0)))
                     .min_size(self.btn_size_small())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Zoom out")
             .clicked()
@@ -181,13 +324,13 @@ impl ViewerApp {
         // Fit / 1:1
         if self.b_zoom_used {
             if ui
-                .add(
+                .add_profile_button(
                     egui::Button::new(
                         egui::RichText::new("⊞").size(scaled_text_size(ui.ctx(), 14.0)),
                     )
                     .min_size(self.btn_size_medium())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
                 )
                 .on_hover_text("Fit")
                 .clicked()
@@ -195,13 +338,13 @@ impl ViewerApp {
                 self.handle_command(ctx, ViewerCommand::MakeFit);
             }
         } else if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(
                     egui::RichText::new("1:1").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
                 .min_size(self.btn_size_medium())
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Make 1:1 Ratio")
             .clicked()
@@ -237,13 +380,13 @@ impl ViewerApp {
         };
 
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(
                     egui::RichText::new(play_text).size(scaled_text_size(ui.ctx(), 22.0)),
                 )
                 .min_size(btn)
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .clicked()
         {
@@ -260,13 +403,13 @@ impl ViewerApp {
         };
 
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(
                     egui::RichText::new(&speed_text).size(scaled_text_size(ui.ctx(), 12.0)),
                 )
                 .min_size(egui::vec2(40.0, 24.0))
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .clicked()
         {
@@ -287,7 +430,7 @@ impl ViewerApp {
 
         // Speed slider
         ui.add(
-            egui::Slider::new(&mut gif.speed_multiplier, 0.1..=10.0)
+            crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut gif.speed_multiplier, 0.1..=10.0)
                 .logarithmic(true)
                 .show_value(false)
                 .custom_formatter(|value, _| {
@@ -299,7 +442,7 @@ impl ViewerApp {
                         format!("{:.0}×", value)
                     }
                 }),
-        );
+        ));
 
         // Frame counter
         ui.label(
@@ -319,11 +462,11 @@ impl ViewerApp {
     // Fullscreen
     pub fn fullscreen_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(egui::RichText::new("⛶").size(scaled_text_size(ui.ctx(), 14.0)))
                     .min_size(self.btn_size_small())
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Toggle Fullscreen")
             .clicked()
@@ -342,11 +485,11 @@ impl ViewerApp {
         };
 
         if ui
-            .add(
+            .add_profile_button(
                 egui::Button::new(egui::RichText::new(icon).size(scaled_text_size(ui.ctx(), 14.0)))
                     .min_size(self.btn_size_small())
                     .fill(fill)
-                    .stroke(egui::Stroke::NONE),
+                    .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text(tooltip)
             .clicked()
@@ -389,4 +532,18 @@ impl ViewerApp {
             egui::vec2(28.0, 28.0)
         }
     }
+}
+
+
+fn toolbar_button_fill(ui: &egui::Ui) -> egui::Color32 {
+    if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {
+        ui.visuals().widgets.inactive.bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    }
+}
+
+fn toolbar_button_stroke(_ui: &egui::Ui) -> egui::Stroke {
+    // A raised/sunken bevel is painted by ProfileToolbarButtonExt for Win98.
+    egui::Stroke::NONE
 }

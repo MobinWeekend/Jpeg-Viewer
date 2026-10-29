@@ -15,12 +15,12 @@ pub fn rename_warning(app: &mut ViewerApp, ctx: &egui::Context) {
         egui::Frame::new()
             .fill(ctx.style().visuals.panel_fill)
             .inner_margin(egui::Margin::symmetric(8, 4))
-            .corner_radius(egui::CornerRadius::same(6))
+            .corner_radius(if crate::ui_theme::current_look_profile(ctx) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(6) })
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("⚠")
-                            .color(egui::Color32::RED)
+                            .color(ui.visuals().error_fg_color)
                             .size(24.0),
                     );
 
@@ -28,7 +28,7 @@ pub fn rename_warning(app: &mut ViewerApp, ctx: &egui::Context) {
 
                     let rename_btn = ui.button(
                         egui::RichText::new(" Rename ")
-                            .color(egui::Color32::LIGHT_GREEN)
+                            .color(ui.visuals().hyperlink_color)
                             .size(14.0),
                     );
 

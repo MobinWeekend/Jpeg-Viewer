@@ -118,17 +118,23 @@ impl ViewerApp {
     }
 
     pub fn save_window_state(&mut self, ctx: &egui::Context) {
-        // Get the outer position (top‑left corner of the whole window)
-        // and the inner size (client/content area).
+        // Persist the outer-frame position (matching ViewportBuilder::with_position)
+        // and inner client size (matching ViewportBuilder::with_inner_size). Do not
+        // use the window's full outer size as an inner size; that adds decoration size
+        // again at each launch and creates the classic bottom-right growth drift.
         let (pos, size) = ctx.input(|i| {
             let outer_pos = i.viewport().outer_rect.map(|rect| rect.min);
             let inner_size = i.viewport().inner_rect.map(|rect| rect.size());
             (outer_pos, inner_size)
         });
 
-        // Only save if both are available and not fullscreen.
-        let is_fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-        if !is_fullscreen {
+        // Preserve the last normal geometry. Saving maximized geometry as a normal
+        // client size makes the next launch restore to almost-monitor-size and can
+        // appear to grow on every restart due to native frame decorations.
+        let (is_fullscreen, is_maximized) = ctx.input(|i| {
+            (i.viewport().fullscreen.unwrap_or(false), i.viewport().maximized.unwrap_or(false))
+        });
+        if !is_fullscreen && !is_maximized {
             if let (Some(pos), Some(size)) = (pos, size) {
                 if size.x > 100.0 && size.y > 100.0 {
                     let pos_arr = [pos.x, pos.y];

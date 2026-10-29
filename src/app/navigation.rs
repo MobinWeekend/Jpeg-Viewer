@@ -15,15 +15,7 @@ impl ViewerApp {
 
         let len = self.image_entries.len();
 
-        let new_index = if self.queue_mode && self.queue_shuffle && direction > 0 && len > 1 {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let mut candidate = rng.gen_range(0..len);
-            while candidate == self.current_index {
-                candidate = rng.gen_range(0..len);
-            }
-            candidate
-        } else if self.queue_mode && !self.queue_repeat {
+        let new_index = if self.queue_mode && !self.queue_repeat {
             let candidate = self.current_index as i32 + direction;
             if candidate < 0 || candidate >= len as i32 { return; }
             candidate as usize
@@ -67,6 +59,21 @@ impl ViewerApp {
         if new_index == self.current_index {
             return;
         }
+
+        // Windows 98's optional Dial-up effect starts only after the incoming
+        // texture is ready, so an asynchronously retained old image is not revealed.
+        let dialup_enabled = crate::ui_theme::current_look_profile(ctx) == "win98"
+            && self.settings_manager.get().win98_dialup_enabled;
+        if dialup_enabled {
+            self.win98_dialup_previous_texture_id = self.texture.as_ref().map(egui::TextureHandle::id);
+            self.win98_dialup_reveal_pending = true;
+            self.win98_dialup_reveal_started = None;
+        } else {
+            self.win98_dialup_previous_texture_id = None;
+            self.win98_dialup_reveal_pending = false;
+            self.win98_dialup_reveal_started = None;
+        }
+
         // Change image
         self.current_index = new_index;
 
@@ -159,17 +166,7 @@ impl ViewerApp {
             self.update_window_title(ctx);
             return;
         }
-        let new_index = if self.queue_mode && self.queue_shuffle && len > 1 {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let mut candidate = rng.gen_range(0..len);
-            while candidate == self.current_index {
-                candidate = rng.gen_range(0..len);
-            }
-            candidate
-        } else {
-            (self.current_index + 1) % len
-        };
+        let new_index = (self.current_index + 1) % len;
 
         // Keep the outgoing texture so the transition can blend/slide between
         // two distinct images instead of animating only the incoming image.

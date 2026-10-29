@@ -126,7 +126,7 @@ impl ViewerApp {
                 crate::app::ui::toggle_settings_menu(self);
             }
             ViewerCommand::Help => {
-                self.toggle_help_menu();
+                self.toggle_help_menu(ctx);
             }
             ViewerCommand::ToggleSlideshow => {
                 self.toggle_slideshow();

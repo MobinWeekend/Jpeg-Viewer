@@ -2,9 +2,8 @@
 
 mod advanced;
 mod copy_buttons;
-mod file_info;
 pub mod general;
-pub mod helpers;
+mod look;
 mod settings_file;
 mod slideshow;
 
@@ -40,20 +39,34 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                 });
             });
             ui.separator();
+            // Keep the version visible at the bottom while the settings sections scroll.
+            const FOOTER_HEIGHT: f32 = 34.0;
+            let scroll_height = (ui.available_height() - FOOTER_HEIGHT).max(0.0);
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
+                .max_height(scroll_height)
                 .show(ui, |ui| {
                     ui.add_space(4.0);
                     copy_buttons::render(app, ui);
+                    look::render(app, ui, ctx);
                     general::render(app, ui, ctx);
                     slideshow::render(app, ui, ctx);
                     advanced::render(app, ui, ctx);
-                    file_info::render(app, ui);
-                    settings_file::render(app, ui);
+                    settings_file::render(app, ui, ctx);
                     ui.add_space(8.0);
                 });
+            ui.separator();
+            ui.add_space(3.0);
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("JPEG Viewer v{}", env!("CARGO_PKG_VERSION")))
+                        .small()
+                        .weak(),
+                );
+            });
         });
 
+    app.right_sidebar_actual_width = response.response.rect.width().max(0.0);
     let width = response.response.rect.width().clamp(260.0, 640.0);
     let previous = app.settings_manager.get().settings_sidebar_width;
     if !ctx.input(|input| input.pointer.any_down()) && (width - previous).abs() > 2.0 {

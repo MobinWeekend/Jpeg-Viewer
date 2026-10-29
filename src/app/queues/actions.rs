@@ -165,7 +165,7 @@ impl ViewerApp {
         self.queue_status = Some(format!("Added {count} image(s) from the current view."));
     }
 
-    pub(super) fn add_folder_recursively(&mut self, root: &Path) -> usize {
+    pub fn add_folder_recursively(&mut self, root: &Path) -> usize {
         collect_folder_images(root).into_iter().map(|path| usize::from(self.add_queue_path(path))).sum()
     }
 
@@ -227,7 +227,7 @@ impl ViewerApp {
         true
     }
 
-    pub(super) fn return_to_previous_view(&mut self, ctx: &egui::Context) {
+    pub fn return_to_previous_view(&mut self, ctx: &egui::Context) {
         let Some(entries) = self.queue_previous_entries.take() else {
             self.queue_status = Some("There is no previous view to restore.".into());
             return;
@@ -241,7 +241,7 @@ impl ViewerApp {
         ctx.request_repaint();
     }
 
-    pub(super) fn save_queue_dialog(&mut self) {
+    pub fn save_queue_dialog(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("JPEG Viewer queue", &["jvq"])
             .set_file_name("image-queue.jvq")
@@ -275,7 +275,7 @@ impl ViewerApp {
         }
     }
 
-    pub(super) fn load_queue_dialog(&mut self) {
+    pub fn load_queue_dialog(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("JPEG Viewer queue", &["jvq", "txt"])
             .pick_file()
@@ -300,7 +300,7 @@ impl ViewerApp {
         }
     }
 
-    pub(super) fn export_queue_paths(&mut self) {
+    pub fn export_queue_paths(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Path list", &["txt"])
             .set_file_name("image-paths.txt")
@@ -322,7 +322,7 @@ impl ViewerApp {
         }
     }
 
-    pub(super) fn remap_missing_queue_root(&mut self) {
+    pub fn remap_missing_queue_root(&mut self) {
         let Some(old_root) = self.queue_root.clone() else {
             self.queue_status =
                 Some("Load a saved queue first; it must contain a root path to remap.".into());

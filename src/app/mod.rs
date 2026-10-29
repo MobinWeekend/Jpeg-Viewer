@@ -13,7 +13,7 @@ mod navigation;
 mod preload;
 pub(crate) mod queues;
 pub mod types;
-mod ui;
+pub(crate) mod ui;
 mod update;
 mod virtual_texture;
 

@@ -63,7 +63,7 @@ fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut workers = current as u32;
     ui.horizontal(|ui| {
         ui.label("Thumbnail workers");
-        ui.add(egui::Slider::new(&mut workers, 1..=8).show_value(true));
+        ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut workers, 1..=8).show_value(true)));
     });
     if workers as usize != current {
         let _ = app
@@ -189,13 +189,14 @@ fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             });
 
             // Apply to egui context
-            let theme_pref = match theme.as_str() {
-                "light" => egui::ThemePreference::Light,
-                "dark" => egui::ThemePreference::Dark,
-                _ => egui::ThemePreference::System,
-            };
-            ctx.set_theme(theme_pref);
             let s = app.settings_manager.get().clone();
+            let theme_pref = crate::ui_theme::effective_theme_preference(
+                &theme,
+                &s.look_preference,
+            );
+            ctx.set_theme(theme_pref);
+            // Refresh desktop-specific settings such as COSMIC's light/dark frost option.
+            crate::ui_theme::set_look_profile(ctx, &s.look_preference);
             crate::ui_theme::apply_polished_style_with_options(
                 ctx,
                 &s.ui_accent_color,
@@ -219,10 +220,10 @@ fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     ui.horizontal(|ui| {
         ui.label("UI scale");
         let response = ui.add(
-            egui::Slider::new(&mut scale, 0.75..=1.50)
+            crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut scale, 0.75..=1.50)
                 .step_by(0.05)
                 .suffix("×"),
-        );
+        ));
         ctx.data_mut(|d| d.insert_temp(scale_id, scale));
         if response.drag_stopped() || (response.changed() && !response.dragged()) {
             let _ = app.settings_manager.update(|s| s.ui_scale = scale);
@@ -245,10 +246,10 @@ fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     ui.horizontal(|ui| {
         ui.label("Text size");
         let response = ui.add(
-            egui::Slider::new(&mut text_scale, 0.80..=1.40)
+            crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut text_scale, 0.80..=1.40)
                 .step_by(0.05)
                 .suffix("×"),
-        );
+        ));
         ctx.data_mut(|d| d.insert_temp(text_scale_id, text_scale));
         if response.drag_stopped() || (response.changed() && !response.dragged()) {
             let _ = app
@@ -274,19 +275,30 @@ fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
                 "Custom"
             } else {
                 match accent.as_str() {
+                    "auto" if crate::ui_theme::current_look_profile(ctx) == "win98" => "Classic (Windows 98 default)",
+                    "auto" => "Automatic (desktop)",
+                    "win98blue" => "Classic Windows 98 blue",
                     "blue" => "Blue",
                     "purple" => "Purple",
                     "orange" => "Orange",
                     "rose" => "Rose",
+                    "green" => "Green",
+                    "yellow" => "Yellow",
+                    "red" => "Red",
                     _ => "Teal",
                 }
             })
             .show_ui(ui, |ui| {
+                ui.selectable_value(&mut accent, "auto".to_string(), if crate::ui_theme::current_look_profile(ctx) == "win98" { "Classic (Windows 98 default)" } else { "Automatic (desktop)" });
+                ui.selectable_value(&mut accent, "win98blue".to_string(), "Classic Windows 98 blue");
                 ui.selectable_value(&mut accent, "teal".to_string(), "Teal");
                 ui.selectable_value(&mut accent, "blue".to_string(), "Blue");
                 ui.selectable_value(&mut accent, "purple".to_string(), "Purple");
                 ui.selectable_value(&mut accent, "orange".to_string(), "Orange");
                 ui.selectable_value(&mut accent, "rose".to_string(), "Rose");
+                ui.selectable_value(&mut accent, "green".to_string(), "Green");
+                ui.selectable_value(&mut accent, "yellow".to_string(), "Yellow");
+                ui.selectable_value(&mut accent, "red".to_string(), "Red");
                 ui.selectable_value(&mut accent, "custom:#00857B".to_string(), "Custom");
             });
     });
@@ -361,16 +373,16 @@ fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     let settings = app.settings_manager.get().clone();
     let mut checker_size = settings.alpha_checkerboard_size;
     ui.add(
-        egui::Slider::new(&mut checker_size, 12.0..=64.0)
+        crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut checker_size, 12.0..=64.0)
             .step_by(2.0)
             .text("Checker size"),
-    );
+    ));
     let mut checker_brightness = settings.alpha_checkerboard_brightness;
     ui.add(
-        egui::Slider::new(&mut checker_brightness, 0.25..=1.5)
+        crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut checker_brightness, 0.25..=1.5)
             .step_by(0.05)
             .text("Checker brightness"),
-    );
+    ));
     if checker_size != settings.alpha_checkerboard_size
         || checker_brightness != settings.alpha_checkerboard_brightness
     {
