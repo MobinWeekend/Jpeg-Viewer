@@ -259,7 +259,19 @@ jobs:
           cp README.md \
             package/JPEG-View/README.md
 
-          chmod +x package/JPEG-View/jpeg_viewer
+          cp QUICK_START.md \
+            package/JPEG-View/GETTING_STARTED.md
+
+          cp assets/icons/icon.png \
+            package/JPEG-View/icon.png
+
+          cp packaging/linux/com.jpegviewer.JpegViewer.desktop \
+            package/JPEG-View/com.jpegviewer.JpegViewer.desktop
+
+          cp packaging/linux/install-portable.sh \
+            package/JPEG-View/install.sh
+
+          chmod +x package/JPEG-View/jpeg_viewer package/JPEG-View/install.sh
 
           tar -C package \
             -czf JPEG-View-Linux-x64.tar.gz \
@@ -365,7 +377,19 @@ jobs:
           cp README.md \
             package/JPEG-View/README.md
 
-          chmod +x package/JPEG-View/jpeg_viewer
+          cp QUICK_START.md \
+            package/JPEG-View/GETTING_STARTED.md
+
+          cp assets/icons/icon.png \
+            package/JPEG-View/icon.png
+
+          cp packaging/linux/com.jpegviewer.JpegViewer.desktop \
+            package/JPEG-View/com.jpegviewer.JpegViewer.desktop
+
+          cp packaging/linux/install-portable.sh \
+            package/JPEG-View/install.sh
+
+          chmod +x package/JPEG-View/jpeg_viewer package/JPEG-View/install.sh
 
           tar -C package \
             -czf JPEG-View-Linux-ARM64.tar.gz \

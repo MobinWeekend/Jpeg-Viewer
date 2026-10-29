@@ -1,117 +1,67 @@
 # JPEG Viewer
 
-**Open it. View it. Move on.**
+A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse image collections, inspect large images, run slideshows, organize queues and favorites, and make basic edits without a large editing interface getting in the way.
 
-A GPU-accelerated image viewer written in Rust, built to keep image browsing responsive and the interface out of the way.
+![JPEG Viewer screenshot](https://github.com/user-attachments/assets/26e2fe70-7222-42a9-9ea7-b558ecd58899)
 
-<img width="851" height="686" alt="JPEG Viewer screenshot" src="https://github.com/user-attachments/assets/26e2fe70-7222-42a9-9ea7-b558ecd58899" />
-
-> “Do I look like I know what a JPEG is?!”
->
-> The goal is simple: the application should stay a tool, so you can focus on enjoying the content.
-
-**New to JPEG Viewer?** Start with the **[Quick Start Guide](QUICK_START.md)** for common workflows, controls, editing, and a short explanation of the settings.
+**New users:** see [Getting Started](QUICK_START.md). For in-app controls, press **F1**.
 
 ## Features
 
-- **GPU-accelerated rendering** with `egui` and `wgpu`
-- **Broad image-format support**, including AVIF, HEIC/HEIF, JPEG XL, SVG, and camera RAW formats
-- **Archive browsing** for images in ZIP, 7z, and RAR archives without extracting them first
-- **GIF playback** with playback and speed controls
-- **Configurable slideshows** with timing, looping, transitions, pan/zoom motion effects, and optional system-sleep prevention (enabled by default)
-- **Session-only slideshow playback** so closing and reopening the app never resumes playback automatically
-- **Browse, Queue, and Favorites** collections for navigating and organizing image selections
-- **Image editing** with crop, rotate, flip, color adjustments, and export options for supported images
-- **Background decoding and preloading** for smoother navigation
-- **Configurable caching** to balance responsiveness and memory use
-- **Virtual texturing** for very large images
-- **Fullscreen and compact modes**
-- **Persistent settings** for appearance, behavior, and performance
-- **Drag-and-drop** support for images, folders, and supported archives
-- **File type mismatch detection** when the file extension does not match its contents
-- **File actions** including Open With, Locate in File Manager, and trash/recycle-bin integration where supported
-- **Adjustable frame limiting** for performance and battery efficiency
-- **Aspect-ratio labels** for common ratios such as 16:9, 4:3, and CinemaScope
+- **Image formats:** JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, HEIC/HEIF, JPEG XL, SVG, HDR/EXR, and more; includes in-process camera RAW decoding (support varies by camera model).
+- **Archives:** browse images inside ZIP, 7z, and RAR archives without extracting them.
+- **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan, fullscreen, and compact mode.
+- **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable.
+- **Queues:** create a viewing/slideshow sequence, save and load `.jvq` lists, export paths, shuffle, repeat, and remap moved folders.
+- **Editing:** crop, rotate, flip, adjust brightness/contrast/saturation/hue, undo/redo, and export to a selected format. The source is unchanged until you save or overwrite it.
+- **GIFs and slideshows:** playback speed controls, configurable intervals, transitions, pan/zoom motion, looping, and optional prevention of system sleep.
+- **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98.
+- **Performance:** background decoding and preloading, configurable cache, virtual texturing for very large images, and an adjustable frame limiter.
+- **File actions:** drag and drop, Open With, locate in file manager, rename supported filesystem images, copy image/path, and trash integration where supported.
+
+## Downloads
+
+Get the latest artifacts from [GitHub Releases](https://github.com/MobinWeekend/Jpeg-Viewer/releases). Choose the build matching your operating system and CPU architecture.
+
+| Platform | Available builds |
+|---|---|
+| Windows | x64 and ARM64 |
+| macOS | Intel (x86_64) and Apple Silicon (ARM64) |
+| Linux | x64 and ARM64 `.tar.gz`, x64 and ARM64 AppImage, Flatpak, and distribution packages where published |
+| Linux packages | Debian/Ubuntu `.deb`, Fedora-compatible `.rpm`, and Arch `.pkg.tar.zst` where published |
+
+### Portable Linux archives
+
+1. Download and extract the matching `.tar.gz` archive.
+2. Run `./jpeg_viewer` to launch directly, or run `./install.sh` to install under `~/.local/opt/jpeg-viewer` and register an application-menu entry and icon.
+
+Linux packages can depend on system libraries provided by the distribution. AppImage compatibility depends on the host system. macOS builds are currently unsigned and may require approval in Security settings.
 
 ## Supported formats
 
-Support can vary by decoder and, for camera RAW files, by camera model and file variant.
+Format support depends on the decoder and, for camera RAW files, the specific camera model and file variant.
 
-### Raster and animated images
-
-| Format | Extensions |
+| Type | Formats / extensions |
 |---|---|
-| AVIF | `.avif` |
-| BMP | `.bmp` |
-| DDS | `.dds` |
-| EXR | `.exr` |
-| GIF | `.gif` |
-| HDR | `.hdr` |
-| HEIC / HEIF | `.heic`, `.heif` |
-| ICO | `.ico` |
-| JPEG | `.jpg`, `.jpeg` |
-| JPEG XL | `.jxl` |
-| PNG | `.png` |
-| PNM | `.pnm` |
-| QOI | `.qoi` |
-| TGA | `.tga` |
-| TIFF | `.tif`, `.tiff` |
-| WebP | `.webp` |
+| Raster and animated | AVIF (`.avif`), BMP (`.bmp`), DDS (`.dds`), EXR (`.exr`), GIF (`.gif`), HDR (`.hdr`), HEIC/HEIF (`.heic`, `.heif`), ICO (`.ico`), JPEG (`.jpg`, `.jpeg`), JPEG XL (`.jxl`), PNG (`.png`), PNM (`.pnm`), QOI (`.qoi`), TGA (`.tga`), TIFF (`.tif`, `.tiff`), WebP (`.webp`) |
+| Vector | SVG (`.svg`); rasterized for display. Very large SVGs are limited to 4096 × 4096 pixels. |
+| Camera RAW | `.cr2`, `.cr3`, `.nef`, `.nrw`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.iiq`, `.kdc`, `.mos`, `.mrw`, `.rwl`, `.x3f` |
+| Archives | ZIP (`.zip`), 7z (`.7z`), RAR (`.rar`) |
 
-### Camera RAW
+RAW decoding uses the Rust `zenraw` library and its `rawler` backend; a separately installed RAW converter is not required. Recognized extensions do not guarantee every RAW variant is supported.
 
-RAW decoding and development are handled in-process through the Rust `zenraw` library and its `rawler` backend; a separately installed converter such as darktable or dcraw is not required.
+## Build from source
 
-Recognized extensions include `.cr2`, `.cr3`, `.nef`, `.nrw`, `.arw`, `.dng`, `.raf`, `.orf`, `.rw2`, `.pef`, `.srw`, `.3fr`, `.fff`, `.iiq`, `.kdc`, `.mos`, `.mrw`, `.rwl`, and `.x3f`. Recognition does not guarantee that every camera model or RAW variant can be decoded.
-
-### Vector images
-
-- **SVG** (`.svg`): rasterized for GPU display. Extremely large SVGs are rasterized with a maximum dimension of 4096 × 4096 pixels to limit memory use.
-
-### Archives
-
-Images can be opened directly from **ZIP** (`.zip`), **7z** (`.7z`), and **RAR** (`.rar`) archives without extracting the archive first.
-
-## Downloads and supported platforms
-
-Tagged GitHub releases publish downloadable builds for:
-
-- **Windows:** x64 and ARM64 executables
-- **macOS:** Intel (x86_64) and Apple Silicon (ARM64) app bundles
-- **Linux portable:** x64 and ARM64 tarballs, AppImages, and Flatpak bundles
-- **Linux distribution packages:** Debian/Ubuntu `.deb` packages, Fedora-compatible `.rpm` packages, and Arch Linux `.pkg.tar.zst` packages (x64 and ARM64 where built)
-
-Open the [GitHub Releases page](https://github.com/MobinWeekend/Jpeg-Viewer/releases) and choose the asset matching your operating system and processor architecture. Linux packages may require system libraries supplied by your distribution. macOS bundles are currently unsigned and may require approval in macOS security settings.
-
-## Building from source
-
-### Requirements
-
-- [Rust and Cargo](https://rustup.rs)
-- The platform dependencies required by `eframe`/`wgpu` for your operating system and graphics stack
-
-### Clone the repository
+Requirements: [Rust and Cargo](https://rustup.rs) and the platform dependencies needed by `eframe`/`wgpu` and your graphics stack.
 
 ```bash
 git clone https://github.com/MobinWeekend/Jpeg-Viewer.git
 cd Jpeg-Viewer
+cargo run --release       # build and run
+cargo build --release     # build only
 ```
 
-### Run in release mode
-
-```bash
-cargo run --release
-```
-
-### Build without running
-
-```bash
-cargo build --release
-```
-
-The executable is placed in `target/release/`.
-
-To open a specific image from the command line, pass its path as an argument:
+The executable is placed in `target/release/`. Open a file directly by passing its path:
 
 ```bash
 jpeg_viewer image.jpg
@@ -149,16 +99,17 @@ Very large images can be split into tiles and loaded as needed, rather than requ
 
 The viewer caches nearby images and preloads adjacent items in background tasks. Cache radius, task concurrency, and preload timing can be tuned in Advanced settings to balance navigation speed, background activity, and memory consumption.
 
-## Queue format and limitations
+## Queue files and limitations
 
-Queue files use the `.jvq` extension and a versioned text format. Paths can be stored relative to the queue file's directory or as absolute paths, with a root path available to help remap files when a directory tree moves. Missing entries can be retained and resolved later with **Remap missing root**. **Export paths** writes the queue's paths to a plain-text file.
+Queue files use the `.jvq` extension and a versioned text format. Paths can be relative to the queue file or absolute. If a directory tree moves, use **Remap missing root** to reconnect missing entries. **Export Queue Paths** writes paths to a text file.
 
-Queues currently contain standalone filesystem image files only; images inside ZIP, 7z, and RAR archives are not added to queues. Queue batch actions are focused on queue management and path export; destructive batch image operations are not included.
+Queues currently store standalone filesystem image files only; images inside archives cannot be added to queues. Editing is limited to supported, fully loaded raster images with a direct filesystem path; archive entries, animated GIFs, virtual-texture images, and images still loading are not editable. Batch queue actions manage lists and paths; they do not perform destructive batch image editing.
 
 ## Documentation
 
-- **[Quick Start Guide](QUICK_START.md)** — opening images, navigation, mouse and keyboard controls, Browse/Queue/Favorites, editing, settings, and troubleshooting
+- [Getting Started](QUICK_START.md) — essential controls, sidebar collections, editing, appearance, and troubleshooting.
+- In-app Help — press **F1** for shortcuts and mouse controls.
 
 ## License
 
-See [LICENSE](LICENSE) for license details.
+See [LICENSE](LICENSE).

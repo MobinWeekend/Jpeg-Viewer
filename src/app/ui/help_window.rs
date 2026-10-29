@@ -107,16 +107,16 @@ impl ViewerApp {
 
                         // some feel stupid to boast about and considering I want the user to quickly see the keyboard shortcuts, I commented most out :)
                         let features = vec![
-                            "• View images from your computer, folders, and archives (.zip, .7z, .rar)",
-                            "• Support for all major image formats (JPEG, PNG, GIF, WebP, BMP, TIFF, and more)",
-                            "• Camera RAW decoding in-process (no separate RAW converter required)",
-                            "• Full GIF animation support with playback controls and speed adjustment",
-                            "• Slideshow transitions: instant, fade, slide, or random",
-                            "• Slideshow motion: smart pan, horizontal/vertical pan, and zoom effects",
-                            "• Smart image caching and background preloading for smooth navigation",
-                            "• Choose an application with Open With… or locate the file in your file manager",
-                            "• Archive scanning without extracting files",
-                            "• Support for extremely large images using tiled virtual texturing",
+                            "• Browse common raster, animated, vector, and camera RAW formats",
+                            "• Open images inside ZIP, 7z, and RAR archives without extracting them",
+                            "• Browse, Queue, Favorites, and Info sidebar tabs",
+                            "• Save and load .jvq queues; reorder queue and favorite entries",
+                            "• Edit supported raster files: crop, rotate, flip, adjust color, undo/redo, and export",
+                            "• GIF playback controls and configurable slideshow transitions and motion",
+                            "• Desktop looks for JPEG Viewer, COSMIC, GNOME / Adwaita, and Windows 98",
+                            "• UI scaling, custom accents, transparency checkerboard, and optional OS/DE glass",
+                            "• Background decoding, preloading, cache controls, and tiled rendering for very large images",
+                            "• File actions include Open With, locate, rename, copy path, and trash where supported",
                         ];
 
                         for feature in features {
@@ -178,7 +178,17 @@ impl ViewerApp {
                         Self::render_shortcut_row(ui, "L", "Toggle slideshow on/off");
                         Self::render_shortcut_row(ui, ",", "Slideshow - slower speed (longer interval)");
                         Self::render_shortcut_row(ui, ".", "Slideshow - faster speed (shorter interval)");
-                        Self::render_shortcut_row(ui, "Settings", "Choose transition, motion effect, and motion strength");
+                        Self::render_shortcut_row(ui, "Settings", "Choose interval, loop, transition, motion, and motion strength");
+
+                        ui.add_space(4.0);
+
+                        // Editing and collections
+                        ui.label(egui::RichText::new("Collections & Editing").size(14.0).strong());
+                        ui.add_space(4.0);
+                        Self::render_shortcut_row(ui, "Sidebar", "Browse the current list, Queue, Favorites, or Info");
+                        Self::render_shortcut_row(ui, "Queue", "Build and save a viewing sequence as a .jvq file");
+                        Self::render_shortcut_row(ui, "Favorites", "Keep a persistent, reorderable image list");
+                        Self::render_shortcut_row(ui, "Edit mode", "Crop, rotate, flip, adjust color, undo/redo, and export supported files");
 
                         ui.add_space(4.0);
 
@@ -215,7 +225,10 @@ impl ViewerApp {
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
                         Self::render_mouse_row(ui, "Alt + Left Drag", "Move window");
                         Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window");
-                        Self::render_mouse_row(ui, "Touchpad scroll", "Navigate images; Ctrl + scroll zooms");
+                        Self::render_mouse_row(ui, "Touchpad scroll", "Navigate images; Ctrl + scroll zooms unless inverted in Settings");
+                        Self::render_mouse_row(ui, "Sidebar thumbnails", "Select to open; drag to reorder Queue/Favorites entries");
+                        Self::render_mouse_row(ui, "Entry number", "Enter a position to move the item in supported lists");
+                        Self::render_mouse_row(ui, "Custom frame corners", "Resize the window when native decorations are disabled");
 
                         ui.add_space(12.0);
                         ui.separator();
@@ -226,14 +239,15 @@ impl ViewerApp {
                         ui.add_space(8.0);
 
                         let tips = vec![
-                            "• Drag and drop images, folders, or archive files directly into the window",
-                            "• The app remembers your window position and settings between sessions",
-                            "• Adjust cache radius in settings for smoother navigation on large collections",
-                            "• GIFs load a preview frame first, then the full animation in the background",
-                            "• Use the settings menu to customize keyboard shortcuts and performance",
-                            "• Start the app with an image path as an argument: jpeg_viewer image.jpg",
-                            "• If the app detects a mismatch between file extension and actual content, a rename suggestion will appear in the toolbar.",
-                            "• Very large images are rendered using tiled virtual textures for smooth performance.",
+                            "• Drag an image, folder, or supported archive into the window to open it",
+                            "• Use Settings → Look to choose Automatic, JPEG Viewer, COSMIC, GNOME / Adwaita, or Windows 98 styling",
+                            "• Windows 98 look includes an optional dial-up-style image reveal and adjustable connection speed",
+                            "• OS/DE blur or glass depends on compositor support; it can be disabled for fullscreen",
+                            "• Disable native window decorations to use the custom frame and its resize edges/corners",
+                            "• Use Remap missing root when a saved queue's folder tree has moved",
+                            "• Pass a file path on launch: jpeg_viewer image.jpg",
+                            "• If the file extension does not match the detected format, the toolbar may offer a rename suggestion",
+                            "• Very large images can use tiled virtual textures; tune Advanced settings if memory use is high",
                         ];
 
                         for tip in tips {
