@@ -1,34 +1,8 @@
 //! Resizable file and image-information sidebar.
+use super::ui::{GAP, fit_cards};
 use crate::app::types::ViewerApp;
 use crate::image_entry::ImageEntry;
 use eframe::egui;
-
-/// Maximum side length of each thumbnail cell.
-const CELL_MAX: f32 = 240.0;
-/// Minimum side length of each thumbnail cell.
-const CELL_MIN: f32 = 64.0;
-/// Gap between grid cells (both axes).
-const GAP: f32 = 10.0;
-
-/// Choose the number of columns and the card size.
-///
-/// Cards stay between CELL_MIN and CELL_MAX whenever the available width
-/// permits it. The layout uses the fewest columns that can fill the width
-/// without exceeding CELL_MAX.
-fn fit_cards(available: f32, preferred_size: f32) -> (usize, f32) {
-    let available = available.max(CELL_MIN);
-    let preferred_size = preferred_size.clamp(CELL_MIN, CELL_MAX);
-    if preferred_size < 112.0 {
-        return (1, available.min(2048.0));
-    }
-    let columns = (((available + GAP) / (preferred_size + GAP)).floor() as usize)
-        .max(1)
-        .min(24);
-    let card_size = ((available - GAP * (columns as f32 - 1.0)) / columns as f32)
-        .min(preferred_size)
-        .clamp(CELL_MIN, CELL_MAX);
-    (columns, card_size)
-}
 
 pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     if !app.settings_manager.get().show_file_sidebar {
