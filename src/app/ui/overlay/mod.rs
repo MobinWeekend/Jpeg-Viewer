@@ -28,10 +28,6 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
         &app.settings_manager.get().main_ui_placement_preference,
         ctx,
     );
-    // The custom title bar is static window chrome. It must remain visible even if
-    // navigation overlays auto-hide, and its resize frame remains interactive too.
-    title_bar::render(ctx, app);
-
     if !app.overlay_visible {
         // Desktop profile menu bars are always visible, even while the floating
         // viewer controls are hidden. Their application menu must remain usable.
@@ -56,7 +52,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
         } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
             crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
         } else if !app.settings_manager.settings.show_titlebar {
-            36.0 + 2.0
+            38.0 + 2.0
         } else {
             2.0
         }
@@ -85,21 +81,38 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 
     // The placement can be overridden independently of the visual profile.
     // Automatic follows the resolved Look profile (desktop detection happens there).
+    let viewport_width = ctx.input(|input| {
+        input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+    });
     if placement == "native" {
-        // Preserve the original JPEG Viewer positions exactly.
-        toolbar::render_top_toolbar(app, ctx, left_offset + MENU_OFFSET, menu_offset_y);
+        // Pass the true central viewport width to responsive metadata fitting. An
+        // auto-sized egui Area reports its previous content width, which creates a
+        // feedback loop: after shrinking once, its label cannot grow again.
+        let central_width = (viewport_width - left_offset - right_offset - 16.0).max(0.0);
+        toolbar::render_top_toolbar(
+            app,
+            ctx,
+            left_offset + MENU_OFFSET,
+            menu_offset_y,
+            central_width,
+        );
         toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET);
     } else {
         // Windows 98 uses a classic full-width toolbar strip below the menu bar,
         // with the action group aligned to the upper-right. Other platform layouts
         // remain centered inside the space between the sidebars.
-        let viewport_width = ctx.input(|input| {
-            input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
-        });
         if placement == "win98" {
-            let central_width = (viewport_width - left_offset - right_offset).max(0.0);
-            // Keep the classic strip entirely between the docked sidebars. The
-            // toolbar itself clips horizontally within this width if controls overflow.
+            // Preserve the classic full-width strip, but leave a small safety gap at
+            // the right edge so its bevel/stroke cannot visually overlap the settings
+            // or edit sidebar when that panel is open.
+            let right_clearance = if app.show_settings_menu || app.show_edit_menu {
+                MENU_OFFSET
+            } else {
+                0.0
+            };
+            let central_width =
+                (viewport_width - left_offset - right_offset - right_clearance).max(0.0);
+            // The toolbar itself clips horizontally within the central strip if controls overflow.
             if central_width >= 80.0 {
                 toolbar::render_platform_toolbar(
                     app, ctx, placement, left_offset, central_width, menu_offset_y,
@@ -287,7 +300,7 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
 
 fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
     const MENU_OFFSET: f32 = 8.0;
-    const TITLE_BAR_HEIGHT: f32 = 36.0;
+    const TITLE_BAR_HEIGHT: f32 = 38.0;
 
     if crate::app::ui::uses_desktop_menu_bar(ctx) {
         // This height includes the custom title-bar spacer when native decorations

@@ -12,9 +12,22 @@ impl eframe::App for ViewerApp {
             &self.settings_manager.get().desktop_menu_bar_preference,
         );
         let appearance_settings = self.settings_manager.get().clone();
+        self.update_window_title(ctx);
+        crate::platform_backdrop::set_native_titlebar_color(
+            crate::ui_theme::native_title_bar_color(
+                ctx,
+                &appearance_settings.title_bar_color_mode,
+                &appearance_settings.main_view_background,
+            ),
+        );
         let mut backdrop_preference_changed = false;
-        if crate::ui_theme::os_background_blur_preference(ctx) != appearance_settings.os_background_blur {
-            crate::ui_theme::set_os_background_blur_preference(ctx, appearance_settings.os_background_blur);
+        if crate::ui_theme::os_background_blur_preference(ctx)
+            != appearance_settings.os_background_blur
+        {
+            crate::ui_theme::set_os_background_blur_preference(
+                ctx,
+                appearance_settings.os_background_blur,
+            );
             backdrop_preference_changed = true;
         }
         if crate::ui_theme::disable_os_background_blur_in_fullscreen_preference(ctx)
@@ -83,17 +96,20 @@ impl eframe::App for ViewerApp {
         // egui reports the current monitor size; clamp saved positions back onto that monitor
         // when a monitor was removed or its resolution changed.
         if !self.startup_window_placement_handled {
-            let (monitor_size, outer_rect, inner_size, maximized, fullscreen) = ctx.input(|input| {
-                let viewport = input.viewport();
-                (
-                    viewport.monitor_size,
-                    viewport.outer_rect,
-                    viewport.inner_rect.map(|r| r.size()),
-                    viewport.maximized.unwrap_or(false),
-                    viewport.fullscreen.unwrap_or(false),
-                )
-            });
-            if let (Some(monitor_size), Some(outer_rect), Some(inner_size)) = (monitor_size, outer_rect, inner_size) {
+            let (monitor_size, outer_rect, inner_size, maximized, fullscreen) =
+                ctx.input(|input| {
+                    let viewport = input.viewport();
+                    (
+                        viewport.monitor_size,
+                        viewport.outer_rect,
+                        viewport.inner_rect.map(|r| r.size()),
+                        viewport.maximized.unwrap_or(false),
+                        viewport.fullscreen.unwrap_or(false),
+                    )
+                });
+            if let (Some(monitor_size), Some(outer_rect), Some(inner_size)) =
+                (monitor_size, outer_rect, inner_size)
+            {
                 let settings = self.settings_manager.get();
                 if settings.start_centered {
                     // Center once using the actual outer frame dimensions. The saved
@@ -128,7 +144,8 @@ impl eframe::App for ViewerApp {
                 // Only shrink when the actual client size exceeds the current monitor.
                 // Never issue InnerSize for a size that already fits: the app persists its
                 // own geometry, and repeated native resize commands can compound rounding.
-                if !maximized && !fullscreen
+                if !maximized
+                    && !fullscreen
                     && (inner_size.x > monitor_size.x + 1.0 || inner_size.y > monitor_size.y + 1.0)
                 {
                     let target_size = egui::vec2(
@@ -186,8 +203,8 @@ impl eframe::App for ViewerApp {
         }
 
         // Prevent system sleep only while slideshow playback is active and the option is enabled.
-        let prevent_sleep = self.slideshow_enabled
-            && self.settings_manager.get().prevent_sleep_during_slideshow;
+        let prevent_sleep =
+            self.slideshow_enabled && self.settings_manager.get().prevent_sleep_during_slideshow;
         self.power_inhibitor.set_active(prevent_sleep);
 
         // ========== PRELOAD TASKS ==========
@@ -208,15 +225,26 @@ impl eframe::App for ViewerApp {
                         let mut should_spawn_full_gif = false;
                         match loaded_image {
                             super::types::LoadedImage::Static(img) => {
-                                let size = [img.width() as usize, img.height() as usize];
+                                let width = img.width;
+                                let height = img.height;
+                                let size = [width as usize, height as usize];
                                 let color =
                                     egui::ColorImage::from_rgba_unmultiplied(size, img.data());
                                 let options = self.get_texture_options();
                                 self.texture = Some(ctx.load_texture("image", color, options));
+                                self.cache_tricks_backdrop_from_decoded(
+                                    self.current_image_path.clone(),
+                                    width,
+                                    height,
+                                    img.data,
+                                );
                                 self.mark_win98_dialup_texture_ready(false);
                                 if self.slideshow_previous_texture.is_some()
                                     && self.slideshow_transition_started.is_none()
-                                    && self.slideshow_previous_texture.as_ref().map(egui::TextureHandle::id)
+                                    && self
+                                        .slideshow_previous_texture
+                                        .as_ref()
+                                        .map(egui::TextureHandle::id)
                                         != self.texture.as_ref().map(egui::TextureHandle::id)
                                 {
                                     self.slideshow_transition_started = Some(Instant::now());
@@ -238,6 +266,21 @@ impl eframe::App for ViewerApp {
                             }
                             super::types::LoadedImage::Animated(gif, is_preview) => {
                                 self.gif_animation = Some(gif);
+                                let backdrop_frame = self.gif_animation.as_ref().and_then(|gif| {
+                                    gif.get_current_frame_ref().map(|frame| {
+                                        (frame.width(), frame.height(), frame.as_raw().clone())
+                                    })
+                                });
+                                if let (Some(path), Some((width, height, pixels))) =
+                                    (self.current_image_path.clone(), backdrop_frame)
+                                {
+                                    self.cache_tricks_backdrop_from_decoded(
+                                        Some(path),
+                                        width,
+                                        height,
+                                        pixels,
+                                    );
+                                }
                                 self.is_gif = true;
                                 self.is_preview = is_preview;
                                 self.image_error = None;
@@ -382,11 +425,20 @@ impl eframe::App for ViewerApp {
         if let Some(rx) = &self.full_image_receiver {
             if let Ok(full_image) = rx.try_recv() {
                 if !self.is_loading() && self.texture.is_some() {
-                    // full_image is DecodedImage
-                    let size = [full_image.width() as usize, full_image.height() as usize];
+                    // full_image is DecodedImage; refresh the small backdrop source from
+                    // the full-resolution decoded buffer without reopening the file.
+                    let width = full_image.width;
+                    let height = full_image.height;
+                    let size = [width as usize, height as usize];
                     let color = egui::ColorImage::from_rgba_unmultiplied(size, full_image.data());
                     let options = self.get_texture_options();
                     self.texture = Some(ctx.load_texture("image_full", color, options));
+                    self.cache_tricks_backdrop_from_decoded(
+                        self.current_image_path.clone(),
+                        width,
+                        height,
+                        full_image.data,
+                    );
                     self.is_preview = false;
                     self.b_fit_to_window = true;
                     self.full_image_receiver = None;
@@ -611,5 +663,4 @@ impl ViewerApp {
             self.mark_win98_dialup_texture_ready(false);
         }
     }
-
 }

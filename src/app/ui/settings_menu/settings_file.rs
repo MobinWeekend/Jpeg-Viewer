@@ -4,7 +4,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("💾 Settings File").size(15.0), |ui| {
+    ui.collapsing(egui::RichText::new("💾 Settings file").size(15.0), |ui| {
         ui.add_space(4.0);
 
         let path = app.settings_manager.path();
@@ -42,14 +42,16 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         if let Some(err) = app.settings_manager.last_error() {
             ui.horizontal_wrapped(|ui| {
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new(format!("⚠ {}", err)).color(ui.visuals().error_fg_color));
+                ui.label(
+                    egui::RichText::new(format!("⚠ {}", err)).color(ui.visuals().error_fg_color),
+                );
             });
         } else {
             ui.horizontal_wrapped(|ui| {
                 ui.add_space(8.0);
                 ui.label(
                     egui::RichText::new("✅ Settings loaded successfully")
-                        .color(ui.visuals().text_color()),
+                        .color(egui::Color32::DARK_GREEN),
                 );
             });
         }

@@ -118,19 +118,25 @@ impl ViewerApp {
     }
 
     pub fn save_window_state(&mut self, ctx: &egui::Context) {
-        // Persist the outer-frame position (matching ViewportBuilder::with_position)
-        // and inner client size (matching ViewportBuilder::with_inner_size). Do not
-        // use the window's full outer size as an inner size; that adds decoration size
-        // again at each launch and creates the classic bottom-right growth drift.
+        // ViewportInfo geometry is reported in egui UI points, which include the
+        // global egui zoom factor. ViewportBuilder::with_position/with_inner_size
+        // expects native logical points (excluding that egui zoom). Normalize here
+        // before persisting, otherwise a UI scale other than 1.0 compounds the
+        // size and position error every time the app is restarted.
+        let current_zoom = ctx.zoom_factor();
+        let zoom = if current_zoom.is_finite() && current_zoom > 0.0 {
+            current_zoom
+        } else {
+            1.0
+        };
         let (pos, size) = ctx.input(|i| {
-            let outer_pos = i.viewport().outer_rect.map(|rect| rect.min);
-            let inner_size = i.viewport().inner_rect.map(|rect| rect.size());
+            let outer_pos = i.viewport().outer_rect.map(|rect| rect.min * zoom);
+            let inner_size = i.viewport().inner_rect.map(|rect| rect.size() * zoom);
             (outer_pos, inner_size)
         });
 
-        // Preserve the last normal geometry. Saving maximized geometry as a normal
-        // client size makes the next launch restore to almost-monitor-size and can
-        // appear to grow on every restart due to native frame decorations.
+        // Preserve the last normal geometry. Maximized/fullscreen dimensions should
+        // never replace the user's normal client size.
         let (is_fullscreen, is_maximized) = ctx.input(|i| {
             (i.viewport().fullscreen.unwrap_or(false), i.viewport().maximized.unwrap_or(false))
         });

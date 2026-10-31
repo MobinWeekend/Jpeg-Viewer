@@ -11,12 +11,16 @@ impl ViewerApp {
         }
         let style = ctx.style();
         let settings = self.settings_manager.get().clone();
-        let mut view_bg =
-            parse_view_background(&settings.main_view_background, style.visuals.dark_mode);
+        self.update_tricks_assets(ctx, &settings);
+        let main_accent = crate::ui_theme::main_accent_color(ctx);
+        let mut view_bg = crate::ui_theme::main_view_background_color(
+            &settings.main_view_background,
+            style.visuals.dark_mode,
+        );
         if crate::ui_theme::os_background_blur_enabled(ctx) {
             let [r, g, b, _] = view_bg.to_srgba_unmultiplied();
-            let opacity = (settings.main_view_background_opacity.clamp(0.15, 1.0) * 255.0)
-                .round() as u8;
+            let opacity =
+                (settings.main_view_background_opacity.clamp(0.15, 1.0) * 255.0).round() as u8;
             view_bg = egui::Color32::from_rgba_unmultiplied(r, g, b, opacity);
         }
         let frame = egui::Frame::central_panel(&style)
@@ -68,12 +72,8 @@ impl ViewerApp {
             // Get the available rect. Platform-style fit mode reserves a little space
             // around the image and for the top/bottom centered toolbar.
             let available_rect = ui.available_rect_before_wrap();
-            let image_viewport_rect = fitted_image_viewport_rect(
-                available_rect,
-                ctx,
-                &settings,
-                !self.b_zoom_used,
-            );
+            let image_viewport_rect =
+                fitted_image_viewport_rect(available_rect, ctx, &settings, !self.b_zoom_used);
 
             if self.texture.is_none() && self.virtual_texture.is_none() {
                 // Handle loading states when no texture and no virtual texture
@@ -107,8 +107,27 @@ impl ViewerApp {
 
             // ---------- VIRTUAL TEXTURE RENDERING ----------
             if self.virtual_texture.is_some() {
-                let vt = self.virtual_texture.as_mut().unwrap();
+                // Tricks effects stay inside the central panel's clipped viewport. The
+                // central panel is rendered before foreground menus/toolbars, so even
+                // front-layer particles and watermarks never cover application UI.
+                let tricks_painter = ui.painter();
+                self.paint_tricks_backdrop(
+                    &tricks_painter,
+                    available_rect,
+                    main_accent,
+                    settings.tricks_backdrop_tint,
+                    settings.tricks_backdrop_opacity,
+                );
+                if !settings.tricks_snow_above_image {
+                    self.paint_tricks_snow(
+                        &tricks_painter,
+                        available_rect,
+                        &settings,
+                        ctx.input(|i| i.time),
+                    );
+                }
 
+                let vt = self.virtual_texture.as_mut().unwrap();
                 // Check if virtual texture is ready
                 if !vt.is_ready() {
                     let total_tiles = vt.total_tiles();
@@ -162,6 +181,28 @@ impl ViewerApp {
                         texture_options,
                     );
                 }
+                let tricks_painter = ui.painter();
+                if settings.tricks_snow_above_image {
+                    self.paint_tricks_snow(
+                        &tricks_painter,
+                        available_rect,
+                        &settings,
+                        ctx.input(|i| i.time),
+                    );
+                }
+                self.paint_tricks_watermark(
+                    &tricks_painter,
+                    available_rect,
+                    &settings,
+                    ctx.input(|i| i.time),
+                    style.visuals.text_color(),
+                );
+                if settings.tricks_snow_enabled
+                    || (settings.tricks_watermark_enabled
+                        && settings.tricks_watermark_mode == "bounce")
+                {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                }
 
                 // Allocate the same rect for interaction (drag/pan)
                 let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
@@ -179,7 +220,12 @@ impl ViewerApp {
             // ---------- NORMAL TEXTURE RENDERING ----------
             // Use a block to limit the borrow of texture
             let (texture_size, texture_id) = {
-                if let Some(texture) = self.inspect_texture.as_ref().filter(|_| self.inspect_mode).or(self.texture.as_ref()) {
+                if let Some(texture) = self
+                    .inspect_texture
+                    .as_ref()
+                    .filter(|_| self.inspect_mode)
+                    .or(self.texture.as_ref())
+                {
                     (texture.size_vec2(), texture.id())
                 } else {
                     // No texture available
@@ -269,9 +315,10 @@ impl ViewerApp {
                                         )
                                     })
                                     .translate(egui::vec2(-offset, 0.0));
-                                image_rect = frame
-                                    .rect
-                                    .translate(egui::vec2(image_viewport_rect.width() * (1.0 - t), 0.0));
+                                image_rect = frame.rect.translate(egui::vec2(
+                                    image_viewport_rect.width() * (1.0 - t),
+                                    0.0,
+                                ));
                                 outgoing_frame = Some((previous, old_rect, egui::Color32::WHITE));
                             } else if transition == "fade" {
                                 let old_size = previous.size_vec2();
@@ -314,6 +361,14 @@ impl ViewerApp {
             let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
             let painter = ui.painter();
+            self.paint_tricks_backdrop(
+                painter,
+                available_rect,
+                main_accent,
+                settings.tricks_backdrop_tint,
+                settings.tricks_backdrop_opacity,
+            );
+            let tricks_time = ctx.input(|i| i.time);
             let dialup_settings = self.settings_manager.get().clone();
             let current_profile = crate::ui_theme::current_look_profile(ctx);
             let dialup_active = current_profile == "win98" && dialup_settings.win98_dialup_enabled;
@@ -328,6 +383,11 @@ impl ViewerApp {
                     style.visuals.dark_mode,
                 );
             }
+            // The behind-image layer sits above the checkerboard base so particles
+            // remain visible through transparent pixels, but below the actual photo.
+            if !settings.tricks_snow_above_image {
+                self.paint_tricks_snow(painter, available_rect, &settings, tricks_time);
+            }
             if let Some((previous_texture, previous_rect, previous_tint)) = outgoing_frame {
                 painter.image(
                     previous_texture.id(),
@@ -337,7 +397,11 @@ impl ViewerApp {
                 );
             }
             if dialup_active && self.win98_dialup_reveal_started.is_some() {
-                let elapsed = self.win98_dialup_reveal_started.unwrap().elapsed().as_secs_f32();
+                let elapsed = self
+                    .win98_dialup_reveal_started
+                    .unwrap()
+                    .elapsed()
+                    .as_secs_f32();
                 let kbps = dialup_settings.win98_dialup_connection_kbps.clamp(1, 56) as f32;
                 // 28.8 kbps takes about 2.5 seconds. Every strip starts only after
                 // the prior strip's scheduled start, with bounded per-row timing jitter.
@@ -350,8 +414,14 @@ impl ViewerApp {
                 let visible_rect = image_rect.intersect(painter.clip_rect());
                 if !visible_rect.is_negative() {
                     let row_count = (image_rect.height() / band_height).ceil().max(1.0) as usize;
-                    let first_row = (((visible_rect.top() - image_rect.top()) / band_height).floor().max(0.0) as usize).min(row_count);
-                    let last_row = (((visible_rect.bottom() - image_rect.top()) / band_height).ceil().max(0.0) as usize).min(row_count);
+                    let first_row = (((visible_rect.top() - image_rect.top()) / band_height)
+                        .floor()
+                        .max(0.0) as usize)
+                        .min(row_count);
+                    let last_row = (((visible_rect.bottom() - image_rect.top()) / band_height)
+                        .ceil()
+                        .max(0.0) as usize)
+                        .min(row_count);
                     let total_weight = (0..row_count).map(dialup_row_weight).sum::<f32>().max(1.0);
                     let mut elapsed_weight = 0.0_f32;
                     // Iterate from the first row even when the image is scrolled: earlier
@@ -365,7 +435,9 @@ impl ViewerApp {
                                 egui::pos2(image_rect.left(), y0),
                                 egui::pos2(image_rect.right(), y1),
                             );
-                            painter.with_clip_rect(strip).image(texture_id, image_rect, full_uv, image_tint);
+                            painter
+                                .with_clip_rect(strip)
+                                .image(texture_id, image_rect, full_uv, image_tint);
                         }
                         elapsed_weight += dialup_row_weight(row);
                     }
@@ -389,6 +461,24 @@ impl ViewerApp {
                     egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
                     image_tint,
                 );
+            }
+
+            // Front-layer particles and watermarks are painted after the photo but
+            // before the foreground overlay UI. Clip them to the central image viewport.
+            if settings.tricks_snow_above_image {
+                self.paint_tricks_snow(painter, available_rect, &settings, tricks_time);
+            }
+            self.paint_tricks_watermark(
+                painter,
+                available_rect,
+                &settings,
+                tricks_time,
+                style.visuals.text_color(),
+            );
+            if settings.tricks_snow_enabled
+                || (settings.tricks_watermark_enabled && settings.tricks_watermark_mode == "bounce")
+            {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
             }
 
             // Crop selection owns primary-button drags while editing. Other
@@ -612,35 +702,6 @@ fn dialup_row_weight(row: usize) -> f32 {
     0.25 + jitter_unit * 1.75
 }
 
-fn parse_view_background(value: &str, dark: bool) -> egui::Color32 {
-    if value == "light" {
-        return egui::Color32::from_rgb(245, 245, 245);
-    }
-    if value == "theme" {
-        return if dark {
-            egui::Color32::from_rgb(18, 18, 18)
-        } else {
-            egui::Color32::from_rgb(238, 238, 238)
-        };
-    }
-    if let Some(hex) = value.strip_prefix("custom:#") {
-        if hex.len() == 6 {
-            if let (Ok(r), Ok(g), Ok(b)) = (
-                u8::from_str_radix(&hex[0..2], 16),
-                u8::from_str_radix(&hex[2..4], 16),
-                u8::from_str_radix(&hex[4..6], 16),
-            ) {
-                return egui::Color32::from_rgb(r, g, b);
-            }
-        }
-    }
-    if dark {
-        egui::Color32::from_rgb(18, 18, 18)
-    } else {
-        egui::Color32::from_rgb(38, 38, 38)
-    }
-}
-
 fn paint_checkerboard(
     painter: &egui::Painter,
     rect: egui::Rect,
@@ -684,7 +745,6 @@ fn paint_checkerboard(
     }
 }
 
-
 /// Reserve non-overlapping room for centered platform toolbars only while the
 /// image is in fit-to-window mode. The original JPEG Viewer layout is unchanged.
 fn fitted_image_viewport_rect(
@@ -704,10 +764,8 @@ fn fitted_image_viewport_rect(
 
     const EDGE_PADDING: f32 = 12.0;
     const TOOLBAR_CLEARANCE: f32 = 58.0;
-    let placement = crate::ui_theme::resolve_main_ui_placement(
-        &settings.main_ui_placement_preference,
-        ctx,
-    );
+    let placement =
+        crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
     let mut top = EDGE_PADDING;
     let mut bottom = EDGE_PADDING;
     match placement {

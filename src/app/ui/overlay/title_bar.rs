@@ -1,35 +1,11 @@
 //! Custom title bar used when native window decorations are disabled.
 //!
-//! The drag region excludes the caption buttons, so a press on Minimize,
-//! Maximize/Restore, or Close can never be mistaken for a window drag.
+//! The title bar is rendered inside its own top panel, so the reserved layout
+//! height and the visible/hit-testable chrome are always identical.
 use crate::app::types::ViewerApp;
 use eframe::egui;
 
-const TITLE_BAR_HEIGHT: f32 = 36.0;
-
-
-/// Reserve actual layout height for the custom title bar. This is called before any
-/// other top panel, so the title bar is above the desktop menu and main content does
-/// not paint or receive input behind it, even when navigation auto-hide is active.
-pub fn reserve_layout_space(app: &ViewerApp, ctx: &egui::Context) {
-    if app.settings_manager.get().show_titlebar
-        || ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
-    {
-        return;
-    }
-    egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar_spacer")
-        .exact_height(TITLE_BAR_HEIGHT)
-        .frame(
-            egui::Frame::new()
-                .fill(egui::Color32::TRANSPARENT)
-                .inner_margin(egui::Margin::same(0))
-                .stroke(egui::Stroke::NONE),
-        )
-        .show(ctx, |ui| {
-            ui.set_min_height(TITLE_BAR_HEIGHT);
-            ui.set_max_height(TITLE_BAR_HEIGHT);
-        });
-}
+const TITLE_BAR_HEIGHT: f32 = 38.0;
 
 #[derive(Clone, Copy)]
 enum CaptionControl {
@@ -38,55 +14,73 @@ enum CaptionControl {
     Close,
 }
 
-pub fn render(ctx: &egui::Context, app: &mut ViewerApp) {
+/// Render and reserve the custom title bar in one top-panel pass. Keeping the
+/// chrome inside the reservation prevents its frame, controls, or hover hitboxes
+/// from extending into the desktop menu bar or main view.
+pub fn reserve_layout_space(app: &ViewerApp, ctx: &egui::Context) {
     if app.settings_manager.get().show_titlebar
         || ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
     {
         return;
     }
 
-    // Some window managers briefly report a zero-sized client rectangle while a
-    // minimize command is being processed. Never build a row from that transient size:
-    // it can make egui compute a negative layout width for caption buttons.
-    if ctx.input(|input| input.viewport().minimized.unwrap_or(false)) {
-        return;
-    }
-    let viewport_width = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.width()));
-    let reported_width = viewport_width.unwrap_or_else(|| ctx.input(|input| input.viewport_rect().width()));
-    let profile = crate::ui_theme::current_look_profile(ctx);
-    let win98 = profile == "win98";
-    let (margin_x, margin_y) = if win98 { (3, 3) } else { (8, 4) };
-    let button_size = if win98 {
-        egui::vec2(22.0, 22.0)
-    } else {
-        egui::vec2(36.0, 28.0)
-    };
-    // Never force an Area wider than a small/transient viewport. In particular,
-    // minimizing can briefly produce a zero-sized client rect on some backends.
-    // Return early if the viewport cannot physically fit the three caption buttons.
-    let right_resize_guard = super::resize_handles::CORNER_RESIZE_HIT_SIZE;
-    let min_width = button_size.x * 3.0
-        + right_resize_guard
-        + (margin_x as f32 * 2.0)
-        + 2.0;
-    if !reported_width.is_finite() || reported_width < min_width {
-        return;
-    }
-    let window_width = reported_width;
-    super::overlay_area("title_bar", egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
-        .constrain(true)
-        .show(ctx, |area_ui| {
-            area_ui.set_min_size(egui::vec2(window_width, TITLE_BAR_HEIGHT));
-            area_ui.set_max_size(egui::vec2(window_width, TITLE_BAR_HEIGHT));
+    egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar")
+        .exact_height(TITLE_BAR_HEIGHT)
+        .frame(
+            egui::Frame::new()
+                .fill(egui::Color32::TRANSPARENT)
+                .inner_margin(egui::Margin::same(0))
+                .stroke(egui::Stroke::NONE),
+        )
+        .show(ctx, |panel_ui| {
+            panel_ui.set_min_height(TITLE_BAR_HEIGHT);
+            panel_ui.set_max_height(TITLE_BAR_HEIGHT);
+            let window_width = panel_ui.available_width().max(0.0);
+            panel_ui.set_min_width(window_width);
+            panel_ui.set_max_width(window_width);
 
+            if ctx.input(|input| input.viewport().minimized.unwrap_or(false)) {
+                return;
+            }
+
+            let profile = crate::ui_theme::current_look_profile(ctx);
+            let win98 = profile == "win98";
+            let (margin_y, button_size) = if win98 {
+                (3, egui::vec2(22.0, 22.0))
+            } else {
+                (4, egui::vec2(36.0, 28.0))
+            };
+            // Keep a one-pixel inner right margin. The top-right resize target
+            // occupies only the two outermost pixels, not a full button gap.
+            const RIGHT_MARGIN: i8 = 1;
+            let left_drag_guard = super::resize_handles::CORNER_RESIZE_HIT_SIZE.min(26.0);
+            let left_content_space = left_drag_guard + 6.0;
+            let minimum_width = button_size.x * 3.0 + left_content_space + 4.0;
+            if !window_width.is_finite() || window_width < minimum_width {
+                return;
+            }
+
+            let settings = app.settings_manager.get();
             let glass = crate::ui_theme::os_background_blur_enabled(ctx) && !win98;
             let profile_alpha = match profile {
                 "gnome" => 222,
                 "cosmic" => 218,
                 _ => 198,
             };
-            let alpha = if glass { profile_alpha } else { 255 };
-            let background = crate::ui_theme::title_bar_surface_color(ctx, alpha);
+            let alpha = if !glass {
+                255
+            } else if settings.title_bar_color_mode == "main_view" {
+                (settings.main_view_background_opacity.clamp(0.15, 1.0) * 255.0)
+                    .round() as u8
+            } else {
+                profile_alpha
+            };
+            let background = crate::ui_theme::title_bar_surface_color(
+                ctx,
+                alpha,
+                &settings.title_bar_color_mode,
+                &settings.main_view_background,
+            );
             let radius = if win98 { 0 } else { 6 };
             let visuals = ctx.style().visuals.clone();
             let foreground = if crate::ui_theme::contrast_prefers_light_text(background) {
@@ -103,31 +97,32 @@ pub fn render(ctx: &egui::Context, app: &mut ViewerApp) {
                     egui::Stroke::new(1.0_f32, visuals.widgets.noninteractive.bg_stroke.color)
                 })
                 .corner_radius(egui::CornerRadius::same(radius))
-                .inner_margin(egui::Margin::symmetric(margin_x, margin_y))
-                .show(area_ui, |ui| {
-                    let inner_width = (window_width - (margin_x as f32 * 2.0) - 2.0)
-                        .max(button_size.x * 3.0 + right_resize_guard);
+                .inner_margin(egui::Margin {
+                    left: 1,
+                    right: RIGHT_MARGIN,
+                    top: margin_y,
+                    bottom: margin_y,
+                })
+                .show(panel_ui, |ui| {
+                    let inner_width = (window_width - 4.0).max(button_size.x * 3.0);
+                    let row_height = TITLE_BAR_HEIGHT - (margin_y as f32 * 2.0) - 2.0;
                     ui.set_min_width(inner_width);
                     ui.set_max_width(inner_width);
-                    ui.set_min_height(TITLE_BAR_HEIGHT - (margin_y as f32 * 2.0));
-                    ui.set_max_height(TITLE_BAR_HEIGHT - (margin_y as f32 * 2.0));
+                    ui.set_min_height(row_height);
+                    ui.set_max_height(row_height);
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        let row_height = TITLE_BAR_HEIGHT - (margin_y as f32 * 2.0);
-                        // Keep caption buttons out of the enlarged top-right resize
-                        // corner target, so both resizing and close/maximize/minimize
-                        // remain easy to hit without competing rectangles.
-                        let controls_width = button_size.x * 3.0 + right_resize_guard;
+                        let controls_width = button_size.x * 3.0;
                         let inner_available = ui.available_width().max(0.0);
-                        let drag_width = (inner_available - controls_width).max(0.0);
+                        let drag_width =
+                            (inner_available - left_content_space - controls_width).max(0.0);
+                        ui.add_space(left_content_space);
                         let (drag_rect, drag_response) = ui.allocate_exact_size(
                             egui::vec2(drag_width, row_height),
                             egui::Sense::click_and_drag(),
                         );
 
-                        // The title text is painted inside the draggable region. Clipping
-                        // guarantees long filenames cannot run beneath the caption buttons.
                         ui.painter()
                             .with_clip_rect(drag_rect)
                             .text(
@@ -146,10 +141,6 @@ pub fn render(ctx: &egui::Context, app: &mut ViewerApp) {
                         } else if drag_response.drag_started() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                         }
-                        // Match the useful part of a traditional title-bar system menu:
-                        // Restore/Maximize, Minimize, and Close are available by
-                        // right-clicking the draggable caption region, as well as by
-                        // clicking the caption buttons.
                         drag_response.context_menu(|menu| {
                             let maximized = ctx.input(|input| {
                                 input.viewport().maximized.unwrap_or(false)
@@ -215,7 +206,6 @@ pub fn render(ctx: &egui::Context, app: &mut ViewerApp) {
                         if response.clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        ui.add_space(right_resize_guard);
                     });
                 });
         });

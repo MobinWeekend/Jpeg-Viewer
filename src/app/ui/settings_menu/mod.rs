@@ -7,6 +7,7 @@ mod look;
 mod settings_file;
 mod slideshow;
 
+use super::tricks;
 use crate::app::types::ViewerApp;
 use eframe::egui;
 
@@ -51,6 +52,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                     look::render(app, ui, ctx);
                     general::render(app, ui, ctx);
                     slideshow::render(app, ui, ctx);
+                    tricks::render(app, ui, ctx);
                     advanced::render(app, ui, ctx);
                     settings_file::render(app, ui, ctx);
                     ui.add_space(8.0);

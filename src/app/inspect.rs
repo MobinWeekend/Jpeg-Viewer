@@ -2,6 +2,20 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 impl ViewerApp {
+    pub(crate) fn toggle_inspect_mode(&mut self, ctx: &egui::Context) {
+        if self.inspect_mode {
+            self.inspect_mode = false;
+            self.inspect_texture = None;
+            self.inspect_source = None;
+            self.inspect_source_path = None;
+        } else {
+            self.inspect_mode = true;
+            self.inspect_channels = [true, true, true, true];
+            self.prepare_inspect_source(ctx);
+        }
+        ctx.request_repaint();
+    }
+
     pub(crate) fn prepare_inspect_source(&mut self, ctx: &egui::Context) {
         let Some(path) = self.current_image_path.clone() else {
             self.edit_status = Some("Inspect requires an image with a readable file path.".into());

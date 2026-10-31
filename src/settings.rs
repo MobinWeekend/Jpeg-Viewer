@@ -3,7 +3,8 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 3;
+const SETTINGS_SCHEMA_VERSION: u32 = 4;
+const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 /// Application settings stored in INI format
 #[derive(Debug, Clone)]
@@ -75,10 +76,36 @@ pub struct AppSettings {
     pub alpha_checkerboard_size: f32,
     /// Checkerboard contrast multiplier (0.25-1.5).
     pub alpha_checkerboard_brightness: f32,
+    // Tricks: decorative effects confined to the main image viewport.
+    pub tricks_snow_enabled: bool,
+    pub tricks_snow_particle: String,
+    /// Particle color in #RRGGBB format.
+    pub tricks_snow_color: String,
+    pub tricks_snow_speed: f32,
+    pub tricks_snow_density: f32,
+    pub tricks_snow_above_image: bool,
+    pub tricks_watermark_enabled: bool,
+    pub tricks_watermark_text: String,
+    /// Watermark text color in #RRGGBB format.
+    pub tricks_watermark_text_color: String,
+    pub tricks_watermark_image_path: String,
+    pub tricks_watermark_mode: String,
+    pub tricks_watermark_x: f32,
+    pub tricks_watermark_y: f32,
+    pub tricks_watermark_speed: f32,
+    pub tricks_watermark_opacity: f32,
+    pub tricks_watermark_size: f32,
+    pub tricks_backdrop_enabled: bool,
+    pub tricks_backdrop_blur: f32,
+    pub tricks_backdrop_tint: f32,
+    /// Opacity of the blurred image backdrop (0.05-1.0).
+    pub tricks_backdrop_opacity: f32,
     // virtual texture
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
     pub show_titlebar: bool,
+    /// Title-bar color source: system, main_view, or main_color.
+    pub title_bar_color_mode: String,
     /// Thickness in logical points of the custom window border and resize hit areas (2-12).
     pub custom_window_frame_thickness: f32,
     // Sidebar and compact-view preferences
@@ -138,9 +165,30 @@ impl Default for AppSettings {
             show_alpha_checkerboard: true,
             alpha_checkerboard_size: 18.0,
             alpha_checkerboard_brightness: 1.0,
+            tricks_snow_enabled: false,
+            tricks_snow_particle: "❄".to_string(),
+            tricks_snow_color: "#FFFFFF".to_string(),
+            tricks_snow_speed: 1.0,
+            tricks_snow_density: 1.0,
+            tricks_snow_above_image: true,
+            tricks_watermark_enabled: false,
+            tricks_watermark_text: String::new(),
+            tricks_watermark_text_color: "#FFFFFF".to_string(),
+            tricks_watermark_image_path: String::new(),
+            tricks_watermark_mode: "anchored".to_string(),
+            tricks_watermark_x: 50.0,
+            tricks_watermark_y: 50.0,
+            tricks_watermark_speed: 1.0,
+            tricks_watermark_opacity: 0.55,
+            tricks_watermark_size: 48.0,
+            tricks_backdrop_enabled: false,
+            tricks_backdrop_blur: 8.0,
+            tricks_backdrop_tint: 0.30,
+            tricks_backdrop_opacity: 0.80,
             virtual_texture_threshold: 8192,
             tile_size: 1024,
             show_titlebar: true,
+            title_bar_color_mode: "system".to_string(),
             custom_window_frame_thickness: 6.0,
             show_file_sidebar: true,
             file_sidebar_width: 250.0,
@@ -165,6 +213,18 @@ impl SettingsManager {
     /// Create a new SettingsManager that loads settings from the default location
     pub fn new() -> Self {
         let path = Self::get_settings_path();
+        // Capture the stored schema before load_from_file applies any in-memory
+        // migrations, so we can persist the geometry normalization exactly once.
+        let stored_schema_version = Ini::load_from_file(&path)
+            .ok()
+            .and_then(|config| {
+                config
+                    .section(Some("Settings"))
+                    .and_then(|section| section.get("schema_version"))
+                    .and_then(|value| value.parse::<u32>().ok())
+            })
+            .unwrap_or(0);
+
         let mut error: Option<String> = None;
         let settings = Self::load_from_file(&path, &mut error);
 
@@ -174,6 +234,13 @@ impl SettingsManager {
             if let Err(e) = Self::save_to_file(&path, &settings) {
                 eprintln!("Warning: Could not save default settings: {}", e);
                 error = Some(format!("Could not save default settings: {}", e));
+            }
+        } else if stored_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA {
+            // Persist the one-time conversion from old UI-point geometry to stable
+            // startup geometry. save_to_file preserves unrelated/unknown INI keys.
+            if let Err(e) = Self::save_to_file(&path, &settings) {
+                eprintln!("Warning: Could not persist migrated settings: {}", e);
+                error = Some(format!("Could not persist migrated settings: {}", e));
             }
         }
 
@@ -222,6 +289,7 @@ impl SettingsManager {
         match Ini::load_from_file(path) {
             Ok(conf) => {
                 let mut settings = AppSettings::default();
+                let mut loaded_schema_version = 0_u32;
 
                 // Get the Settings section
                 if let Some(section) = conf.section(Some("Settings")) {
@@ -230,11 +298,15 @@ impl SettingsManager {
                     // Unknown future versions are still read conservatively by known key.
                     if let Some(version) = section.get("schema_version") {
                         match version.parse::<u32>() {
-                            Ok(v) if v > SETTINGS_SCHEMA_VERSION => eprintln!(
-                                "Settings file schema version {} is newer than supported version {}; known settings will be loaded.",
-                                v, SETTINGS_SCHEMA_VERSION
-                            ),
-                            Ok(_) => {}
+                            Ok(v) => {
+                                loaded_schema_version = v;
+                                if v > SETTINGS_SCHEMA_VERSION {
+                                    eprintln!(
+                                        "Settings file schema version {} is newer than supported version {}; known settings will be loaded.",
+                                        v, SETTINGS_SCHEMA_VERSION
+                                    );
+                                }
+                            }
                             Err(_) => eprintln!(
                                 "Invalid settings schema_version; treating file as legacy settings."
                             ),
@@ -299,7 +371,9 @@ impl SettingsManager {
                     }
                     if let Some(value) = section.get("thumbnail_workers") {
                         if let Ok(workers) = value.parse::<usize>() {
-                            if (1..=8).contains(&workers) { settings.thumbnail_workers = workers; }
+                            if (1..=8).contains(&workers) {
+                                settings.thumbnail_workers = workers;
+                            }
                         }
                     }
                     // Read texture_filter
@@ -374,13 +448,28 @@ impl SettingsManager {
                         settings.slideshow_random = Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("slideshow_transition") {
-                        if matches!(value, "none" | "fade" | "slide" | "random") { settings.slideshow_transition = value.to_string(); }
+                        if matches!(value, "none" | "fade" | "slide" | "random") {
+                            settings.slideshow_transition = value.to_string();
+                        }
                     }
                     if let Some(value) = section.get("slideshow_motion") {
-                        if matches!(value, "none" | "smart" | "pan-horizontal" | "pan-vertical" | "zoom-in" | "zoom-out" | "random") { settings.slideshow_motion = value.to_string(); }
+                        if matches!(
+                            value,
+                            "none"
+                                | "smart"
+                                | "pan-horizontal"
+                                | "pan-vertical"
+                                | "zoom-in"
+                                | "zoom-out"
+                                | "random"
+                        ) {
+                            settings.slideshow_motion = value.to_string();
+                        }
                     }
                     if let Some(value) = section.get("slideshow_motion_strength") {
-                        if let Ok(strength) = value.parse::<f32>() { settings.slideshow_motion_strength = strength.clamp(5.0, 40.0); }
+                        if let Ok(strength) = value.parse::<f32>() {
+                            settings.slideshow_motion_strength = strength.clamp(5.0, 40.0);
+                        }
                     }
                     if let Some(value) = section.get("win98_dialup_enabled") {
                         settings.win98_dialup_enabled = Self::parse_bool(value);
@@ -429,6 +518,11 @@ impl SettingsManager {
                     if let Some(value) = section.get("show_titlebar") {
                         settings.show_titlebar = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("title_bar_color_mode") {
+                        if matches!(value, "system" | "main_view" | "main_color") {
+                            settings.title_bar_color_mode = value.to_string();
+                        }
+                    }
                     if let Some(value) = section.get("custom_window_frame_thickness") {
                         if let Ok(thickness) = value.parse::<f32>() {
                             if thickness.is_finite() && (2.0..=12.0).contains(&thickness) {
@@ -470,19 +564,48 @@ impl SettingsManager {
                         }
                     }
                     if let Some(value) = section.get("ui_scale") {
-                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() && (0.75..=1.50).contains(&v) { settings.ui_scale = v; } }
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() && (0.75..=1.50).contains(&v) {
+                                settings.ui_scale = v;
+                            }
+                        }
                     }
                     if let Some(value) = section.get("ui_text_scale") {
-                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() && (0.80..=1.40).contains(&v) { settings.ui_text_scale = v; } }
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() && (0.80..=1.40).contains(&v) {
+                                settings.ui_text_scale = v;
+                            }
+                        }
                     }
                     if let Some(value) = section.get("ui_accent_color") {
-                        if ["auto", "teal", "blue", "purple", "orange", "rose", "green", "yellow", "red", "win98blue"].contains(&value)
-                            || (value.starts_with("custom:#") && value.len() == 14 && value[8..].chars().all(|c| c.is_ascii_hexdigit())) {
+                        if [
+                            "auto",
+                            "teal",
+                            "blue",
+                            "purple",
+                            "orange",
+                            "rose",
+                            "green",
+                            "yellow",
+                            "red",
+                            "win98blue",
+                        ]
+                        .contains(&value)
+                            || (value.starts_with("custom:#")
+                                && value.len() == 14
+                                && value[8..].chars().all(|c| c.is_ascii_hexdigit()))
+                        {
                             settings.ui_accent_color = value.to_string();
                         }
                     }
                     if let Some(value) = section.get("main_view_background") {
-                        if value == "dark" || value == "light" || value == "theme" || (value.starts_with("custom:#") && value.len() == 14 && value[8..].chars().all(|c| c.is_ascii_hexdigit())) {
+                        if value == "dark"
+                            || value == "light"
+                            || value == "theme"
+                            || (value.starts_with("custom:#")
+                                && value.len() == 14
+                                && value[8..].chars().all(|c| c.is_ascii_hexdigit()))
+                        {
                             settings.main_view_background = value.to_string();
                         }
                     }
@@ -497,10 +620,136 @@ impl SettingsManager {
                         settings.show_alpha_checkerboard = Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("alpha_checkerboard_size") {
-                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() { settings.alpha_checkerboard_size = v.clamp(8.0, 64.0); } }
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() {
+                                settings.alpha_checkerboard_size = v.clamp(8.0, 64.0);
+                            }
+                        }
                     }
                     if let Some(value) = section.get("alpha_checkerboard_brightness") {
-                        if let Ok(v) = value.parse::<f32>() { if v.is_finite() { settings.alpha_checkerboard_brightness = v.clamp(0.25, 1.5); } }
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() {
+                                settings.alpha_checkerboard_brightness = v.clamp(0.25, 1.5);
+                            }
+                        }
+                    }
+                    // Tricks decorative effects.
+                    if let Some(value) = section.get("tricks_snow_enabled") {
+                        settings.tricks_snow_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("tricks_snow_particle") {
+                        let value = value.trim();
+                        if value.chars().count() <= 8 {
+                            settings.tricks_snow_particle = value.to_string();
+                        }
+                    }
+                    if let Some(value) = section.get("tricks_snow_color") {
+                        if value.len() == 7
+                            && value.starts_with('#')
+                            && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+                        {
+                            settings.tricks_snow_color = value.to_ascii_uppercase();
+                        }
+                    }
+                    if let Some(value) = section.get("tricks_snow_speed") {
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() {
+                                settings.tricks_snow_speed = v.clamp(0.1, 5.0);
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("tricks_snow_density") {
+                        if let Ok(v) = value.parse::<f32>() {
+                            if v.is_finite() {
+                                settings.tricks_snow_density = v.clamp(0.25, 2.5);
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("tricks_snow_above_image") {
+                        settings.tricks_snow_above_image = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("tricks_watermark_enabled") {
+                        settings.tricks_watermark_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("tricks_watermark_text") {
+                        settings.tricks_watermark_text = value.to_string();
+                    }
+                    if let Some(value) = section.get("tricks_watermark_text_color") {
+                        if value.len() == 7
+                            && value.starts_with('#')
+                            && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+                        {
+                            settings.tricks_watermark_text_color = value.to_ascii_uppercase();
+                        }
+                    }
+                    if let Some(value) = section.get("tricks_watermark_image_path") {
+                        settings.tricks_watermark_image_path = value.to_string();
+                    }
+                    if let Some(value) = section.get("tricks_watermark_mode") {
+                        if matches!(value, "anchored" | "bounce") {
+                            settings.tricks_watermark_mode = value.to_string();
+                        }
+                    }
+                    for (key, target, min, max) in [
+                        (
+                            "tricks_watermark_x",
+                            &mut settings.tricks_watermark_x,
+                            0.0,
+                            100.0,
+                        ),
+                        (
+                            "tricks_watermark_y",
+                            &mut settings.tricks_watermark_y,
+                            0.0,
+                            100.0,
+                        ),
+                        (
+                            "tricks_watermark_speed",
+                            &mut settings.tricks_watermark_speed,
+                            0.1,
+                            5.0,
+                        ),
+                        (
+                            "tricks_watermark_opacity",
+                            &mut settings.tricks_watermark_opacity,
+                            0.05,
+                            1.0,
+                        ),
+                        (
+                            "tricks_watermark_size",
+                            &mut settings.tricks_watermark_size,
+                            12.0,
+                            160.0,
+                        ),
+                        (
+                            "tricks_backdrop_blur",
+                            &mut settings.tricks_backdrop_blur,
+                            8.0,
+                            64.0,
+                        ),
+                        (
+                            "tricks_backdrop_tint",
+                            &mut settings.tricks_backdrop_tint,
+                            0.0,
+                            0.85,
+                        ),
+                        (
+                            "tricks_backdrop_opacity",
+                            &mut settings.tricks_backdrop_opacity,
+                            0.0,
+                            1.0,
+                        ),
+                    ] {
+                        if let Some(value) = section.get(key) {
+                            if let Ok(v) = value.parse::<f32>() {
+                                if v.is_finite() {
+                                    *target = v.clamp(min, max);
+                                }
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("tricks_backdrop_enabled") {
+                        settings.tricks_backdrop_enabled = Self::parse_bool(value);
                     }
                     // theme
                     if let Some(value) = section.get("theme_preference") {
@@ -536,7 +785,9 @@ impl SettingsManager {
                     }
                     if let Some(value) = section.get("navigation_ui_auto_hide_ms") {
                         if let Ok(ms) = value.parse::<u64>() {
-                            if (500..=5000).contains(&ms) { settings.navigation_ui_auto_hide_ms = ms; }
+                            if (500..=5000).contains(&ms) {
+                                settings.navigation_ui_auto_hide_ms = ms;
+                            }
                         }
                     }
                     if let Some(value) = section.get("os_background_blur") {
@@ -549,6 +800,23 @@ impl SettingsManager {
                     if let Some(value) = section.get("main_ui_placement_preference") {
                         if ["auto", "native", "cosmic", "gnome"].contains(&value) {
                             settings.main_ui_placement_preference = value.to_string();
+                        }
+                    }
+                }
+
+                // Before schema 4, geometry was saved directly from egui's viewport
+                // rectangles. Those coordinates are in UI points and include ui_scale,
+                // while ViewportBuilder consumes native logical points. Convert existing
+                // values once using the persisted scale to keep the user's current window
+                // approximately where/what it was before the migration.
+                if loaded_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA {
+                    let scale = settings.ui_scale.clamp(0.75, 1.50);
+                    if (scale - 1.0).abs() > f32::EPSILON {
+                        if let Some([x, y]) = settings.window_pos {
+                            settings.window_pos = Some([x * scale, y * scale]);
+                        }
+                        if let Some([width, height]) = settings.window_size {
+                            settings.window_size = Some([width * scale, height * scale]);
                         }
                     }
                 }
@@ -655,7 +923,11 @@ impl SettingsManager {
         // Slideshow settings
         section.set(
             "prevent_sleep_during_slideshow",
-            if settings.prevent_sleep_during_slideshow { "true" } else { "false" },
+            if settings.prevent_sleep_during_slideshow {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set(
             "slideshow_interval_ms",
@@ -677,13 +949,43 @@ impl SettingsManager {
                 "false"
             },
         );
-        section.set("slideshow_transition", settings.slideshow_transition.clone());
+        section.set(
+            "slideshow_transition",
+            settings.slideshow_transition.clone(),
+        );
         section.set("slideshow_motion", settings.slideshow_motion.clone());
-        section.set("slideshow_motion_strength", settings.slideshow_motion_strength.to_string());
-        section.set("win98_dialup_enabled", if settings.win98_dialup_enabled { "true" } else { "false" });
-        section.set("win98_dialup_preference_configured", if settings.win98_dialup_preference_configured { "true" } else { "false" });
-        section.set("win98_dialup_connection_kbps", settings.win98_dialup_connection_kbps.to_string());
-        section.set("start_centered", if settings.start_centered { "true" } else { "false" });
+        section.set(
+            "slideshow_motion_strength",
+            settings.slideshow_motion_strength.to_string(),
+        );
+        section.set(
+            "win98_dialup_enabled",
+            if settings.win98_dialup_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "win98_dialup_preference_configured",
+            if settings.win98_dialup_preference_configured {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "win98_dialup_connection_kbps",
+            settings.win98_dialup_connection_kbps.to_string(),
+        );
+        section.set(
+            "start_centered",
+            if settings.start_centered {
+                "true"
+            } else {
+                "false"
+            },
+        );
         section.set(
             "start_fullscreen",
             if settings.start_fullscreen {
@@ -705,29 +1007,150 @@ impl SettingsManager {
                 "false"
             },
         );
-        section.set("custom_window_frame_thickness", settings.custom_window_frame_thickness.to_string());
+        section.set("title_bar_color_mode", &settings.title_bar_color_mode);
+        section.set(
+            "custom_window_frame_thickness",
+            settings.custom_window_frame_thickness.to_string(),
+        );
         section.set("theme_preference", &settings.theme_preference);
         section.set("look_preference", &settings.look_preference);
         section.set(
             "main_ui_placement_preference",
             &settings.main_ui_placement_preference,
         );
-        section.set("desktop_menu_bar_preference", &settings.desktop_menu_bar_preference);
-        section.set("navigation_ui_auto_hide_preference", &settings.navigation_ui_auto_hide_preference);
-        section.set("navigation_ui_auto_hide_ms", settings.navigation_ui_auto_hide_ms.to_string());
-        section.set("os_background_blur", if settings.os_background_blur { "true" } else { "false" });
+        section.set(
+            "desktop_menu_bar_preference",
+            &settings.desktop_menu_bar_preference,
+        );
+        section.set(
+            "navigation_ui_auto_hide_preference",
+            &settings.navigation_ui_auto_hide_preference,
+        );
+        section.set(
+            "navigation_ui_auto_hide_ms",
+            settings.navigation_ui_auto_hide_ms.to_string(),
+        );
+        section.set(
+            "os_background_blur",
+            if settings.os_background_blur {
+                "true"
+            } else {
+                "false"
+            },
+        );
         section.set(
             "disable_os_background_blur_in_fullscreen",
-            if settings.disable_os_background_blur_in_fullscreen { "true" } else { "false" },
+            if settings.disable_os_background_blur_in_fullscreen {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set("ui_scale", settings.ui_scale.to_string());
         section.set("ui_text_scale", settings.ui_text_scale.to_string());
         section.set("ui_accent_color", &settings.ui_accent_color);
         section.set("main_view_background", &settings.main_view_background);
-        section.set("main_view_background_opacity", settings.main_view_background_opacity.to_string());
-        section.set("show_alpha_checkerboard", if settings.show_alpha_checkerboard { "true" } else { "false" });
-        section.set("alpha_checkerboard_size", settings.alpha_checkerboard_size.to_string());
-        section.set("alpha_checkerboard_brightness", settings.alpha_checkerboard_brightness.to_string());
+        section.set(
+            "main_view_background_opacity",
+            settings.main_view_background_opacity.to_string(),
+        );
+        section.set(
+            "show_alpha_checkerboard",
+            if settings.show_alpha_checkerboard {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "alpha_checkerboard_size",
+            settings.alpha_checkerboard_size.to_string(),
+        );
+        section.set(
+            "alpha_checkerboard_brightness",
+            settings.alpha_checkerboard_brightness.to_string(),
+        );
+        section.set(
+            "tricks_snow_enabled",
+            if settings.tricks_snow_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set("tricks_snow_particle", &settings.tricks_snow_particle);
+        section.set("tricks_snow_color", &settings.tricks_snow_color);
+        section.set("tricks_snow_speed", settings.tricks_snow_speed.to_string());
+        section.set(
+            "tricks_snow_density",
+            settings.tricks_snow_density.to_string(),
+        );
+        section.set(
+            "tricks_snow_above_image",
+            if settings.tricks_snow_above_image {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "tricks_watermark_enabled",
+            if settings.tricks_watermark_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set("tricks_watermark_text", &settings.tricks_watermark_text);
+        section.set(
+            "tricks_watermark_text_color",
+            &settings.tricks_watermark_text_color,
+        );
+        section.set(
+            "tricks_watermark_image_path",
+            &settings.tricks_watermark_image_path,
+        );
+        section.set("tricks_watermark_mode", &settings.tricks_watermark_mode);
+        section.set(
+            "tricks_watermark_x",
+            settings.tricks_watermark_x.to_string(),
+        );
+        section.set(
+            "tricks_watermark_y",
+            settings.tricks_watermark_y.to_string(),
+        );
+        section.set(
+            "tricks_watermark_speed",
+            settings.tricks_watermark_speed.to_string(),
+        );
+        section.set(
+            "tricks_watermark_opacity",
+            settings.tricks_watermark_opacity.to_string(),
+        );
+        section.set(
+            "tricks_watermark_size",
+            settings.tricks_watermark_size.to_string(),
+        );
+        section.set(
+            "tricks_backdrop_enabled",
+            if settings.tricks_backdrop_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "tricks_backdrop_blur",
+            settings.tricks_backdrop_blur.to_string(),
+        );
+        section.set(
+            "tricks_backdrop_tint",
+            settings.tricks_backdrop_tint.to_string(),
+        );
+        section.set(
+            "tricks_backdrop_opacity",
+            settings.tricks_backdrop_opacity.to_string(),
+        );
         section.set(
             "show_file_sidebar",
             if settings.show_file_sidebar {
@@ -754,7 +1177,10 @@ impl SettingsManager {
         );
         section.set("browse_entry_size", settings.browse_entry_size.to_string());
         section.set("queue_entry_size", settings.queue_entry_size.to_string());
-        section.set("favorites_entry_size", settings.favorites_entry_size.to_string());
+        section.set(
+            "favorites_entry_size",
+            settings.favorites_entry_size.to_string(),
+        );
 
         Self::write_ini_safely(path, &conf)
     }
@@ -955,7 +1381,38 @@ mod tests {
 
         SettingsManager::save_to_file(&path, &loaded).unwrap();
         let saved = fs::read_to_string(&path).unwrap();
-        assert!(saved.contains("schema_version=3"));
+        assert!(saved.contains("schema_version=4"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn legacy_window_geometry_is_normalized_once_for_saved_ui_scale() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "jpeg-viewer-window-geometry-migration-{}.ini",
+            unique
+        ));
+        fs::write(
+            &path,
+            "[Settings]\nschema_version=3\nui_scale=0.75\nwindow_pos=400,200\nwindow_size=1200,800\n",
+        )
+        .unwrap();
+
+        let mut error: Option<String> = None;
+        let loaded = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
+        assert_eq!(loaded.window_pos, Some([300.0, 150.0]));
+        assert_eq!(loaded.window_size, Some([900.0, 600.0]));
+
+        // Once written as schema 4, the normalized geometry must not be scaled again.
+        SettingsManager::save_to_file(&path, &loaded).unwrap();
+        let loaded_again = SettingsManager::load_from_file(&path, &mut error);
+        assert!(error.is_none());
+        assert_eq!(loaded_again.window_pos, Some([300.0, 150.0]));
+        assert_eq!(loaded_again.window_size, Some([900.0, 600.0]));
         let _ = fs::remove_file(path);
     }
 
@@ -965,8 +1422,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir()
-            .join(format!("jpeg-viewer-settings-placement-{}.ini", unique));
+        let path =
+            std::env::temp_dir().join(format!("jpeg-viewer-settings-placement-{}.ini", unique));
         let mut settings = AppSettings::default();
         settings.main_ui_placement_preference = "cosmic".to_string();
         settings.desktop_menu_bar_preference = "off".to_string();
@@ -1056,9 +1513,15 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
-            let path = std::env::temp_dir()
-                .join(format!("jpeg-viewer-settings-auto-hide-{}-{}.ini", legacy, unique));
-            fs::write(&path, format!("[Settings]\nnavigation_ui_auto_hide={}\n", legacy)).unwrap();
+            let path = std::env::temp_dir().join(format!(
+                "jpeg-viewer-settings-auto-hide-{}-{}.ini",
+                legacy, unique
+            ));
+            fs::write(
+                &path,
+                format!("[Settings]\nnavigation_ui_auto_hide={}\n", legacy),
+            )
+            .unwrap();
             let mut error: Option<String> = None;
             let loaded = SettingsManager::load_from_file(&path, &mut error);
             assert!(error.is_none());
@@ -1073,8 +1536,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir()
-            .join(format!("jpeg-viewer-settings-dialup-migration-{}.ini", unique));
+        let path = std::env::temp_dir().join(format!(
+            "jpeg-viewer-settings-dialup-migration-{}.ini",
+            unique
+        ));
         fs::write(
             &path,
             "[Settings]\nschema_version=2\nwin98_dialup_enabled=false\nwin98_dialup_connection_kbps=28\n",

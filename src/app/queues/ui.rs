@@ -165,10 +165,13 @@ impl ViewerApp {
                     ));
                 }
                 if ui.button("Clear queue").clicked() {
-                    if self.queue_mode {
-                        self.return_to_previous_view(ctx);
+                    // Do not clear queue state if returning to the previous view was
+                    // blocked by unsaved edits or no previous view is available.
+                    if self.queue_mode && !self.return_to_previous_view(ctx) {
+                        return;
                     }
                     self.queue_paths.clear();
+                    self.queue_root = None;
                     self.queue_mode = false;
                     self.queue_status = Some("Queue cleared.".into());
                 }
@@ -466,29 +469,37 @@ impl ViewerApp {
                                 if path.is_dir() {
                                     self.show_folder_contents(path, ctx);
                                 } else if path.is_file() {
-                                    let mut favorite_entries = Vec::new();
-                                    let mut selected_index = 0usize;
-                                    for favorite in &self.favorite_paths {
-                                        if super::storage::paths_equal(favorite, path) {
-                                            selected_index = favorite_entries.len();
+                                    if self.prepare_for_image_change(
+                                        "Save or discard unsaved edits before opening favorites.",
+                                    ) {
+                                        let mut favorite_entries = Vec::new();
+                                        let mut selected_index = 0usize;
+                                        for favorite in &self.favorite_paths {
+                                            if super::storage::paths_equal(favorite, path) {
+                                                selected_index = favorite_entries.len();
+                                            }
+                                            if favorite.is_dir() {
+                                                favorite_entries.extend(
+                                                    super::actions::collect_folder_images(favorite)
+                                                        .into_iter()
+                                                        .map(crate::image_entry::ImageEntry::File),
+                                                );
+                                            } else {
+                                                favorite_entries.push(
+                                                    crate::image_entry::ImageEntry::File(
+                                                        favorite.clone(),
+                                                    ),
+                                                );
+                                            }
                                         }
-                                        if favorite.is_dir() {
-                                            favorite_entries.extend(
-                                                super::actions::collect_folder_images(favorite)
-                                                    .into_iter()
-                                                    .map(crate::image_entry::ImageEntry::File),
-                                            );
-                                        } else {
-                                            favorite_entries.push(
-                                                crate::image_entry::ImageEntry::File(
-                                                    favorite.clone(),
-                                                ),
-                                            );
+                                        if !favorite_entries.is_empty() {
+                                            self.queue_mode = false;
+                                            self.set_image_entries(favorite_entries, selected_index);
+                                            self.sync_current_entry_after_collection_change(ctx);
+                                            self.queue_status =
+                                                Some("Opened favorites in the viewer.".into());
                                         }
                                     }
-                                    self.set_image_entries(favorite_entries, selected_index);
-                                    self.queue_status =
-                                        Some("Opened favorites in the viewer.".into());
                                 } else {
                                     self.queue_status =
                                         Some("This favorite item is unavailable.".into());
@@ -800,6 +811,10 @@ impl ViewerApp {
                 {
                     if path.is_dir() {
                         self.show_folder_contents(path, ctx);
+                    } else if context_mode == 0 {
+                        if let Some(index) = context_index {
+                            self.navigate_to_index(ctx, index);
+                        }
                     } else if context_mode == 1 {
                         if let Some(index) = self
                             .queue_paths
@@ -813,6 +828,12 @@ impl ViewerApp {
                         .iter()
                         .position(|p| super::storage::paths_equal(p, path))
                     {
+                        if !self.prepare_for_image_change(
+                            "Save or discard unsaved edits before opening favorites.",
+                        ) {
+                            ui.close();
+                            return;
+                        }
                         let mut entries = Vec::new();
                         let mut selected_index = 0usize;
                         for favorite in &self.favorite_paths {
@@ -833,7 +854,9 @@ impl ViewerApp {
                         if !entries.is_empty() {
                             let selected_index =
                                 selected_index.min(entries.len().saturating_sub(1));
+                            self.queue_mode = false;
                             self.set_image_entries(entries, selected_index);
+                            self.sync_current_entry_after_collection_change(ctx);
                         }
                     }
                     ui.close();

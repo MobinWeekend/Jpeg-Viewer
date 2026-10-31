@@ -9,7 +9,7 @@ use crate::shortcuts::ViewerCommand;
 use eframe::egui;
 
 const MENU_BAR_HEIGHT: f32 = 30.0;
-const CUSTOM_TITLE_BAR_HEIGHT: f32 = 36.0;
+const CUSTOM_TITLE_BAR_HEIGHT: f32 = 38.0;
 const MENU_BAR_LAYOUT_HEIGHT_ID: &str = "jpeg_viewer_desktop_menu_bar_layout_height";
 const MENU_BAR_PREF_ID: &str = "jpeg_viewer_desktop_menu_bar_preference";
 const HELP_WINDOW_GENERATION_ID: &str = "jpeg_viewer_help_window_generation";
@@ -315,6 +315,14 @@ fn render_menus(
             }
             ui.close();
         }
+        let can_delete_current = matches!(
+            app.image_entries.get(app.current_index),
+            Some(crate::image_entry::ImageEntry::File(_))
+        );
+        if ui.add_enabled(can_delete_current, egui::Button::new("Delete Image…")).clicked() {
+            app.show_delete_confirmation = true;
+            ui.close();
+        }
         ui.separator();
         if ui.button("Settings…").clicked() {
             crate::app::ui::toggle_settings_menu(app);
@@ -363,6 +371,13 @@ fn render_menus(
         }
         if ui.button("File Information").clicked() {
             select_sidebar_tab(app, "info");
+            ui.close();
+        }
+        if ui.add_enabled(
+            !app.image_entries.is_empty(),
+            egui::Button::new(if app.inspect_mode { "Inspect ✓" } else { "Inspect" }),
+        ).clicked() {
+            app.toggle_inspect_mode(ctx);
             ui.close();
         }
         ui.separator();
@@ -464,7 +479,10 @@ fn render_menus(
             app.queue_repeat = repeat;
         }
         if ui.add_enabled(!app.queue_paths.is_empty(), egui::Button::new("Clear Queue")).clicked() {
-            if app.queue_mode { app.return_to_previous_view(ctx); }
+            if app.queue_mode && !app.return_to_previous_view(ctx) {
+                ui.close();
+                return;
+            }
             app.queue_paths.clear();
             app.queue_root = None;
             app.queue_mode = false;

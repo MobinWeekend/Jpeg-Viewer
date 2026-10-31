@@ -59,9 +59,9 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport,
-        // Window geometry is persisted in the app's settings.ini using viewport
-        // geometry directly. Disable eframe's second persistence path because its
-        // zoom-factor conversion can accumulate size/position drift when UI scale != 1.
+        // Geometry is persisted in settings.ini by save_window_state(), which
+        // normalizes egui's zoom-scaled viewport coordinates before saving. Disable
+        // eframe's separate persistence path to avoid competing geometry restorations.
         persist_window: false,
         ..Default::default()
     };

@@ -10,44 +10,38 @@ use crate::shortcuts::ViewerCommand;
 use crate::sort::SortMethod;
 use eframe::egui;
 
-pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    // ui.collapsing(egui::RichText::new("📋 General").size(15.0), |ui| {
-    general_settings(app, ui, ctx);
-    // });
-}
+pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
+    ui.collapsing(egui::RichText::new("⚙ General").strong(), |ui| {
+        ui.add_space(4.0);
 
-pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
-    ui.add_space(4.0);
+        // Keep General as one settings section, but show its individual options
+        // directly. Nested collapsibles made commonly used controls unnecessarily
+        // difficult to discover and inconsistent with the other settings sections.
+        ui.label(egui::RichText::new("Interface").strong());
+        render_toggle_compactui(app, ui);
 
-    render_toggle_compactui(app, ui);
-    ui.add_space(4.0);
+        ui.add_space(6.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Input").strong());
+        render_invert_scroll_zoom(app, ui);
 
-    render_invert_scroll_zoom(app, ui);
-    ui.add_space(4.0);
+        ui.add_space(6.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Image rendering").strong());
+        render_texture_filter(app, ui);
 
-    render_texture_filter(app, ui);
-    ui.add_space(4.0);
-
-    ui.separator();
-    ui.add_space(4.0);
-
-    render_startup_fullscreen(app, ui);
-    ui.add_space(4.0);
-    render_start_centered(app, ui);
-    ui.add_space(4.0);
-
-    ui.separator();
-    ui.add_space(4.0);
-
-    ui.add_space(8.0);
+        ui.add_space(6.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Startup").strong());
+        render_startup_fullscreen(app, ui);
+        render_start_centered(app, ui);
+    });
 }
 
 fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut centered = app.settings_manager.get().start_centered;
     if crate::ui_theme::switch(ui, &mut centered, "Start centered on screen") {
-        let _ = app
-            .settings_manager
-            .update(|settings| settings.start_centered = centered);
+        let _ = app.settings_manager.update(|settings| settings.start_centered = centered);
     }
 }
 
@@ -68,70 +62,51 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
 
 // Invert Scroll Zoom
 fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-
-        let response = crate::ui_theme::switch(ui, &mut app.b_ctrl_invert, "Invert Scroll Zoom");
-
-        if response {
+    ui.horizontal_wrapped(|ui| {
+        if crate::ui_theme::switch(ui, &mut app.b_ctrl_invert, "Invert scroll zoom") {
             let value = app.b_ctrl_invert;
-
-            let _ = app.settings_manager.update(|settings| {
-                settings.b_ctrl_invert = value;
-            });
+            let _ = app.settings_manager.update(|settings| settings.b_ctrl_invert = value);
         }
-
-        ui.add_space(4.0);
-        ui.label(if app.b_ctrl_invert {
-            "(Ctrl+Scroll to navigate)"
-        } else {
-            "(Ctrl+Scroll to zoom)"
-        });
+        ui.label(
+            egui::RichText::new(if app.b_ctrl_invert {
+                "Ctrl + scroll navigates"
+            } else {
+                "Ctrl + scroll zooms"
+            })
+            .small()
+            .weak(),
+        );
     });
 }
 
 fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        let compact = crate::ui_theme::switch(ui, &mut app.compactui, "Compact mode");
-
-        if compact {
+    ui.horizontal_wrapped(|ui| {
+        if crate::ui_theme::switch(ui, &mut app.compactui, "Compact mode") {
             let value = app.compactui;
-            let _ = app.settings_manager.update(|settings| {
-                settings.compact_mode = value;
-            });
+            let _ = app.settings_manager.update(|settings| settings.compact_mode = value);
         }
-        ui.label("Toggle by pressing F4");
+        ui.label(egui::RichText::new("F4").small().weak().monospace());
     });
 }
 
 // Texture Filter
 fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let current_filter = app.settings_manager.get().texture_filter.clone();
+    let mut filter = current_filter.clone();
     ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        ui.label("Texture Filter:");
-        ui.add_space(8.0);
-
-        let current_filter = app.settings_manager.get().texture_filter.clone();
-        let mut filter = current_filter.clone();
-
+        ui.label("Texture filter");
         egui::ComboBox::from_id_salt("texture_filter")
             .selected_text(texture_filter_label(&filter))
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut filter, "nearest".to_string(), "Nearest (fast)");
-
                 ui.selectable_value(&mut filter, "linear".to_string(), "Linear (smooth)");
-
                 ui.selectable_value(&mut filter, "mipmap".to_string(), "Mipmap (best)");
             });
-
-        if filter != current_filter {
-            let _ = app.settings_manager.update(|settings| {
-                settings.texture_filter = filter;
-            });
-            reload_current_image_for_filter(app);
-        }
     });
+    if filter != current_filter {
+        let _ = app.settings_manager.update(|settings| settings.texture_filter = filter);
+        reload_current_image_for_filter(app);
+    }
 }
 
 fn texture_filter_label(filter: &str) -> &'static str {
@@ -160,7 +135,7 @@ fn reload_current_image_for_filter(app: &mut ViewerApp) {
 pub(crate) fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        ui.label("Theme:");
+        ui.label("◐ Theme");
         ui.add_space(8.0);
 
         // Read current theme from settings (not from ctx directly)
@@ -202,7 +177,7 @@ pub(crate) fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
 
 pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.separator();
-    ui.label(egui::RichText::new("UI appearance").strong());
+    ui.label(egui::RichText::new("🎚 UI appearance").strong());
     let current = app.settings_manager.get().clone();
 
     // Keep the UI-scale draft in egui temporary data while the slider is being dragged.
@@ -321,7 +296,7 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     }
 
     ui.separator();
-    ui.label(egui::RichText::new("Main view").strong());
+    ui.label(egui::RichText::new("▧ Main view").strong());
     let settings = app.settings_manager.get().clone();
     let mut bg = settings.main_view_background.clone();
     ui.horizontal(|ui| {
@@ -410,19 +385,11 @@ fn theme_label_str(theme: &str) -> &'static str {
 
 // Startup Fullscreen
 fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-
-        let mut start_fs = app.settings_manager.get().start_fullscreen;
-
-        if crate::ui_theme::switch(ui, &mut start_fs, "Start in Fullscreen Mode") {
-            let _ = app.settings_manager.update(|settings| {
-                settings.start_fullscreen = start_fs;
-            });
-        }
-    });
-    ui.add_space(8.0);
-    ui.label("Note: When started in fullscreen, Escape will close the app.");
+    let mut start_fs = app.settings_manager.get().start_fullscreen;
+    if crate::ui_theme::switch(ui, &mut start_fs, "Start in fullscreen mode") {
+        let _ = app.settings_manager.update(|settings| settings.start_fullscreen = start_fs);
+    }
+    ui.label(egui::RichText::new("Escape exits fullscreen.").small().weak());
 }
 
 /// Render sort method in a horizontal layout (for compact settings panels)

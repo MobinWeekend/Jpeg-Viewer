@@ -44,6 +44,58 @@ impl GifAnimation {
         })
     }
 
+    /// Decode a bounded animated GIF for small decorative assets such as watermarks.
+    /// Frames are reduced to `max_dimension` and decoding stops at `max_frames` so
+    /// an unusually large logo cannot consume unbounded memory.
+    pub fn from_bytes_bounded(
+        data: &[u8],
+        max_frames: usize,
+        max_pixels_per_frame: u64,
+        max_dimension: u32,
+    ) -> Result<Self, String> {
+        use image::AnimationDecoder;
+        use image::codecs::gif::GifDecoder;
+
+        let decoder = GifDecoder::new(std::io::Cursor::new(data))
+            .map_err(|e| format!("Failed to create GIF decoder: {e}"))?;
+        let mut frames = Vec::new();
+        let mut delays = Vec::new();
+
+        for frame in decoder.into_frames().take(max_frames.max(1)) {
+            let frame = frame.map_err(|e| format!("Failed to decode GIF frame: {e}"))?;
+            let delay = frame.delay().into();
+            let buffer = frame.into_buffer();
+            let pixels = buffer.width() as u64 * buffer.height() as u64;
+            if pixels > max_pixels_per_frame {
+                return Err(format!(
+                    "GIF watermark frame is too large ({}x{})",
+                    buffer.width(),
+                    buffer.height()
+                ));
+            }
+            let reduced = if buffer.width() > max_dimension || buffer.height() > max_dimension {
+                image::imageops::thumbnail(&buffer, max_dimension, max_dimension)
+            } else {
+                buffer
+            };
+            delays.push(delay);
+            frames.push(reduced);
+        }
+
+        if frames.is_empty() {
+            return Err("No frames found in GIF".to_string());
+        }
+
+        Ok(Self {
+            frames,
+            delays,
+            current_frame: 0,
+            last_update: Instant::now(),
+            is_playing: true,
+            speed_multiplier: 1.0,
+        })
+    }
+
     /// Decode only the first frame of a GIF.
     /// This is intended for fast preview loading.
     pub fn from_bytes_preview(data: &[u8]) -> Result<Self, String> {

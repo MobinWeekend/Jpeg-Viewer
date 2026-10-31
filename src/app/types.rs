@@ -223,6 +223,27 @@ pub struct ViewerApp {
     //meta data
     pub file_metadata_open: bool,
     pub file_metadata: Option<FileMetadata>,
+    // ====== TRICKS ASSETS ======
+    /// Currently displayed blurred backdrop; retained while the next one is prepared.
+    pub tricks_backdrop_texture: Option<egui::TextureHandle>,
+    /// Newly prepared backdrop, cross-faded over the currently displayed texture.
+    pub tricks_backdrop_next_texture: Option<egui::TextureHandle>,
+    pub tricks_backdrop_transition_started: Option<Instant>,
+    pub tricks_backdrop_key: Option<(PathBuf, u8)>,
+    pub tricks_backdrop_receiver:
+        Option<Receiver<(PathBuf, u8, Result<(usize, usize, Vec<u8>), String>)>>,
+    /// Small (at most 256x256) preview derived from the already-decoded current image.
+    pub tricks_backdrop_source_preview: Option<(PathBuf, usize, usize, Vec<u8>)>,
+    pub tricks_backdrop_source_requested_path: Option<PathBuf>,
+    pub tricks_backdrop_source_receiver:
+        Option<Receiver<(PathBuf, Result<(usize, usize, Vec<u8>), String>)>>,
+    pub tricks_watermark_texture: Option<egui::TextureHandle>,
+    pub tricks_watermark_requested_path: Option<PathBuf>,
+    pub tricks_watermark_receiver:
+        Option<Receiver<(PathBuf, Result<(usize, usize, Vec<u8>), String>)>>,
+    pub tricks_watermark_gif: Option<GifAnimation>,
+    pub tricks_watermark_gif_frame: Option<usize>,
+    pub tricks_watermark_gif_receiver: Option<Receiver<(PathBuf, Result<GifAnimation, String>)>>,
 
     // ====== WORKING-COPY EDITING ======
     pub(crate) edit_session: Option<super::editing::EditSession>,
@@ -459,6 +480,20 @@ impl Default for ViewerApp {
             //metadata
             file_metadata_open: false,
             file_metadata: None,
+            tricks_backdrop_texture: None,
+            tricks_backdrop_next_texture: None,
+            tricks_backdrop_transition_started: None,
+            tricks_backdrop_key: None,
+            tricks_backdrop_receiver: None,
+            tricks_backdrop_source_preview: None,
+            tricks_backdrop_source_requested_path: None,
+            tricks_backdrop_source_receiver: None,
+            tricks_watermark_texture: None,
+            tricks_watermark_requested_path: None,
+            tricks_watermark_receiver: None,
+            tricks_watermark_gif: None,
+            tricks_watermark_gif_frame: None,
+            tricks_watermark_gif_receiver: None,
 
             edit_session: None,
             show_edit_menu: false,
@@ -588,7 +623,18 @@ impl ViewerApp {
     }
 
     pub fn update_window_title(&self, ctx: &egui::Context) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.window_title()));
+        const LAST_TITLE_ID: &str = "jpeg_viewer_last_viewport_title";
+        let title = self.window_title();
+        let unchanged = ctx.data(|data| {
+            data.get_temp::<String>(egui::Id::new(LAST_TITLE_ID))
+                .is_some_and(|last_title| last_title == title)
+        });
+        if unchanged {
+            return;
+        }
+
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new(LAST_TITLE_ID), title));
     }
 
     // ====== TEXTURE ======

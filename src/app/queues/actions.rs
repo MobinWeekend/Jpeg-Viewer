@@ -28,19 +28,25 @@ pub(super) fn collect_folder_images(root: &Path) -> Vec<PathBuf> {
 impl ViewerApp {
     /// Show a folder's current images in Browse without adding the folder itself as a Browse entry.
     pub(super) fn show_folder_contents(&mut self, folder: &Path, ctx: &egui::Context) {
-        self.sidebar_queue_tab = false;
-        self.sidebar_favorites_tab = false;
-        self.sidebar_info_tab = false;
-        self.queue_drop_rect = None;
-        self.queue_mode = false;
         let paths = collect_folder_images(folder);
         if paths.is_empty() {
             self.queue_status = Some(format!("No supported images found in {}.", folder.display()));
             return;
         }
+        if !self.prepare_for_image_change(
+            "Save or discard unsaved edits before opening this folder.",
+        ) {
+            return;
+        }
+        self.sidebar_queue_tab = false;
+        self.sidebar_favorites_tab = false;
+        self.sidebar_info_tab = false;
+        self.queue_drop_rect = None;
+        self.queue_mode = false;
         let count = paths.len();
         self.current_directory = Some(folder.to_path_buf());
         self.load_dropped_files(paths);
+        self.sync_current_entry_after_collection_change(ctx);
         self.queue_status = Some(format!("Showing {count} image(s) from {}.", folder.display()));
         ctx.request_repaint();
     }
@@ -190,13 +196,34 @@ impl ViewerApp {
         if self.queue_paths.is_empty() {
             return false;
         }
-        if self
-            .edit_session
-            .as_ref()
-            .is_some_and(|session| session.dirty)
-        {
-            self.edit_status = Some("Save or discard unsaved edits before opening a queue.".into());
-            self.show_edit_menu = true;
+        // Build and validate the next collection before touching the current edit
+        // session or queue-mode state. Empty folder-only queues must be a no-op.
+        let mut entries = Vec::new();
+        let mut target_index = 0usize;
+        for (queue_index, path) in self.queue_paths.iter().enumerate() {
+            let folder_images = if path.is_dir() {
+                collect_folder_images(path)
+            } else {
+                Vec::new()
+            };
+            if queue_index < index {
+                target_index += if path.is_dir() { folder_images.len() } else { 1 };
+            }
+            if path.is_dir() {
+                entries.extend(folder_images.into_iter().map(ImageEntry::File));
+            } else {
+                entries.push(ImageEntry::File(path.clone()));
+            }
+        }
+        if entries.is_empty() {
+            self.queue_status = Some(
+                "Queue has no readable images. Folder entries may be empty or unavailable.".into(),
+            );
+            return false;
+        }
+        if !self.prepare_for_image_change(
+            "Save or discard unsaved edits before opening a queue.",
+        ) {
             return false;
         }
         if !self.queue_mode {
@@ -204,41 +231,36 @@ impl ViewerApp {
             self.queue_previous_index = self.current_index;
         }
         self.queue_mode = true;
-        let mut entries = Vec::new();
-        let mut target_index = 0usize;
-        for (queue_index, path) in self.queue_paths.iter().enumerate() {
-            if queue_index < index {
-                target_index += if path.is_dir() { collect_folder_images(path).len() } else { 1 };
-            }
-            if path.is_dir() {
-                entries.extend(collect_folder_images(path).into_iter().map(ImageEntry::File));
-            } else {
-                entries.push(ImageEntry::File(path.clone()));
-            }
-        }
-        if entries.is_empty() {
-            self.queue_status = Some("Queue has no readable images. Folder entries may be empty or unavailable.".into());
-            return false;
-        }
         let target_index = target_index.min(entries.len().saturating_sub(1));
         self.set_image_entries(entries, target_index);
-        self.queue_status = Some("Browsing queue order. Missing files remain in the queue and show an unavailable warning.".into());
+        self.sync_current_entry_after_collection_change(ctx);
+        self.queue_status = Some(
+            "Browsing queue order. Missing files remain in the queue and show an unavailable warning."
+                .into(),
+        );
         ctx.request_repaint();
         true
     }
 
-    pub fn return_to_previous_view(&mut self, ctx: &egui::Context) {
+    pub fn return_to_previous_view(&mut self, ctx: &egui::Context) -> bool {
+        if !self.prepare_for_image_change(
+            "Save or discard unsaved edits before returning to the previous view.",
+        ) {
+            return false;
+        }
         let Some(entries) = self.queue_previous_entries.take() else {
             self.queue_status = Some("There is no previous view to restore.".into());
-            return;
+            return false;
         };
         self.queue_mode = false;
         let index = self
             .queue_previous_index
             .min(entries.len().saturating_sub(1));
         self.set_image_entries(entries, index);
+        self.sync_current_entry_after_collection_change(ctx);
         self.queue_status = Some("Returned to the previous browsing view.".into());
         ctx.request_repaint();
+        true
     }
 
     pub fn save_queue_dialog(&mut self) {

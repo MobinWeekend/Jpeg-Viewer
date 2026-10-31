@@ -423,25 +423,9 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                     };
 
                                     if clicked && index != app.current_index {
-                                        if app
-                                            .edit_session
-                                            .as_ref()
-                                            .is_some_and(|session| session.dirty)
-                                        {
-                                            app.edit_status = Some(
-                                                "Save or discard unsaved edits before changing images."
-                                                    .into(),
-                                            );
-                                            app.show_edit_menu = true;
-                                            app.show_settings_menu = false;
-                                        } else {
-                                            app.edit_session = None;
-                                            app.show_edit_menu = false;
-                                            app.crop_tool_active = false;
-                                            app.crop_drag_start_image = None;
-                                            app.crop_selection = None;
-                                            selected = Some(index);
-                                        }
+                                        // The shared navigation method owns unsaved-edit
+                                        // validation and all per-image state transitions.
+                                        selected = Some(index);
                                     }
 
                                     if (index + 1) % columns == 0 {
@@ -456,8 +440,10 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     });
 
                 if let Some(index) = selected {
-                    app.current_index = index;
-                    app.load_current_image_with_cache();
+                    // Use the same navigation pipeline as keyboard/toolbar navigation.
+                    // This keeps the window title, current path, file-type detection,
+                    // edit/view state, navigation timer, loading, and metadata in sync.
+                    app.navigate_to_index(ctx, index);
                 }
 
                 app.sidebar_last_current_index = Some(app.current_index);

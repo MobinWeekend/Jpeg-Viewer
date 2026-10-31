@@ -61,7 +61,7 @@ fn render_handle(
 ) {
     let layer_id = egui::LayerId::new(egui::Order::Foreground, egui::Id::new(id));
     // Areas can retain a prior z-order from interaction history; explicitly raise
-    // the resize hitbox so the title-bar Area cannot swallow corner/edge drags.
+    // the resize hitbox so title-bar controls cannot swallow corner/edge drags.
     ctx.move_to_top(layer_id);
     egui::Area::new(egui::Id::new(id))
         .order(egui::Order::Foreground)
@@ -99,7 +99,13 @@ fn top_left_rect(rect: &egui::Rect, size: f32) -> egui::Rect {
     egui::Rect::from_min_size(rect.min, egui::vec2(size, size))
 }
 fn top_right_rect(rect: &egui::Rect, size: f32) -> egui::Rect {
-    egui::Rect::from_min_max(egui::pos2(rect.right() - size, rect.top()), egui::pos2(rect.right(), rect.top() + size))
+    // Keep the top-right resize affordance inside the final two-pixel frame strip.
+    // This leaves the caption buttons almost flush with the right window edge.
+    let width = 2.0_f32.min(size).min(rect.width());
+    egui::Rect::from_min_max(
+        egui::pos2(rect.right() - width, rect.top()),
+        egui::pos2(rect.right(), rect.top() + size),
+    )
 }
 fn bottom_left_rect(rect: &egui::Rect, size: f32) -> egui::Rect {
     egui::Rect::from_min_max(egui::pos2(rect.left(), rect.bottom() - size), egui::pos2(rect.left() + size, rect.bottom()))

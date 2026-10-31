@@ -2,6 +2,25 @@ use super::types::{LoadingState, ViewerApp};
 use eframe::egui;
 
 impl ViewerApp {
+    /// Reject image/collection changes while a working copy has unsaved edits;
+    /// otherwise close the current edit session and clear its crop interaction state.
+    pub fn prepare_for_image_change(&mut self, dirty_message: &str) -> bool {
+        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
+            self.edit_status = Some(dirty_message.to_owned());
+            self.show_edit_menu = true;
+            self.show_settings_menu = false;
+            return false;
+        }
+        if self.edit_session.is_some() {
+            self.edit_session = None;
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
+        }
+        true
+    }
+
     /// Navigate relative to the current image.
     ///
     /// `direction`:
@@ -26,37 +45,38 @@ impl ViewerApp {
         self.navigate_to_index(ctx, new_index);
     }
 
+    /// Refresh navigation-facing state after a caller replaces `image_entries`
+    /// rather than changing the index inside the current collection (for example,
+    /// opening the queue or favorites from the sidebar).
+    pub fn sync_current_entry_after_collection_change(&mut self, ctx: &egui::Context) {
+        self.update_window_title(ctx);
+        self.update_current_image_path();
+        self.detect_current_file_type();
+        self.sidebar_last_current_index = None;
+        self.reset_navigation_timer();
+        self.file_metadata = Some(self.build_file_metadata());
+        self.load_frame_limiter_settings();
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+    }
+
     /// Navigate directly to a specific image index.
     ///
     /// This contains all of the common image-navigation/reset/loading logic
     /// used by next/previous/first/last navigation.
     pub fn navigate_to_index(&mut self, ctx: &egui::Context, new_index: usize) {
-        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
-            self.edit_status = Some(
-                "Save or discard the unsaved working copy before changing images.".into(),
-            );
-            self.show_edit_menu = true;
-            self.show_settings_menu = false;
-            return;
-        }
-        if self.edit_session.is_some() {
-            self.edit_session = None;
-            self.show_edit_menu = false;
-            self.crop_tool_active = false;
-            self.crop_drag_start_image = None;
-            self.crop_selection = None;
-        }
         if self.image_entries.is_empty() {
             return;
         }
 
-        // Invalid index
-        if new_index >= self.image_entries.len() {
+        // Validate before touching the edit/view state. In a one-image collection,
+        // next/previous navigation can legitimately resolve to the current index.
+        if new_index >= self.image_entries.len() || new_index == self.current_index {
             return;
         }
 
-        // Already viewing this image
-        if new_index == self.current_index {
+        if !self.prepare_for_image_change(
+            "Save or discard the unsaved working copy before changing images.",
+        ) {
             return;
         }
 

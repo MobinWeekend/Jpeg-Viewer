@@ -87,17 +87,35 @@ fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> e
         .anchor(anchor, offset)
 }
 
-pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f32, offset_y: f32) {
+pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f32, offset_y: f32, max_width: f32) {
     let no_image = !app.image_entries.is_empty();
     let compact = app.compactui;
     // === Position of the top bar
-    overlay_area(
-        "toolbar_top_center",
-        egui::Align2::LEFT_TOP,
-        egui::vec2(offset_x, offset_y),
-    )
-    .show(ctx, |ui| {
-        render_toolbar_ui(app, ctx, ui, |this, ui| {
+    // egui remembers an Area's prior auto-size. Invalidate that measurement when
+    // compact mode, profile, toolbar contents, or the available width changes.
+    let width_bucket = (max_width.max(0.0) / 24.0).round() as i32;
+    let sizing_changed = toolbar_area_sizing_changed(
+        ctx,
+        "top_center",
+        crate::ui_theme::current_look_profile(ctx),
+        compact,
+        false,
+        width_bucket,
+        !app.image_entries.is_empty(),
+        app.is_gif,
+        crate::app::ui::uses_desktop_menu_bar(ctx),
+        app.slideshow_enabled,
+    );
+    egui::Area::new(egui::Id::new("toolbar_top_center"))
+        .sizing_pass(sizing_changed)
+        .order(egui::Order::Foreground)
+        .anchor(egui::Align2::LEFT_TOP, egui::vec2(offset_x, offset_y))
+        .show(ctx, |ui| {
+        // Override the Area's previous-frame content width. The external viewport
+        // budget is authoritative when compact mode is toggled back to full size.
+        ui.set_max_width(max_width.max(0.0));
+        let content_width = toolbar_content_width_budget(ctx, compact, max_width);
+        render_toolbar_ui(app, ctx, ui, content_width, |this, ui, budget, row_start| {
             if !crate::app::ui::uses_desktop_menu_bar(ctx) {
                 this.render_hamburger_ui(ui);
             }
@@ -107,21 +125,17 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f3
                 this.zoom_out_ui(ctx, ui);
                 this.zoom_text(ctx, ui);
                 this.zoom_in_ui(ctx, ui);
-                //this.zoom_ui(ctx, ui);
-                //this.fullscreen_ui(ctx, ui);
-                //this.pin_window_ui(ctx, ui);
-                if !compact {
-                    //separator(ui, space);
-                    //sort_method_horizontal_ui(this, ctx, ui);
-
-                    separator(ui, space);
-                    //this.image_info_ui(ui);
-                    this.file_metadata_button(ui);
-                }
             }
             if this.is_gif {
                 separator(ui, space);
                 this.gif_controls_ui(ui);
+            }
+            if no_image && !compact {
+                separator(ui, space);
+                let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+                this.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
+            } else if compact {
+                this.file_metadata_open = false;
             }
         });
     });
@@ -132,11 +146,38 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
         return;
     }
 
+    let viewport_width = ctx.input(|input| {
+        input
+            .viewport()
+            .inner_rect
+            .map(|rect| rect.width())
+            .unwrap_or(1280.0)
+    });
+    let right_offset = if app.show_settings_menu || app.show_edit_menu {
+        app.settings_manager.get().settings_sidebar_width
+    } else {
+        0.0
+    };
+    let usable_width = (viewport_width - left_offset - right_offset - 16.0).max(96.0);
+    let sizing_changed = toolbar_area_sizing_changed(
+        ctx,
+        "jpeg_view_bottom",
+        crate::ui_theme::current_look_profile(ctx),
+        app.compactui,
+        false,
+        (usable_width / 24.0).round() as i32,
+        true,
+        app.is_gif,
+        crate::app::ui::uses_desktop_menu_bar(ctx),
+        app.slideshow_enabled,
+    );
     overlay_area(
         "toolbar_bot_center",
         egui::Align2::LEFT_BOTTOM,
         egui::vec2(left_offset, -MENU_OFFSET),
     )
+    .sizing_pass(sizing_changed)
+    .constrain(true)
     .show(ctx, |ui| {
         /*
         let viewport_width = ctx.input(|input| {
@@ -148,11 +189,6 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
         });
          */
         let avail_rect = ui.available_rect_before_wrap();
-        let right_offset = if app.show_settings_menu || app.show_edit_menu {
-            app.settings_manager.get().settings_sidebar_width
-        } else {
-            0.0
-        };
         let max_width = (avail_rect.width() - left_offset - right_offset - 16.0).max(96.0);
         ui.set_max_width(max_width);
         let compact = app.compactui;
@@ -226,21 +262,45 @@ pub fn render_platform_toolbar(
         max_width < 300.0
     };
 
-    overlay_area(id, anchor, offset)
+    // The prior Area size is stale whenever the layout signature changes; force a
+    // one-frame sizing pass so the toolbar can expand and shrink to the new content.
+    let width_bucket = (max_width.max(0.0) / 24.0).round() as i32;
+    let sizing_changed = toolbar_area_sizing_changed(
+        ctx,
+        id,
+        crate::ui_theme::current_look_profile(ctx),
+        compact,
+        ultra_compact,
+        width_bucket,
+        !app.image_entries.is_empty(),
+        app.is_gif,
+        has_desktop_menu_bar,
+        app.slideshow_enabled,
+    );
+    egui::Area::new(egui::Id::new(id))
+        .sizing_pass(sizing_changed)
+        .order(egui::Order::Foreground)
+        .anchor(anchor, offset)
         .constrain(true)
         .show(ctx, |ui| {
             let classic_win98 = placement == "win98";
-            // Win98 is constrained to the central space between docked sidebars; other
-            // profiles keep their established minimum width for centered controls.
+            // Win98 keeps its full-width classic strip. COSMIC and GNOME only use
+            // max-width constraints: their Area must size to the controls' content
+            // instead of stretching from one side of the central canvas to the other.
             let frame_width = if classic_win98 {
                 max_width.max(1.0)
             } else {
                 max_width.max(96.0)
             };
-            ui.set_min_width(frame_width);
+            if classic_win98 {
+                ui.set_min_width(frame_width);
+            }
             ui.set_max_width(frame_width);
+            let content_width = toolbar_content_width_budget(ctx, compact, frame_width);
             let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
-                ui.set_min_width((frame_width - 2.0).max(72.0));
+                if classic_win98 {
+                    ui.set_min_width((frame_width - 2.0).max(72.0));
+                }
                 ui.set_max_width((frame_width - 2.0).max(72.0));
                 if classic_win98 {
                     // Classic Windows 98 toolbar fills only the central viewport between
@@ -260,7 +320,7 @@ pub fn render_platform_toolbar(
                                 row.set_max_height(PRIMARY_ROW_HEIGHT);
                                 row.set_min_width(primary_width);
                                 row.set_max_width(primary_width);
-                                render_win98_primary_row(app, ctx, row, ultra_compact);
+                                render_win98_primary_row(app, ctx, row, ultra_compact, primary_width);
                             },
                         );
                         if app.slideshow_enabled && !app.image_entries.is_empty() {
@@ -269,12 +329,14 @@ pub fn render_platform_toolbar(
                         }
                     });
                 } else {
-                    ui.vertical_centered(|ui| {
+                    // A plain vertical layout lets each row keep its natural width;
+                    // the Area's center anchor positions the resulting content block.
+                    ui.vertical(|ui| {
                         if app.slideshow_enabled
                             && placement == "cosmic"
                             && !app.image_entries.is_empty()
                         {
-                            render_slideshow_options_row(app, ctx, ui);
+                            render_slideshow_options_row_intrinsic(app, ctx, ui);
                             ui.separator();
                         }
                         render_platform_primary_row(
@@ -285,13 +347,14 @@ pub fn render_platform_toolbar(
                             compact,
                             ultra_compact,
                             placement,
+                            content_width,
                         );
                         if app.slideshow_enabled
                             && placement != "cosmic"
                             && !app.image_entries.is_empty()
                         {
                             ui.separator();
-                            render_slideshow_options_row(app, ctx, ui);
+                            render_slideshow_options_row_intrinsic(app, ctx, ui);
                         }
                     });
                 }
@@ -309,7 +372,9 @@ fn render_win98_primary_row(
     ctx: &egui::Context,
     ui: &mut egui::Ui,
     ultra_compact: bool,
+    width_budget: f32,
 ) {
+    let row_start = ui.next_widget_position().x;
     // Classic controls are aligned left within the central viewport, never over
     // the docked sidebars. Narrow viewports use only the essential navigation trio.
     if !app.image_entries.is_empty() {
@@ -321,45 +386,38 @@ fn render_win98_primary_row(
             app.zoom_out_ui(ctx, ui);
             app.zoom_text(ctx, ui);
             app.zoom_in_ui(ctx, ui);
-            separator(ui, 1.0);
-            app.file_metadata_button(ui);
             if app.is_gif {
                 separator(ui, 1.0);
                 app.gif_controls_ui(ui);
             }
+        }
+        if !app.compactui && !ultra_compact {
+            separator(ui, 1.0);
+            let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+            app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
+        } else {
+            app.file_metadata_open = false;
         }
     } else if ui.button("Open Image…").clicked() {
         app.handle_command(ctx, crate::shortcuts::ViewerCommand::OpenFile);
     }
 }
 
+fn render_slideshow_options_row_intrinsic(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+) {
+    // Slideshow settings contain several controls. Let them wrap instead of
+    // extending beyond the centered toolbar or being clipped at narrower widths.
+    ui.horizontal_wrapped(|row| app.slideshow_speed_ui(ctx, row));
+}
+
 fn render_slideshow_options_row(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
-    // This row is deliberately height-constrained. In the Win98 profile, the previous
-    // child content could make the overlay's auto-sized Area grow vertically when the
-    // slideshow was enabled. Horizontal overflow is handled by a clipped scroll area.
-    const OPTIONS_ROW_HEIGHT: f32 = 32.0;
-    let available_width = ui.available_width().max(1.0);
-    ui.allocate_ui_with_layout(
-        egui::vec2(available_width, OPTIONS_ROW_HEIGHT),
-        egui::Layout::left_to_right(egui::Align::Center),
-        |host| {
-            host.set_min_height(OPTIONS_ROW_HEIGHT);
-            host.set_max_height(OPTIONS_ROW_HEIGHT);
-            egui::ScrollArea::horizontal()
-                .id_salt("slideshow_options_row")
-                .max_height(OPTIONS_ROW_HEIGHT)
-                .min_scrolled_height(OPTIONS_ROW_HEIGHT)
-                .scroll_bar_visibility(
-                    egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
-                )
-                .auto_shrink([false, false])
-                .show(host, |row| {
-                    row.set_min_height(OPTIONS_ROW_HEIGHT);
-                    row.set_max_height(OPTIONS_ROW_HEIGHT);
-                    row.horizontal(|row| app.slideshow_speed_ui(ctx, row));
-                });
-        },
-    );
+    // The original JPEG Viewer layout has a narrower, floating toolbar than the
+    // desktop-profile layouts. Wrap controls directly in the available region so
+    // the content determines the height instead of reserving a zero-height row.
+    ui.horizontal_wrapped(|row| app.slideshow_speed_ui(ctx, row));
 }
 
 fn render_platform_primary_row(
@@ -370,8 +428,10 @@ fn render_platform_primary_row(
     compact: bool,
     ultra_compact: bool,
     placement: &str,
+    width_budget: f32,
 ) {
     ui.horizontal(|ui| {
+        let row_start = ui.next_widget_position().x;
         let has_images = !app.image_entries.is_empty();
         if !has_desktop_menu_bar && (!ultra_compact || !has_images) {
             app.render_hamburger_ui(ui);
@@ -395,14 +455,17 @@ fn render_platform_primary_row(
                 app.zoom_in_ui(ctx, ui);
             }
 
-            if !compact && !ultra_compact {
-                separator(ui, 1.0);
-                app.file_metadata_button(ui);
-            }
-
             if app.is_gif && !auto_compact_for_toolbar(compact, ultra_compact) {
                 separator(ui, if compact { 8.0 } else { 1.0 });
                 app.gif_controls_ui(ui);
+            }
+
+            if !compact && !ultra_compact {
+                separator(ui, 1.0);
+                let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+                app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
+            } else {
+                app.file_metadata_open = false;
             }
         } else if placement == "win98" {
             if ui.button("Open Image…").clicked() {
@@ -421,28 +484,97 @@ pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context, rig
         return;
     }
 
-    overlay_area(
-        "toolbar_bot_right",
-        egui::Align2::RIGHT_BOTTOM,
-        egui::vec2(-right_offset, -MENU_OFFSET),
-    )
-    .show(ctx, |ui| {
-        render_toolbar_ui(app, ctx, ui, |this, ui| {
+    let placement = crate::ui_theme::resolve_main_ui_placement(
+        &app.settings_manager.get().main_ui_placement_preference,
+        ctx,
+    );
+    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+    let (anchor, offset, id) = if placement == "cosmic" {
+        let top_offset = if fullscreen {
+            MENU_OFFSET
+        } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
+            crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
+        } else if app.settings_manager.get().show_titlebar {
+            MENU_OFFSET
+        } else {
+            40.0
+        };
+        (
+            egui::Align2::RIGHT_TOP,
+            egui::vec2(-right_offset - MENU_OFFSET, top_offset),
+            "toolbar_cosmic_top_right_counter",
+        )
+    } else {
+        (
+            egui::Align2::RIGHT_BOTTOM,
+            egui::vec2(-right_offset, -MENU_OFFSET),
+            "toolbar_bot_right",
+        )
+    };
+
+    overlay_area(id, anchor, offset).show(ctx, |ui| {
+        render_toolbar_ui(app, ctx, ui, 0.0, |this, ui, _budget, _row_start| {
             render_image_counter(this, ui);
         });
     });
+}
+
+/// Force egui to remeasure an auto-sized toolbar when its layout constraints change.
+/// Area state normally remembers the previous content size; that stale size can survive
+/// a compact/full toggle and prevent the metadata button from expanding again.
+fn toolbar_area_sizing_changed(
+    ctx: &egui::Context,
+    area_key: &'static str,
+    profile: &str,
+    compact: bool,
+    ultra_compact: bool,
+    width_bucket: i32,
+    has_images: bool,
+    is_gif: bool,
+    has_desktop_menu_bar: bool,
+    slideshow_enabled: bool,
+) -> bool {
+    let state_id = egui::Id::new(("toolbar_layout_signature", area_key));
+    let current = (
+        profile.to_owned(),
+        compact,
+        ultra_compact,
+        width_bucket,
+        has_images,
+        is_gif,
+        has_desktop_menu_bar,
+        slideshow_enabled,
+    );
+    let previous = ctx.data(|data| {
+        data.get_temp::<(String, bool, bool, i32, bool, bool, bool, bool)>(state_id)
+    });
+    ctx.data_mut(|data| data.insert_temp(state_id, current.clone()));
+    previous.is_some_and(|previous| previous != current)
+}
+
+fn toolbar_content_width_budget(ctx: &egui::Context, compact: bool, outer_width: f32) -> f32 {
+    let profile = crate::ui_theme::current_look_profile(ctx);
+    let margin_x = match profile {
+        "cosmic" | "gnome" => if compact { 8.0 } else { 10.0 },
+        "win98" => 5.0,
+        _ => if compact { 4.0 } else { 6.0 },
+    };
+    let has_stroke = matches!(profile, "cosmic" | "gnome" | "win98");
+    (outer_width - margin_x * 2.0 - if has_stroke { 2.0 } else { 0.0 }).max(0.0)
 }
 
 fn render_toolbar_ui(
     app: &mut ViewerApp,
     ctx: &egui::Context,
     ui: &mut egui::Ui,
-    content: impl FnOnce(&mut ViewerApp, &mut egui::Ui),
+    content_width: f32,
+    content: impl FnOnce(&mut ViewerApp, &mut egui::Ui, f32, f32),
 ) {
     let compact = app.compactui;
     toolbar_frame_mode(ctx, compact).show(ui, |ui| {
         ui.horizontal(|ui| {
-            content(app, ui);
+            let row_start = ui.next_widget_position().x;
+            content(app, ui, content_width, row_start);
         });
     });
 }

@@ -55,6 +55,17 @@ pub fn set_enabled(enabled: bool) {
     let _ = enabled;
 }
 
+/// Best-effort native caption-color override. Passing `None` restores the OS default.
+/// Windows 11 exposes the caption-color API; other native window managers retain
+/// their system-controlled decoration colors.
+pub fn set_native_titlebar_color(color: Option<[u8; 3]>) {
+    #[cfg(target_os = "windows")]
+    windows_backdrop::set_caption_color(color);
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = color;
+}
+
 /// Whether a native system backdrop was successfully requested and is enabled.
 /// Other platforms use egui's translucent-surface fallback and keep an opaque window.
 pub fn is_active() -> bool {
@@ -72,10 +83,15 @@ pub fn is_active() -> bool {
 mod windows_backdrop {
     use super::MAIN_HWND;
     use std::ffi::c_void;
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    const DWM_COLOR_DEFAULT: u32 = u32::MAX;
+    static LAST_CAPTION_COLOR: AtomicU32 = AtomicU32::new(u32::MAX - 1);
 
     // DWMWA_SYSTEMBACKDROP_TYPE (Windows 11 22H2+). Values mirror Microsoft's
     // DWMSYSTEMBACKDROP_TYPE: NONE = 1, TRANSIENTWINDOW (Acrylic-like) = 3.
+    const DWMWA_CAPTION_COLOR: u32 = 35;
+    const DWMWA_TEXT_COLOR: u32 = 36;
     const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
     const DWMSBT_NONE: u32 = 1;
     const DWMSBT_TRANSIENTWINDOW: u32 = 3;
@@ -107,6 +123,47 @@ mod windows_backdrop {
             )
         };
         result >= 0
+    }
+
+    pub(super) fn set_caption_color(color: Option<[u8; 3]>) {
+        let hwnd = MAIN_HWND.load(Ordering::Relaxed);
+        if hwnd == 0 {
+            return;
+        }
+
+        // DWM expects COLORREF byte order: 0x00BBGGRR.
+        let caption_color = match color {
+            Some([r, g, b]) => (r as u32) | ((g as u32) << 8) | ((b as u32) << 16),
+            None => DWM_COLOR_DEFAULT,
+        };
+        if LAST_CAPTION_COLOR.swap(caption_color, Ordering::Relaxed) == caption_color {
+            return;
+        }
+
+        let text_color = match color {
+            Some([r, g, b]) => {
+                let luminance = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+                if luminance < 145.0 { 0x00FF_FFFF } else { 0x0000_0000 }
+            }
+            None => DWM_COLOR_DEFAULT,
+        };
+
+        // Unsupported Windows versions return a failure HRESULT; system-native
+        // decorations remain in control when these attributes are unavailable.
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd as *mut c_void,
+                DWMWA_CAPTION_COLOR,
+                &caption_color as *const u32 as *const c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+            let _ = DwmSetWindowAttribute(
+                hwnd as *mut c_void,
+                DWMWA_TEXT_COLOR,
+                &text_color as *const u32 as *const c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
     }
 }
 
