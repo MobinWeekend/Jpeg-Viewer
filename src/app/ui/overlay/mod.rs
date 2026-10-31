@@ -117,6 +117,35 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
         }
     }
     toolbar::render_bottom_right_toolbar(app, ctx, right_offset + MENU_OFFSET);
+
+    // Inspect channel checklist sits as a secondary row in the navigation UI.
+    if app.inspect_mode {
+        egui::Area::new(egui::Id::new("inspect_channel_navigation_row"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, menu_offset_y + 48.0))
+            .show(ctx, |ui| {
+                toolbar_frame(ctx).show(ui, |ui| {
+                    let mut changed = false;
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Inspect").strong());
+                        for (index, label) in ["R", "G", "B", "A"].iter().enumerate() {
+                            changed |= ui.checkbox(&mut app.inspect_channels[index], *label).changed();
+                        }
+                        if app.inspect_channels.iter().filter(|v| **v).count() == 1 {
+                            changed |= ui.checkbox(&mut app.inspect_colorized, "Show in color").changed();
+                        }
+                        if ui.small_button("Close").clicked() {
+                            app.inspect_mode = false;
+                            app.inspect_texture = None;
+                            app.inspect_source = None;
+                            app.inspect_source_path = None;
+                        }
+                    });
+                    if changed { app.refresh_inspect_texture(ctx); }
+                });
+            });
+    }
+
     // Render the popup after the toolbar so it can use the button's actual screen rect.
     if !desktop_menu_bar {
         render_hamburger_menu(app, ctx, placement);

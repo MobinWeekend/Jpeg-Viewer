@@ -40,7 +40,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
             });
             ui.separator();
             // Keep the version visible at the bottom while the settings sections scroll.
-            const FOOTER_HEIGHT: f32 = 34.0;
+            const FOOTER_HEIGHT: f32 = 48.0;
             let scroll_height = (ui.available_height() - FOOTER_HEIGHT).max(0.0);
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
@@ -56,7 +56,6 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                     ui.add_space(8.0);
                 });
             ui.separator();
-            ui.add_space(3.0);
             ui.vertical_centered(|ui| {
                 ui.label(
                     egui::RichText::new(format!("JPEG Viewer v{}", env!("CARGO_PKG_VERSION")))

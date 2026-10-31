@@ -16,7 +16,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     // });
 }
 
-pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
     ui.add_space(4.0);
 
     render_toggle_compactui(app, ui);
@@ -26,11 +26,6 @@ pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     ui.add_space(4.0);
 
     render_texture_filter(app, ui);
-    ui.add_space(4.0);
-
-    render_theme(app, ui, ctx);
-    ui.add_space(4.0);
-    render_ui_appearance(app, ui, ctx);
     ui.add_space(4.0);
 
     ui.separator();
@@ -44,8 +39,6 @@ pub fn general_settings(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     ui.separator();
     ui.add_space(4.0);
 
-    render_thumbnail_workers(app, ui);
-    ui.separator();
     ui.add_space(8.0);
 }
 
@@ -58,7 +51,7 @@ fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
     }
 }
 
-fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
+pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let current = app.settings_manager.get().thumbnail_workers;
     let mut workers = current as u32;
     ui.horizontal(|ui| {
@@ -164,7 +157,7 @@ fn reload_current_image_for_filter(app: &mut ViewerApp) {
 }
 
 // Theme
-fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+pub(crate) fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
         ui.label("Theme:");
@@ -207,7 +200,7 @@ fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     });
 }
 
-fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.separator();
     ui.label(egui::RichText::new("UI appearance").strong());
     let current = app.settings_manager.get().clone();

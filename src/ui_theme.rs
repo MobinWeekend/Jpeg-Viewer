@@ -459,9 +459,16 @@ pub fn font_definitions_for_profile(preference: &str) -> egui::FontDefinitions {
     #[cfg(target_os = "linux")]
     {
         let profile = resolve_look_profile(preference);
-        let (sans, mono) = preferred_font_families(profile);
+        let (profile_sans, profile_mono) = preferred_font_families(profile);
+        // Ask fontconfig for the desktop's generic default first. The profile-specific
+        // family is only a secondary system-font choice; egui's built-in font remains
+        // the final fallback if neither system font can be loaded.
+        let sans = load_font_from_fontconfig("sans-serif")
+            .or_else(|| load_font_from_fontconfig(&profile_sans));
+        let mono = load_font_from_fontconfig("monospace")
+            .or_else(|| load_font_from_fontconfig(&profile_mono));
 
-        if let Some(data) = load_font_from_fontconfig(&sans) {
+        if let Some(data) = sans {
             fonts.font_data.insert(
                 "desktop_proportional".to_owned(),
                 egui::FontData::from_owned(data).into(),
@@ -473,7 +480,7 @@ pub fn font_definitions_for_profile(preference: &str) -> egui::FontDefinitions {
             family.retain(|name| name != "desktop_proportional");
             family.insert(0, "desktop_proportional".to_owned());
         }
-        if let Some(data) = load_font_from_fontconfig(&mono) {
+        if let Some(data) = mono {
             fonts.font_data.insert(
                 "desktop_monospace".to_owned(),
                 egui::FontData::from_owned(data).into(),
@@ -484,6 +491,41 @@ pub fn font_definitions_for_profile(preference: &str) -> egui::FontDefinitions {
                 .or_default();
             family.retain(|name| name != "desktop_monospace");
             family.insert(0, "desktop_monospace".to_owned());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let windows = std::env::var_os("WINDIR").map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+        let candidates = [
+            ("desktop_proportional", windows.join("Fonts/segoeui.ttf"), egui::FontFamily::Proportional),
+            ("desktop_monospace", windows.join("Fonts/consola.ttf"), egui::FontFamily::Monospace),
+        ];
+        for (name, path, family) in candidates {
+            if let Ok(data) = std::fs::read(path) {
+                fonts.font_data.insert(name.to_owned(), egui::FontData::from_owned(data).into());
+                let entries = fonts.families.entry(family).or_default();
+                entries.retain(|entry| entry != name);
+                entries.insert(0, name.to_owned());
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let candidates = [
+            ("desktop_proportional", "/System/Library/Fonts/SFNS.ttf", egui::FontFamily::Proportional),
+            ("desktop_monospace", "/System/Library/Fonts/SFNSMono.ttf", egui::FontFamily::Monospace),
+            ("desktop_proportional_fallback", "/Library/Fonts/Arial.ttf", egui::FontFamily::Proportional),
+        ];
+        for (name, path, family) in candidates {
+            if let Ok(data) = std::fs::read(path) {
+                fonts.font_data.insert(name.to_owned(), egui::FontData::from_owned(data).into());
+                let entries = fonts.families.entry(family).or_default();
+                entries.retain(|entry| entry != name);
+                entries.insert(0, name.to_owned());
+            }
         }
     }
 

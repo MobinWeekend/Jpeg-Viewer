@@ -234,12 +234,23 @@ pub struct ViewerApp {
     pub crop_y: u32,
     pub crop_width: u32,
     pub crop_height: u32,
+    pub resize_width: u32,
+    pub resize_height: u32,
+    pub resize_linked: bool,
     pub crop_tool_active: bool,
     pub crop_drag_start_image: Option<egui::Pos2>,
     pub crop_selection: Option<[u32; 4]>,
     pub adjustment_gesture_active: bool,
     pub edit_output_format: EditOutputFormat,
+    pub last_export_format: EditOutputFormat,
     pub save_quality: u8,
+    // Inspect-channel view is a non-destructive display-only overlay.
+    pub inspect_mode: bool,
+    pub inspect_channels: [bool; 4],
+    pub inspect_colorized: bool,
+    pub inspect_texture: Option<egui::TextureHandle>,
+    pub inspect_source: Option<image::RgbaImage>,
+    pub inspect_source_path: Option<PathBuf>,
     pub confirm_overwrite_path: Option<PathBuf>,
     pub overwrite_is_save_as: bool,
     pub confirm_discard_edits: bool,
@@ -456,12 +467,22 @@ impl Default for ViewerApp {
             crop_y: 0,
             crop_width: 0,
             crop_height: 0,
+            resize_width: 0,
+            resize_height: 0,
+            resize_linked: true,
             crop_tool_active: false,
             crop_drag_start_image: None,
             crop_selection: None,
             adjustment_gesture_active: false,
             edit_output_format: EditOutputFormat::Png,
+            last_export_format: EditOutputFormat::Png,
             save_quality: 90,
+            inspect_mode: false,
+            inspect_channels: [true, true, true, true],
+            inspect_colorized: false,
+            inspect_texture: None,
+            inspect_source: None,
+            inspect_source_path: None,
             confirm_overwrite_path: None,
             overwrite_is_save_as: false,
             confirm_discard_edits: false,
@@ -601,7 +622,6 @@ impl ViewerApp {
             self.slideshow_last_advance = Instant::now();
             self.slideshow_has_advanced = false;
         }
-
     }
 
     pub fn toggle_compactui(&mut self) {

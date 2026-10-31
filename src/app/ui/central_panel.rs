@@ -4,6 +4,11 @@ use eframe::egui;
 
 impl ViewerApp {
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
+        if self.inspect_mode && self.inspect_source_path != self.current_image_path {
+            self.inspect_source = None;
+            self.inspect_texture = None;
+            self.prepare_inspect_source(ctx);
+        }
         let style = ctx.style();
         let settings = self.settings_manager.get().clone();
         let mut view_bg =
@@ -174,7 +179,7 @@ impl ViewerApp {
             // ---------- NORMAL TEXTURE RENDERING ----------
             // Use a block to limit the borrow of texture
             let (texture_size, texture_id) = {
-                if let Some(texture) = &self.texture {
+                if let Some(texture) = self.inspect_texture.as_ref().filter(|_| self.inspect_mode).or(self.texture.as_ref()) {
                     (texture.size_vec2(), texture.id())
                 } else {
                     // No texture available

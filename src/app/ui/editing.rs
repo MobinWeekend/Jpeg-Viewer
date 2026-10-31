@@ -1,5 +1,5 @@
 use crate::app::editing::{
-    ADJUSTMENT_PREVIEW_PIXELS, EditOutputFormat, EditSession, ImageAdjustments, MAX_EDIT_PIXELS,
+    ADJUSTMENT_PREVIEW_PIXELS, EditOutputFormat, EditSession, ImageAdjustments,
     save_image_safely_with_quality,
 };
 use crate::app::types::ViewerApp;
@@ -18,6 +18,8 @@ enum EditAction {
     Undo,
     Redo,
     Crop,
+    Resize,
+    RestoreOriginalSize,
     Reset,
     SaveOverwrite,
     SaveAs,
@@ -28,6 +30,7 @@ enum EditAction {
 impl ViewerApp {
     pub fn start_editing(&mut self, ctx: &egui::Context) {
         if self.edit_session.is_some() {
+            self.edit_output_format = self.last_export_format;
             self.show_edit_menu = !self.show_edit_menu;
             self.show_settings_menu = false;
             self.crop_tool_active = false;
@@ -66,33 +69,6 @@ impl ViewerApp {
                 return;
             }
         };
-        let Some(format) = crate::decoder::format_detection::detect_format(&bytes) else {
-            self.edit_status = Some("The source image format could not be identified.".into());
-            self.show_edit_menu = true;
-            self.show_settings_menu = false;
-            return;
-        };
-        let (width, height) = match crate::decoder::default_registry().dimensions(&bytes, format) {
-            Ok(dimensions) => dimensions,
-            Err(error) => {
-                self.edit_status = Some(format!("Could not inspect source dimensions: {error}"));
-                self.show_edit_menu = true;
-                self.show_settings_menu = false;
-                return;
-            }
-        };
-        let pixel_count = u64::from(width) * u64::from(height);
-        if pixel_count > MAX_EDIT_PIXELS {
-            self.edit_status = Some(format!(
-                "This image is too large for the current editing history limit ({} × {}). Images up to {} megapixels are supported for editing.",
-                width,
-                height,
-                MAX_EDIT_PIXELS / 1_000_000
-            ));
-            self.show_edit_menu = true;
-            self.show_settings_menu = false;
-            return;
-        }
         let decoded = match decode_bytes(&bytes) {
             Ok(decoded) => decoded,
             Err(error) => {
@@ -111,10 +87,13 @@ impl ViewerApp {
             return;
         };
 
+        self.edit_output_format = self.last_export_format;
         self.crop_x = 0;
         self.crop_y = 0;
         self.crop_width = image.width();
         self.crop_height = image.height();
+        self.resize_width = image.width();
+        self.resize_height = image.height();
         self.crop_tool_active = false;
         self.crop_drag_start_image = None;
         self.crop_selection = None;
@@ -122,9 +101,11 @@ impl ViewerApp {
         self.show_settings_menu = false;
         self.edit_session = Some(EditSession::new(path, image));
         self.edit_status =
-            Some("Editing a working copy. The source remains unchanged until you save.".into());
+            Some("Editing a working copy. Very large images require substantial memory; the practical size limit depends on available RAM and the image decoder. The source remains unchanged until you save.".into());
         self.show_edit_menu = true;
-        self.refresh_edit_texture(ctx);
+        // The viewer already has this image displayed. Rebuilding a full-resolution
+        // ColorImage/texture here would temporarily duplicate hundreds of MB for
+        // very large images, even though no edits have been applied yet.
     }
 
     /// Enter image-edit mode and activate the interactive crop selection tool.
@@ -141,7 +122,8 @@ impl ViewerApp {
             self.crop_tool_active = true;
             self.crop_drag_start_image = None;
             self.crop_selection = None;
-            self.edit_status = Some("Crop mode: drag across the image to select a crop region.".into());
+            self.edit_status =
+                Some("Crop mode: drag across the image to select a crop region.".into());
             self.show_edit_menu = true;
             self.show_settings_menu = false;
             ctx.request_repaint();
@@ -188,8 +170,12 @@ impl ViewerApp {
         let image = session.materialized_image();
         let size = [image.width() as usize, image.height() as usize];
         let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-        self.texture =
-            Some(ctx.load_texture("edited_working_copy", color, self.get_texture_options()));
+        let texture_options = self.get_texture_options();
+        if let Some(texture) = self.texture.as_mut() {
+            texture.set(color, texture_options);
+        } else {
+            self.texture = Some(ctx.load_texture("edited_working_copy", color, texture_options));
+        }
         self.virtual_texture = None;
         self.gif_animation = None;
         self.is_gif = false;
@@ -202,7 +188,7 @@ impl ViewerApp {
     /// Refresh a slider preview without changing the on-screen image size.
     /// Slider dragging uses a downsampled preview; release restores full resolution.
     fn refresh_adjustment_preview(&mut self, ctx: &egui::Context, downsample: bool) {
-        let Some(session) = self.edit_session.as_ref() else {
+        let Some(session) = self.edit_session.as_mut() else {
             return;
         };
         let old_size = self.texture.as_ref().map(|texture| texture.size_vec2());
@@ -214,8 +200,12 @@ impl ViewerApp {
         let new_size = egui::vec2(image.width() as f32, image.height() as f32);
         let size = [image.width() as usize, image.height() as usize];
         let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-        self.texture =
-            Some(ctx.load_texture("edited_working_copy", color, self.get_texture_options()));
+        let texture_options = self.get_texture_options();
+        if let Some(texture) = self.texture.as_mut() {
+            texture.set(color, texture_options);
+        } else {
+            self.texture = Some(ctx.load_texture("edited_working_copy", color, texture_options));
+        }
         self.virtual_texture = None;
         self.gif_animation = None;
         self.is_gif = false;
@@ -282,6 +272,7 @@ impl ViewerApp {
             self.save_quality,
         ) {
             Ok(()) => {
+                self.last_export_format = self.edit_output_format;
                 let saved_path = destination.to_path_buf();
                 if !is_copy {
                     if let Some(session) = self.edit_session.as_mut() {
@@ -354,6 +345,10 @@ impl ViewerApp {
                 .edit_session
                 .as_ref()
                 .is_some_and(|session| session.dirty);
+            let has_structural_edits = self
+                .edit_session
+                .as_ref()
+                .is_some_and(EditSession::has_structural_edits);
             let source_path = self
                 .edit_session
                 .as_ref()
@@ -425,10 +420,13 @@ impl ViewerApp {
                             if ui.add_enabled(can_redo, egui::Button::new("↷ Redo")).clicked() {
                                 action = Some(EditAction::Redo);
                             }
-                            if ui.button("Reset all").clicked() {
+                            if ui.button("Reset All Edits").clicked() {
                                 action = Some(EditAction::Reset);
                             }
                         });
+                        if ui.add_enabled(has_structural_edits, egui::Button::new("Restore to original size")).clicked() {
+                            action = Some(EditAction::RestoreOriginalSize);
+                        }
 
                         ui.separator();
                         ui.label(egui::RichText::new("Transform").strong());
@@ -440,6 +438,42 @@ impl ViewerApp {
                             if ui.button("↔️").clicked() { action = Some(EditAction::FlipHorizontal); }
                             if ui.button("↕️").clicked() { action = Some(EditAction::FlipVertical); }
                         });
+
+                        ui.separator();
+                        ui.label(egui::RichText::new("Resize").strong());
+                        if self.resize_width == 0 || self.resize_height == 0 {
+                            self.resize_width = width;
+                            self.resize_height = height;
+                        }
+                        let mut resize_width = self.resize_width.max(1);
+                        let mut resize_height = self.resize_height.max(1);
+                        let mut resize_linked = self.resize_linked;
+                        ui.checkbox(&mut resize_linked, "Keep aspect ratio");
+                        let aspect = width as f64 / height.max(1) as f64;
+                        let mut width_changed = false;
+                        let mut height_changed = false;
+                        ui.horizontal(|ui| {
+                            ui.label("Width (px)");
+                            width_changed = ui.add(egui::DragValue::new(&mut resize_width).range(1..=u32::MAX)).changed();
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Height (px)");
+                            height_changed = ui.add(egui::DragValue::new(&mut resize_height).range(1..=u32::MAX)).changed();
+                        });
+                        if resize_linked {
+                            if width_changed {
+                                resize_height = ((resize_width as f64 / aspect).round() as u32).max(1);
+                            } else if height_changed {
+                                resize_width = ((resize_height as f64 * aspect).round() as u32).max(1);
+                            }
+                        }
+                        self.resize_width = resize_width;
+                        self.resize_height = resize_height;
+                        self.resize_linked = resize_linked;
+                        if ui.button("Apply resize").clicked() {
+                            action = Some(EditAction::Resize);
+                        }
+                        ui.small("Crop and resize cannot be undone step by step. Use Restore to original size to return to the source dimensions. Very large output dimensions may exceed available memory.");
 
                         ui.separator();
                         ui.label(egui::RichText::new("✂️ Crop").strong());
@@ -500,17 +534,34 @@ impl ViewerApp {
                         });
 
                         ui.separator();
-                        ui.label(egui::RichText::new("🎨 Colour adjustments").strong());
-                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("☀️ Brightness")));
+                        let response = ui.checkbox(&mut adjustments.per_channel, "Enable independent RGB controls");
                         adjustments_changed |= response.changed();
-                        adjustment_dragging |= response.dragged();
-                        adjustment_drag_stopped |= response.drag_stopped();
+                        if !adjustments.per_channel {
+                            ui.label(egui::RichText::new("🎨 Colour adjustments").strong());
+                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("☀️ Brightness")));
+                            adjustments_changed |= response.changed();
+                            adjustment_dragging |= response.dragged();
+                            adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("◐ Contrast")));
-                        adjustments_changed |= response.changed();
-                        adjustment_dragging |= response.dragged();
-                        adjustment_drag_stopped |= response.drag_stopped();
+                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("◐ Contrast")));
+                            adjustments_changed |= response.changed();
+                            adjustment_dragging |= response.dragged();
+                            adjustment_drag_stopped |= response.drag_stopped();
 
+                        }else{
+                            for (index, name) in ["Red", "Green", "Blue"].iter().enumerate() {
+                                ui.label(*name);
+                                let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness_rgb[index], -100..=100).text("Brightness")));
+                                adjustments_changed |= response.changed();
+                                adjustment_dragging |= response.dragged();
+                                adjustment_drag_stopped |= response.drag_stopped();
+                                let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast_rgb[index], -100..=100).text("Contrast")));
+                                adjustments_changed |= response.changed();
+                                adjustment_dragging |= response.dragged();
+                                adjustment_drag_stopped |= response.drag_stopped();
+                            }
+                            ui.separator();
+                        };
                         let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.saturation, 0..=200).text("🌈 Saturation")));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
@@ -537,11 +588,17 @@ impl ViewerApp {
                                     ui.selectable_value(&mut output_format, format, format.label());
                                 }
                             });
-                        if output_format == EditOutputFormat::Jpeg {
-                            ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut quality, 1..=100).text("JPEG quality")));
-                            ui.small("Higher quality reduces compression artifacts and usually increases file size.");
-                        } else {
-                            ui.small("Quality is adjustable for JPEG. Other formats use their normal encoder settings.");
+                        match output_format {
+                            EditOutputFormat::Jpeg => {
+                                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut quality, 1..=100).text("JPEG quality")));
+                                ui.small("Higher quality reduces compression artifacts and usually increases file size.");
+                            }
+                            EditOutputFormat::Png => { ui.label("PNG options"); ui.small("Lossless output; alpha is preserved. Encoder uses its default compression strategy."); }
+                            EditOutputFormat::WebP => { ui.label("WebP options"); ui.small("Lossless WebP output; alpha is preserved."); }
+                            EditOutputFormat::Tiff => { ui.label("TIFF options"); ui.small("TIFF output uses the encoder's default compression settings."); }
+                            EditOutputFormat::Bmp => { ui.label("BMP options"); ui.small("Uncompressed bitmap output; alpha support depends on the source and encoder."); }
+                            EditOutputFormat::Tga => { ui.label("TGA options"); ui.small("TGA output uses the encoder's default settings."); }
+                            EditOutputFormat::Qoi => { ui.label("QOI options"); ui.small("Lossless output; alpha is preserved."); }
                         }
 
                         ui.add_space(8.0);
@@ -668,9 +725,56 @@ impl ViewerApp {
                             None => {}
                         }
                     }
+                    EditAction::Resize => {
+                        let result = self
+                            .edit_session
+                            .as_mut()
+                            .map(|session| session.resize(self.resize_width, self.resize_height));
+                        match result {
+                            Some(Ok(())) => {
+                                self.crop_selection = None;
+                                self.crop_x = 0;
+                                self.crop_y = 0;
+                                self.crop_width = self.resize_width;
+                                self.crop_height = self.resize_height;
+                                self.edit_status = Some(format!(
+                                    "Resized working copy to {} × {} pixels.",
+                                    self.resize_width, self.resize_height
+                                ));
+                                self.refresh_edit_texture(ctx);
+                            }
+                            Some(Err(error)) => self.edit_status = Some(error),
+                            None => {}
+                        }
+                    }
+                    EditAction::RestoreOriginalSize => {
+                        if let Some(session) = self.edit_session.as_mut() {
+                            session.restore_to_original_size();
+                        }
+                        if let Some(session) = self.edit_session.as_ref() {
+                            self.crop_x = 0;
+                            self.crop_y = 0;
+                            self.crop_width = session.original.width();
+                            self.crop_height = session.original.height();
+                            self.resize_width = session.original.width();
+                            self.resize_height = session.original.height();
+                        }
+                        self.crop_selection = None;
+                        self.crop_tool_active = false;
+                        self.crop_drag_start_image = None;
+                        self.refresh_edit_texture(ctx);
+                    }
                     EditAction::Reset => {
                         if let Some(session) = self.edit_session.as_mut() {
                             session.reset();
+                        }
+                        if let Some(session) = self.edit_session.as_ref() {
+                            self.crop_x = 0;
+                            self.crop_y = 0;
+                            self.crop_width = session.original.width();
+                            self.crop_height = session.original.height();
+                            self.resize_width = session.original.width();
+                            self.resize_height = session.original.height();
                         }
                         self.crop_selection = None;
                         self.crop_tool_active = false;

@@ -30,7 +30,9 @@ fn thumbnail_job_sender(worker_count: usize) -> &'static SyncSender<ThumbnailJob
 const THUMB_MAX_SIDE: u32 = 128;
 /// Reject suspiciously large decoded sources before asking a decoder to allocate
 /// a full-resolution RGBA buffer. This is a safety ceiling, not a target size.
-const MAX_THUMB_SOURCE_PIXELS: u64 = 32_000_000;
+// Permit large photographic sources while keeping worst-case RGBA allocation bounded.
+// The thumbnail is immediately reduced to 128 px after decode.
+const MAX_THUMB_SOURCE_PIXELS: u64 = 100_000_000;
 
 fn fit_thumbnail(rgba: image::RgbaImage) -> Result<(usize, usize, Vec<u8>), String> {
     let source_width = rgba.width();
@@ -48,6 +50,35 @@ fn fit_thumbnail(rgba: image::RgbaImage) -> Result<(usize, usize, Vec<u8>), Stri
         &rgba, target_w, target_h, image::imageops::FilterType::Triangle,
     );
     Ok((thumbnail.width() as usize, thumbnail.height() as usize, thumbnail.into_raw()))
+}
+
+/// Prefer a standard EXIF-embedded JPEG thumbnail before decoding the full source.
+/// This is common in JPEGs and some TIFF-based camera files.
+fn extract_embedded_metadata_thumbnail(bytes: &[u8]) -> Option<Vec<u8>> {
+    // kamadak-exif exposes the thumbnail IFD's offset and length tags, but does
+    // not provide an `Exif::thumbnail()` byte-slice accessor. Locate the TIFF
+    // header inside the EXIF APP1 payload, then use those tags to extract bytes.
+    let mut cursor = std::io::Cursor::new(bytes);
+    let exif = exif::Reader::new().read_from_container(&mut cursor).ok()?;
+    let offset = exif
+        .get_field(exif::Tag::JPEGInterchangeFormat, exif::In::THUMBNAIL)?
+        .value
+        .get_uint(0)? as usize;
+    let length = exif
+        .get_field(exif::Tag::JPEGInterchangeFormatLength, exif::In::THUMBNAIL)?
+        .value
+        .get_uint(0)? as usize;
+    if length == 0 {
+        return None;
+    }
+
+    // EXIF offsets are relative to the start of the TIFF header, not the JPEG.
+    let exif_marker = b"Exif\0\0";
+    let marker_start = bytes.windows(exif_marker.len()).position(|w| w == exif_marker)?;
+    let tiff_start = marker_start.checked_add(exif_marker.len())?;
+    let start = tiff_start.checked_add(offset)?;
+    let end = start.checked_add(length)?;
+    Some(bytes.get(start..end)?.to_vec())
 }
 
 fn decode_checked_sidebar_image(
@@ -70,7 +101,7 @@ fn decode_checked_sidebar_image(
     let rgba_bytes = pixels.checked_mul(4)
         .ok_or_else(|| format!("Decoded image size overflow: {name}"))?;
     if width == 0 || height == 0 || pixels > MAX_THUMB_SOURCE_PIXELS {
-        return Err(format!("Image too large for safe thumbnail decoding ({width}x{height}): {name}"));
+        return Err(format!("Image exceeds thumbnail decode safety limit ({width}x{height}): {name}"));
     }
     // Guard the allocation size explicitly before invoking the full decoder.
     if rgba_bytes > MAX_THUMB_SOURCE_PIXELS * 4 {
@@ -114,6 +145,17 @@ impl ViewerApp {
                     .and_then(crate::image_core::ImageFormat::from_extension)
                     == Some(crate::image_core::ImageFormat::CameraRaw)
                     || zenraw::is_raw_file(&bytes);
+
+                // RAW already uses its embedded preview/thumbnail path. For other
+                // formats, try an EXIF thumbnail first so huge source images don't
+                // need a full-resolution decode just to populate the sidebar.
+                if !is_raw {
+                    if let Some(embedded) = extract_embedded_metadata_thumbnail(&bytes) {
+                        if let Ok(image) = image::load_from_memory(&embedded) {
+                            return fit_thumbnail(image.to_rgba8());
+                        }
+                    }
+                }
                 let rgba = decode_checked_sidebar_image(&bytes, &path.display().to_string(), is_raw, Some(&path))?;
                 fit_thumbnail(rgba)
             })();

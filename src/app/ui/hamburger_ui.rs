@@ -235,6 +235,26 @@ impl ViewerApp {
                         self.hamburger_menu_open = false;
                     }
                 };
+                // Inspect-channel view is a temporary display mode and never alters the file.
+                if ui.add(egui::Button::new(egui::RichText::new("🔬  Inspect").size(scaled_text_size(ui.ctx(), 14.0)))
+                    .min_size(egui::vec2(180.0, 30.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE))
+                    .on_hover_text("Show or hide individual color and alpha channels")
+                    .clicked()
+                {
+                    self.inspect_mode = !self.inspect_mode;
+                    if self.inspect_mode {
+                        self.inspect_channels = [true, true, true, true];
+                        self.prepare_inspect_source(ctx);
+                    } else {
+                        self.inspect_texture = None;
+                        self.inspect_source = None;
+                        self.inspect_source_path = None;
+                    }
+                    self.hamburger_menu_open = false;
+                }
+
                 // Settings
                 if ui
                     .add(

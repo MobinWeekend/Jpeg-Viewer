@@ -13,7 +13,7 @@ A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse im
 - **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan, fullscreen, and compact mode.
 - **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable.
 - **Queues:** create a viewing/slideshow sequence, save and load `.jvq` lists, export paths, shuffle, repeat, and remap moved folders.
-- **Editing:** crop, rotate, flip, adjust brightness/contrast/saturation/hue, undo/redo, and export to a selected format. The source is unchanged until you save or overwrite it.
+- **Editing:** crop, resize with optional aspect-ratio locking, rotate, flip, adjust brightness/contrast/saturation/hue, undo/redo, and export to a selected format. The source is unchanged until you save or overwrite it.
 - **GIFs and slideshows:** playback speed controls, configurable intervals, transitions, pan/zoom motion, looping, and optional prevention of system sleep.
 - **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98.
 - **Performance:** background decoding and preloading, configurable cache, virtual texturing for very large images, and an adjustable frame limiter.

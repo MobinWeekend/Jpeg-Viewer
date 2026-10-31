@@ -37,14 +37,27 @@ fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
     // disabled. Win98 always uses classic opaque, square, beveled surfaces.
     let glass = crate::ui_theme::os_background_blur_enabled(ctx) && profile != "win98";
     let (glass_alpha, radius, padding, border) = match profile {
-        "cosmic" => (if compact { 208 } else { 198 }, if compact { 8 } else { 12 }, (8, 5), true),
+        "cosmic" => (
+            if compact { 208 } else { 198 },
+            if compact { 8 } else { 12 },
+            (8, 5),
+            true,
+        ),
         "gnome" => (202, 8, (8, 5), true),
         "win98" => (255, 0, (5, 3), true),
-        _ => (if compact { 202 } else { TOOLBAR_BG_ALPHA }, if compact { 8 } else { 24 }, (if compact { 4 } else { 6 }, if compact { -4 } else { 3 }), false),
+        _ => (
+            if compact { 202 } else { TOOLBAR_BG_ALPHA },
+            if compact { 8 } else { 24 },
+            (if compact { 4 } else { 6 }, if compact { -4 } else { 3 }),
+            false,
+        ),
     };
     let alpha = if glass { glass_alpha } else { 255 };
     let background = egui::Color32::from_rgba_unmultiplied(
-        panel_color.r(), panel_color.g(), panel_color.b(), alpha,
+        panel_color.r(),
+        panel_color.g(),
+        panel_color.b(),
+        alpha,
     );
     let inner_margin = if compact {
         egui::Margin::symmetric(padding.0, padding.1)
@@ -125,15 +138,22 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
         egui::vec2(left_offset, -MENU_OFFSET),
     )
     .show(ctx, |ui| {
+        /*
         let viewport_width = ctx.input(|input| {
-            input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+            input
+                .viewport()
+                .inner_rect
+                .map(|rect| rect.width())
+                .unwrap_or(1280.0)
         });
+         */
+        let avail_rect = ui.available_rect_before_wrap();
         let right_offset = if app.show_settings_menu || app.show_edit_menu {
             app.settings_manager.get().settings_sidebar_width
         } else {
             0.0
         };
-        let max_width = (viewport_width - left_offset - right_offset - 16.0).max(96.0);
+        let max_width = (avail_rect.width() - left_offset - right_offset - 16.0).max(96.0);
         ui.set_max_width(max_width);
         let compact = app.compactui;
         let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
@@ -195,7 +215,7 @@ pub fn render_platform_toolbar(
     }
 
     let original_compact = app.compactui;
-    let auto_compact = max_width < 560.0 || (app.is_gif && max_width < 640.0);
+    let auto_compact = max_width < 600.0 || (app.is_gif && max_width < 700.0);
     if auto_compact {
         app.compactui = true;
     }
@@ -206,67 +226,90 @@ pub fn render_platform_toolbar(
         max_width < 300.0
     };
 
-    overlay_area(id, anchor, offset).constrain(true).show(ctx, |ui| {
-        let classic_win98 = placement == "win98";
-        // Win98 is constrained to the central space between docked sidebars; other
-        // profiles keep their established minimum width for centered controls.
-        let frame_width = if classic_win98 { max_width.max(1.0) } else { max_width.max(96.0) };
-        ui.set_min_width(frame_width);
-        ui.set_max_width(frame_width);
-        let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
-            ui.set_min_width((frame_width - 2.0).max(72.0));
-            ui.set_max_width((frame_width - 2.0).max(72.0));
-            if classic_win98 {
-                // Classic Windows 98 toolbar fills only the central viewport between
-                // docked sidebars, with the action group aligned to the left edge.
-                ui.vertical(|ui| {
-                    // Keep the main toolbar on a stable one-line baseline while the
-                    // slideshow options row appears/disappears below it. Without a
-                    // fixed row allocation, GIF controls and slider height can inflate
-                    // the whole overlay on the first slideshow frame.
-                    const PRIMARY_ROW_HEIGHT: f32 = 32.0;
-                    let primary_width = ui.available_width().max(1.0);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(primary_width, PRIMARY_ROW_HEIGHT),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |row| {
-                            row.set_min_height(PRIMARY_ROW_HEIGHT);
-                            row.set_max_height(PRIMARY_ROW_HEIGHT);
-                            row.set_min_width(primary_width);
-                            row.set_max_width(primary_width);
-                            render_win98_primary_row(app, ctx, row, ultra_compact);
-                        },
-                    );
-                    if app.slideshow_enabled && !app.image_entries.is_empty() {
-                        ui.separator();
-                        render_slideshow_options_row(app, ctx, ui);
-                    }
-                });
+    overlay_area(id, anchor, offset)
+        .constrain(true)
+        .show(ctx, |ui| {
+            let classic_win98 = placement == "win98";
+            // Win98 is constrained to the central space between docked sidebars; other
+            // profiles keep their established minimum width for centered controls.
+            let frame_width = if classic_win98 {
+                max_width.max(1.0)
             } else {
-                ui.vertical_centered(|ui| {
-                    if app.slideshow_enabled && placement == "cosmic" && !app.image_entries.is_empty() {
-                        render_slideshow_options_row(app, ctx, ui);
-                        ui.separator();
-                    }
-                    render_platform_primary_row(
-                        app, ctx, ui, has_desktop_menu_bar, compact, ultra_compact, placement,
-                    );
-                    if app.slideshow_enabled && placement != "cosmic" && !app.image_entries.is_empty() {
-                        ui.separator();
-                        render_slideshow_options_row(app, ctx, ui);
-                    }
-                });
+                max_width.max(96.0)
+            };
+            ui.set_min_width(frame_width);
+            ui.set_max_width(frame_width);
+            let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
+                ui.set_min_width((frame_width - 2.0).max(72.0));
+                ui.set_max_width((frame_width - 2.0).max(72.0));
+                if classic_win98 {
+                    // Classic Windows 98 toolbar fills only the central viewport between
+                    // docked sidebars, with the action group aligned to the left edge.
+                    ui.vertical(|ui| {
+                        // Keep the main toolbar on a stable one-line baseline while the
+                        // slideshow options row appears/disappears below it. Without a
+                        // fixed row allocation, GIF controls and slider height can inflate
+                        // the whole overlay on the first slideshow frame.
+                        const PRIMARY_ROW_HEIGHT: f32 = 32.0;
+                        let primary_width = ui.available_width().max(1.0);
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(primary_width, PRIMARY_ROW_HEIGHT),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |row| {
+                                row.set_min_height(PRIMARY_ROW_HEIGHT);
+                                row.set_max_height(PRIMARY_ROW_HEIGHT);
+                                row.set_min_width(primary_width);
+                                row.set_max_width(primary_width);
+                                render_win98_primary_row(app, ctx, row, ultra_compact);
+                            },
+                        );
+                        if app.slideshow_enabled && !app.image_entries.is_empty() {
+                            ui.separator();
+                            render_slideshow_options_row(app, ctx, ui);
+                        }
+                    });
+                } else {
+                    ui.vertical_centered(|ui| {
+                        if app.slideshow_enabled
+                            && placement == "cosmic"
+                            && !app.image_entries.is_empty()
+                        {
+                            render_slideshow_options_row(app, ctx, ui);
+                            ui.separator();
+                        }
+                        render_platform_primary_row(
+                            app,
+                            ctx,
+                            ui,
+                            has_desktop_menu_bar,
+                            compact,
+                            ultra_compact,
+                            placement,
+                        );
+                        if app.slideshow_enabled
+                            && placement != "cosmic"
+                            && !app.image_entries.is_empty()
+                        {
+                            ui.separator();
+                            render_slideshow_options_row(app, ctx, ui);
+                        }
+                    });
+                }
+            });
+            if classic_win98 {
+                crate::ui_theme::paint_win98_bevel(ui, frame_response.response.rect, false);
             }
         });
-        if classic_win98 {
-            crate::ui_theme::paint_win98_bevel(ui, frame_response.response.rect, false);
-        }
-    });
 
     app.compactui = original_compact;
 }
 
-fn render_win98_primary_row(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, ultra_compact: bool) {
+fn render_win98_primary_row(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+    ultra_compact: bool,
+) {
     // Classic controls are aligned left within the central viewport, never over
     // the docked sidebars. Narrow viewports use only the essential navigation trio.
     if !app.image_entries.is_empty() {
@@ -306,7 +349,9 @@ fn render_slideshow_options_row(app: &mut ViewerApp, ctx: &egui::Context, ui: &m
                 .id_salt("slideshow_options_row")
                 .max_height(OPTIONS_ROW_HEIGHT)
                 .min_scrolled_height(OPTIONS_ROW_HEIGHT)
-                .scroll_bar_visibility(egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .scroll_bar_visibility(
+                    egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
+                )
                 .auto_shrink([false, false])
                 .show(host, |row| {
                     row.set_min_height(OPTIONS_ROW_HEIGHT);

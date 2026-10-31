@@ -352,6 +352,13 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(8.0);
         super::advanced::window::render(app, ui, ctx);
         ui.add_space(4.0);
+        ui.add_space(8.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Theme and UI appearance").strong());
+        crate::app::ui::settings_menu::general::render_theme(app, ui, ctx);
+        ui.add_space(4.0);
+        crate::app::ui::settings_menu::general::render_ui_appearance(app, ui, ctx);
+
     });
 }
 

@@ -1,13 +1,14 @@
-mod external_open;
 mod aspect_ratio;
 mod cache;
 mod commands;
 mod editing;
+mod external_open;
 mod file_detection;
 mod file_ops;
 mod frame_limiter;
 mod hardcoded_input;
 mod image_metadata;
+pub(crate) mod inspect;
 mod loading;
 mod navigation;
 mod preload;

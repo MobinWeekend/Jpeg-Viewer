@@ -19,7 +19,6 @@ pub struct FileMetadata {
     pub file_size: Option<u64>,
     pub modified: Option<String>,
     pub created: Option<String>,
-    pub accessed: Option<String>,
     pub read_only: Option<bool>,
     pub format: Option<ImageFormat>,
     pub dimensions: Option<(u32, u32)>,
@@ -96,7 +95,6 @@ impl ViewerApp {
                 metadata.file_size = Some(fs.len());
                 metadata.modified = fs.modified().ok().map(Self::format_metadata_system_time);
                 metadata.created = fs.created().ok().map(Self::format_metadata_system_time);
-                metadata.accessed = fs.accessed().ok().map(Self::format_metadata_system_time);
                 metadata.read_only = Some(fs.permissions().readonly());
             }
         } else {
@@ -199,16 +197,14 @@ impl ViewerApp {
             metadata_row(ui, "Frames", &frames.to_string());
         }
         if let Some((x, y)) = metadata.dpi {
-            metadata_row(ui, "Resolution", &format!("{x:.0} × {y:.0} DPI"));
+            metadata_row(ui, "Horizontal resolution", &format!("{x:.0} DPI"));
+            metadata_row(ui, "Vertical resolution", &format!("{y:.0} DPI"));
         }
         if let Some(modified) = &metadata.modified {
             metadata_row(ui, "Modified", modified);
         }
         if let Some(created) = &metadata.created {
             metadata_row(ui, "Created", created);
-        }
-        if let Some(accessed) = &metadata.accessed {
-            metadata_row(ui, "Accessed", accessed);
         }
         if let Some(read_only) = metadata.read_only {
             metadata_row(ui, "Read-only", if read_only { "Yes" } else { "No" });
@@ -238,7 +234,24 @@ impl ViewerApp {
             );
             ui.add_space(4.0);
 
+            let section_for = |name: &str| -> &'static str {
+                match name {
+                    "Description" | "UserComment" | "DocumentName" => "Description metadata",
+                    "Creator / Artist" | "Copyright" | "Software" | "Date Taken" => "Origin metadata",
+                    "Image ID" | "EXIF Width" | "EXIF Height" | "Orientation" | "ColorSpace" => "Image metadata",
+                    "Make" | "Model" | "Lens" | "Focal Length" | "35mm Focal Length" => "Camera metadata",
+                    "ISO" | "Aperture" | "Shutter Speed" | "Exposure Bias" | "Flash" | "WhiteBalance" | "MeteringMode" | "ExposureProgram" => "Photo settings",
+                    _ => "Advanced photo metadata",
+                }
+            };
+            let mut last_section = "";
             for (name, value) in &metadata.exif {
+                let section = section_for(name);
+                if section != last_section {
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new(section).small().strong());
+                    last_section = section;
+                }
                 metadata_row(ui, name, value);
             }
         }
@@ -346,56 +359,31 @@ fn read_exif(bytes: &[u8]) -> (Vec<(String, String)>, Option<(f64, f64)>) {
         Err(_) => return (Vec::new(), None),
     };
 
-    let wanted = [
-        "Make",
-        "Model",
-        "LensModel",
-        "DateTimeOriginal",
-        "DateTimeDigitized",
-        "ExposureTime",
-        "FNumber",
-        "PhotographicSensitivity",
-        "ISOSpeedRatings",
-        "FocalLength",
-        "FocalLengthIn35mmFilm",
-        "ExposureBiasValue",
-        "Flash",
-        "Orientation",
-        "Software",
-        "Artist",
-        "Copyright",
-        "WhiteBalance",
-        "MeteringMode",
-        "ExposureProgram",
-        "ColorSpace",
-        "ImageDescription",
-        "PixelXDimension",
-        "PixelYDimension",
-    ];
-
     let mut fields: Vec<(String, String)> = Vec::new();
     for field in exif.fields() {
         let tag_name = format!("{:?}", field.tag);
-        if wanted.iter().any(|name| *name == tag_name) {
-            let value = field.display_value().with_unit(&exif).to_string();
-            if !value.is_empty() {
-                let display_name = match tag_name.as_str() {
-                    "PhotographicSensitivity" | "ISOSpeedRatings" => "ISO",
-                    "DateTimeOriginal" | "DateTimeDigitized" => "Date Taken",
-                    "LensModel" => "Lens",
-                    "FocalLengthIn35mmFilm" => "35mm Focal Length",
-                    "ImageDescription" => "Description",
-                    "PixelXDimension" => "EXIF Width",
-                    "PixelYDimension" => "EXIF Height",
-                    "FNumber" => "Aperture",
-                    "ExposureTime" => "Shutter Speed",
-                    "FocalLength" => "Focal Length",
-                    "ExposureBiasValue" => "Exposure Bias",
-                    other => other,
-                };
-                if !fields.iter().any(|entry| entry.0 == display_name) {
-                    fields.push((display_name.to_string(), value));
-                }
+        let value = field.display_value().with_unit(&exif).to_string();
+        if !value.is_empty() {
+            let display_name = match tag_name.as_str() {
+                "PhotographicSensitivity" | "ISOSpeedRatings" => "ISO",
+                "DateTimeOriginal" | "DateTimeDigitized" => "Date Taken",
+                "LensModel" => "Lens",
+                "FocalLengthIn35mmFilm" => "35mm Focal Length",
+                "ImageDescription" => "Description",
+                "ImageUniqueID" => "Image ID",
+                "PixelXDimension" => "EXIF Width",
+                "PixelYDimension" => "EXIF Height",
+                "FNumber" => "Aperture",
+                "ExposureTime" => "Shutter Speed",
+                "FocalLength" => "Focal Length",
+                "ExposureBiasValue" => "Exposure Bias",
+                "Artist" => "Creator / Artist",
+                "Copyright" => "Copyright",
+                "Software" => "Software",
+                other => other,
+            };
+            if !fields.iter().any(|entry| entry.0 == display_name) {
+                fields.push((display_name.to_string(), value));
             }
         }
     }

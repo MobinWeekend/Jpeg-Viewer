@@ -1,17 +1,18 @@
 // Overlay visibility management
 use crate::app::types::ViewerApp;
-use std::time::Duration;
 use eframe::egui;
+use std::time::Duration;
 
 pub fn update_overlay_visibility(app: &mut ViewerApp, ctx: &egui::Context) {
     // Fullscreen is an intentional immersive view, but controls must remain reachable.
     // The desktop menu bar hides independently in fullscreen; navigation remains visible.
-    if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
-        set_visible(app, ctx, true);
-        ctx.set_cursor_icon(egui::CursorIcon::Default);
-        return;
-    }
-
+    /*
+       if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+           set_visible(app, ctx, true);
+           ctx.set_cursor_icon(egui::CursorIcon::Default);
+           return;
+       }
+    */
     if app.image_entries.is_empty() {
         return;
     }

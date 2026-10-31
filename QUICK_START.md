@@ -43,11 +43,12 @@ Enable **Edit mode** from the toolbar or menu. Editing is available for fully lo
 
 - Rotate left/right; flip horizontally/vertically.
 - Crop by dragging a rectangle or entering crop coordinates.
+- Resize by entering pixel width and height; keep aspect ratio linked or edit each dimension independently.
 - Adjust brightness, contrast, saturation, and hue.
 - Use Undo/Redo to navigate edit history.
 - Choose an export format and JPEG quality, then use **Save As** to create a new file. **Overwrite original** replaces the source after confirmation; **Discard working copy** abandons unsaved edits.
 
-Edits remain in a working copy until you save them.
+Edits remain in a working copy until you save them. Colour adjustments are processed in row tiles, and export writes to a temporary file rather than buffering the compressed output in RAM. The current image and encoder APIs still require a full working image for some operations, so this reduces peak memory but is not a fully disk-backed editor for arbitrarily large images.
 
 ## Appearance and desktop integration
 
