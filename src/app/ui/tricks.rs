@@ -497,7 +497,7 @@ impl ViewerApp {
             let y = clip.top() + phase * clip.height();
             let drift = ((time as f32 * (0.22 + seed * 0.25) + seed_y * 9.0).sin())
                 * (4.0 + seed_size * 10.0);
-            let size = 10.0 + seed_size * 14.0;
+            let size = settings.tricks_snow_size.clamp(2.0, 64.0) + seed_size * 14.0;
             let alpha = (90.0 + seed * 150.0).round() as u8;
             painter.text(
                 egui::pos2(x + drift, y),
@@ -532,7 +532,7 @@ impl ViewerApp {
             return;
         }
         let opacity = settings.tricks_watermark_opacity.clamp(0.05, 1.0);
-        let max_size = settings.tricks_watermark_size.clamp(12.0, 160.0);
+        let max_size = settings.tricks_watermark_size.clamp(32.0, 512.0);
         let logo_size = logo.map(|texture| {
             let source = texture.size_vec2();
             let scale = max_size / source.x.max(source.y).max(1.0);
@@ -746,6 +746,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                     let _ = app.settings_manager.update(|s| s.tricks_snow_color = value);
                 }
             });
+
+            let mut size = settings.tricks_snow_size;
+            if ui.add(crate::ui_theme::BorderedSlider::new(
+                egui::Slider::new(&mut size, 2.0..=64.0).text("Size")
+            )).changed() {
+                let _ = app.settings_manager.update(|s| s.tricks_snow_size = size.clamp(2.0, 64.0));
+            }
+
             let mut speed = settings.tricks_snow_speed;
             if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut speed, 0.1..=5.0).text("Speed"))).changed() {
                 let _ = app.settings_manager.update(|s| s.tricks_snow_speed = speed.clamp(0.1, 5.0));
@@ -838,8 +846,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 let _ = app.settings_manager.update(|s| s.tricks_watermark_opacity = value.clamp(0.05, 1.0));
             }
             let mut size = settings.tricks_watermark_size;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut size, 12.0..=160.0).text("Size"))).changed() {
-                let _ = app.settings_manager.update(|s| s.tricks_watermark_size = size.clamp(12.0, 160.0));
+            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut size, 32.0..=512.0).text("Size"))).changed() {
+                let _ = app.settings_manager.update(|s| s.tricks_watermark_size = size.clamp(32.0, 512.0));
             }
         }
 

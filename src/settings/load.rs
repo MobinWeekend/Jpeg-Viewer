@@ -1,5 +1,5 @@
 use super::{
-    AppSettings, SettingsManager, SETTINGS_SCHEMA_VERSION, WINDOW_GEOMETRY_NORMALIZED_SCHEMA,
+    AppSettings, SETTINGS_SCHEMA_VERSION, SettingsManager, WINDOW_GEOMETRY_NORMALIZED_SCHEMA,
 };
 use ini::Ini;
 use std::fs;
@@ -445,8 +445,8 @@ impl SettingsManager {
                         (
                             "tricks_watermark_size",
                             &mut settings.tricks_watermark_size,
-                            12.0,
-                            160.0,
+                            32.0,
+                            512.0,
                         ),
                         (
                             "tricks_backdrop_blur",
@@ -580,7 +580,6 @@ impl SettingsManager {
             }
         }
     }
-
 
     /// Parse a string to boolean (supports various formats)
     pub(super) fn parse_bool(value: &str) -> bool {
