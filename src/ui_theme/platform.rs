@@ -1,5 +1,7 @@
 //! Platform-specific desktop detection, accent settings, and font loading.
 
+#[cfg(target_os = "linux")]
+use super::resolve_look_profile;
 use eframe::egui;
 
 /// Returns the desktop profile reported by the current Linux desktop session.
@@ -41,7 +43,8 @@ pub fn font_definitions_for_profile(preference: &str) -> egui::FontDefinitions {
     // Keep emoji separate from normal text; it remains the last font fallback.
     fonts.font_data.insert(
         "noto_emoji".to_owned(),
-        egui::FontData::from_static(include_bytes!("../../assets/fonts/NotoEmoji-Regular.ttf")).into(),
+        egui::FontData::from_static(include_bytes!("../../assets/fonts/NotoEmoji-Regular.ttf"))
+            .into(),
     );
     for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
         fonts
@@ -91,15 +94,26 @@ pub fn font_definitions_for_profile(preference: &str) -> egui::FontDefinitions {
 
     #[cfg(target_os = "windows")]
     {
-        let windows = std::env::var_os("WINDIR").map(std::path::PathBuf::from)
+        let windows = std::env::var_os("WINDIR")
+            .map(std::path::PathBuf::from)
             .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
         let candidates = [
-            ("desktop_proportional", windows.join("Fonts/segoeui.ttf"), egui::FontFamily::Proportional),
-            ("desktop_monospace", windows.join("Fonts/consola.ttf"), egui::FontFamily::Monospace),
+            (
+                "desktop_proportional",
+                windows.join("Fonts/segoeui.ttf"),
+                egui::FontFamily::Proportional,
+            ),
+            (
+                "desktop_monospace",
+                windows.join("Fonts/consola.ttf"),
+                egui::FontFamily::Monospace,
+            ),
         ];
         for (name, path, family) in candidates {
             if let Ok(data) = std::fs::read(path) {
-                fonts.font_data.insert(name.to_owned(), egui::FontData::from_owned(data).into());
+                fonts
+                    .font_data
+                    .insert(name.to_owned(), egui::FontData::from_owned(data).into());
                 let entries = fonts.families.entry(family).or_default();
                 entries.retain(|entry| entry != name);
                 entries.insert(0, name.to_owned());
@@ -110,13 +124,27 @@ pub fn font_definitions_for_profile(preference: &str) -> egui::FontDefinitions {
     #[cfg(target_os = "macos")]
     {
         let candidates = [
-            ("desktop_proportional", "/System/Library/Fonts/SFNS.ttf", egui::FontFamily::Proportional),
-            ("desktop_monospace", "/System/Library/Fonts/SFNSMono.ttf", egui::FontFamily::Monospace),
-            ("desktop_proportional_fallback", "/Library/Fonts/Arial.ttf", egui::FontFamily::Proportional),
+            (
+                "desktop_proportional",
+                "/System/Library/Fonts/SFNS.ttf",
+                egui::FontFamily::Proportional,
+            ),
+            (
+                "desktop_monospace",
+                "/System/Library/Fonts/SFNSMono.ttf",
+                egui::FontFamily::Monospace,
+            ),
+            (
+                "desktop_proportional_fallback",
+                "/Library/Fonts/Arial.ttf",
+                egui::FontFamily::Proportional,
+            ),
         ];
         for (name, path, family) in candidates {
             if let Ok(data) = std::fs::read(path) {
-                fonts.font_data.insert(name.to_owned(), egui::FontData::from_owned(data).into());
+                fonts
+                    .font_data
+                    .insert(name.to_owned(), egui::FontData::from_owned(data).into());
                 let entries = fonts.families.entry(family).or_default();
                 entries.retain(|entry| entry != name);
                 entries.insert(0, name.to_owned());
@@ -376,4 +404,3 @@ fn parse_cosmic_color(value: &str) -> Option<egui::Color32> {
         to_u8(components[2]),
     ))
 }
-
