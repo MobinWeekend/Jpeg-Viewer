@@ -74,8 +74,6 @@ impl ViewerApp {
             self.tricks_backdrop_key = None;
             // Keep the currently visible texture until a preview for the new image
             // has been blurred and uploaded. Discard only an unfinished transition.
-            self.tricks_backdrop_next_texture = None;
-            self.tricks_backdrop_transition_started = None;
             self.tricks_backdrop_receiver = None;
         }
 
@@ -118,10 +116,10 @@ impl ViewerApp {
                     });
                 }
             } else {
+                // Navigation can temporarily leave no current path when an image
+                // fails to load. Keep the last successfully rendered backdrop; a
+                // later valid image will replace it through the normal cross-fade.
                 self.tricks_backdrop_key = None;
-                self.tricks_backdrop_texture = None;
-                self.tricks_backdrop_next_texture = None;
-                self.tricks_backdrop_transition_started = None;
                 self.tricks_backdrop_receiver = None;
             }
         } else if !settings.tricks_backdrop_enabled {
@@ -135,8 +133,6 @@ impl ViewerApp {
             // Virtual-texture images are not prepared for this effect. Keep the last
             // successfully uploaded backdrop rather than leaving the viewport blank.
             self.tricks_backdrop_key = None;
-            self.tricks_backdrop_next_texture = None;
-            self.tricks_backdrop_transition_started = None;
             self.tricks_backdrop_receiver = None;
         }
 
@@ -169,10 +165,9 @@ impl ViewerApp {
                 let key = (path.clone(), blur);
                 if self.tricks_backdrop_key.as_ref() != Some(&key) {
                     self.tricks_backdrop_key = Some(key.clone());
-                    // A newer setting supersedes an in-progress fade, but never clears
-                    // the visible texture while the replacement is being prepared.
-                    self.tricks_backdrop_next_texture = None;
-                    self.tricks_backdrop_transition_started = None;
+                    // Prepare the replacement without interrupting any visible fade.
+                    // When it finishes, it becomes the incoming texture and starts a
+                    // fresh cross-fade from the last committed backdrop.
                     let result_path = path.clone();
                     let source = pixels.clone();
                     let source_width = *width;
@@ -214,14 +209,10 @@ impl ViewerApp {
                         color,
                         egui::TextureOptions::LINEAR,
                     );
-                    if self.tricks_backdrop_texture.is_some() {
-                        self.tricks_backdrop_next_texture = Some(next);
-                        self.tricks_backdrop_transition_started = Some(std::time::Instant::now());
-                    } else {
-                        self.tricks_backdrop_texture = Some(next);
-                        self.tricks_backdrop_next_texture = None;
-                        self.tricks_backdrop_transition_started = None;
-                    }
+                    // With an existing texture this cross-fades from the previous image;
+                    // without one, the incoming texture fades in from transparency.
+                    self.tricks_backdrop_next_texture = Some(next);
+                    self.tricks_backdrop_transition_started = Some(std::time::Instant::now());
                 }
             }
             Some(Ok((_path, _blur, Err(error)))) => {

@@ -289,7 +289,8 @@ fn metadata_row(ui: &mut egui::Ui, label: &str, value: &str) {
         ui.add_space(6.0);
         ui.add(
             egui::Label::new(egui::RichText::new(value).size(scaled_text_size(ui.ctx(), 12.0)))
-                .wrap(),
+                .wrap()
+                .selectable(true),
         )
         .on_hover_text(value);
     });

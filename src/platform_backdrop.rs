@@ -7,8 +7,9 @@
 
 use raw_window_handle::RawWindowHandle;
 
+use std::sync::atomic::{AtomicU8, Ordering};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 
 #[cfg(target_os = "windows")]
 static MAIN_HWND: AtomicUsize = AtomicUsize::new(0);
@@ -16,6 +17,8 @@ static MAIN_HWND: AtomicUsize = AtomicUsize::new(0);
 static MAIN_NS_VIEW: AtomicUsize = AtomicUsize::new(0);
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 static NATIVE_BACKDROP_ACTIVE: AtomicBool = AtomicBool::new(false);
+// 0 = OS corners disabled, 1 = enabled, 2 = not yet applied.
+static LAST_NATIVE_WINDOW_SHAPE: AtomicU8 = AtomicU8::new(2);
 
 /// Retain the root OS view handle so the preference can be changed at runtime.
 pub fn initialize(handle: Option<RawWindowHandle>) {
@@ -66,6 +69,27 @@ pub fn set_native_titlebar_color(color: Option<[u8; 3]>) {
     let _ = color;
 }
 
+
+/// Request OS-native window corner treatment. Windows 11 exposes a DWM corner
+/// preference; macOS can provide native NSWindow shadow with rounded content
+/// clipping. Linux window managers/compositors own this policy and cannot be
+/// reliably overridden by an application, especially under Wayland.
+pub fn set_native_window_shape(enabled: bool) {
+    let requested = u8::from(enabled);
+    if LAST_NATIVE_WINDOW_SHAPE.swap(requested, Ordering::Relaxed) == requested {
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    windows_backdrop::set_window_shape(enabled);
+
+    #[cfg(target_os = "macos")]
+    macos_backdrop::set_window_shape(enabled, MAIN_NS_VIEW.load(Ordering::Relaxed));
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let _ = enabled;
+}
+
 /// Whether a native system backdrop was successfully requested and is enabled.
 /// Other platforms use egui's translucent-surface fallback and keep an opaque window.
 pub fn is_active() -> bool {
@@ -93,6 +117,7 @@ mod windows_backdrop {
     const DWMWA_CAPTION_COLOR: u32 = 35;
     const DWMWA_TEXT_COLOR: u32 = 36;
     const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
     const DWMSBT_NONE: u32 = 1;
     const DWMSBT_TRANSIENTWINDOW: u32 = 3;
 
@@ -123,6 +148,22 @@ mod windows_backdrop {
             )
         };
         result >= 0
+    }
+
+    pub(super) fn set_window_shape(enabled: bool) {
+        let hwnd = MAIN_HWND.load(Ordering::Relaxed);
+        if hwnd == 0 { return; }
+        // DWMWCP_ROUND = 2, DWMWCP_DONOTROUND = 1. DWM retains ownership
+        // of the actual non-client shadow; this attribute requests its corner shape.
+        let preference: u32 = if enabled { 2 } else { 1 };
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd as *mut c_void,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &preference as *const u32 as *const c_void,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
     }
 
     pub(super) fn set_caption_color(color: Option<[u8; 3]>) {
@@ -179,6 +220,7 @@ mod macos_backdrop {
 
     static CONTENT_VIEW: AtomicUsize = AtomicUsize::new(0);
     static EFFECT_VIEW: AtomicUsize = AtomicUsize::new(0);
+    static NATIVE_WINDOW_ROUNDING: AtomicBool = AtomicBool::new(true);
 
     #[repr(C)]
     #[derive(Clone, Copy)]
@@ -288,6 +330,7 @@ mod macos_backdrop {
             if window.is_null() { return false; }
             let effect = attach_effect(window);
             if effect.is_null() { return false; }
+            apply_window_shape(effect, NATIVE_WINDOW_ROUNDING.load(Ordering::Relaxed));
 
             let content = CONTENT_VIEW.load(Ordering::Relaxed) as Obj;
             let layer = if content.is_null() { std::ptr::null_mut() } else { send_object(content, b"layer\0") };
@@ -312,4 +355,28 @@ mod macos_backdrop {
         }
         enabled
     }
+
+    fn apply_window_shape(view: Obj, enabled: bool) {
+        if view.is_null() { return; }
+        unsafe {
+            // NSView.window -> NSWindow; its shadow is rendered by WindowServer.
+            let window = send_object(view, b"window\0");
+            if window.is_null() { return; }
+            send_void_bool(window, b"setHasShadow:\0", true);
+            send_void_bool(view, b"setWantsLayer:\0", true);
+            let layer = send_object(view, b"layer\0");
+            if !layer.is_null() {
+                send_void_bool(layer, b"setMasksToBounds:\0", enabled);
+                let function: unsafe extern "C" fn(Obj, Sel, f64) = unsafe { mem::transmute(objc_msgSend as *const ()) };
+                function(layer, selector(b"setCornerRadius:\0"), if enabled { 10.0 } else { 0.0 });
+            }
+        }
+    }
+
+    pub(super) fn set_window_shape(enabled: bool, view_handle: usize) {
+        NATIVE_WINDOW_ROUNDING.store(enabled, Ordering::Relaxed);
+        if view_handle == 0 { return; }
+        apply_window_shape(view_handle as Obj, enabled);
+    }
+
 }

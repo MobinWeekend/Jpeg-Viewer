@@ -504,6 +504,85 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         }
     }
 
+
+
+    // Keep the pointer feedback active while a card is being dragged.
+    if app.sidebar_drag_index.is_some() {
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+    // Cancel an unfinished drag if the pointer is released outside a valid card.
+    if ctx.input(|input| input.pointer.any_released()) && app.sidebar_drag_index.is_some() {
+        app.sidebar_drag_index = None;
+    }
+
+    let panel_rect = response.response.rect;
+    let width = panel_rect
+        .width()
+        .clamp(min_sidebar_width, max_sidebar_width);
+    app.sidebar_actual_width = width;
+
+    // Track resizing only when the initial pointer press lands on the panel's
+    // right-edge resize grip. A generic panel drag can also be triggered by
+    // dragging cards or selecting content, which caused width changes to be
+    // accidentally persisted during ordinary sidebar interaction.
+    let (primary_pressed, primary_down, any_released, press_origin) = ctx.input(|input| {
+        (
+            input.pointer.button_pressed(egui::PointerButton::Primary),
+            input.pointer.button_down(egui::PointerButton::Primary),
+            input.pointer.any_released(),
+            input.pointer.press_origin(),
+        )
+    });
+
+    if primary_pressed {
+        app.sidebar_resize_dragging = press_origin.is_some_and(|origin| {
+            (origin.x - panel_rect.right()).abs() <= 14.0
+                && origin.y >= panel_rect.top()
+                && origin.y <= panel_rect.bottom()
+        });
+    }
+
+    if app.sidebar_resize_dragging && primary_down {
+        let previous = app.settings_manager.get().file_sidebar_width;
+        if (width - previous).abs() > 1.0 {
+            app.settings_manager.settings.file_sidebar_width = width;
+            app.sidebar_width_needs_save = true;
+        }
+    }
+
+    if app.sidebar_resize_dragging && any_released {
+        if app.sidebar_width_needs_save {
+            let _ = app.settings_manager.save();
+        }
+        app.sidebar_width_needs_save = false;
+        app.sidebar_resize_dragging = false;
+    } else if !primary_down
+        && !ctx.input(|input| input.pointer.any_down())
+        && app.sidebar_width_needs_save
+    {
+        // Recovery path if the release happened outside the application window.
+        let _ = app.settings_manager.save();
+        app.sidebar_width_needs_save = false;
+        app.sidebar_resize_dragging = false;
+    }
+}
+
+fn entry_name(entry: &ImageEntry) -> String {
+    match entry {
+        ImageEntry::File(path) => path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        ImageEntry::Zip(entry) => entry.name.clone(),
+        ImageEntry::S7z(entry) => entry.name.clone(),
+        ImageEntry::Rar(entry) => entry.name.clone(),
+    }
+}
+
+/// Render the existing rename dialog independently of the file sidebar so
+/// title-bar and keyboard rename actions work even when the sidebar is hidden.
+pub fn render_rename_dialog(app: &mut ViewerApp, ctx: &egui::Context) {
     if let Some((path, value)) = app.rename_dialog.clone() {
         let mut name = value;
         let mut commit = false;
@@ -593,79 +672,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         } else {
             app.rename_dialog = Some((path, name));
         }
-    }
-
-    // Keep the pointer feedback active while a card is being dragged.
-    if app.sidebar_drag_index.is_some() {
-        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-    }
-    // Cancel an unfinished drag if the pointer is released outside a valid card.
-    if ctx.input(|input| input.pointer.any_released()) && app.sidebar_drag_index.is_some() {
-        app.sidebar_drag_index = None;
-    }
-
-    let panel_rect = response.response.rect;
-    let width = panel_rect
-        .width()
-        .clamp(min_sidebar_width, max_sidebar_width);
-    app.sidebar_actual_width = width;
-
-    // Track resizing only when the initial pointer press lands on the panel's
-    // right-edge resize grip. A generic panel drag can also be triggered by
-    // dragging cards or selecting content, which caused width changes to be
-    // accidentally persisted during ordinary sidebar interaction.
-    let (primary_pressed, primary_down, any_released, press_origin) = ctx.input(|input| {
-        (
-            input.pointer.button_pressed(egui::PointerButton::Primary),
-            input.pointer.button_down(egui::PointerButton::Primary),
-            input.pointer.any_released(),
-            input.pointer.press_origin(),
-        )
-    });
-
-    if primary_pressed {
-        app.sidebar_resize_dragging = press_origin.is_some_and(|origin| {
-            (origin.x - panel_rect.right()).abs() <= 14.0
-                && origin.y >= panel_rect.top()
-                && origin.y <= panel_rect.bottom()
-        });
-    }
-
-    if app.sidebar_resize_dragging && primary_down {
-        let previous = app.settings_manager.get().file_sidebar_width;
-        if (width - previous).abs() > 1.0 {
-            app.settings_manager.settings.file_sidebar_width = width;
-            app.sidebar_width_needs_save = true;
-        }
-    }
-
-    if app.sidebar_resize_dragging && any_released {
-        if app.sidebar_width_needs_save {
-            let _ = app.settings_manager.save();
-        }
-        app.sidebar_width_needs_save = false;
-        app.sidebar_resize_dragging = false;
-    } else if !primary_down
-        && !ctx.input(|input| input.pointer.any_down())
-        && app.sidebar_width_needs_save
-    {
-        // Recovery path if the release happened outside the application window.
-        let _ = app.settings_manager.save();
-        app.sidebar_width_needs_save = false;
-        app.sidebar_resize_dragging = false;
-    }
-}
-
-fn entry_name(entry: &ImageEntry) -> String {
-    match entry {
-        ImageEntry::File(path) => path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        ImageEntry::Zip(entry) => entry.name.clone(),
-        ImageEntry::S7z(entry) => entry.name.clone(),
-        ImageEntry::Rar(entry) => entry.name.clone(),
     }
 }
 

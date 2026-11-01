@@ -24,17 +24,18 @@ pub fn render_resize_handles(ctx: &egui::Context, thickness: f32, border_color: 
         return;
     }
 
-    // Use a much larger corner target than the visible frame thickness. Corners
-    // overlap the title-bar's outermost strip intentionally, just like native resize
-    // borders. Caption buttons are inset by the same distance to keep their hitboxes clear.
+    // Keep generous resize targets at the bottom corners, but do not let the
+    // top-left resize target cover the first title-bar control. The top edge is
+    // only the visible frame strip; title-bar controls start flush at the left.
     let corner = CORNER_RESIZE_HIT_SIZE.min(rect.width() * 0.5).min(rect.height() * 0.5);
+    let top_corner = s.max(6.0).min(corner);
     // The handle areas initiate native resize gestures; render them after other overlay
     // controls so their edge/corner input can win over the custom title-bar drag region.
-    render_handle(ctx, "resize_top", top_edge_rect(&rect, corner, s), egui::ResizeDirection::North, egui::CursorIcon::ResizeVertical);
+    render_handle(ctx, "resize_top", top_edge_rect(&rect, top_corner, s), egui::ResizeDirection::North, egui::CursorIcon::ResizeVertical);
     render_handle(ctx, "resize_bottom", bottom_edge_rect(&rect, corner, s), egui::ResizeDirection::South, egui::CursorIcon::ResizeVertical);
     render_handle(ctx, "resize_left", left_edge_rect(&rect, corner, s), egui::ResizeDirection::West, egui::CursorIcon::ResizeHorizontal);
     render_handle(ctx, "resize_right", right_edge_rect(&rect, corner, s), egui::ResizeDirection::East, egui::CursorIcon::ResizeHorizontal);
-    render_handle(ctx, "resize_top_left", top_left_rect(&rect, corner), egui::ResizeDirection::NorthWest, egui::CursorIcon::ResizeNorthWest);
+    render_handle(ctx, "resize_top_left", top_left_rect(&rect, top_corner), egui::ResizeDirection::NorthWest, egui::CursorIcon::ResizeNorthWest);
     render_handle(ctx, "resize_top_right", top_right_rect(&rect, corner), egui::ResizeDirection::NorthEast, egui::CursorIcon::ResizeNorthEast);
     render_handle(ctx, "resize_bottom_left", bottom_left_rect(&rect, corner), egui::ResizeDirection::SouthWest, egui::CursorIcon::ResizeSouthWest);
     render_handle(ctx, "resize_bottom_right", bottom_right_rect(&rect, corner), egui::ResizeDirection::SouthEast, egui::CursorIcon::ResizeSouthEast);

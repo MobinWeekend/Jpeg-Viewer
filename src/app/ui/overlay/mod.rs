@@ -17,9 +17,18 @@ use eframe::egui;
 pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     const MENU_OFFSET: f32 = 8.0;
     let desktop_menu_bar = crate::app::ui::uses_desktop_menu_bar(ctx);
-    // The menu bar replaces the floating sidebar/hamburger button group. If the
-    // user switches modes while the popup is open, close the now-duplicate menu.
-    if desktop_menu_bar {
+    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+    // Native corner rounding is a windowed-mode treatment. Ask the OS to remove
+    // it while fullscreen and restore the user's preference when leaving fullscreen.
+    crate::platform_backdrop::set_native_window_shape(
+        app.settings_manager.get().native_window_rounding && !fullscreen,
+    );
+    let custom_titlebar = !app.settings_manager.get().show_titlebar
+        && !fullscreen
+        && app.settings_manager.get().custom_titlebar_navigation;
+    // Native desktop menu bars replace the floating hamburger, but the custom
+    // title bar has its own hamburger and must keep that popup functional.
+    if desktop_menu_bar && !custom_titlebar {
         app.hamburger_menu_open = false;
     }
     // Sidebar drawer handle is separate from the navigation toolbar and follows
@@ -28,19 +37,26 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
         &app.settings_manager.get().main_ui_placement_preference,
         ctx,
     );
+    // Rename is a modal action, not an overlay control: keep it available even
+    // when the user hides the viewer overlays or the file sidebar.
+    crate::app::queues::render_rename_dialog(app, ctx);
     if !app.overlay_visible {
         // Desktop profile menu bars are always visible, even while the floating
         // viewer controls are hidden. Their application menu must remain usable.
-        if app.hamburger_menu_open && !desktop_menu_bar {
+        if app.hamburger_menu_open && (!desktop_menu_bar || custom_titlebar) {
             render_hamburger_menu(app, ctx, placement);
         }
         render_custom_frame_resize_handles(app, ctx);
         return;
     }
 
-    // Keep the drawer control pinned to the left edge, even when the sidebar is
-    // already open (then it sits on the sidebar's right edge to close it).
-    render_sidebar_drawer_button(app, ctx);
+    // In windowed custom-titlebar mode the sidebar toggle lives inside the titlebar
+    // before the hamburger. In native-decoration and fullscreen modes, retain its
+    // original edge-drawer position.
+    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+    if app.settings_manager.get().show_titlebar || fullscreen || !app.settings_manager.get().custom_titlebar_navigation {
+        render_sidebar_drawer_button(app, ctx);
+    }
 
     let is_fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     let menu_offset_y = if placement == "win98" {
@@ -84,9 +100,14 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     let viewport_width = ctx.input(|input| {
         input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
     });
-    if placement == "native" {
+    if custom_titlebar {
+        // The custom title bar owns the primary navigation and zoom controls.
+        // Keep the remaining image actions in the bottom toolbar instead of
+        // duplicating controls in a floating top/platform toolbar.
+        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET);
+    } else if placement == "native" {
         // Pass the true central viewport width to responsive metadata fitting. An
-        // auto-sized egui Area reports its previous content width, which creates a
+        // auto-sized Area reports its previous content width, which creates a
         // feedback loop: after shrinking once, its label cannot grow again.
         let central_width = (viewport_width - left_offset - right_offset - 16.0).max(0.0);
         toolbar::render_top_toolbar(
@@ -160,7 +181,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     }
 
     // Render the popup after the toolbar so it can use the button's actual screen rect.
-    if !desktop_menu_bar {
+    if !desktop_menu_bar || custom_titlebar {
         render_hamburger_menu(app, ctx, placement);
     }
 
@@ -302,7 +323,9 @@ fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
     const MENU_OFFSET: f32 = 8.0;
     const TITLE_BAR_HEIGHT: f32 = 38.0;
 
-    if crate::app::ui::uses_desktop_menu_bar(ctx) {
+    if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+        MENU_OFFSET
+    } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
         // This height includes the custom title-bar spacer when native decorations
         // are disabled, so the toolbar always starts below both top rows.
         crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
@@ -321,6 +344,6 @@ pub fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) 
 }
 
 /// Reserve the top layout strip for a custom title bar before docked panels are drawn.
-pub fn reserve_custom_titlebar_space(app: &ViewerApp, ctx: &egui::Context) {
+pub fn reserve_custom_titlebar_space(app: &mut ViewerApp, ctx: &egui::Context) {
     title_bar::reserve_layout_space(app, ctx);
 }

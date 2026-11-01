@@ -158,11 +158,22 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set(
+            "custom_titlebar_navigation",
+            if settings.custom_titlebar_navigation { "true" } else { "false" },
+        );
+        section.set(
+            "custom_titlebar_navigation_preference_configured",
+            if settings.custom_titlebar_navigation_preference_configured { "true" } else { "false" },
+        );
         section.set("title_bar_color_mode", &settings.title_bar_color_mode);
         section.set(
             "custom_window_frame_thickness",
             settings.custom_window_frame_thickness.to_string(),
         );
+        section.set("center_custom_window_title", if settings.center_custom_window_title { "true" } else { "false" });
+        section.set("rename_file_from_titlebar", if settings.rename_file_from_titlebar { "true" } else { "false" });
+        section.set("native_window_rounding", if settings.native_window_rounding { "true" } else { "false" });
         section.set("theme_preference", &settings.theme_preference);
         section.set("look_preference", &settings.look_preference);
         section.set(

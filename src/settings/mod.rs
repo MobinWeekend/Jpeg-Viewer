@@ -110,10 +110,20 @@ pub struct AppSettings {
     pub virtual_texture_threshold: u32,
     pub tile_size: u32,
     pub show_titlebar: bool,
+    /// Integrate primary navigation controls into the custom title bar when enabled.
+    pub custom_titlebar_navigation: bool,
+    /// Internal marker recording that the title-bar navigation default was selected once.
+    pub custom_titlebar_navigation_preference_configured: bool,
     /// Title-bar color source: system, main_view, or main_color.
     pub title_bar_color_mode: String,
     /// Thickness in logical points of the custom window border and resize hit areas (2-12).
     pub custom_window_frame_thickness: f32,
+    /// Center the custom title-bar caption in the remaining space between controls.
+    pub center_custom_window_title: bool,
+    /// Allow clicking the custom title to open the existing file rename dialog.
+    pub rename_file_from_titlebar: bool,
+    /// Request OS-managed rounded corners and native shadow where supported.
+    pub native_window_rounding: bool,
     // Sidebar and compact-view preferences
     pub show_file_sidebar: bool,
     pub file_sidebar_width: f32,
@@ -195,8 +205,13 @@ impl Default for AppSettings {
             virtual_texture_threshold: 8192,
             tile_size: 1024,
             show_titlebar: true,
+            custom_titlebar_navigation: true,
+            custom_titlebar_navigation_preference_configured: false,
             title_bar_color_mode: "system".to_string(),
             custom_window_frame_thickness: 6.0,
+            center_custom_window_title: false,
+            rename_file_from_titlebar: false,
+            native_window_rounding: true,
             show_file_sidebar: true,
             file_sidebar_width: 250.0,
             settings_sidebar_width: 360.0,
@@ -233,7 +248,17 @@ impl SettingsManager {
             .unwrap_or(0);
 
         let mut error: Option<String> = None;
-        let settings = Self::load_from_file(&path, &mut error);
+        let mut settings = Self::load_from_file(&path, &mut error);
+        // Migrate old settings and choose the profile-appropriate default once. This
+        // preserves the integrated layout for the original look while keeping the
+        // Windows 98, COSMIC, and GNOME layouts conventional by default.
+        let mut titlebar_navigation_migrated = false;
+        if !settings.custom_titlebar_navigation_preference_configured {
+            let profile = crate::ui_theme::resolve_look_profile(&settings.look_preference);
+            settings.custom_titlebar_navigation = !matches!(profile, "win98" | "cosmic" | "gnome");
+            settings.custom_titlebar_navigation_preference_configured = true;
+            titlebar_navigation_migrated = true;
+        }
 
         // Create a settings file on first run, and recover from a malformed file
         // without silently destroying the user's original configuration.
@@ -242,9 +267,8 @@ impl SettingsManager {
                 eprintln!("Warning: Could not save default settings: {}", e);
                 error = Some(format!("Could not save default settings: {}", e));
             }
-        } else if stored_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA {
-            // Persist the one-time conversion from old UI-point geometry to stable
-            // startup geometry. save_to_file preserves unrelated/unknown INI keys.
+        } else if stored_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA || titlebar_navigation_migrated {
+            // Persist one-time settings migrations. save_to_file preserves unrelated/unknown INI keys.
             if let Err(e) = Self::save_to_file(&path, &settings) {
                 eprintln!("Warning: Could not persist migrated settings: {}", e);
                 error = Some(format!("Could not persist migrated settings: {}", e));

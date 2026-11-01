@@ -245,6 +245,12 @@ impl SettingsManager {
                     if let Some(value) = section.get("show_titlebar") {
                         settings.show_titlebar = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("custom_titlebar_navigation") {
+                        settings.custom_titlebar_navigation = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("custom_titlebar_navigation_preference_configured") {
+                        settings.custom_titlebar_navigation_preference_configured = Self::parse_bool(value);
+                    }
                     if let Some(value) = section.get("title_bar_color_mode") {
                         if matches!(value, "system" | "main_view" | "main_color") {
                             settings.title_bar_color_mode = value.to_string();
@@ -256,6 +262,15 @@ impl SettingsManager {
                                 settings.custom_window_frame_thickness = thickness;
                             }
                         }
+                    }
+                    if let Some(value) = section.get("center_custom_window_title") {
+                        settings.center_custom_window_title = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("rename_file_from_titlebar") {
+                        settings.rename_file_from_titlebar = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("native_window_rounding") {
+                        settings.native_window_rounding = Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("show_file_sidebar") {
                         settings.show_file_sidebar = Self::parse_bool(value);

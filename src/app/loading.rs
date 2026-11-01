@@ -130,7 +130,6 @@ impl ViewerApp {
         self.virtual_texture_thread = None;
         self.file_type_detection = None;
         self.file_metadata_open = false;
-        self.file_metadata = None;
         self.image_cache.clear();
         self.preloading_indices.clear();
         self.preload_tasks.clear();
@@ -266,7 +265,6 @@ impl ViewerApp {
         self.should_stop_caching = false;
         self.file_type_detection = None;
         self.file_metadata_open = false;
-        self.file_metadata = None;
 
         self.detect_current_file_type();
         self.load_current_image();

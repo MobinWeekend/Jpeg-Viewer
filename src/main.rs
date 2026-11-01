@@ -79,6 +79,8 @@ fn main() -> eframe::Result<()> {
                 cc.window_handle().ok().map(|window| window.as_raw()),
             );
 
+            crate::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);
+
             let mut app = ViewerApp::default();
 
             // Apply saved theme

@@ -75,16 +75,6 @@ pub fn format_file_size(bytes: u64) -> String {
     }
 }
 
-pub fn icon_button(ui: &mut egui::Ui, icon: &str, tooltip: &str) -> egui::Response {
-    ui.add(
-        egui::Button::new(egui::RichText::new(icon).size(14.0))
-            .min_size(egui::vec2(24.0, 24.0))
-            .fill(egui::Color32::TRANSPARENT)
-            .stroke(egui::Stroke::NONE),
-    )
-    .on_hover_text(tooltip)
-}
-
 /// Paint a scale-independent sidebar/drawer glyph using vector primitives so it
 /// does not depend on a particular symbol font being installed. `show_sidebar`
 /// points the arrow into the window; `false` points it back toward the left edge.
@@ -92,7 +82,7 @@ pub fn paint_sidebar_drawer_icon(ui: &egui::Ui, rect: egui::Rect, show_sidebar: 
     let painter = ui.painter();
     let color = ui.visuals().text_color();
     let stroke = egui::Stroke::new(1.4_f32, color);
-    let frame = rect.shrink2(egui::vec2(6.0, 8.0));
+    let frame = rect.shrink2(egui::vec2(4.0, 5.0));
     let corner_radius = if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {
         egui::CornerRadius::ZERO
     } else {

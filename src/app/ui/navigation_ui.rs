@@ -1,5 +1,6 @@
 //use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
+use crate::app::ui::helpers::paint_sidebar_drawer_icon;
 use crate::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -14,7 +15,11 @@ impl ProfileToolbarButtonExt for egui::Ui {
     fn add_profile_button<'a>(&mut self, button: egui::Button<'a>) -> egui::Response {
         let response = self.add(button);
         if crate::ui_theme::current_look_profile(self.ctx()) == "win98" {
-            crate::ui_theme::paint_win98_bevel(self, response.rect, response.is_pointer_button_down_on());
+            crate::ui_theme::paint_win98_bevel(
+                self,
+                response.rect,
+                response.is_pointer_button_down_on(),
+            );
         }
         response
     }
@@ -23,6 +28,37 @@ impl ProfileToolbarButtonExt for egui::Ui {
 impl ViewerApp {
     // Render all navigation-related controls.
     // Individual sections can also be called separately when needed.
+
+    pub fn sidebar_drawer_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let sidebar_open = self.settings_manager.get().show_file_sidebar;
+
+        let tooltip = if sidebar_open {
+            "Hide sidebar (F3)"
+        } else {
+            "Show sidebar (F3)"
+        };
+
+        let response = ui
+            .add_profile_button(
+                egui::Button::new("")
+                    .min_size(egui::vec2(self.btn_size().x * 0.8, self.btn_size().y * 2.0))
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
+            )
+            .on_hover_text(tooltip);
+
+        // Paint the custom icon *over* the already-rendered button.
+        let icon_rect =
+            egui::Rect::from_center_size(response.rect.center(), egui::vec2(24.0, 28.0));
+        paint_sidebar_drawer_icon(ui, icon_rect, !sidebar_open);
+
+        if response.clicked() {
+            let _ = self.settings_manager.update(|s| {
+                s.show_file_sidebar = !sidebar_open;
+            });
+            ctx.request_repaint();
+        }
+    }
 
     // NAVIGATION BUTTONS
     /// Previous and next image buttons.
@@ -85,7 +121,6 @@ impl ViewerApp {
         if button.clicked() {
             self.handle_command(ctx, ViewerCommand::ToggleSlideshow);
         }
-
     }
 
     /// Slideshow options row, rendered beside the navigation bar while playback is active.
@@ -140,7 +175,9 @@ impl ViewerApp {
         let mut loop_enabled = self.slideshow_loop;
         if crate::ui_theme::switch(ui, &mut loop_enabled, "Loop") {
             self.slideshow_loop = loop_enabled;
-            let _ = self.settings_manager.update(|settings| settings.slideshow_loop = loop_enabled);
+            let _ = self
+                .settings_manager
+                .update(|settings| settings.slideshow_loop = loop_enabled);
         }
 
         ui.separator();
@@ -172,7 +209,11 @@ impl ViewerApp {
             if !self.image_entries.is_empty() {
                 crate::sort::sort_images(&mut self.image_entries, self.sort_method);
                 if let Some(id) = selected_id {
-                    if let Some(index) = self.image_entries.iter().position(|entry| entry.get_id() == id) {
+                    if let Some(index) = self
+                        .image_entries
+                        .iter()
+                        .position(|entry| entry.get_id() == id)
+                    {
                         self.current_index = index;
                     }
                 }
@@ -180,7 +221,9 @@ impl ViewerApp {
             // Shuffle now means shuffle the collection once, not a separate random
             // jump on every slideshow tick.
             self.slideshow_random = false;
-            let _ = self.settings_manager.update(|settings| settings.slideshow_random = false);
+            let _ = self
+                .settings_manager
+                .update(|settings| settings.slideshow_random = false);
             self.image_cache.clear();
             self.preloading_indices.clear();
             self.preload_tasks.clear();
@@ -211,7 +254,9 @@ impl ViewerApp {
             });
         if transition != self.slideshow_transition {
             self.slideshow_transition = transition.clone();
-            let _ = self.settings_manager.update(|settings| settings.slideshow_transition = transition);
+            let _ = self
+                .settings_manager
+                .update(|settings| settings.slideshow_transition = transition);
         }
 
         let mut motion = self.slideshow_motion.clone();
@@ -238,7 +283,9 @@ impl ViewerApp {
             });
         if motion != self.slideshow_motion {
             self.slideshow_motion = motion.clone();
-            let _ = self.settings_manager.update(|settings| settings.slideshow_motion = motion);
+            let _ = self
+                .settings_manager
+                .update(|settings| settings.slideshow_motion = motion);
         }
 
         ui.separator();
@@ -247,9 +294,14 @@ impl ViewerApp {
         let strength_slider = egui::Slider::new(&mut strength, 5.0..=40.0)
             .suffix("%")
             .show_value(true);
-        if ui.add(crate::ui_theme::BorderedSlider::new(strength_slider)).changed() {
+        if ui
+            .add(crate::ui_theme::BorderedSlider::new(strength_slider))
+            .changed()
+        {
             self.slideshow_motion_strength = strength;
-            let _ = self.settings_manager.update(|settings| settings.slideshow_motion_strength = strength);
+            let _ = self
+                .settings_manager
+                .update(|settings| settings.slideshow_motion_strength = strength);
         }
     }
 
@@ -266,10 +318,8 @@ impl ViewerApp {
         // Keep the layout slot fixed-width even for very large percentages. The
         // percentage is painted independently so its text may visually overflow the
         // slot instead of forcing neighboring toolbar controls to shift.
-        let (zoom_rect, response) = ui.allocate_exact_size(
-            egui::vec2(50.0, 24.0),
-            egui::Sense::click(),
-        );
+        let (zoom_rect, response) =
+            ui.allocate_exact_size(egui::vec2(50.0, 24.0), egui::Sense::click());
         let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0));
         ui.painter().text(
             zoom_rect.center(),
@@ -429,8 +479,8 @@ impl ViewerApp {
         }
 
         // Speed slider
-        ui.add(
-            crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut gif.speed_multiplier, 0.1..=10.0)
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut gif.speed_multiplier, 0.1..=10.0)
                 .logarithmic(true)
                 .show_value(false)
                 .custom_formatter(|value, _| {
@@ -509,31 +559,30 @@ impl ViewerApp {
     /// Standard toolbar button size.
     fn btn_size(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(24.0, 22.0) // compact
+            egui::vec2(22.0, 20.0) // compact
         } else {
-            egui::vec2(32.0, 28.0) // normal
+            egui::vec2(28.0, 24.0) // normal
         }
     }
 
     /// Small toolbar button size (used for +/−, 1:1, fit, pin, etc.)
     fn btn_size_small(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(20.0, 22.0)
+            egui::vec2(18.0, 20.0)
         } else {
-            egui::vec2(24.0, 28.0)
+            egui::vec2(20.0, 24.0)
         }
     }
 
     /// Medium button size (slower/faster, zoom text)
     fn btn_size_medium(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(22.0, 22.0)
+            egui::vec2(20.0, 20.0)
         } else {
-            egui::vec2(28.0, 28.0)
+            egui::vec2(24.0, 24.0)
         }
     }
 }
-
 
 fn toolbar_button_fill(ui: &egui::Ui) -> egui::Color32 {
     if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {

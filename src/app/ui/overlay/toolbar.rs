@@ -130,12 +130,10 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f3
                 separator(ui, space);
                 this.gif_controls_ui(ui);
             }
-            if no_image && !compact {
+            if no_image {
                 separator(ui, space);
                 let consumed = (ui.next_widget_position().x - row_start).max(0.0);
                 this.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
-            } else if compact {
-                this.file_metadata_open = false;
             }
         });
     });
@@ -168,7 +166,10 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
         (usable_width / 24.0).round() as i32,
         true,
         app.is_gif,
-        crate::app::ui::uses_desktop_menu_bar(ctx),
+        crate::app::ui::uses_desktop_menu_bar(ctx)
+            || (!app.settings_manager.get().show_titlebar
+                && app.settings_manager.get().custom_titlebar_navigation
+                && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))),
         app.slideshow_enabled,
     );
     overlay_area(
@@ -200,11 +201,29 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
                     render_slideshow_options_row(app, ctx, ui);
                     ui.separator();
                 }
-                ui.horizontal(|ui| {
-                    app.navigation_previous_ui(ctx, ui);
-                    app.slideshow_ui(ctx, ui);
-                    app.navigation_next_ui(ctx, ui);
-                });
+                if !app.settings_manager.get().show_titlebar
+                    && app.settings_manager.get().custom_titlebar_navigation
+                    && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
+                {
+                    // In custom-titlebar mode the primary navigation lives at the top;
+                    // leave only secondary actions in this bottom row.
+                    ui.horizontal(|ui| {
+                        let row_start = ui.next_widget_position().x;
+                        let budget = ui.available_width().max(0.0);
+                        if app.is_gif && !compact {
+                            app.gif_controls_ui(ui);
+                            separator(ui, if compact { 8.0 } else { 1.0 });
+                        }
+                        let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+                        app.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        app.navigation_previous_ui(ctx, ui);
+                        app.slideshow_ui(ctx, ui);
+                        app.navigation_next_ui(ctx, ui);
+                    });
+                }
             });
         });
         if crate::ui_theme::current_look_profile(ctx) == "win98" {
@@ -391,13 +410,9 @@ fn render_win98_primary_row(
                 app.gif_controls_ui(ui);
             }
         }
-        if !app.compactui && !ultra_compact {
-            separator(ui, 1.0);
-            let consumed = (ui.next_widget_position().x - row_start).max(0.0);
-            app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
-        } else {
-            app.file_metadata_open = false;
-        }
+        separator(ui, 1.0);
+        let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+        app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
     } else if ui.button("Open Image…").clicked() {
         app.handle_command(ctx, crate::shortcuts::ViewerCommand::OpenFile);
     }
@@ -460,13 +475,9 @@ fn render_platform_primary_row(
                 app.gif_controls_ui(ui);
             }
 
-            if !compact && !ultra_compact {
-                separator(ui, 1.0);
-                let consumed = (ui.next_widget_position().x - row_start).max(0.0);
-                app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
-            } else {
-                app.file_metadata_open = false;
-            }
+            separator(ui, 1.0);
+            let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+            app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
         } else if placement == "win98" {
             if ui.button("Open Image…").clicked() {
                 app.handle_command(ctx, crate::shortcuts::ViewerCommand::OpenFile);

@@ -38,6 +38,11 @@ fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
                 if selected == "win98" {
                     settings.theme_preference = "light".to_owned();
                 }
+                // These desktop looks retain their conventional toolbar placement by
+                // default. Users can explicitly enable title-bar integration afterward.
+                let resolved = crate::ui_theme::resolve_look_profile(&selected);
+                settings.custom_titlebar_navigation = !matches!(resolved, "win98" | "cosmic" | "gnome");
+                settings.custom_titlebar_navigation_preference_configured = true;
             });
             crate::ui_theme::set_look_profile(ctx, &selected);
             let settings = app.settings_manager.get().clone();

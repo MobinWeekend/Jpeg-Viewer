@@ -85,6 +85,9 @@ fn main_ui_placement_preference_round_trips() {
     settings.win98_dialup_enabled = false;
     settings.win98_dialup_preference_configured = true;
     settings.win98_dialup_connection_kbps = 56;
+    settings.center_custom_window_title = true;
+    settings.rename_file_from_titlebar = true;
+    settings.native_window_rounding = false;
 
     SettingsManager::save_to_file(&path, &settings).unwrap();
     let mut error: Option<String> = None;
@@ -97,6 +100,9 @@ fn main_ui_placement_preference_round_trips() {
     assert!(!loaded.win98_dialup_enabled);
     assert!(loaded.win98_dialup_preference_configured);
     assert_eq!(loaded.win98_dialup_connection_kbps, 56);
+    assert!(loaded.center_custom_window_title);
+    assert!(loaded.rename_file_from_titlebar);
+    assert!(!loaded.native_window_rounding);
     settings.navigation_ui_auto_hide_preference = "off".to_string();
     settings.navigation_ui_auto_hide_ms = 2300;
     settings.os_background_blur = false;
