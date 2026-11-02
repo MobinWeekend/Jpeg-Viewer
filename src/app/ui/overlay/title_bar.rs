@@ -102,13 +102,14 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 egui::CornerRadius::same(radius),
                 background,
             );
+
             panel_ui.painter().rect_stroke(
                 panel_rect,
                 egui::CornerRadius::same(radius),
                 if win98 {
                     egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 0, 64))
                 } else {
-                    egui::Stroke::new(1.0_f32, visuals.widgets.noninteractive.bg_stroke.color)
+                    egui::Stroke::NONE
                 },
                 egui::StrokeKind::Inside,
             );
