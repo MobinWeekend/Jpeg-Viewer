@@ -26,7 +26,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     // The 50% value is a ceiling, not the target width. Keep the user's
     // saved width whenever it fits, with a modest minimum for usable controls.
     let max_sidebar_width = (window_width * 0.5).max(1.0);
-    let min_sidebar_width = 90.0_f32.min(max_sidebar_width);
+    let min_sidebar_width = 256.0_f32.min(max_sidebar_width);
     let default_width = app
         .settings_manager
         .get()
@@ -34,11 +34,17 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         .clamp(min_sidebar_width, max_sidebar_width);
 
     let sidebar_settings = app.settings_manager.get().clone();
-    let sidebar_background = crate::ui_theme::main_view_surface_color(
-        ctx,
-        &sidebar_settings.main_view_background,
-        sidebar_settings.main_view_background_opacity,
-    );
+    let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
+        // Use the active Win98 palette for both Light and Dark themes; other looks
+        // retain the existing image-view surface behavior.
+        ctx.style().visuals.panel_fill
+    } else {
+        crate::ui_theme::main_view_surface_color(
+            ctx,
+            &sidebar_settings.main_view_background,
+            sidebar_settings.main_view_background_opacity,
+        )
+    };
     let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
         .fill(sidebar_background)
         .stroke(egui::Stroke::NONE);
@@ -529,8 +535,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             app.sidebar_number_edit = Some((collection, index, text));
         }
     }
-
-
 
     // Keep the pointer feedback active while a card is being dragged.
     if app.sidebar_drag_index.is_some() {

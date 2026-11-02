@@ -54,7 +54,10 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // before the hamburger. In native-decoration and fullscreen modes, retain its
     // original edge-drawer position.
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
-    if app.settings_manager.get().show_titlebar || fullscreen || !app.settings_manager.get().custom_titlebar_navigation {
+    if app.settings_manager.get().show_titlebar
+        || fullscreen
+        || !app.settings_manager.get().custom_titlebar_navigation
+    {
         render_sidebar_drawer_button(app, ctx);
     }
 
@@ -98,18 +101,22 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // The placement can be overridden independently of the visual profile.
     // Automatic follows the resolved Look profile (desktop detection happens there).
     let viewport_width = ctx.input(|input| {
-        input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+        input
+            .viewport()
+            .inner_rect
+            .map(|rect| rect.width())
+            .unwrap_or(1280.0)
     });
+    let central_width = (viewport_width - left_offset - right_offset - 16.0).max(0.0);
     if custom_titlebar {
         // The custom title bar owns the primary navigation and zoom controls.
         // Keep the remaining image actions in the bottom toolbar instead of
         // duplicating controls in a floating top/platform toolbar.
-        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET);
+        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET, central_width);
     } else if placement == "native" {
         // Pass the true central viewport width to responsive metadata fitting. An
         // auto-sized Area reports its previous content width, which creates a
         // feedback loop: after shrinking once, its label cannot grow again.
-        let central_width = (viewport_width - left_offset - right_offset - 16.0).max(0.0);
         toolbar::render_top_toolbar(
             app,
             ctx,
@@ -117,7 +124,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             menu_offset_y,
             central_width,
         );
-        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET);
+        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET, central_width);
     } else {
         // Windows 98 uses a classic full-width toolbar strip below the menu bar,
         // with the action group aligned to the upper-right. Other platform layouts
@@ -136,7 +143,12 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             // The toolbar itself clips horizontally within the central strip if controls overflow.
             if central_width >= 80.0 {
                 toolbar::render_platform_toolbar(
-                    app, ctx, placement, left_offset, central_width, menu_offset_y,
+                    app,
+                    ctx,
+                    placement,
+                    left_offset,
+                    central_width,
+                    menu_offset_y,
                 );
             }
         } else {
@@ -145,7 +157,12 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             if central_width >= 96.0 {
                 let max_width = (central_width - 8.0).max(96.0);
                 toolbar::render_platform_toolbar(
-                    app, ctx, placement, center_offset_x, max_width, menu_offset_y,
+                    app,
+                    ctx,
+                    placement,
+                    center_offset_x,
+                    max_width,
+                    menu_offset_y,
                 );
             }
         }
@@ -156,17 +173,24 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     if app.inspect_mode {
         egui::Area::new(egui::Id::new("inspect_channel_navigation_row"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, menu_offset_y + 48.0))
+            .anchor(
+                egui::Align2::CENTER_TOP,
+                egui::vec2(0.0, menu_offset_y + 48.0),
+            )
             .show(ctx, |ui| {
                 toolbar_frame(ctx).show(ui, |ui| {
                     let mut changed = false;
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Inspect").strong());
                         for (index, label) in ["R", "G", "B", "A"].iter().enumerate() {
-                            changed |= ui.checkbox(&mut app.inspect_channels[index], *label).changed();
+                            changed |= ui
+                                .checkbox(&mut app.inspect_channels[index], *label)
+                                .changed();
                         }
                         if app.inspect_channels.iter().filter(|v| **v).count() == 1 {
-                            changed |= ui.checkbox(&mut app.inspect_colorized, "Show in color").changed();
+                            changed |= ui
+                                .checkbox(&mut app.inspect_colorized, "Show in color")
+                                .changed();
                         }
                         if ui.small_button("Close").clicked() {
                             app.inspect_mode = false;
@@ -175,7 +199,9 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
                             app.inspect_source_path = None;
                         }
                     });
-                    if changed { app.refresh_inspect_texture(ctx); }
+                    if changed {
+                        app.refresh_inspect_texture(ctx);
+                    }
                 });
             });
     }
@@ -262,7 +288,8 @@ fn render_sidebar_drawer_button(app: &mut ViewerApp, ctx: &egui::Context) {
             } else {
                 visuals.panel_fill
             };
-            ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, fill);
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::ZERO, fill);
             if crate::ui_theme::current_look_profile(ctx) == "win98" {
                 crate::ui_theme::paint_win98_bevel(ui, rect, sidebar_open);
             } else {
@@ -293,9 +320,9 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
         return;
     }
 
-    let button_rect = app.hamburger_button_rect.unwrap_or_else(|| {
-        egui::Rect::from_min_size(egui::pos2(8.0, 8.0), egui::vec2(58.0, 28.0))
-    });
+    let button_rect = app
+        .hamburger_button_rect
+        .unwrap_or_else(|| egui::Rect::from_min_size(egui::pos2(8.0, 8.0), egui::vec2(58.0, 28.0)));
     let popup_gap = 6.0;
     // A desktop menu-bar button always opens downward. The COSMIC bottom toolbar
     // opens upward only when the original floating button is still in use.

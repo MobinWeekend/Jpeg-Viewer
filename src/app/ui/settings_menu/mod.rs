@@ -19,11 +19,17 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
 
     let sidebar_settings = app.settings_manager.get().clone();
     let default_width = sidebar_settings.settings_sidebar_width.clamp(260.0, 640.0);
-    let sidebar_background = crate::ui_theme::main_view_surface_color(
-        ctx,
-        &sidebar_settings.main_view_background,
-        sidebar_settings.main_view_background_opacity,
-    );
+    let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
+        // Use the active Win98 palette for both Light and Dark themes; other looks
+        // retain the existing image-view surface behavior.
+        ctx.style().visuals.panel_fill
+    } else {
+        crate::ui_theme::main_view_surface_color(
+            ctx,
+            &sidebar_settings.main_view_background,
+            sidebar_settings.main_view_background_opacity,
+        )
+    };
     let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
         .fill(sidebar_background)
         .stroke(egui::Stroke::NONE);

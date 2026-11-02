@@ -101,7 +101,7 @@ impl ViewerApp {
             painter.text(
                 image_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                "📁 Folder",
+                "📁", //folder icon
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0)),
                 card_text_color,
             );
@@ -476,8 +476,7 @@ impl ViewerApp {
                         ui.close();
                     }
                     if ui.button("Locate in File Manager").clicked() {
-                        if let Err(error) =
-                            crate::app::external_open::reveal_in_file_manager(path)
+                        if let Err(error) = crate::app::external_open::reveal_in_file_manager(path)
                         {
                             self.queue_status = Some(format!("Could not locate file: {error}"));
                         }

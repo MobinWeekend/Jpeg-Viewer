@@ -1,5 +1,5 @@
 //! Queue and favorites tab content.
-use super::layout::{fit_cards, CELL_MIN, GAP};
+use super::layout::{CELL_MIN, GAP, fit_cards};
 use crate::app::queues::actions;
 use crate::app::queues::storage::{absolute_path, paths_equal};
 use crate::app::types::ViewerApp;
@@ -19,8 +19,8 @@ impl ViewerApp {
         ui.horizontal(|ui| {
             ui.label("Entry size");
             if ui
-                .add(
-                    crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut entry_size, 64.0..=240.0)
+                .add(crate::ui_theme::BorderedSlider::new(
+                    egui::Slider::new(&mut entry_size, 64.0..=240.0)
                         .show_value(false)
                         .step_by(8.0),
                 ))
@@ -40,7 +40,7 @@ impl ViewerApp {
         });
 
         ui.horizontal(|ui| {
-            if ui.button("＋ Add files").clicked() {
+            if ui.button("+ files").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     let mut added = 0;
                     for path in paths {
@@ -49,18 +49,18 @@ impl ViewerApp {
                     self.queue_status = Some(format!("Added {added} file(s)."));
                 }
             }
-            if ui.button("＋ Current image").clicked() {
+            if ui.button("+ Current").clicked() {
                 self.add_current_image_to_queue();
             }
-        });
-        ui.horizontal(|ui| {
             if ui
-                .button("＋ Current view")
+                .button("+ Current view")
                 .on_hover_text("Add filesystem images currently shown in Browse")
                 .clicked()
             {
                 self.add_current_folder_images();
             }
+        });
+        ui.horizontal(|ui| {
             if ui
                 .button("Use Browse list if empty")
                 .on_hover_text("Only fills the queue when it is empty")
@@ -76,7 +76,7 @@ impl ViewerApp {
         });
         ui.horizontal(|ui| {
             if ui
-                .button("＋ Folder…")
+                .button("+ Folder…")
                 .on_hover_text("Add images from a folder and its subfolders")
                 .clicked()
             {
@@ -85,10 +85,8 @@ impl ViewerApp {
                     self.queue_status = Some(format!("Added {added} image(s) from folder tree."));
                 }
             }
-        });
-        ui.horizontal(|ui| {
             if ui
-                .button("＋ Add folder as entry…")
+                .button("+ folder as entry…")
                 .on_hover_text(
                     "Keep the folder as one queue item; its contents are read when opened",
                 )
@@ -348,8 +346,8 @@ impl ViewerApp {
         ui.horizontal(|ui| {
             ui.label("Entry size");
             if ui
-                .add(
-                    crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut entry_size, 64.0..=240.0)
+                .add(crate::ui_theme::BorderedSlider::new(
+                    egui::Slider::new(&mut entry_size, 64.0..=240.0)
                         .show_value(false)
                         .step_by(8.0),
                 ))
@@ -368,10 +366,10 @@ impl ViewerApp {
             });
         });
         ui.horizontal(|ui| {
-            if ui.button("＋ Add current image").clicked() {
+            if ui.button("+ current image").clicked() {
                 self.add_current_image_to_favorites();
             }
-            if ui.button("＋ Add files…").clicked() {
+            if ui.button("+ files…").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     for path in paths {
                         self.add_favorite_path(path);
@@ -381,7 +379,7 @@ impl ViewerApp {
         });
         ui.horizontal(|ui| {
             if ui
-                .button("＋ Add folder as entry…")
+                .button("+ folder as entry…")
                 .on_hover_text("Save a folder as one favorite entry")
                 .clicked()
             {
@@ -468,7 +466,10 @@ impl ViewerApp {
                                         }
                                         if !favorite_entries.is_empty() {
                                             self.queue_mode = false;
-                                            self.set_image_entries(favorite_entries, selected_index);
+                                            self.set_image_entries(
+                                                favorite_entries,
+                                                selected_index,
+                                            );
                                             self.sync_current_entry_after_collection_change(ctx);
                                             self.queue_status =
                                                 Some("Opened favorites in the viewer.".into());

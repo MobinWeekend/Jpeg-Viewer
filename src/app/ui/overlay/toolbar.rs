@@ -151,7 +151,12 @@ pub fn render_top_toolbar(
         });
 }
 
-pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offset: f32) {
+pub fn render_bottom_toolbar(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    left_offset: f32,
+    _max_width: f32,
+) {
     if app.image_entries.is_empty() {
         return;
     }
@@ -163,27 +168,35 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
             .map(|rect| rect.width())
             .unwrap_or(1280.0)
     });
+
     let right_offset = if app.show_settings_menu || app.show_edit_menu {
         app.settings_manager.get().settings_sidebar_width
     } else {
         0.0
     };
-    let usable_width = (viewport_width - left_offset - right_offset - 16.0).max(96.0);
+
+    // Calculate width from the actual viewport, not the Area's previous size.
+    let usable_width = (viewport_width - left_offset - right_offset - 16.0).max(128.0);
+
+    let compact = app.compactui;
+
+    let custom_titlebar_navigation = !app.settings_manager.get().show_titlebar
+        && app.settings_manager.get().custom_titlebar_navigation
+        && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+
     let sizing_changed = toolbar_area_sizing_changed(
         ctx,
         "jpeg_view_bottom",
         crate::ui_theme::current_look_profile(ctx),
-        app.compactui,
+        compact,
         false,
         (usable_width / 24.0).round() as i32,
         true,
         app.is_gif,
-        crate::app::ui::uses_desktop_menu_bar(ctx)
-            || (!app.settings_manager.get().show_titlebar
-                && app.settings_manager.get().custom_titlebar_navigation
-                && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))),
+        crate::app::ui::uses_desktop_menu_bar(ctx) || custom_titlebar_navigation,
         app.slideshow_enabled,
     );
+
     overlay_area(
         "toolbar_bot_center",
         egui::Align2::LEFT_BOTTOM,
@@ -192,54 +205,52 @@ pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offs
     .sizing_pass(sizing_changed)
     .constrain(true)
     .show(ctx, |ui| {
-        /*
-        let viewport_width = ctx.input(|input| {
-            input
-                .viewport()
-                .inner_rect
-                .map(|rect| rect.width())
-                .unwrap_or(1280.0)
-        });
-         */
-        let avail_rect = ui.available_rect_before_wrap();
-        let max_width = (avail_rect.width() - left_offset - right_offset - 16.0).max(96.0);
-        ui.set_max_width(max_width);
-        let compact = app.compactui;
-        let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
-            ui.set_max_width(max_width - 12.0);
-            ui.vertical_centered(|ui| {
-                // At the bottom edge, the options row must be above the primary row.
-                if app.slideshow_enabled {
-                    render_slideshow_options_row(app, ctx, ui);
-                    ui.separator();
-                }
-                if !app.settings_manager.get().show_titlebar
-                    && app.settings_manager.get().custom_titlebar_navigation
-                    && !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
-                {
-                    // In custom-titlebar mode the primary navigation lives at the top;
-                    // leave only secondary actions in this bottom row.
-                    ui.horizontal(|ui| {
-                        let row_start = ui.next_widget_position().x;
-                        let budget = ui.available_width().max(0.0);
-                        if app.is_gif && !compact {
-                            app.gif_controls_ui(ui);
-                            separator(ui, if compact { 8.0 } else { 1.0 });
-                        }
-                        let consumed = (ui.next_widget_position().x - row_start).max(0.0);
-                        app.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
-                    });
-                } else {
-                    ui.horizontal(|ui| {
-                        app.navigation_previous_ui(ctx, ui);
-                        app.slideshow_ui(ctx, ui);
-                        app.navigation_next_ui(ctx, ui);
-                    });
-                }
-            });
-        });
+        // Make the viewport-derived width the actual Area width.
+        ui.set_max_width(usable_width);
+
+        let content_width = toolbar_content_width_budget(ctx, compact, usable_width);
+
+        let frame_rect = render_toolbar_ui(
+            app,
+            ctx,
+            ui,
+            content_width,
+            |this, ui, budget, _row_start| {
+                ui.vertical(|ui| {
+                    if this.slideshow_enabled {
+                        render_slideshow_options_row(this, ctx, ui);
+                        ui.separator();
+                    }
+
+                    if custom_titlebar_navigation {
+                        ui.horizontal(|ui| {
+                            // Measure from the beginning of THIS row.
+                            let row_start = ui.next_widget_position().x;
+
+                            if this.is_gif {
+                                this.gif_controls_ui(ui);
+                                separator(ui, if compact { 8.0 } else { 1.0 });
+                            }
+
+                            let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+
+                            let remaining = (budget - consumed).min(ui.available_width()).max(0.0);
+
+                            this.file_metadata_button_with_width(ui, remaining);
+                        });
+                    } else {
+                        ui.horizontal(|ui| {
+                            this.navigation_previous_ui(ctx, ui);
+                            this.slideshow_ui(ctx, ui);
+                            this.navigation_next_ui(ctx, ui);
+                        });
+                    }
+                });
+            },
+        );
+
         if crate::ui_theme::current_look_profile(ctx) == "win98" {
-            crate::ui_theme::paint_win98_bevel(ui, frame_response.response.rect, false);
+            crate::ui_theme::paint_win98_bevel(ui, frame_rect, false);
         }
     });
 }
@@ -609,14 +620,17 @@ fn render_toolbar_ui(
     ui: &mut egui::Ui,
     content_width: f32,
     content: impl FnOnce(&mut ViewerApp, &mut egui::Ui, f32, f32),
-) {
+) -> egui::Rect {
     let compact = app.compactui;
-    toolbar_frame_mode(ctx, compact).show(ui, |ui| {
+
+    let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
         ui.horizontal(|ui| {
             let row_start = ui.next_widget_position().x;
             content(app, ui, content_width, row_start);
         });
     });
+
+    frame_response.response.rect
 }
 
 fn render_image_counter(app: &ViewerApp, ui: &mut egui::Ui) {

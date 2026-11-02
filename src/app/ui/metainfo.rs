@@ -20,16 +20,22 @@ impl ViewerApp {
     /// every UI frame. Keep this method focused on formatting, measuring and
     /// rendering that already-cached snapshot.
     pub fn file_metadata_button_with_width(&mut self, ui: &mut egui::Ui, width_budget: f32) {
-        let requested_width = if width_budget.is_nan() || width_budget.is_sign_negative() {
-            0.0
-        } else {
-            width_budget
-        };
-        let available = requested_width.min(ui.available_width().max(0.0));
-        let available = if available.is_finite() {
-            available
-        } else {
+        // NaN / negative / non-finite budget == "no width constraint" from the
+        // caller (nothing else is competing for the row). In that case the button
+        // should render its richest label rather than fitting itself to a guessed
+        // width, so treat the budget as effectively unlimited.
+        let unconstrained =
+            width_budget.is_nan() || width_budget.is_sign_negative() || !width_budget.is_finite();
+
+        let available = if unconstrained {
             f32::MAX
+        } else {
+            let available = width_budget.max(ui.available_width().max(0.0));
+            if available.is_finite() {
+                available
+            } else {
+                f32::MAX
+            }
         };
 
         // Do not create an invisible, zero-width button. There is no useful
@@ -60,8 +66,7 @@ impl ViewerApp {
         let chosen_tier = choose_metadata_tier(&candidate_widths, available, previous_tier);
 
         let (label, font_size, desired_width) = if let Some(index) = chosen_tier {
-            ui.ctx()
-                .data_mut(|data| data.insert_temp(tier_id, index));
+            ui.ctx().data_mut(|data| data.insert_temp(tier_id, index));
             (
                 candidates[index].as_str(),
                 label_font_size,
@@ -69,14 +74,12 @@ impl ViewerApp {
             )
         } else {
             ui.ctx().data_mut(|data| data.remove::<usize>(tier_id));
-            ("ⓘ", icon_font_size, METADATA_BUTTON_MIN_WIDTH)
+            (" i ", icon_font_size, METADATA_BUTTON_MIN_WIDTH)
         };
 
-        let button_width = desired_width
-            .max(METADATA_BUTTON_MIN_WIDTH)
-            .min(available);
-        let button_height = (font_size + ui.spacing().button_padding.y * 2.0)
-            .max(METADATA_BUTTON_HEIGHT);
+        let button_width = desired_width.max(METADATA_BUTTON_MIN_WIDTH).min(available);
+        let button_height =
+            (font_size + ui.spacing().button_padding.y * 2.0).max(METADATA_BUTTON_HEIGHT);
         let response = ui
             .add_sized(
                 egui::vec2(button_width, button_height),
@@ -147,7 +150,10 @@ impl ViewerApp {
                                             }
                                             Err(error) => {
                                                 ctx.data_mut(|data| {
-                                                    data.insert_temp(clipboard_error_id, error.clone());
+                                                    data.insert_temp(
+                                                        clipboard_error_id,
+                                                        error.clone(),
+                                                    );
                                                 });
                                                 clipboard_error = Some(error);
                                             }
@@ -165,7 +171,10 @@ impl ViewerApp {
                                             }
                                             Err(error) => {
                                                 ctx.data_mut(|data| {
-                                                    data.insert_temp(clipboard_error_id, error.clone());
+                                                    data.insert_temp(
+                                                        clipboard_error_id,
+                                                        error.clone(),
+                                                    );
                                                 });
                                                 clipboard_error = Some(error);
                                             }
@@ -324,12 +333,9 @@ fn choose_metadata_tier(
     }) {
         Some(previous) => {
             let richer_tier = (0..previous).find(|index| {
-                candidate_widths
-                    .get(*index)
-                    .is_some_and(|width| {
-                        width.is_finite()
-                            && *width + METADATA_GROW_HYSTERESIS <= available_width
-                    })
+                candidate_widths.get(*index).is_some_and(|width| {
+                    width.is_finite() && *width + METADATA_GROW_HYSTERESIS <= available_width
+                })
             });
             richer_tier.or(Some(previous))
         }
@@ -399,14 +405,20 @@ mod tests {
             exif: vec![("Date Taken".to_owned(), "Capture date".to_owned())],
             ..Default::default()
         };
-        assert_eq!(compact_metadata_date(&taken).as_deref(), Some("Taken: Capture date"));
+        assert_eq!(
+            compact_metadata_date(&taken).as_deref(),
+            Some("Taken: Capture date")
+        );
 
         let modified = FileMetadata {
             modified: Some("Modified date".to_owned()),
             created: Some("Created date".to_owned()),
             ..Default::default()
         };
-        assert_eq!(compact_metadata_date(&modified).as_deref(), Some("Modified: Modified date"));
+        assert_eq!(
+            compact_metadata_date(&modified).as_deref(),
+            Some("Modified: Modified date")
+        );
     }
 
     #[test]

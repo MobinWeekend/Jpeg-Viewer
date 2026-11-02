@@ -5,18 +5,14 @@ use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
 const MENU_OFFSET: f32 = 8.0;
-const HAMBURGER_SIZE: f32 = 28.0;
+const HAMBURGER_SIZE: f32 = 34.0;
 
 impl ViewerApp {
     /// Render the application menu button. The sidebar drawer is a separate
     /// window-edge affordance and is intentionally not repeated in this toolbar.
     pub fn render_hamburger_ui(&mut self, ui: &mut egui::Ui) {
         let platform_profile = crate::ui_theme::current_look_profile(ui.ctx());
-        let button_label = if platform_profile == "cosmic" || platform_profile == "gnome" {
-            "☰ Menu"
-        } else {
-            "☰"
-        };
+        let button_label = "☰";
         let win98 = platform_profile == "win98";
         let button_fill = if win98 {
             ui.visuals().widgets.inactive.bg_fill

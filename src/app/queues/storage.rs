@@ -41,7 +41,11 @@ fn decode_hex(text: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "queue path is not valid UTF-8".into())
 }
 
-pub(super) fn write_queue(path: &Path, items: &[PathBuf], root: Option<&Path>) -> Result<(), String> {
+pub(super) fn write_queue(
+    path: &Path,
+    items: &[PathBuf],
+    root: Option<&Path>,
+) -> Result<(), String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let root = root
         .filter(|candidate| items.iter().all(|item| item.starts_with(candidate)))
