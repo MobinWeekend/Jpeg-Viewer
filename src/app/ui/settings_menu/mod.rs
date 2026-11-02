@@ -17,16 +17,34 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
-    let default_width = app
-        .settings_manager
-        .get()
-        .settings_sidebar_width
-        .clamp(260.0, 640.0);
+    let sidebar_settings = app.settings_manager.get().clone();
+    let default_width = sidebar_settings.settings_sidebar_width.clamp(260.0, 640.0);
+    let sidebar_background = crate::ui_theme::main_view_surface_color(
+        ctx,
+        &sidebar_settings.main_view_background,
+        sidebar_settings.main_view_background_opacity,
+    );
+    let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+        .fill(sidebar_background)
+        .stroke(egui::Stroke::NONE);
     let response = egui::SidePanel::right("settings_sidebar")
         .resizable(true)
         .default_width(default_width)
         .width_range(260.0..=640.0)
+        .frame(sidebar_frame)
         .show(ctx, |ui| {
+            if sidebar_settings.tricks_backdrop_enabled {
+                let sidebar_clip = ui.painter().clip_rect();
+                let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
+                app.paint_tricks_backdrop(
+                    &ui.painter(),
+                    sidebar_clip,
+                    backdrop_rect,
+                    crate::ui_theme::main_accent_color(ctx),
+                    sidebar_settings.tricks_backdrop_tint,
+                    sidebar_settings.tricks_backdrop_opacity,
+                );
+            }
             ui.horizontal(|ui| {
                 ui.heading("Settings");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

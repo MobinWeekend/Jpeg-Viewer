@@ -111,7 +111,7 @@ impl eframe::App for ViewerApp {
                 (monitor_size, outer_rect, inner_size)
             {
                 let settings = self.settings_manager.get();
-                if settings.start_centered {
+                if settings.start_centered && !maximized {
                     // Center once using the actual outer frame dimensions. The saved
                     // normal position is left untouched when start-centered is off.
                     let pos = egui::pos2(
@@ -119,7 +119,7 @@ impl eframe::App for ViewerApp {
                         ((monitor_size.y - outer_rect.height()) * 0.5).max(0.0),
                     );
                     ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
-                } else {
+                } else if !maximized {
                     // `with_position` and `OuterPosition` both use the outer frame's
                     // top-left. Clamp only when a frame edge is actually outside the
                     // current monitor, and ignore sub-point decoration/DPI rounding so

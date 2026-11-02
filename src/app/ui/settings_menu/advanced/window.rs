@@ -21,7 +21,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_enabled_ui(!app.settings_manager.get().show_titlebar, |ui| {
             let response = ui.add(
                 crate::ui_theme::BorderedSlider::new(
-                    egui::Slider::new(&mut thickness, 2.0..=12.0)
+                    egui::Slider::new(&mut thickness, 1.0..=4.0)
                         .step_by(1.0)
                         .text("Custom frame thickness")
                         .suffix(" px"),
@@ -133,6 +133,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             {
                 let _ = app.settings_manager.update(|settings| {
                     settings.window_size = None;
+                    settings.window_maximized = false;
                 });
             }
         });

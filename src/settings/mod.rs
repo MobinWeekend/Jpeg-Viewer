@@ -2,7 +2,7 @@ use ini::Ini;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 4;
+const SETTINGS_SCHEMA_VERSION: u32 = 5;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -17,6 +17,8 @@ pub struct AppSettings {
     pub b_ctrl_invert: bool,
     pub window_pos: Option<[f32; 2]>,
     pub window_size: Option<[f32; 2]>,
+    /// Restore the window maximized when it was maximized on the last normal exit.
+    pub window_maximized: bool,
     pub cache_radius: usize,
     pub cache_delta_factor: f32,
     pub navigation_pause_ms: u64,
@@ -141,6 +143,7 @@ impl Default for AppSettings {
             b_ctrl_invert: false,
             window_pos: None,
             window_size: None,
+            window_maximized: false,
             cache_radius: 5,
             cache_delta_factor: 0.6,
             navigation_pause_ms: 1200,
@@ -204,12 +207,12 @@ impl Default for AppSettings {
             tricks_backdrop_opacity: 0.80,
             virtual_texture_threshold: 8192,
             tile_size: 1024,
-            show_titlebar: true,
+            show_titlebar: false,
             custom_titlebar_navigation: true,
             custom_titlebar_navigation_preference_configured: false,
-            title_bar_color_mode: "system".to_string(),
-            custom_window_frame_thickness: 6.0,
-            center_custom_window_title: false,
+            title_bar_color_mode: "main_view".to_string(),
+            custom_window_frame_thickness: 2.0,
+            center_custom_window_title: true,
             rename_file_from_titlebar: false,
             native_window_rounding: true,
             show_file_sidebar: true,
@@ -267,7 +270,9 @@ impl SettingsManager {
                 eprintln!("Warning: Could not save default settings: {}", e);
                 error = Some(format!("Could not save default settings: {}", e));
             }
-        } else if stored_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA || titlebar_navigation_migrated {
+        } else if stored_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA
+            || titlebar_navigation_migrated
+        {
             // Persist one-time settings migrations. save_to_file preserves unrelated/unknown INI keys.
             if let Err(e) = Self::save_to_file(&path, &settings) {
                 eprintln!("Warning: Could not persist migrated settings: {}", e);

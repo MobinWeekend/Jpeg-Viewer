@@ -9,6 +9,21 @@ const OS_BACKGROUND_BLUR_FULLSCREEN_DISABLE_ID: &str =
     "jpeg_viewer_os_background_blur_fullscreen_disable";
 const OS_BACKGROUND_BLUR_APPLIED_ID: &str = "jpeg_viewer_os_background_blur_applied";
 const OS_BACKGROUND_BLUR_LAST_EFFECTIVE_ID: &str = "jpeg_viewer_os_background_blur_last_effective";
+/// Resolve the solid/transparent surface used by the main view and docked sidebars.
+/// Glass opacity is deliberately identical across these regions.
+pub fn main_view_surface_color(
+    ctx: &egui::Context,
+    main_view_background: &str,
+    opacity: f32,
+) -> egui::Color32 {
+    let color = main_view_background_color(main_view_background, ctx.style().visuals.dark_mode);
+    if os_background_blur_enabled(ctx) {
+        with_alpha(color, (opacity.clamp(0.15, 1.0) * 255.0).round() as u8)
+    } else {
+        color
+    }
+}
+
 /// Resolve the custom title-bar surface from the selected color source.
 /// `system` follows the active UI profile's neutral surface, `main_view` uses
 /// the exact canvas background, and `main_color` uses the selected accent.

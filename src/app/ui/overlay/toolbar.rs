@@ -87,7 +87,13 @@ fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> e
         .anchor(anchor, offset)
 }
 
-pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f32, offset_y: f32, max_width: f32) {
+pub fn render_top_toolbar(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    offset_x: f32,
+    offset_y: f32,
+    max_width: f32,
+) {
     let no_image = !app.image_entries.is_empty();
     let compact = app.compactui;
     // === Position of the top bar
@@ -111,32 +117,38 @@ pub fn render_top_toolbar(app: &mut ViewerApp, ctx: &egui::Context, offset_x: f3
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(offset_x, offset_y))
         .show(ctx, |ui| {
-        // Override the Area's previous-frame content width. The external viewport
-        // budget is authoritative when compact mode is toggled back to full size.
-        ui.set_max_width(max_width.max(0.0));
-        let content_width = toolbar_content_width_budget(ctx, compact, max_width);
-        render_toolbar_ui(app, ctx, ui, content_width, |this, ui, budget, row_start| {
-            if !crate::app::ui::uses_desktop_menu_bar(ctx) {
-                this.render_hamburger_ui(ui);
-            }
-            let space = if compact { 8.0 } else { 1.0 };
-            if no_image {
-                separator(ui, space);
-                this.zoom_out_ui(ctx, ui);
-                this.zoom_text(ctx, ui);
-                this.zoom_in_ui(ctx, ui);
-            }
-            if this.is_gif {
-                separator(ui, space);
-                this.gif_controls_ui(ui);
-            }
-            if no_image {
-                separator(ui, space);
-                let consumed = (ui.next_widget_position().x - row_start).max(0.0);
-                this.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
-            }
+            // Override the Area's previous-frame content width. The external viewport
+            // budget is authoritative when compact mode is toggled back to full size.
+            ui.set_max_width(max_width.max(0.0));
+            let content_width = toolbar_content_width_budget(ctx, compact, max_width);
+            render_toolbar_ui(
+                app,
+                ctx,
+                ui,
+                content_width,
+                |this, ui, budget, row_start| {
+                    if !crate::app::ui::uses_desktop_menu_bar(ctx) {
+                        this.render_hamburger_ui(ui);
+                    }
+                    let space = if compact { 8.0 } else { 1.0 };
+                    if no_image {
+                        separator(ui, space);
+                        this.zoom_out_ui(ctx, ui);
+                        this.zoom_text(ctx, ui);
+                        this.zoom_in_ui(ctx, ui);
+                    }
+                    if this.is_gif {
+                        separator(ui, space);
+                        this.gif_controls_ui(ui);
+                    }
+                    if no_image {
+                        separator(ui, space);
+                        let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+                        this.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
+                    }
+                },
+            );
         });
-    });
 }
 
 pub fn render_bottom_toolbar(app: &mut ViewerApp, ctx: &egui::Context, left_offset: f32) {
@@ -339,7 +351,13 @@ pub fn render_platform_toolbar(
                                 row.set_max_height(PRIMARY_ROW_HEIGHT);
                                 row.set_min_width(primary_width);
                                 row.set_max_width(primary_width);
-                                render_win98_primary_row(app, ctx, row, ultra_compact, primary_width);
+                                render_win98_primary_row(
+                                    app,
+                                    ctx,
+                                    row,
+                                    ultra_compact,
+                                    primary_width,
+                                );
                             },
                         );
                         if app.slideshow_enabled && !app.image_entries.is_empty() {
@@ -556,9 +574,8 @@ fn toolbar_area_sizing_changed(
         has_desktop_menu_bar,
         slideshow_enabled,
     );
-    let previous = ctx.data(|data| {
-        data.get_temp::<(String, bool, bool, i32, bool, bool, bool, bool)>(state_id)
-    });
+    let previous = ctx
+        .data(|data| data.get_temp::<(String, bool, bool, i32, bool, bool, bool, bool)>(state_id));
     ctx.data_mut(|data| data.insert_temp(state_id, current.clone()));
     previous.is_some_and(|previous| previous != current)
 }
@@ -566,9 +583,21 @@ fn toolbar_area_sizing_changed(
 fn toolbar_content_width_budget(ctx: &egui::Context, compact: bool, outer_width: f32) -> f32 {
     let profile = crate::ui_theme::current_look_profile(ctx);
     let margin_x = match profile {
-        "cosmic" | "gnome" => if compact { 8.0 } else { 10.0 },
+        "cosmic" | "gnome" => {
+            if compact {
+                8.0
+            } else {
+                10.0
+            }
+        }
         "win98" => 5.0,
-        _ => if compact { 4.0 } else { 6.0 },
+        _ => {
+            if compact {
+                4.0
+            } else {
+                6.0
+            }
+        }
     };
     let has_stroke = matches!(profile, "cosmic" | "gnome" | "win98");
     (outer_width - margin_x * 2.0 - if has_stroke { 2.0 } else { 0.0 }).max(0.0)

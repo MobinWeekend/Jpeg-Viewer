@@ -68,7 +68,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
         } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
             crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
         } else if !app.settings_manager.settings.show_titlebar {
-            38.0 + 2.0
+            crate::app::ui::custom_titlebar_height(ctx) + 2.0
         } else {
             2.0
         }
@@ -321,18 +321,17 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
 
 fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
     const MENU_OFFSET: f32 = 8.0;
-    const TITLE_BAR_HEIGHT: f32 = 38.0;
 
     if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
         MENU_OFFSET
     } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
-        // This height includes the custom title-bar spacer when native decorations
-        // are disabled, so the toolbar always starts below both top rows.
+        // Use the sum of the actually rendered top rows; inline menu/titlebar
+        // mode is counted only once by desktop_menu_bar_height().
         crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
     } else if app.settings_manager.settings.show_titlebar {
         MENU_OFFSET
     } else {
-        (MENU_OFFSET / 2.0) + TITLE_BAR_HEIGHT
+        crate::app::ui::custom_titlebar_height(ctx) + (MENU_OFFSET / 2.0)
     }
 }
 
@@ -346,4 +345,8 @@ pub fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) 
 /// Reserve the top layout strip for a custom title bar before docked panels are drawn.
 pub fn reserve_custom_titlebar_space(app: &mut ViewerApp, ctx: &egui::Context) {
     title_bar::reserve_layout_space(app, ctx);
+}
+
+pub fn custom_titlebar_height(ctx: &egui::Context) -> f32 {
+    title_bar::custom_titlebar_height(ctx)
 }

@@ -372,16 +372,34 @@ impl ViewerApp {
             let mut crop_height = self.crop_height;
             let mut crop_selection = self.crop_selection;
 
-            let default_width = self
-                .settings_manager
-                .get()
-                .settings_sidebar_width
-                .clamp(280.0, 560.0);
+            let sidebar_settings = self.settings_manager.get().clone();
+            let default_width = sidebar_settings.settings_sidebar_width.clamp(280.0, 560.0);
+            let sidebar_background = crate::ui_theme::main_view_surface_color(
+                ctx,
+                &sidebar_settings.main_view_background,
+                sidebar_settings.main_view_background_opacity,
+            );
+            let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+                .fill(sidebar_background)
+                .stroke(egui::Stroke::NONE);
             let panel_response = egui::SidePanel::right("edit_tools_sidebar")
                 .resizable(true)
                 .default_width(default_width)
                 .width_range(280.0..=560.0)
+                .frame(sidebar_frame)
                 .show(ctx, |ui| {
+                    if sidebar_settings.tricks_backdrop_enabled {
+                        let sidebar_clip = ui.painter().clip_rect();
+                        let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
+                        self.paint_tricks_backdrop(
+                            &ui.painter(),
+                            sidebar_clip,
+                            backdrop_rect,
+                            crate::ui_theme::main_accent_color(ctx),
+                            sidebar_settings.tricks_backdrop_tint,
+                            sidebar_settings.tricks_backdrop_opacity,
+                        );
+                    }
                     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.heading("Image editor");

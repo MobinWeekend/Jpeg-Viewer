@@ -34,7 +34,7 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=4"));
+    assert!(saved.contains("schema_version=5"));
     let _ = fs::remove_file(path);
 }
 
@@ -60,7 +60,7 @@ fn legacy_window_geometry_is_normalized_once_for_saved_ui_scale() {
     assert_eq!(loaded.window_pos, Some([300.0, 150.0]));
     assert_eq!(loaded.window_size, Some([900.0, 600.0]));
 
-    // Once written as schema 4, the normalized geometry must not be scaled again.
+    // Once written as schema 5, the normalized geometry must not be scaled again.
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let loaded_again = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
@@ -88,6 +88,7 @@ fn main_ui_placement_preference_round_trips() {
     settings.center_custom_window_title = true;
     settings.rename_file_from_titlebar = true;
     settings.native_window_rounding = false;
+    settings.window_maximized = true;
 
     SettingsManager::save_to_file(&path, &settings).unwrap();
     let mut error: Option<String> = None;
@@ -103,6 +104,7 @@ fn main_ui_placement_preference_round_trips() {
     assert!(loaded.center_custom_window_title);
     assert!(loaded.rename_file_from_titlebar);
     assert!(!loaded.native_window_rounding);
+    assert!(loaded.window_maximized);
     settings.navigation_ui_auto_hide_preference = "off".to_string();
     settings.navigation_ui_auto_hide_ms = 2300;
     settings.os_background_blur = false;
@@ -222,6 +224,7 @@ fn test_default_settings() {
     assert!(!settings.b_ctrl_invert);
     assert!(settings.window_pos.is_none());
     assert!(settings.window_size.is_none());
+    assert!(!settings.window_maximized);
     assert_eq!(settings.cache_radius, 5);
     assert_eq!(settings.cache_delta_factor, 0.6);
     assert_eq!(settings.navigation_pause_ms, 1200);

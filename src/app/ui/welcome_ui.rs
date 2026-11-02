@@ -117,13 +117,8 @@ impl ViewerApp {
 
         let max_width = (central_width - 16.0).max(180.0);
         let center_offset_x = (left_width - right_width) / 2.0;
-        let placement = crate::ui_theme::resolve_main_ui_placement(
-            &settings.main_ui_placement_preference,
-            ctx,
-        );
-        // COSMIC's main toolbar sits at bottom center; lift the hints above it on the
         // welcome screen so the two overlays do not collide.
-        let bottom_offset_y = if placement == "cosmic" { -84.0 } else { -20.0 };
+        let bottom_offset_y = -20.0;
 
         egui::Window::new("Keyboard Shortcuts")
             .title_bar(false)
@@ -143,7 +138,11 @@ impl ViewerApp {
                 } else {
                     ctx.style().visuals.window_fill()
                 },
-                corner_radius: if crate::ui_theme::current_look_profile(ctx) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(8) },
+                corner_radius: if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                    egui::CornerRadius::ZERO
+                } else {
+                    egui::CornerRadius::same(8)
+                },
                 outer_margin: egui::Margin::ZERO,
                 inner_margin: egui::Margin::symmetric(16, 12),
                 ..Default::default()
@@ -168,10 +167,16 @@ impl ViewerApp {
                     for (i, (key, action)) in shortcuts.iter().enumerate() {
                         if i > 0 {
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new("·").color(ui.visuals().weak_text_color()));
+                            ui.label(
+                                egui::RichText::new("·").color(ui.visuals().weak_text_color()),
+                            );
                             ui.add_space(4.0);
                         }
-                        ui.label(egui::RichText::new(*key).strong().color(ui.visuals().hyperlink_color));
+                        ui.label(
+                            egui::RichText::new(*key)
+                                .strong()
+                                .color(ui.visuals().hyperlink_color),
+                        );
                         ui.label(egui::RichText::new(*action).color(ui.visuals().text_color()));
                     }
                 });

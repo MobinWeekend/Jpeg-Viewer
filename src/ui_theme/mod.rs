@@ -11,8 +11,8 @@ mod profiles;
 mod style;
 
 pub use backdrop::{
-    disable_os_background_blur_in_fullscreen_preference, native_title_bar_color,
-    os_background_blur_enabled, os_background_blur_preference,
+    disable_os_background_blur_in_fullscreen_preference, main_view_surface_color,
+    native_title_bar_color, os_background_blur_enabled, os_background_blur_preference,
     set_disable_os_background_blur_in_fullscreen, set_os_background_blur_preference,
     sync_os_background_blur, title_bar_surface_color,
 };

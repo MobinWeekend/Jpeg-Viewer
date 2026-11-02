@@ -63,6 +63,10 @@ impl SettingsManager {
                             }
                         }
                     }
+                    // Read whether the previous normal window session ended maximized.
+                    if let Some(value) = section.get("window_maximized") {
+                        settings.window_maximized = Self::parse_bool(value);
+                    }
                     // Read cache radius
                     if let Some(value) = section.get("cache_radius") {
                         if let Ok(radius) = value.parse::<usize>() {

@@ -140,15 +140,28 @@ impl ViewerApp {
         let (is_fullscreen, is_maximized) = ctx.input(|i| {
             (i.viewport().fullscreen.unwrap_or(false), i.viewport().maximized.unwrap_or(false))
         });
-        if !is_fullscreen && !is_maximized {
-            if let (Some(pos), Some(size)) = (pos, size) {
-                if size.x > 100.0 && size.y > 100.0 {
-                    let pos_arr = [pos.x, pos.y];
-                    let size_arr = [size.x, size.y];
-                    if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr) {
-                        eprintln!("Failed to save window state: {}", e);
+        let mut geometry_was_saved = false;
+        if !is_fullscreen {
+            self.settings_manager.settings.window_maximized = is_maximized;
+            if !is_maximized {
+                if let (Some(pos), Some(size)) = (pos, size) {
+                    if size.x > 100.0 && size.y > 100.0 {
+                        let pos_arr = [pos.x, pos.y];
+                        let size_arr = [size.x, size.y];
+                        if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr) {
+                            eprintln!("Failed to save window state: {}", e);
+                        } else {
+                            geometry_was_saved = true;
+                        }
                     }
                 }
+            }
+        }
+        // If maximized (or closing from fullscreen), preserve the last normal
+        // geometry and persist the maximize flag independently.
+        if !geometry_was_saved {
+            if let Err(error) = self.settings_manager.save() {
+                eprintln!("Failed to save window maximize state: {}", error);
             }
         }
     }

@@ -8,9 +8,8 @@ use crate::app::types::{LoadingState, ViewerApp};
 use crate::shortcuts::ViewerCommand;
 use eframe::egui;
 
-const MENU_BAR_HEIGHT: f32 = 30.0;
-const CUSTOM_TITLE_BAR_HEIGHT: f32 = 38.0;
 const MENU_BAR_LAYOUT_HEIGHT_ID: &str = "jpeg_viewer_desktop_menu_bar_layout_height";
+const MENU_BAR_INLINE_ID: &str = "jpeg_viewer_desktop_menu_bar_inline_in_titlebar";
 const MENU_BAR_PREF_ID: &str = "jpeg_viewer_desktop_menu_bar_preference";
 const HELP_WINDOW_GENERATION_ID: &str = "jpeg_viewer_help_window_generation";
 
@@ -32,54 +31,81 @@ pub fn uses_desktop_menu_bar(ctx: &egui::Context) -> bool {
         return false;
     }
     let profile = crate::ui_theme::current_look_profile(ctx);
-    // Windows 98's look is defined around the classic application menu bar. Keep it
-    // enabled for that profile; the Look selector explains and locks this choice.
-    if profile == "win98" {
-        return true;
-    }
     let preference = ctx.data(|data| {
         data.get_temp::<String>(egui::Id::new(MENU_BAR_PREF_ID))
             .unwrap_or_else(|| "auto".to_owned())
     });
+    // An explicit Off setting always wins. Otherwise the Windows 98 profile
+    // keeps its classic menu bar, while Automatic follows supported desktop looks.
     match preference.as_str() {
-        "on" => true,
         "off" => false,
-        _ => matches!(profile, "cosmic" | "gnome"),
+        "on" => true,
+        _ => profile == "win98" || matches!(profile, "cosmic" | "gnome"),
     }
 }
 
-/// Height reserved at the top of the application content when the menu bar is active.
+/// Whether the desktop menu belongs to the custom title-bar row instead of a
+/// separate top panel. This is the layout used when custom-title-bar navigation
+/// is disabled: the menu occupies the left side of the title bar.
+pub fn desktop_menu_bar_in_custom_titlebar(app: &ViewerApp, ctx: &egui::Context) -> bool {
+    !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
+        && !app.settings_manager.get().show_titlebar
+        && !app.settings_manager.get().custom_titlebar_navigation
+        && uses_desktop_menu_bar(ctx)
+}
+
+/// Total vertical space occupied by top chrome. When both panels exist, egui's
+/// panel response reports only the menu panel's own height, so add the measured
+/// custom title-bar height as well. In inline mode the title bar already includes
+/// the menu and must only be counted once.
 pub fn desktop_menu_bar_height(ctx: &egui::Context) -> f32 {
     if !uses_desktop_menu_bar(ctx) {
         return 0.0;
     }
-    ctx.data(|data| {
-        data.get_temp::<f32>(egui::Id::new(MENU_BAR_LAYOUT_HEIGHT_ID))
-            .unwrap_or(MENU_BAR_HEIGHT)
-    })
+    let (menu_height, inline) = ctx.data(|data| {
+        (
+            data.get_temp::<f32>(egui::Id::new(MENU_BAR_LAYOUT_HEIGHT_ID))
+                .unwrap_or(0.0),
+            data.get_temp::<bool>(egui::Id::new(MENU_BAR_INLINE_ID))
+                .unwrap_or(false),
+        )
+    });
+    let titlebar_height = crate::app::ui::custom_titlebar_height(ctx);
+    if inline {
+        titlebar_height
+    } else {
+        titlebar_height + menu_height
+    }
 }
 
+/// Render the desktop menu in its own row only when it is not embedded in the
+/// custom title bar. The inline flag is refreshed every frame to prevent stale
+/// geometry after settings or fullscreen changes.
 pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
-    if !uses_desktop_menu_bar(ctx) {
+    let inline = desktop_menu_bar_in_custom_titlebar(app, ctx);
+    ctx.data_mut(|data| {
+        data.insert_temp(egui::Id::new(MENU_BAR_INLINE_ID), inline);
+    });
+    if !uses_desktop_menu_bar(ctx) || inline {
         return;
     }
 
-    // A hidden native title bar is replaced by our draggable custom title bar.
-    // Reserve space before the menu strip so the two never occupy the same pixels.
+    // The custom title bar is registered as its own top panel before this one,
+    // so egui naturally places the menu bar immediately beneath it. No guessed
+    // title-bar or menu-bar heights are needed.
     let profile = crate::ui_theme::current_look_profile(ctx);
-    let custom_titlebar = !app.settings_manager.get().show_titlebar;
-    let spacer_height = if custom_titlebar { CUSTOM_TITLE_BAR_HEIGHT } else { 0.0 };
-    ctx.data_mut(|data| {
-        data.insert_temp(
-            egui::Id::new(MENU_BAR_LAYOUT_HEIGHT_ID),
-            MENU_BAR_HEIGHT + spacer_height,
-        );
-    });
-    // Use egui's system-matched dark/light palette for the menu strip instead of
-    // inheriting the selected app profile's accent-heavy surface colors. This keeps
-    // the menu bar close to the host OS theme while the rest of the app can be styled.
+    // The menu strip shares the main-view background, including its configured
+    // opacity when OS/DE backdrop blur is enabled.
     let dark_mode = ctx.style().visuals.dark_mode;
-    let mut visuals = if dark_mode { egui::Visuals::dark() } else { egui::Visuals::light() };
+    let settings = app.settings_manager.get();
+    let background = crate::ui_theme::main_view_surface_color(
+        ctx,
+        &settings.main_view_background,
+        settings.main_view_background_opacity,
+    );
+    let mut visuals = ctx.style().visuals.clone();
+    visuals.panel_fill = background;
+    visuals.window_fill = background;
     if crate::ui_theme::os_background_blur_enabled(ctx) && profile != "win98" {
         let alpha = |color: egui::Color32, opacity: u8| {
             let [r, g, b, _] = color.to_srgba_unmultiplied();
@@ -102,13 +128,37 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
         visuals.widgets.open.weak_bg_fill = alpha(visuals.widgets.open.weak_bg_fill, 248);
     }
     if profile == "win98" {
-        let face = if dark_mode { egui::Color32::from_rgb(38, 40, 43) } else { egui::Color32::from_rgb(192, 192, 192) };
-        let sunken = if dark_mode { egui::Color32::from_rgb(48, 50, 54) } else { egui::Color32::from_rgb(212, 208, 200) };
-        let inner = if dark_mode { egui::Color32::from_rgb(25, 27, 30) } else { egui::Color32::WHITE };
-        let border = if dark_mode { egui::Color32::from_rgb(82, 85, 90) } else { egui::Color32::from_rgb(128, 128, 128) };
+        let face = if dark_mode {
+            egui::Color32::from_rgb(38, 40, 43)
+        } else {
+            egui::Color32::from_rgb(192, 192, 192)
+        };
+        let sunken = if dark_mode {
+            egui::Color32::from_rgb(48, 50, 54)
+        } else {
+            egui::Color32::from_rgb(212, 208, 200)
+        };
+        let inner = if dark_mode {
+            egui::Color32::from_rgb(25, 27, 30)
+        } else {
+            egui::Color32::WHITE
+        };
+        let border = if dark_mode {
+            egui::Color32::from_rgb(82, 85, 90)
+        } else {
+            egui::Color32::from_rgb(128, 128, 128)
+        };
         let accent = crate::ui_theme::main_accent_color(ctx);
-        let hover = if dark_mode { accent.linear_multiply(0.48) } else { accent };
-        let text = if dark_mode { egui::Color32::from_rgb(238, 240, 243) } else { egui::Color32::BLACK };
+        let hover = if dark_mode {
+            accent.linear_multiply(0.48)
+        } else {
+            accent
+        };
+        let text = if dark_mode {
+            egui::Color32::from_rgb(238, 240, 243)
+        } else {
+            egui::Color32::BLACK
+        };
         visuals.dark_mode = dark_mode;
         visuals.panel_fill = face;
         visuals.window_fill = face;
@@ -124,13 +174,31 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
         visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, text);
         visuals.widgets.hovered.bg_fill = hover;
         visuals.widgets.hovered.weak_bg_fill = hover;
-        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0_f32, if dark_mode || crate::ui_theme::contrast_prefers_light_text(hover) { egui::Color32::WHITE } else { egui::Color32::BLACK });
-        visuals.widgets.active.bg_fill = if dark_mode { accent.linear_multiply(0.34) } else { sunken };
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(
+            1.0_f32,
+            if dark_mode || crate::ui_theme::contrast_prefers_light_text(hover) {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::BLACK
+            },
+        );
+        visuals.widgets.active.bg_fill = if dark_mode {
+            accent.linear_multiply(0.34)
+        } else {
+            sunken
+        };
         visuals.widgets.active.weak_bg_fill = visuals.widgets.active.bg_fill;
         visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, text);
         visuals.widgets.open.bg_fill = if dark_mode { hover } else { sunken };
         visuals.widgets.open.weak_bg_fill = visuals.widgets.open.bg_fill;
-        visuals.widgets.open.fg_stroke = egui::Stroke::new(1.0_f32, if dark_mode { egui::Color32::WHITE } else { text });
+        visuals.widgets.open.fg_stroke = egui::Stroke::new(
+            1.0_f32,
+            if dark_mode {
+                egui::Color32::WHITE
+            } else {
+                text
+            },
+        );
         visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::ZERO;
         visuals.widgets.inactive.corner_radius = egui::CornerRadius::ZERO;
         visuals.widgets.hovered.corner_radius = egui::CornerRadius::ZERO;
@@ -141,11 +209,20 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
         // menu popups can retain egui's rounded defaults in the Win98 profile.
         visuals.window_corner_radius = egui::CornerRadius::ZERO;
         visuals.menu_corner_radius = egui::CornerRadius::ZERO;
-        visuals.window_shadow = egui::epaint::Shadow { offset: [0, 0], blur: 0, spread: 0, color: egui::Color32::TRANSPARENT };
+        visuals.window_shadow = egui::epaint::Shadow {
+            offset: [0, 0],
+            blur: 0,
+            spread: 0,
+            color: egui::Color32::TRANSPARENT,
+        };
         visuals.popup_shadow = visuals.window_shadow;
         visuals.window_stroke = egui::Stroke::new(
             1.0_f32,
-            if dark_mode { egui::Color32::from_rgb(13, 14, 16) } else { egui::Color32::BLACK },
+            if dark_mode {
+                egui::Color32::from_rgb(13, 14, 16)
+            } else {
+                egui::Color32::BLACK
+            },
         );
         visuals.hyperlink_color = if dark_mode {
             egui::Color32::from_rgb(151, 190, 255)
@@ -153,121 +230,106 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
             egui::Color32::from_rgb(0, 0, 238)
         };
     }
-    // Status and secondary labels stay fully legible on the translucent menu.
+    // Keep the panel surface aligned with the main view even when the Win98
+    // profile customizes individual menu-item widget fills.
+    visuals.panel_fill = background;
+    // Status and secondary labels stay fully legible on the menu.
     visuals.weak_text_alpha = 1.0;
-    let fill = visuals.panel_fill;
-    let stroke_color = visuals.widgets.noninteractive.bg_stroke.color;
+    let fill = background;
     let bar_visuals = visuals.clone();
-    let frame = egui::Frame::new()
-        .fill(fill)
-        .inner_margin(if profile == "win98" {
-            egui::Margin::symmetric(0, 0)
-        } else {
-            egui::Margin::symmetric(8, 0)
-        })
-        .stroke(egui::Stroke::new(1.0_f32, stroke_color));
 
-    egui::TopBottomPanel::top("jpeg_viewer_desktop_menu_bar")
-        .exact_height(MENU_BAR_HEIGHT)
-        .frame(frame)
-        .show(ctx, |ui| {
-            ui.style_mut().visuals = bar_visuals.clone();
-            let row_height = MENU_BAR_HEIGHT;
-            ui.set_min_height(row_height);
+    // Keep the top panel only as a dynamic-height layout reservation. The
+    // visible menu frame is a content-wrapping frame, not a full-window strip.
+    let panel_response = egui::TopBottomPanel::top("jpeg_viewer_desktop_menu_bar")
+        .show_separator_line(false)
+        .frame(
+            egui::Frame::new()
+                .fill(egui::Color32::TRANSPARENT)
+                .inner_margin(egui::Margin::ZERO)
+                .stroke(egui::Stroke::NONE),
+        )
+        .show(ctx, |panel_ui| {
+            panel_ui.style_mut().visuals = bar_visuals.clone();
+            let total_width = panel_ui.available_width().max(0.0);
+            let compact_labels = total_width < 520.0;
             let is_loading = app.is_loading();
-            let total_width = ui.available_width();
-            // Preserve a readable status label on ordinary windows. On very
-            // narrow windows keep only the spinner so the menu remains usable.
-            let status_width = if !is_loading {
-                0.0
-            } else if total_width >= 480.0 {
-                128.0
-            } else {
-                24.0
-            };
-            let item_gap = if is_loading { ui.spacing().item_spacing.x } else { 0.0 };
-            let menu_width = (total_width - status_width - item_gap).max(0.0);
-            let compact_labels = menu_width < 440.0;
+            let row_height = panel_ui.spacing().interact_size.y;
+            let bar_frame = egui::Frame::new()
+                .fill(fill)
+                .inner_margin(if profile == "win98" {
+                    egui::Margin::ZERO
+                } else {
+                    egui::Margin::symmetric(8, 0)
+                })
+                .stroke(egui::Stroke::NONE);
 
-            // Allocate a fixed, one-row menu region. The horizontal scroll area
-            // prevents the menu from wrapping to a second row on narrow COSMIC
-            // windows; the loading status remains pinned at the far right.
-            ui.allocate_ui_with_layout(
-                egui::vec2(total_width, row_height),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |row| {
-                    row.set_min_width(0.0);
-                    let max_row_width = row.available_width();
-                    row.set_max_width(max_row_width);
-                    row.horizontal(|row| {
-                        let menu_region_height = row_height;
-                        row.allocate_ui_with_layout(
-                            egui::vec2(menu_width, menu_region_height),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |menu_region| {
-                                menu_region.set_min_width(0.0);
-                                menu_region.set_max_width(menu_width);
-                                egui::ScrollArea::horizontal()
-                                    .id_salt("jpeg_viewer_menu_bar_scroll")
-                                    .auto_shrink([false, false])
-                                    .scroll_bar_visibility(
-                                        egui::containers::scroll_area::ScrollBarVisibility::AlwaysHidden,
-                                    )
-                                    .max_height(row_height)
-                                    .show(menu_region, |menu_ui| {
-                                        // Force the menu bar's content layout wider than its
-                                        // viewport so narrow COSMIC windows scroll horizontally
-                                        // instead of wrapping the menu row into two lines.
-                                        menu_ui.set_min_width(820.0);
-                                        menu_ui.set_max_width(820.0);
-                                        menu_ui.set_min_height(row_height);
-                                        menu_ui.set_max_height(row_height);
-                                        menu_ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                                        menu_ui.spacing_mut().item_spacing.x =
-                                            if compact_labels { 2.0 } else { 6.0 };
-                                        menu_ui.spacing_mut().item_spacing.y = 0.0;
-                                        menu_ui.spacing_mut().button_padding.x =
-                                            if compact_labels { 3.0 } else { 6.0 };
-                                        menu_ui.spacing_mut().button_padding.y = 0.0;
-                                        menu_ui.spacing_mut().interact_size.y = row_height;
-                                        // Use egui's intended MenuBar primitive for standard
-                                        // one-row menu interaction and keyboard behavior. Keep
-                                        // it inside the horizontal scroller so narrow windows
-                                        // never force a second line of menu titles.
-                                        egui::MenuBar::new().ui(menu_ui, |menu_ui| {
-                                            render_menus(app, ctx, menu_ui, compact_labels);
-                                        });
-                                    });
-                            },
-                        );
+            let bar_response = bar_frame.show(panel_ui, |bar_ui| {
+                // The panel and frame reserve only their measured content size.
+                // No width constraint, clipping viewport, or nested MenuBar is
+                // needed: the top panel already supplies the available window area.
+                bar_ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                bar_ui.horizontal(|row| {
+                    row.spacing_mut().item_spacing.x = if compact_labels { 6.0 } else { 18.0 };
+                    row.spacing_mut().item_spacing.y = 0.0;
+                    row.spacing_mut().button_padding.x = if compact_labels { 8.0 } else { 12.0 };
+                    row.spacing_mut().button_padding.y = 0.0;
+                    row.spacing_mut().interact_size.y = row_height;
+                    render_menus(app, ctx, row, compact_labels);
 
-                        if is_loading {
-                            row.allocate_ui_with_layout(
-                                egui::vec2(status_width, row_height),
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |status_ui| {
-                                    status_ui.set_min_width(status_width);
-                                    status_ui.set_max_width(status_width);
-                                    let spinner = status_ui.add(egui::Spinner::new().size(14.0));
-                                    spinner.on_hover_text(loading_status_text(app));
-                                    if status_width > 24.0 {
-                                        status_ui.add_space(5.0);
-                                        status_ui.label(
-                                            egui::RichText::new(loading_status_text(app))
-                                                .small()
-                                                .weak(),
-                                        );
-                                    }
-                                },
-                            );
+                    // In standalone mode the indicator is part of the menu row;
+                    // inline-titlebar mode skips this panel and places it in the view.
+                    if is_loading {
+                        row.add_space(4.0);
+                        let spinner = row.add(egui::Spinner::new().size(14.0));
+                        spinner.on_hover_text(loading_status_text(app));
+                        if total_width >= 700.0 {
+                            row.add_space(4.0);
+                            row.label(egui::RichText::new(loading_status_text(app)).small().weak());
                         }
-                    });
-                },
-            );
-            if profile == "win98" {
-                crate::ui_theme::paint_win98_bevel(ui, ui.max_rect(), false);
-            }
+                    }
+                });
+            });
+            bar_response.response.rect.height()
         });
+    ctx.data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new(MENU_BAR_LAYOUT_HEIGHT_ID),
+            panel_response.response.rect.height(),
+        );
+    });
+}
+
+/// Draw the desktop menu widgets inside a caller-owned title-bar row. The menu
+/// takes only the width its items use; excess width remains available for the
+/// title. There is intentionally no horizontal scroll area.
+pub fn render_desktop_menu_bar_in_titlebar(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    ui: &mut egui::Ui,
+    row_height: f32,
+    available_width: f32,
+) {
+    if !uses_desktop_menu_bar(ctx) || available_width <= 0.0 {
+        return;
+    }
+
+    // This helper is deliberately content-sized. Do not give it the title bar's
+    // remaining width or put it in a width-constrained child UI: either can make
+    // the menu consume the title's drag region. Loading feedback belongs in the
+    // main view while the menu is inline, not beside these menu items.
+    let compact_labels = available_width < 540.0;
+    let previous_style = ui.style().as_ref().clone();
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    ui.spacing_mut().item_spacing.x = if compact_labels { 6.0 } else { 12.0 };
+    ui.spacing_mut().item_spacing.y = 0.0;
+    ui.spacing_mut().button_padding.x = if compact_labels { 8.0 } else { 12.0 };
+    ui.spacing_mut().button_padding.y = 0.0;
+    ui.spacing_mut().interact_size.y = row_height;
+    // The caller already owns a horizontal title-bar row. Render menu buttons
+    // directly into it instead of nesting another MenuBar container, whose
+    // allocation can expand to the full available width and erase the title area.
+    render_menus(app, ctx, ui, compact_labels);
+    *ui.style_mut() = previous_style;
 }
 
 fn loading_status_text(app: &ViewerApp) -> String {
@@ -290,14 +352,46 @@ fn loading_status_text(app: &ViewerApp) -> String {
     }
 }
 
-fn render_menus(
-    app: &mut ViewerApp,
-    ctx: &egui::Context,
-    ui: &mut egui::Ui,
-    compact_labels: bool,
-) {
+fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, compact_labels: bool) {
+    // Keep the popup's normal fills and hover feedback, but remove widget
+    // outlines from every command inside the dropdowns. The top-level triggers
+    // use a separate fully-transparent style below.
+    let mut popup_style = ui.style().as_ref().clone();
+    popup_style.visuals.widgets.noninteractive.bg_stroke = egui::Stroke::NONE;
+    popup_style.visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+    popup_style.visuals.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+    popup_style.visuals.widgets.active.bg_stroke = egui::Stroke::NONE;
+    popup_style.visuals.widgets.open.bg_stroke = egui::Stroke::NONE;
+
+    // The top-level menu triggers are transparent in every state. Their
+    // horizontal button padding is intentionally kept slightly wider to make
+    // File/Edit/View/etc. easier to target without making the bar bulky.
+    let mut trigger_style = popup_style.clone();
+    // MenuButton builds its trigger from Button::new, which otherwise inherits
+    // `visuals.button_frame` even when the individual widget fills/strokes are
+    // transparent. Disable the frame at the style level as well so no theme can
+    // reintroduce a solid button surface or outline.
+    trigger_style.visuals.button_frame = false;
+    trigger_style.visuals.widgets.inactive.bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+    trigger_style.visuals.widgets.noninteractive.bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.noninteractive.weak_bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.noninteractive.bg_stroke = egui::Stroke::NONE;
+    trigger_style.visuals.widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+    trigger_style.visuals.widgets.active.bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.active.weak_bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.active.bg_stroke = egui::Stroke::NONE;
+    trigger_style.visuals.widgets.open.bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.open.weak_bg_fill = egui::Color32::TRANSPARENT;
+    trigger_style.visuals.widgets.open.bg_stroke = egui::Stroke::NONE;
+    *ui.style_mut() = trigger_style;
+
     // Keep conventional menu order: File, Edit, View, workflow tools, Help.
     ui.menu_button("File", |ui| {
+        *ui.style_mut() = popup_style.clone();
         if ui.button("Open File…").clicked() {
             app.handle_command(ctx, ViewerCommand::OpenFile);
             ui.close();
@@ -306,11 +400,18 @@ fn render_menus(
             app.handle_command(ctx, ViewerCommand::OpenFolder);
             ui.close();
         }
-        let has_path = app.current_image_path.as_ref().is_some_and(|path| path.is_file());
-        if ui.add_enabled(has_path, egui::Button::new("Open With…")).clicked() {
+        let has_path = app
+            .current_image_path
+            .as_ref()
+            .is_some_and(|path| path.is_file());
+        if ui
+            .add_enabled(has_path, egui::Button::new("Open With…"))
+            .clicked()
+        {
             if let Some(path) = app.current_image_path.as_deref() {
                 if let Err(error) = crate::app::external_open::open_with(path) {
-                    app.queue_status = Some(format!("Could not open the Open With dialog: {error}"));
+                    app.queue_status =
+                        Some(format!("Could not open the Open With dialog: {error}"));
                 }
             }
             ui.close();
@@ -319,7 +420,10 @@ fn render_menus(
             app.image_entries.get(app.current_index),
             Some(crate::image_entry::ImageEntry::File(_))
         );
-        if ui.add_enabled(can_delete_current, egui::Button::new("Delete Image…")).clicked() {
+        if ui
+            .add_enabled(can_delete_current, egui::Button::new("Delete Image…"))
+            .clicked()
+        {
             app.show_delete_confirmation = true;
             ui.close();
         }
@@ -336,27 +440,41 @@ fn render_menus(
     });
 
     ui.menu_button("Edit", |ui| {
+        *ui.style_mut() = popup_style.clone();
         let can_edit = !app.image_entries.is_empty() && !app.is_loading();
-        if ui.add_enabled(can_edit, egui::Button::new("Edit Image…")).clicked() {
+        if ui
+            .add_enabled(can_edit, egui::Button::new("Edit Image…"))
+            .clicked()
+        {
             app.start_editing(ctx);
             ui.close();
         }
-        if ui.add_enabled(can_edit, egui::Button::new("Crop Image…")).clicked() {
+        if ui
+            .add_enabled(can_edit, egui::Button::new("Crop Image…"))
+            .clicked()
+        {
             app.start_crop_tool(ctx);
             ui.close();
         }
         ui.separator();
-        if ui.add_enabled(can_edit, egui::Button::new("Rotate Clockwise")).clicked() {
+        if ui
+            .add_enabled(can_edit, egui::Button::new("Rotate Clockwise"))
+            .clicked()
+        {
             app.rotate_current_clockwise(ctx);
             ui.close();
         }
-        if ui.add_enabled(can_edit, egui::Button::new("Rotate Counterclockwise")).clicked() {
+        if ui
+            .add_enabled(can_edit, egui::Button::new("Rotate Counterclockwise"))
+            .clicked()
+        {
             app.rotate_current_counterclockwise(ctx);
             ui.close();
         }
     });
 
     ui.menu_button("View", |ui| {
+        *ui.style_mut() = popup_style.clone();
         if ui.button("Browse Sidebar").clicked() {
             select_sidebar_tab(app, "browse");
             ui.close();
@@ -373,32 +491,64 @@ fn render_menus(
             select_sidebar_tab(app, "info");
             ui.close();
         }
-        if ui.add_enabled(
-            !app.image_entries.is_empty(),
-            egui::Button::new(if app.inspect_mode { "Inspect ✓" } else { "Inspect" }),
-        ).clicked() {
+        if ui
+            .add_enabled(
+                !app.image_entries.is_empty(),
+                egui::Button::new(if app.inspect_mode {
+                    "Inspect ✓"
+                } else {
+                    "Inspect"
+                }),
+            )
+            .clicked()
+        {
             app.toggle_inspect_mode(ctx);
             ui.close();
         }
         ui.separator();
-        if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Zoom In")).clicked() {
+        if ui
+            .add_enabled(!app.image_entries.is_empty(), egui::Button::new("Zoom In"))
+            .clicked()
+        {
             app.handle_command(ctx, ViewerCommand::ZoomIn);
             ui.close();
         }
-        if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Zoom Out")).clicked() {
+        if ui
+            .add_enabled(!app.image_entries.is_empty(), egui::Button::new("Zoom Out"))
+            .clicked()
+        {
             app.handle_command(ctx, ViewerCommand::ZoomOut);
             ui.close();
         }
-        if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Fit to Window")).clicked() {
+        if ui
+            .add_enabled(
+                !app.image_entries.is_empty(),
+                egui::Button::new("Fit to Window"),
+            )
+            .clicked()
+        {
             app.handle_command(ctx, ViewerCommand::MakeFit);
             ui.close();
         }
-        if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Actual Size (100%)")).clicked() {
+        if ui
+            .add_enabled(
+                !app.image_entries.is_empty(),
+                egui::Button::new("Actual Size (100%)"),
+            )
+            .clicked()
+        {
             app.handle_command(ctx, ViewerCommand::ResetZoom);
             ui.close();
         }
         let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
-        if ui.button(if fullscreen { "Exit Fullscreen" } else { "Fullscreen" }).clicked() {
+        if ui
+            .button(if fullscreen {
+                "Exit Fullscreen"
+            } else {
+                "Fullscreen"
+            })
+            .clicked()
+        {
             app.handle_command(ctx, ViewerCommand::ToggleFullscreen);
             ui.close();
         }
@@ -413,6 +563,7 @@ fn render_menus(
     });
 
     ui.menu_button("Queue", |ui| {
+        *ui.style_mut() = popup_style.clone();
         // Keep queue actions flat rather than nesting submenus. This follows
         // desktop menu guidance to group related actions with separators and
         // avoid nested menu hierarchies that are difficult to navigate.
@@ -420,16 +571,24 @@ fn render_menus(
         if ui.button("Add Files…").clicked() {
             if let Some(paths) = rfd::FileDialog::new().pick_files() {
                 let mut added = 0usize;
-                for path in paths { added += usize::from(app.add_queue_path(path)); }
+                for path in paths {
+                    added += usize::from(app.add_queue_path(path));
+                }
                 app.queue_status = Some(format!("Added {added} file(s)."));
             }
             ui.close();
         }
-        if ui.add_enabled(has_image, egui::Button::new("Add Current Image")).clicked() {
+        if ui
+            .add_enabled(has_image, egui::Button::new("Add Current Image"))
+            .clicked()
+        {
             app.add_current_image_to_queue();
             ui.close();
         }
-        if ui.add_enabled(has_image, egui::Button::new("Add Current View Images")).clicked() {
+        if ui
+            .add_enabled(has_image, egui::Button::new("Add Current View Images"))
+            .clicked()
+        {
             app.add_current_folder_images();
             ui.close();
         }
@@ -437,7 +596,8 @@ fn render_menus(
             if app.queue_paths.is_empty() {
                 app.add_current_folder_images();
             } else {
-                app.queue_status = Some("Queue is not empty; existing items were preserved.".into());
+                app.queue_status =
+                    Some("Queue is not empty; existing items were preserved.".into());
             }
             ui.close();
         }
@@ -461,24 +621,51 @@ fn render_menus(
         }
 
         ui.separator();
-        if ui.add_enabled(!app.queue_paths.is_empty(), egui::Button::new("Open Queue in Viewer")).clicked() {
+        if ui
+            .add_enabled(
+                !app.queue_paths.is_empty(),
+                egui::Button::new("Open Queue in Viewer"),
+            )
+            .clicked()
+        {
             app.open_queue_in_viewer(ctx);
             ui.close();
         }
-        if ui.add_enabled(app.queue_previous_entries.is_some(), egui::Button::new("Return to Previous View")).clicked() {
+        if ui
+            .add_enabled(
+                app.queue_previous_entries.is_some(),
+                egui::Button::new("Return to Previous View"),
+            )
+            .clicked()
+        {
             app.return_to_previous_view(ctx);
             ui.close();
         }
         ui.separator();
-        if ui.button("Save Queue…").clicked() { app.save_queue_dialog(); ui.close(); }
-        if ui.button("Load Queue…").clicked() { app.load_queue_dialog(); ui.close(); }
-        if ui.button("Export Queue Paths…").clicked() { app.export_queue_paths(); ui.close(); }
+        if ui.button("Save Queue…").clicked() {
+            app.save_queue_dialog();
+            ui.close();
+        }
+        if ui.button("Load Queue…").clicked() {
+            app.load_queue_dialog();
+            ui.close();
+        }
+        if ui.button("Export Queue Paths…").clicked() {
+            app.export_queue_paths();
+            ui.close();
+        }
         ui.separator();
         let mut repeat = app.queue_repeat;
         if ui.checkbox(&mut repeat, "Repeat Queue").changed() {
             app.queue_repeat = repeat;
         }
-        if ui.add_enabled(!app.queue_paths.is_empty(), egui::Button::new("Clear Queue")).clicked() {
+        if ui
+            .add_enabled(
+                !app.queue_paths.is_empty(),
+                egui::Button::new("Clear Queue"),
+            )
+            .clicked()
+        {
             if app.queue_mode && !app.return_to_previous_view(ctx) {
                 ui.close();
                 return;
@@ -496,13 +683,23 @@ fn render_menus(
     });
 
     ui.menu_button(if compact_labels { "Fav." } else { "Favorites" }, |ui| {
+        *ui.style_mut() = popup_style.clone();
         app.ensure_favorites_loaded();
-        if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Toggle Current Image Favorite")).clicked() {
-            app.add_current_image_to_favorites(); ui.close();
+        if ui
+            .add_enabled(
+                !app.image_entries.is_empty(),
+                egui::Button::new("Toggle Current Image Favorite"),
+            )
+            .clicked()
+        {
+            app.add_current_image_to_favorites();
+            ui.close();
         }
         if ui.button("Add Files…").clicked() {
             if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                for path in paths { app.add_favorite_path(path); }
+                for path in paths {
+                    app.add_favorite_path(path);
+                }
             }
             ui.close();
         }
@@ -516,24 +713,35 @@ fn render_menus(
             let before = app.favorite_paths.len();
             app.favorite_paths.retain(|path| path.exists());
             app.save_favorites_for_ui();
-            app.queue_status = Some(format!("Removed {} unavailable favorite(s).", before - app.favorite_paths.len()));
+            app.queue_status = Some(format!(
+                "Removed {} unavailable favorite(s).",
+                before - app.favorite_paths.len()
+            ));
             ui.close();
         }
         ui.separator();
-        if ui.button("Show Favorites Sidebar").clicked() { select_sidebar_tab(app, "favorites"); ui.close(); }
+        if ui.button("Show Favorites Sidebar").clicked() {
+            select_sidebar_tab(app, "favorites");
+            ui.close();
+        }
         ui.label(format!("{} saved item(s)", app.favorite_paths.len()));
     });
 
     ui.menu_button("Help", |ui| {
+        *ui.style_mut() = popup_style.clone();
         if ui.button("Help and About JPEG Viewer…").clicked() {
             app.toggle_help_menu(ctx);
             ui.close();
         }
     });
+
+    *ui.style_mut() = popup_style;
 }
 
 fn select_sidebar_tab(app: &mut ViewerApp, tab: &str) {
-    let _ = app.settings_manager.update(|settings| settings.show_file_sidebar = true);
+    let _ = app
+        .settings_manager
+        .update(|settings| settings.show_file_sidebar = true);
     app.sidebar_queue_tab = tab == "queue";
     app.sidebar_favorites_tab = tab == "favorites";
     app.sidebar_info_tab = tab == "info";

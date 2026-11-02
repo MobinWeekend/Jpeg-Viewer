@@ -41,6 +41,11 @@ impl SettingsManager {
             section.set("window_size", format!("{},{}", w, h));
         }
 
+        section.set(
+            "window_maximized",
+            if settings.window_maximized { "true" } else { "false" },
+        );
+
         section.set("cache_radius", settings.cache_radius.to_string());
         section.set(
             "cache_delta_factor",

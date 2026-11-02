@@ -13,20 +13,33 @@ impl ViewerApp {
         let settings = self.settings_manager.get().clone();
         self.update_tricks_assets(ctx, &settings);
         let main_accent = crate::ui_theme::main_accent_color(ctx);
-        let mut view_bg = crate::ui_theme::main_view_background_color(
+        let view_bg = crate::ui_theme::main_view_surface_color(
+            ctx,
             &settings.main_view_background,
-            style.visuals.dark_mode,
+            settings.main_view_background_opacity,
         );
-        if crate::ui_theme::os_background_blur_enabled(ctx) {
-            let [r, g, b, _] = view_bg.to_srgba_unmultiplied();
-            let opacity =
-                (settings.main_view_background_opacity.clamp(0.15, 1.0) * 255.0).round() as u8;
-            view_bg = egui::Color32::from_rgba_unmultiplied(r, g, b, opacity);
-        }
         let frame = egui::Frame::central_panel(&style)
             .inner_margin(0.0)
-            .fill(view_bg);
+            .fill(view_bg)
+            .stroke(egui::Stroke::NONE);
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            // Paint the central viewport's clipped share of the single
+            // window-aligned Tricks backdrop. The custom title bar paints its
+            // own clipped share using this exact same backdrop rectangle/UV map.
+            if settings.tricks_backdrop_enabled {
+                let central_rect = ui.max_rect();
+                let backdrop_rect =
+                    crate::app::ui::tricks_backdrop_window_rect(ctx, central_rect);
+                self.paint_tricks_backdrop(
+                    &ui.painter(),
+                    central_rect,
+                    backdrop_rect,
+                    main_accent,
+                    settings.tricks_backdrop_tint,
+                    settings.tricks_backdrop_opacity,
+                );
+            }
+
             // Check for error first
             let error = self.image_error.clone();
             if let Some(error) = error {
@@ -78,7 +91,9 @@ impl ViewerApp {
             if self.texture.is_none() && self.virtual_texture.is_none() {
                 // Handle loading states when no texture and no virtual texture
                 if self.is_loading() {
-                    if !crate::app::ui::uses_desktop_menu_bar(ctx) {
+                    if !crate::app::ui::uses_desktop_menu_bar(ctx)
+                        || crate::app::ui::desktop_menu_bar_in_custom_titlebar(self, ctx)
+                    {
                         let painter = ui.painter();
                         let message = match self.loading_state {
                             LoadingState::Indexing => "Indexing...",
@@ -107,17 +122,14 @@ impl ViewerApp {
 
             // ---------- VIRTUAL TEXTURE RENDERING ----------
             if self.virtual_texture.is_some() {
+                // Keep one painter for all Tricks effects in this branch. It must be
+                // created before the behind-image effects are drawn and reused for
+                // the front-image effects below.
+                let tricks_painter = ui.painter();
+
                 // Tricks effects stay inside the central panel's clipped viewport. The
                 // central panel is rendered before foreground menus/toolbars, so even
                 // front-layer particles and watermarks never cover application UI.
-                let tricks_painter = ui.painter();
-                self.paint_tricks_backdrop(
-                    &tricks_painter,
-                    available_rect,
-                    main_accent,
-                    settings.tricks_backdrop_tint,
-                    settings.tricks_backdrop_opacity,
-                );
                 if !settings.tricks_snow_above_image {
                     self.paint_tricks_snow(
                         &tricks_painter,
@@ -181,7 +193,6 @@ impl ViewerApp {
                         texture_options,
                     );
                 }
-                let tricks_painter = ui.painter();
                 if settings.tricks_snow_above_image {
                     self.paint_tricks_snow(
                         &tricks_painter,
@@ -210,7 +221,10 @@ impl ViewerApp {
                 self.handle_image_mouse_input(ctx, &response);
 
                 // Show loading indicator overlay if still loading
-                if self.is_loading() && !crate::app::ui::uses_desktop_menu_bar(ctx) {
+                if self.is_loading()
+                    && (!crate::app::ui::uses_desktop_menu_bar(ctx)
+                        || crate::app::ui::desktop_menu_bar_in_custom_titlebar(self, ctx))
+                {
                     let painter = ui.painter();
                     Self::draw_loading_overlay(&painter, available_rect, "Loading...");
                 }
@@ -361,13 +375,6 @@ impl ViewerApp {
             let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
             let painter = ui.painter();
-            self.paint_tricks_backdrop(
-                painter,
-                available_rect,
-                main_accent,
-                settings.tricks_backdrop_tint,
-                settings.tricks_backdrop_opacity,
-            );
             let tricks_time = ctx.input(|i| i.time);
             let dialup_settings = self.settings_manager.get().clone();
             let current_profile = crate::ui_theme::current_look_profile(ctx);
@@ -496,7 +503,10 @@ impl ViewerApp {
                 self.handle_image_mouse_input(ctx, &response);
             }
 
-            if self.is_loading() && !crate::app::ui::uses_desktop_menu_bar(ctx) {
+            if self.is_loading()
+                && (!crate::app::ui::uses_desktop_menu_bar(ctx)
+                    || crate::app::ui::desktop_menu_bar_in_custom_titlebar(self, ctx))
+            {
                 let painter = ui.painter();
                 let message = match self.loading_state {
                     LoadingState::LoadingFullGif => "Loading full GIF...",
@@ -516,9 +526,12 @@ impl ViewerApp {
         progress: Option<f32>,
         show_extreme_ratio: bool,
     ) {
-        // In desktop-menu-bar mode the single loading indicator lives on the
-        // far-right side of the bar instead of covering the image viewport.
-        if crate::app::ui::uses_desktop_menu_bar(ui.ctx()) {
+        // A standalone desktop menu can host its loading indicator. When the
+        // menu is embedded into the custom title bar, keep loading feedback in
+        // the main image view instead of consuming the title's drag region.
+        if crate::app::ui::uses_desktop_menu_bar(ui.ctx())
+            && !crate::app::ui::desktop_menu_bar_in_custom_titlebar(self, ui.ctx())
+        {
             return;
         }
         let available = ui.available_rect_before_wrap();

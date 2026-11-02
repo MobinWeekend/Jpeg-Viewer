@@ -409,16 +409,21 @@ impl ViewerApp {
         }
     }
 
-    pub(super) fn paint_tricks_backdrop(
+    pub(crate) fn paint_tricks_backdrop(
         &self,
         painter: &egui::Painter,
-        rect: egui::Rect,
+        clip_rect: egui::Rect,
+        backdrop_rect: egui::Rect,
         main_color: egui::Color32,
         tint_strength: f32,
         opacity: f32,
     ) {
-        let clip = rect.intersect(painter.clip_rect());
-        if !clip.is_positive() {
+        // Every UI region paints only its own clipped part of one window-sized
+        // backdrop. Using the same target rectangle keeps the crop and focal
+        // position identical across the title bar and central view; deriving a
+        // separate crop from each panel made the image look duplicated.
+        let clip = clip_rect.intersect(painter.clip_rect());
+        if !clip.is_positive() || !backdrop_rect.is_positive() {
             return;
         }
 
@@ -430,10 +435,10 @@ impl ViewerApp {
         let opacity = opacity.clamp(0.0, 1.0);
 
         if let Some(texture) = &self.tricks_backdrop_texture {
-            paint_backdrop_texture(&clip_painter, texture, rect, opacity * (1.0 - progress));
+            paint_backdrop_texture(&clip_painter, texture, backdrop_rect, opacity * (1.0 - progress));
         }
         if let Some(texture) = &self.tricks_backdrop_next_texture {
-            paint_backdrop_texture(&clip_painter, texture, rect, opacity * progress);
+            paint_backdrop_texture(&clip_painter, texture, backdrop_rect, opacity * progress);
         }
 
         // The main-color tint is painted once over the blended textures, so its
@@ -450,7 +455,7 @@ impl ViewerApp {
                 b,
                 (strength * opacity * 255.0).round() as u8,
             );
-            clip_painter.rect_filled(rect, 0.0, tint);
+            clip_painter.rect_filled(backdrop_rect, 0.0, tint);
         }
     }
 

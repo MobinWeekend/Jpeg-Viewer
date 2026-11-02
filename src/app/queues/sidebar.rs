@@ -33,11 +33,37 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         .file_sidebar_width
         .clamp(min_sidebar_width, max_sidebar_width);
 
+    let sidebar_settings = app.settings_manager.get().clone();
+    let sidebar_background = crate::ui_theme::main_view_surface_color(
+        ctx,
+        &sidebar_settings.main_view_background,
+        sidebar_settings.main_view_background_opacity,
+    );
+    let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+        .fill(sidebar_background)
+        .stroke(egui::Stroke::NONE);
+
     let response = egui::SidePanel::left("file_sidebar")
         .resizable(true)
         .default_width(default_width)
         .width_range(min_sidebar_width..=max_sidebar_width)
+        .frame(sidebar_frame)
         .show(ctx, |ui| {
+            // Extend the same window-local blurred photo backdrop behind the sidebar.
+            // The panel painter is clipped to this sidebar, while the backdrop target
+            // remains the full client area so its crop aligns with the title bar/canvas.
+            if sidebar_settings.tricks_backdrop_enabled {
+                let sidebar_clip = ui.painter().clip_rect();
+                let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
+                app.paint_tricks_backdrop(
+                    &ui.painter(),
+                    sidebar_clip,
+                    backdrop_rect,
+                    crate::ui_theme::main_accent_color(ctx),
+                    sidebar_settings.tricks_backdrop_tint,
+                    sidebar_settings.tricks_backdrop_opacity,
+                );
+            }
             // Lock this frame's content UI to the width allocated by SidePanel.
             // Individual tabs contain different controls (some with long labels);
             // those controls must wrap/clip within this width rather than

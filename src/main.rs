@@ -57,6 +57,10 @@ fn main() -> eframe::Result<()> {
         viewport = viewport.with_inner_size(size);
     }
 
+    if app_settings.window_maximized && !app_settings.start_fullscreen {
+        viewport = viewport.with_maximized(true);
+    }
+
     let options = eframe::NativeOptions {
         viewport,
         // Geometry is persisted in settings.ini by save_window_state(), which
