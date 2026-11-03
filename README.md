@@ -2,7 +2,7 @@
 
 A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse image collections, inspect large images, run slideshows, organize queues and favorites, and make basic edits without a large editing interface getting in the way.
 
-![JPEG Viewer screenshot](https://github.com/user-attachments/assets/ec4c29a2-e784-4a31-9864-6441da7b6367)
+![JPEG Viewer screenshot](https://github.com/user-attachments/assets/8dd722cc-7994-40a5-84d2-474e1ee332f6)
 
 **New users:** see [Getting Started](QUICK_START.md). For in-app controls, press **F1**.
 
