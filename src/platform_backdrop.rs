@@ -7,9 +7,9 @@
 
 use raw_window_handle::RawWindowHandle;
 
-use std::sync::atomic::{AtomicU8, Ordering};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicU8, Ordering};
 
 #[cfg(target_os = "windows")]
 static MAIN_HWND: AtomicUsize = AtomicUsize::new(0);
@@ -68,7 +68,6 @@ pub fn set_native_titlebar_color(color: Option<[u8; 3]>) {
     #[cfg(not(target_os = "windows"))]
     let _ = color;
 }
-
 
 /// Request OS-native window corner treatment. Windows 11 exposes a DWM corner
 /// preference; macOS can provide native NSWindow shadow with rounded content
@@ -136,7 +135,11 @@ mod windows_backdrop {
         if hwnd == 0 {
             return false;
         }
-        let backdrop = if enabled { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_NONE };
+        let backdrop = if enabled {
+            DWMSBT_TRANSIENTWINDOW
+        } else {
+            DWMSBT_NONE
+        };
         // Windows versions without this DWM attribute return an error. That is a
         // supported fallback condition, not an application error.
         let result = unsafe {
@@ -152,7 +155,9 @@ mod windows_backdrop {
 
     pub(super) fn set_window_shape(enabled: bool) {
         let hwnd = MAIN_HWND.load(Ordering::Relaxed);
-        if hwnd == 0 { return; }
+        if hwnd == 0 {
+            return;
+        }
         // DWMWCP_ROUND = 2, DWMWCP_DONOTROUND = 1. DWM retains ownership
         // of the actual non-client shadow; this attribute requests its corner shape.
         let preference: u32 = if enabled { 2 } else { 1 };
@@ -184,7 +189,11 @@ mod windows_backdrop {
         let text_color = match color {
             Some([r, g, b]) => {
                 let luminance = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
-                if luminance < 145.0 { 0x00FF_FFFF } else { 0x0000_0000 }
+                if luminance < 145.0 {
+                    0x00FF_FFFF
+                } else {
+                    0x0000_0000
+                }
             }
             None => DWM_COLOR_DEFAULT,
         };
@@ -213,7 +222,7 @@ mod macos_backdrop {
     use super::MAIN_NS_VIEW;
     use std::ffi::{c_char, c_void};
     use std::mem;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     type Obj = *mut c_void;
     type Sel = *mut c_void;
@@ -224,13 +233,22 @@ mod macos_backdrop {
 
     #[repr(C)]
     #[derive(Clone, Copy)]
-    struct NsPoint { x: f64, y: f64 }
+    struct NsPoint {
+        x: f64,
+        y: f64,
+    }
     #[repr(C)]
     #[derive(Clone, Copy)]
-    struct NsSize { width: f64, height: f64 }
+    struct NsSize {
+        width: f64,
+        height: f64,
+    }
     #[repr(C)]
     #[derive(Clone, Copy)]
-    struct NsRect { origin: NsPoint, size: NsSize }
+    struct NsRect {
+        origin: NsPoint,
+        size: NsSize,
+    }
 
     #[link(name = "objc")]
     unsafe extern "C" {
@@ -245,28 +263,35 @@ mod macos_backdrop {
     }
 
     unsafe fn send_object(receiver: Obj, name: &'static [u8]) -> Obj {
-        if receiver.is_null() { return std::ptr::null_mut(); }
-        let function: unsafe extern "C" fn(Obj, Sel) -> Obj = unsafe { mem::transmute(objc_msgSend as *const ()) };
+        if receiver.is_null() {
+            return std::ptr::null_mut();
+        }
+        let function: unsafe extern "C" fn(Obj, Sel) -> Obj =
+            unsafe { mem::transmute(objc_msgSend as *const ()) };
         unsafe { function(receiver, selector(name)) }
     }
 
     unsafe fn send_object_rect(receiver: Obj, name: &'static [u8], rect: NsRect) -> Obj {
-        let function: unsafe extern "C" fn(Obj, Sel, NsRect) -> Obj = unsafe { mem::transmute(objc_msgSend as *const ()) };
+        let function: unsafe extern "C" fn(Obj, Sel, NsRect) -> Obj =
+            unsafe { mem::transmute(objc_msgSend as *const ()) };
         unsafe { function(receiver, selector(name), rect) }
     }
 
     unsafe fn send_void_object(receiver: Obj, name: &'static [u8], value: Obj) {
-        let function: unsafe extern "C" fn(Obj, Sel, Obj) = unsafe { mem::transmute(objc_msgSend as *const ()) };
+        let function: unsafe extern "C" fn(Obj, Sel, Obj) =
+            unsafe { mem::transmute(objc_msgSend as *const ()) };
         unsafe { function(receiver, selector(name), value) }
     }
 
     unsafe fn send_void_bool(receiver: Obj, name: &'static [u8], value: bool) {
-        let function: unsafe extern "C" fn(Obj, Sel, i8) = unsafe { mem::transmute(objc_msgSend as *const ()) };
+        let function: unsafe extern "C" fn(Obj, Sel, i8) =
+            unsafe { mem::transmute(objc_msgSend as *const ()) };
         unsafe { function(receiver, selector(name), i8::from(value)) }
     }
 
     unsafe fn send_void_usize(receiver: Obj, name: &'static [u8], value: usize) {
-        let function: unsafe extern "C" fn(Obj, Sel, usize) = unsafe { mem::transmute(objc_msgSend as *const ()) };
+        let function: unsafe extern "C" fn(Obj, Sel, usize) =
+            unsafe { mem::transmute(objc_msgSend as *const ()) };
         unsafe { function(receiver, selector(name), value) }
     }
 
@@ -277,22 +302,33 @@ mod macos_backdrop {
 
     unsafe fn attach_effect(window: Obj) -> Obj {
         let existing = EFFECT_VIEW.load(Ordering::Relaxed) as Obj;
-        if !existing.is_null() { return existing; }
+        if !existing.is_null() {
+            return existing;
+        }
 
         let content = unsafe { send_object(window, b"contentView\0") };
-        if content.is_null() { return std::ptr::null_mut(); }
+        if content.is_null() {
+            return std::ptr::null_mut();
+        }
         let cls = unsafe { objc_getClass(b"NSVisualEffectView\0".as_ptr().cast()) };
-        if cls.is_null() { return std::ptr::null_mut(); }
+        if cls.is_null() {
+            return std::ptr::null_mut();
+        }
         let allocated = unsafe { send_object(cls, b"alloc\0") };
         let frame = NsRect {
             origin: NsPoint { x: 0.0, y: 0.0 },
             // The window resizes its root content view to the actual content bounds.
             // A large initial view avoids calling an NSRect-returning method through
             // objc_msgSend (whose ABI differs between Intel and Apple Silicon).
-            size: NsSize { width: 32768.0, height: 32768.0 },
+            size: NsSize {
+                width: 32768.0,
+                height: 32768.0,
+            },
         };
         let effect = unsafe { send_object_rect(allocated, b"initWithFrame:\0", frame) };
-        if effect.is_null() { return std::ptr::null_mut(); }
+        if effect.is_null() {
+            return std::ptr::null_mut();
+        }
 
         // Keep the existing eframe/Winit content view alive while replacing the
         // NSWindow's root content view with a material-bearing wrapper.
@@ -308,7 +344,9 @@ mod macos_backdrop {
             let _ = send_object(content, b"release\0");
             send_void_bool(content, b"setWantsLayer:\0", true);
             let layer = send_object(content, b"layer\0");
-            if !layer.is_null() { send_void_bool(layer, b"setOpaque:\0", false); }
+            if !layer.is_null() {
+                send_void_bool(layer, b"setOpaque:\0", false);
+            }
         }
 
         CONTENT_VIEW.store(content as usize, Ordering::Relaxed);
@@ -317,8 +355,14 @@ mod macos_backdrop {
     }
 
     pub(super) fn set_enabled(enabled: bool, view_handle: usize) -> bool {
-        let view = if view_handle != 0 { view_handle as Obj } else { MAIN_NS_VIEW.load(Ordering::Relaxed) as Obj };
-        if view.is_null() { return false; }
+        let view = if view_handle != 0 {
+            view_handle as Obj
+        } else {
+            MAIN_NS_VIEW.load(Ordering::Relaxed) as Obj
+        };
+        if view.is_null() {
+            return false;
+        }
         // Do not alter the native view hierarchy merely to disable an effect that
         // has never been created. Attach it lazily when the user enables the option.
         if !enabled && EFFECT_VIEW.load(Ordering::Relaxed) == 0 {
@@ -327,13 +371,21 @@ mod macos_backdrop {
 
         unsafe {
             let window = send_object(view, b"window\0");
-            if window.is_null() { return false; }
+            if window.is_null() {
+                return false;
+            }
             let effect = attach_effect(window);
-            if effect.is_null() { return false; }
+            if effect.is_null() {
+                return false;
+            }
             apply_window_shape(effect, NATIVE_WINDOW_ROUNDING.load(Ordering::Relaxed));
 
             let content = CONTENT_VIEW.load(Ordering::Relaxed) as Obj;
-            let layer = if content.is_null() { std::ptr::null_mut() } else { send_object(content, b"layer\0") };
+            let layer = if content.is_null() {
+                std::ptr::null_mut()
+            } else {
+                send_object(content, b"layer\0")
+            };
             if enabled {
                 send_void_usize(effect, b"setMaterial:\0", 21);
                 send_void_usize(effect, b"setBlendingMode:\0", 0);
@@ -341,7 +393,9 @@ mod macos_backdrop {
                 send_void_bool(window, b"setOpaque:\0", false);
                 let clear = color(b"NSColor\0", b"clearColor\0");
                 send_void_object(window, b"setBackgroundColor:\0", clear);
-                if !layer.is_null() { send_void_bool(layer, b"setOpaque:\0", false); }
+                if !layer.is_null() {
+                    send_void_bool(layer, b"setOpaque:\0", false);
+                }
             } else {
                 // Switch the effect view to a within-window appearance material; it
                 // remains as the wrapper so the child renderer is never hidden.
@@ -350,33 +404,45 @@ mod macos_backdrop {
                 send_void_bool(window, b"setOpaque:\0", true);
                 let background = color(b"NSColor\0", b"windowBackgroundColor\0");
                 send_void_object(window, b"setBackgroundColor:\0", background);
-                if !layer.is_null() { send_void_bool(layer, b"setOpaque:\0", true); }
+                if !layer.is_null() {
+                    send_void_bool(layer, b"setOpaque:\0", true);
+                }
             }
         }
         enabled
     }
 
     fn apply_window_shape(view: Obj, enabled: bool) {
-        if view.is_null() { return; }
+        if view.is_null() {
+            return;
+        }
         unsafe {
             // NSView.window -> NSWindow; its shadow is rendered by WindowServer.
             let window = send_object(view, b"window\0");
-            if window.is_null() { return; }
+            if window.is_null() {
+                return;
+            }
             send_void_bool(window, b"setHasShadow:\0", true);
             send_void_bool(view, b"setWantsLayer:\0", true);
             let layer = send_object(view, b"layer\0");
             if !layer.is_null() {
                 send_void_bool(layer, b"setMasksToBounds:\0", enabled);
-                let function: unsafe extern "C" fn(Obj, Sel, f64) = unsafe { mem::transmute(objc_msgSend as *const ()) };
-                function(layer, selector(b"setCornerRadius:\0"), if enabled { 10.0 } else { 0.0 });
+                let function: unsafe extern "C" fn(Obj, Sel, f64) =
+                    mem::transmute(objc_msgSend as *const ());
+                function(
+                    layer,
+                    selector(b"setCornerRadius:\0"),
+                    if enabled { 10.0 } else { 0.0 },
+                );
             }
         }
     }
 
     pub(super) fn set_window_shape(enabled: bool, view_handle: usize) {
         NATIVE_WINDOW_ROUNDING.store(enabled, Ordering::Relaxed);
-        if view_handle == 0 { return; }
+        if view_handle == 0 {
+            return;
+        }
         apply_window_shape(view_handle as Obj, enabled);
     }
-
 }
