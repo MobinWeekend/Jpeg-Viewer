@@ -48,6 +48,36 @@ impl eframe::App for ViewerApp {
                 appearance_settings.ui_text_scale,
             );
         }
+        // A forwarded launch can include many selected files. Process its request
+        // on the UI thread so it uses the same selected-files path as drag-and-drop.
+        let forwarded_requests = self.instance_server.as_ref()
+            .map(crate::instance::InstanceServer::drain_requests)
+            .unwrap_or_default();
+        for paths in forwarded_requests {
+            self.handle_forwarded_open_request(paths, ctx);
+        }
+        self.process_pending_open_paths(ctx);
+
+        // Restore maximized state after the native window has been created. This
+        // extra command is important for native decorations where the window manager
+        // can report an initial unmaximized frame before applying ViewportBuilder.
+        if self.startup_restore_maximize_pending {
+            let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
+            if maximized {
+                self.startup_restore_maximize_pending = false;
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+            }
+        } else if !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
+            let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
+            if maximized != self.settings_manager.get().window_maximized {
+                self.settings_manager.settings.window_maximized = maximized;
+                if let Err(error) = self.settings_manager.save() {
+                    eprintln!("Could not save maximize state: {error}");
+                }
+            }
+        }
+
         // Indexing process so ui would load fast
         self.process_indexing();
         // ========== UPDATE CURRENT FPS (throttled to 0.5s) ==========
@@ -211,6 +241,13 @@ impl eframe::App for ViewerApp {
         self.process_preload_tasks(ctx);
 
         // ========== IMAGE LOADING ==========
+        // The decode worker sends its result through a channel but cannot request
+        // an egui repaint itself. Keep polling while a load is pending so an
+        // externally opened image appears as soon as decoding completes, even
+        // when the window was otherwise idle.
+        if self.receiver.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(32));
+        }
         if let Some(rx) = &self.receiver {
             if let Ok(result) = rx.try_recv() {
                 self.receiver = None;

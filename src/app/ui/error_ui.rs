@@ -10,8 +10,6 @@ impl ViewerApp {
             ui.id().with("error area"),
             egui::Sense::click_and_drag(),
         );
-        self.handle_image_mouse_input(ui.ctx(), &response);
-
         super::overlay::overlay_area(
             "This is an error",
             egui::Align2::CENTER_CENTER,
@@ -79,5 +77,8 @@ impl ViewerApp {
                     });
                 });
         });
+        // Run after the foreground error card has registered its buttons so a
+        // drag over Retry/Skip is not interpreted as a background window drag.
+        self.handle_image_mouse_input(ui.ctx(), &response, None);
     }
 }

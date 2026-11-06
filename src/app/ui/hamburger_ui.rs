@@ -61,28 +61,26 @@ impl ViewerApp {
                 let style = ui.style_mut();
                 let visuals = &mut style.visuals;
                 visuals.window_fill = crate::ui_theme::with_alpha(visuals.window_fill, 250);
-                visuals.extreme_bg_color = crate::ui_theme::with_alpha(visuals.extreme_bg_color, 250);
-                visuals.text_edit_bg_color = Some(crate::ui_theme::with_alpha(visuals.text_edit_bg_color(), 250));
-                visuals.widgets.inactive.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.inactive.bg_fill, 246);
-                visuals.widgets.hovered.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.hovered.bg_fill, 248);
-                visuals.widgets.active.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.active.bg_fill, 250);
-                visuals.widgets.open.bg_fill = crate::ui_theme::with_alpha(visuals.widgets.open.bg_fill, 248);
+                visuals.extreme_bg_color =
+                    crate::ui_theme::with_alpha(visuals.extreme_bg_color, 250);
+                visuals.text_edit_bg_color = Some(crate::ui_theme::with_alpha(
+                    visuals.text_edit_bg_color(),
+                    250,
+                ));
+                visuals.widgets.inactive.bg_fill =
+                    crate::ui_theme::with_alpha(visuals.widgets.inactive.bg_fill, 246);
+                visuals.widgets.hovered.bg_fill =
+                    crate::ui_theme::with_alpha(visuals.widgets.hovered.bg_fill, 248);
+                visuals.widgets.active.bg_fill =
+                    crate::ui_theme::with_alpha(visuals.widgets.active.bg_fill, 250);
+                visuals.widgets.open.bg_fill =
+                    crate::ui_theme::with_alpha(visuals.widgets.open.bg_fill, 248);
             }
+
             ui.vertical(|ui| {
-                //Controls
+                // ---- Toolbar row (horizontal cluster of icon actions) ----
                 ui.horizontal(|ui| {
-                    if ui
-                        .add(
-                            egui::Button::new(egui::RichText::new("📋 Copy").size(scaled_text_size(ui.ctx(), 14.0)))
-                                .min_size(egui::vec2(28.0, 28.0))
-                                .fill(egui::Color32::TRANSPARENT)
-                                .stroke(egui::Stroke::NONE),
-                        )
-                        .on_hover_text("Shortcut: Ctrl+C")
-                        .clicked()
-                    {
-                        self.copy_image_to_clipboard();
-                    }
+                    self.hamburger_copy_button(ctx, ui);
                     ui.separator();
                     self.zoom_ui(ctx, ui);
                     ui.separator();
@@ -92,229 +90,31 @@ impl ViewerApp {
                 });
 
                 ui.separator();
-                // Open File
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("📄 Open File").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Load an Image or Archive")
-                    .clicked()
-                {
-                    self.handle_command(ctx, ViewerCommand::OpenFile);
-                    self.hamburger_menu_open = false;
-                }
 
-                // RAW files open quickly using their largest embedded JPEG preview.
-                // Offer full sensor development as an explicit user action.
-                let current_is_raw = self.image_entries.get(self.current_index).is_some_and(|entry| {
-                    let name = match entry {
-                        crate::image_entry::ImageEntry::File(path) => path.as_path(),
-                        crate::image_entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
-                        crate::image_entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
-                        crate::image_entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
-                    };
-                    name.extension()
-                        .and_then(|extension| extension.to_str())
-                        .and_then(crate::image_core::ImageFormat::from_extension)
-                        == Some(crate::image_core::ImageFormat::CameraRaw)
-                });
-                if current_is_raw {
-                    let label = if self.showing_raw_developed {
-                        "🖼  RAW developed (full resolution)"
-                    } else {
-                        "📷  View RAW (full quality)"
-                    };
-                    if ui.add_enabled(
-                        !self.showing_raw_developed && !self.is_loading(),
-                        egui::Button::new(egui::RichText::new(label).size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    ).on_hover_text("Develop the actual RAW sensor data instead of its embedded JPEG preview").clicked() {
-                        self.load_current_image_as_raw();
-                        self.hamburger_menu_open = false;
-                    }
-                }
-
-                // Let the OS choose an application for the original file. Archive entries
-                // remain in the viewer because they do not have a persistent standalone path.
-                if let Some(path) = self.current_image_path.clone() {
-                    if ui.add(
-                        egui::Button::new(egui::RichText::new("↗  Open With…").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    ).on_hover_text("Choose an application using the operating system's Open With dialog").clicked() {
-                        if let Err(error) = super::super::external_open::open_with(&path) {
-                            self.queue_status = Some(format!("Could not open external application: {error}"));
-                        }
-                        self.hamburger_menu_open = false;
-                    }
-                }
-
-                if let Some(path) = self.current_image_path.clone() {
-                    if ui.add(
-                        egui::Button::new(egui::RichText::new("📂  Locate in File Manager").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    ).clicked() {
-                        if let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
-                            self.queue_status = Some(format!("Could not locate file: {error}"));
-                        }
-                        self.hamburger_menu_open = false;
-                    }
-                }
-
-                // Open Folder
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("📁  Open Folder").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Open a Folder of Images")
-                    .clicked()
-                {
-                    self.handle_command(ctx, ViewerCommand::OpenFolder);
-                    self.hamburger_menu_open = false;
-                }
+                self.hamburger_open_file_button(ctx, ui);
+                self.hamburger_open_folder_button(ctx, ui);
+                self.hamburger_open_with_button(ctx, ui);
+                self.hamburger_locate_in_file_manager_button(ctx, ui);
 
                 ui.separator();
 
-                // File sidebar
-                let sidebar_visible = self.settings_manager.get().show_file_sidebar;
-                if ui
-                    .add(
-                        egui::Button::new(if sidebar_visible {
-                            "🗄️  Hide Sidebar"
-                        } else {
-                            "🗄️  Show Sidebar"
-                        })
-                        .min_size(egui::vec2(180.0, 30.0))
-                        .fill(egui::Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::NONE),
-                    )
-                    .clicked()
-                {
-                    let _ = self
-                        .settings_manager
-                        .update(|settings| settings.show_file_sidebar = !sidebar_visible);
-                    self.hamburger_menu_open = false;
-                }
+                self.hamburger_sidebar_toggle_button(ctx, ui);
+                self.hamburger_inspect_button(ctx, ui);
+                self.hamburger_wrap_window_button(ctx, ui);
+                self.hamburger_raw_develop_button(ui);
+                self.hamburger_edit_image_button(ctx, ui);
+                self.hamburger_delete_image_button(ctx, ui);
 
-                // Toggle the separate image-editing mode. An existing working
-                // copy can be resumed without discarding unsaved changes.
-                let edit_label = if self.show_edit_menu {
-                    "✂️  Exit Edit Mode"
-                } else if self.edit_session.is_some() {
-                    "✂️  Resume Edit Mode"
-                } else {
-                    "✂️  Edit Image"
-                };
-                if !self.image_entries.is_empty() {
-                    if ui
-                        .add(
-                            egui::Button::new(egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)))
-                                .min_size(egui::vec2(180.0, 30.0))
-                                .fill(egui::Color32::TRANSPARENT)
-                                .stroke(egui::Stroke::NONE),
-                        )
-                        .on_hover_text("Toggle editing mode. Unsaved work stays in a working copy until saved or discarded.")
-                        .clicked()
-                    {
-                        self.start_editing(ctx);
-                        self.hamburger_menu_open = false;
-                    }
-                };
-                // Move the selected filesystem image to the system Trash/Recycle Bin.
-                // Images stored inside archives cannot be deleted individually.
-                let can_delete_current = matches!(
-                    self.image_entries.get(self.current_index),
-                    Some(crate::image_entry::ImageEntry::File(_))
-                );
-                if ui.add_enabled(
-                    can_delete_current,
-                    egui::Button::new(egui::RichText::new("🗑  Delete Image…").size(scaled_text_size(ui.ctx(), 14.0)))
-                        .min_size(egui::vec2(180.0, 30.0))
-                        .fill(egui::Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::NONE),
-                ).on_hover_text("Move the current image to the system Trash/Recycle Bin").clicked() {
-                    self.show_delete_confirmation = true;
-                    self.hamburger_menu_open = false;
-                }
-
-                // Inspect-channel view is a temporary display mode and never alters the file.
-                if ui.add(egui::Button::new(egui::RichText::new("🔬  Inspect").size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(egui::vec2(180.0, 30.0))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE))
-                    .on_hover_text("Show or hide individual color and alpha channels")
-                    .clicked()
-                {
-                    self.toggle_inspect_mode(ctx);
-                    self.hamburger_menu_open = false;
-                }
-
-                // Settings
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("⚙  Settings").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Settings")
-                    .clicked()
-                {
-                    crate::app::ui::toggle_settings_menu(self);
-                    self.hamburger_menu_open = false;
-                }
-
-                // Help
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("❓  Help").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Keyboard shortcuts and features")
-                    .clicked()
-                {
-                    self.toggle_help_menu(ctx);
-                    self.hamburger_menu_open = false;
-                }
-
-                // Loading indicator
-                if self.is_loading() {
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.add(egui::Spinner::new());
-                        ui.label(egui::RichText::new("Loading...").size(scaled_text_size(ui.ctx(), 12.0)));
-                    });
-                }
-
-                // Exit
                 ui.separator();
 
-                if ui
-                    .add(
-                        egui::Button::new(egui::RichText::new("X  Exit").size(scaled_text_size(ui.ctx(), 14.0)))
-                            .min_size(egui::vec2(180.0, 30.0))
-                            .fill(egui::Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Exit")
-                    .clicked()
-                {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
+                self.hamburger_settings_button(ctx, ui);
+                self.hamburger_help_button(ctx, ui);
+
+                // ---- Loading indicator (only when loading) ----
+                self.hamburger_loading_indicator(ctx, ui);
+
+                ui.separator();
+                self.hamburger_exit_button(ctx, ui);
             });
         });
 
@@ -337,5 +137,344 @@ impl ViewerApp {
                 }
             }
         });
+    }
+
+    /// "📋 Copy" — copies the current image to the clipboard.
+    fn hamburger_copy_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("📋 Copy").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(28.0, 28.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Shortcut: Ctrl+C")
+            .clicked()
+        {
+            self.copy_image_to_clipboard();
+        }
+    }
+
+    /// "📄 Open File" — opens the file picker.
+    fn hamburger_open_file_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("📄 Open File").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Load an Image or Archive")
+            .clicked()
+        {
+            self.handle_command(ctx, ViewerCommand::OpenFile);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "📷 View RAW" / "🖼 RAW developed" — only shown when the current
+    /// image is a camera RAW file. Develops the full sensor data on demand.
+    fn hamburger_raw_develop_button(&mut self, ui: &mut egui::Ui) {
+        let current_is_raw = self
+            .image_entries
+            .get(self.current_index)
+            .is_some_and(|entry| {
+                let name = match entry {
+                    crate::image_entry::ImageEntry::File(path) => path.as_path(),
+                    crate::image_entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
+                    crate::image_entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
+                    crate::image_entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
+                };
+                name.extension()
+                    .and_then(|extension| extension.to_str())
+                    .and_then(crate::image_core::ImageFormat::from_extension)
+                    == Some(crate::image_core::ImageFormat::CameraRaw)
+            });
+        if !current_is_raw {
+            return;
+        }
+
+        let label = if self.showing_raw_developed {
+            "🖼  RAW developed (full resolution)"
+        } else {
+            "📷  View RAW (full quality)"
+        };
+        if ui
+            .add_enabled(
+                !self.showing_raw_developed && !self.is_loading(),
+                egui::Button::new(
+                    egui::RichText::new(label).size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text(
+                "Develop the actual RAW sensor data instead of its embedded JPEG preview",
+            )
+            .clicked()
+        {
+            self.load_current_image_as_raw();
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "↗ Open With…" — lets the OS choose an application for the original
+    /// file. Archive entries are skipped (no persistent standalone path).
+    fn hamburger_open_with_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        let Some(path) = self.current_image_path.clone() else {
+            return;
+        };
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("↗  Open With…").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Choose an application using the operating system's Open With dialog")
+            .clicked()
+        {
+            if let Err(error) = super::super::external_open::open_with(&path) {
+                self.queue_status = Some(format!("Could not open external application: {error}"));
+            }
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "📂 Locate in File Manager" — reveals the current file in the OS file manager.
+    fn hamburger_locate_in_file_manager_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        let Some(path) = self.current_image_path.clone() else {
+            return;
+        };
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("📂  Locate in File Manager")
+                        .size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .clicked()
+        {
+            if let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
+                self.queue_status = Some(format!("Could not locate file: {error}"));
+            }
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "📐 Wrap Window Around Image" — resizes the window to fit the image.
+    fn hamburger_wrap_window_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add_enabled(
+                !self.image_entries.is_empty(),
+                egui::Button::new(
+                    egui::RichText::new("📐  Wrap Window").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Resize the window around the current image · Ctrl+Alt+W")
+            .clicked()
+        {
+            self.handle_command(ctx, ViewerCommand::WrapWindowToImage);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "📁 Open Folder" — opens a folder of images.
+    fn hamburger_open_folder_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("📁  Open Folder").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Open a Folder of Images")
+            .clicked()
+        {
+            self.handle_command(ctx, ViewerCommand::OpenFolder);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "🗄️ Show/Hide Sidebar" — toggles the file sidebar visibility.
+    fn hamburger_sidebar_toggle_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        let sidebar_visible = self.settings_manager.get().show_file_sidebar;
+        if ui
+            .add(
+                egui::Button::new(if sidebar_visible {
+                    "🗄️  Hide Sidebar"
+                } else {
+                    "🗄️  Show Sidebar"
+                })
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .clicked()
+        {
+            let _ = self
+                .settings_manager
+                .update(|settings| settings.show_file_sidebar = !sidebar_visible);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "✂️ Edit Image" / "Resume Edit Mode" / "Exit Edit Mode" — toggles the
+    /// separate image-editing mode. An existing working copy can be resumed
+    /// without discarding unsaved changes.
+    fn hamburger_edit_image_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if self.image_entries.is_empty() {
+            return;
+        }
+
+        let edit_label = if self.show_edit_menu {
+            "✂️  Exit Edit Mode"
+        } else if self.edit_session.is_some() {
+            "✂️  Resume Edit Mode"
+        } else {
+            "✂️  Edit Image"
+        };
+        if ui
+            .add(
+                egui::Button::new(egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)))
+                    .min_size(egui::vec2(180.0, 30.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Toggle editing mode. Unsaved work stays in a working copy until saved or discarded.")
+            .clicked()
+        {
+            self.start_editing(ctx);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "🗑 Delete Image…" — moves the selected filesystem image to the
+    /// system Trash/Recycle Bin. Disabled for archive entries.
+    fn hamburger_delete_image_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        let can_delete_current = matches!(
+            self.image_entries.get(self.current_index),
+            Some(crate::image_entry::ImageEntry::File(_))
+        );
+        if ui
+            .add_enabled(
+                can_delete_current,
+                egui::Button::new(
+                    egui::RichText::new("🗑  Delete Image…").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Move the current image to the system Trash/Recycle Bin")
+            .clicked()
+        {
+            self.show_delete_confirmation = true;
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "🔬 Inspect" — toggles the per-channel inspect view (temporary display mode).
+    fn hamburger_inspect_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("🔬  Inspect").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Show or hide individual color and alpha channels")
+            .clicked()
+        {
+            self.toggle_inspect_mode(ctx);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "⚙ Settings" — opens the settings menu.
+    fn hamburger_settings_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("⚙  Settings").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Settings")
+            .clicked()
+        {
+            crate::app::ui::toggle_settings_menu(self);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// "❓ Help" — opens the help / shortcuts window.
+    fn hamburger_help_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("❓  Help").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Keyboard shortcuts and features")
+            .clicked()
+        {
+            self.toggle_help_menu(ctx);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// Loading spinner row — only rendered while an image is loading.
+    /// Includes its own separator so it can be moved anywhere without
+    /// leaving a stray divider behind.
+    fn hamburger_loading_indicator(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        if !self.is_loading() {
+            return;
+        }
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.add(egui::Spinner::new());
+            ui.label(egui::RichText::new("Loading...").size(scaled_text_size(ui.ctx(), 12.0)));
+        });
+    }
+
+    /// "X Exit" — sends the viewport close command.
+    fn hamburger_exit_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("X  Exit").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Exit")
+            .clicked()
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
     }
 }

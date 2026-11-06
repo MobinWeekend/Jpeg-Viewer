@@ -10,6 +10,7 @@ pub enum ViewerCommand {
     ZoomOut,
     ResetZoom,
     MakeFit,
+    WrapWindowToImage,
     OpenFile,
     OpenFolder,
     ToggleFullscreen,
@@ -210,6 +211,16 @@ impl Default for InputBindings {
             ],
         );
         keyboard.insert(
+            ViewerCommand::WrapWindowToImage,
+            vec![KeyBinding {
+                key: egui::Key::W,
+                ctrl: Some(true),
+                shift: Some(false),
+                alt: Some(true),
+            }],
+        );
+
+        keyboard.insert(
             ViewerCommand::OpenFile,
             vec![KeyBinding::ctrl(egui::Key::O)],
         );
@@ -330,6 +341,9 @@ impl Default for InputBindings {
 
 pub fn handle_keyboard(ctx: &egui::Context, bindings: &InputBindings) -> Vec<ViewerCommand> {
     let mut commands = Vec::new();
+    if ctx.wants_keyboard_input() {
+        return commands;
+    }
 
     ctx.input(|input| {
         for (command, bindings) in &bindings.keyboard {

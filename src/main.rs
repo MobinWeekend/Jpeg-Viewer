@@ -6,6 +6,7 @@ pub mod constants;
 mod decoder;
 mod gif;
 mod helpers;
+mod instance;
 mod image_core;
 mod image_entry;
 mod loader;
@@ -21,9 +22,36 @@ use app::ViewerApp;
 use eframe::egui;
 use raw_window_handle::HasWindowHandle;
 
+fn open_startup_paths(app: &mut ViewerApp, startup_paths: Vec<std::path::PathBuf>, ctx: &egui::Context) {
+    if startup_paths.len() == 1
+        && startup_paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"))
+    {
+        app.open_queue_file(&startup_paths[0], ctx, false);
+    } else if startup_paths.len() == 1 {
+        app.open_path(startup_paths[0].clone());
+    } else if !startup_paths.is_empty() {
+        app.load_dropped_files(startup_paths);
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let settings_manager = settings::SettingsManager::new();
-    let app_settings = settings_manager.get();
+    let app_settings = settings_manager.get().clone();
+    let startup_paths: Vec<std::path::PathBuf> = std::env::args_os().skip(1).map(Into::into).collect();
+    let instance_server = if app_settings.single_instance_enabled {
+        match crate::instance::launch_or_forward(settings_manager.path(), startup_paths.clone()) {
+            Ok(crate::instance::LaunchOutcome::Primary(server)) => Some(server),
+            Ok(crate::instance::LaunchOutcome::Forwarded) => return Ok(()),
+            Err(error) => {
+                eprintln!("Could not contact the running JPEG Viewer instance: {error}");
+                // Do not start a second process when the single-instance lock is held
+                // but the local forwarding endpoint is temporarily unavailable.
+                return Ok(());
+            }
+        }
+    } else {
+        None
+    };
 
     let icon = image::load_from_memory(include_bytes!("../assets/icons/icon.png"))
         .expect("Failed to load icon")
@@ -86,6 +114,18 @@ fn main() -> eframe::Result<()> {
             crate::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);
 
             let mut app = ViewerApp::default();
+            app.instance_server = instance_server;
+            if let Some(server) = app.instance_server.as_ref() {
+                // Wake the event loop when another process forwards an open request.
+                server.set_repaint_context(cc.egui_ctx.clone());
+            }
+            if app.instance_server.is_some() {
+                // Delay startup processing slightly so separate file-manager
+                // activations can be combined with this process's first path.
+                app.enqueue_external_open_paths(startup_paths, &cc.egui_ctx);
+            } else {
+                open_startup_paths(&mut app, startup_paths, &cc.egui_ctx);
+            }
 
             // Apply saved theme
             let saved_settings = app.settings_manager.get().clone();
@@ -112,16 +152,6 @@ fn main() -> eframe::Result<()> {
                     &settings.desktop_menu_bar_preference,
                 );
                 crate::ui_theme::apply_polished_style_with_options(&cc.egui_ctx, &settings.ui_accent_color, settings.ui_scale, settings.ui_text_scale);
-            }
-
-            let startup_paths: Vec<std::path::PathBuf> = std::env::args_os().skip(1).map(Into::into).collect();
-            if startup_paths.len() == 1 && startup_paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {
-                app.open_queue_file(&startup_paths[0], &cc.egui_ctx, false);
-            } else if startup_paths.len() == 1 {
-                app.open_path(startup_paths[0].clone());
-            } else if !startup_paths.is_empty() {
-                // Process every path passed by the OS (including multiple files dropped on the app icon).
-                app.load_dropped_files(startup_paths);
             }
 
             Ok(Box::new(app))

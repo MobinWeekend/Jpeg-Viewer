@@ -533,6 +533,16 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
         if ui
             .add_enabled(
                 !app.image_entries.is_empty(),
+                egui::Button::new("Wrap Window Around Image  ·  Ctrl+Alt+W"),
+            )
+            .clicked()
+        {
+            app.handle_command(ctx, ViewerCommand::WrapWindowToImage);
+            ui.close();
+        }
+        if ui
+            .add_enabled(
+                !app.image_entries.is_empty(),
                 egui::Button::new("Actual Size (100%)"),
             )
             .clicked()

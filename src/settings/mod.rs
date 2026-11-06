@@ -1,8 +1,9 @@
 use ini::Ini;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 5;
+const SETTINGS_SCHEMA_VERSION: u32 = 6;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -135,6 +136,24 @@ pub struct AppSettings {
     pub browse_entry_size: f32,
     pub queue_entry_size: f32,
     pub favorites_entry_size: f32,
+    /// Forward subsequent launches to the existing application process.
+    pub single_instance_enabled: bool,
+    // Viewing padding mode: look, fine_tune, or custom.
+    pub view_padding_mode: String,
+    /// Per-look adjustments in [top, right, bottom, left] order.
+    pub view_padding_fine_tune: HashMap<String, [f32; 4]>,
+    /// Explicit custom padding in [top, right, bottom, left] order.
+    pub view_padding_custom: [f32; 4],
+    // Window sizing around the currently viewed image.
+    pub fit_window_to_image: bool,
+    /// monitor or custom.
+    pub fit_window_limit: String,
+    pub fit_window_min_width: f32,
+    pub fit_window_max_width: f32,
+    pub fit_window_min_height: f32,
+    pub fit_window_max_height: f32,
+    pub fit_window_preserve_aspect: bool,
+    pub fit_window_center: bool,
 }
 
 impl Default for AppSettings {
@@ -200,7 +219,7 @@ impl Default for AppSettings {
             tricks_watermark_y: 50.0,
             tricks_watermark_speed: 1.0,
             tricks_watermark_opacity: 0.55,
-            tricks_watermark_size: 64.0,
+            tricks_watermark_size: 128.0,
             tricks_backdrop_enabled: false,
             tricks_backdrop_blur: 8.0,
             tricks_backdrop_tint: 0.30,
@@ -222,6 +241,23 @@ impl Default for AppSettings {
             browse_entry_size: 176.0,
             queue_entry_size: 176.0,
             favorites_entry_size: 176.0,
+            single_instance_enabled: false,
+            view_padding_mode: "look".to_string(),
+            view_padding_fine_tune: HashMap::from([
+                ("native".to_string(), [0.0; 4]),
+                ("cosmic".to_string(), [0.0; 4]),
+                ("gnome".to_string(), [0.0; 4]),
+                ("win98".to_string(), [0.0; 4]),
+            ]),
+            view_padding_custom: [0.0; 4],
+            fit_window_to_image: false,
+            fit_window_limit: "monitor".to_string(),
+            fit_window_min_width: 512.0,
+            fit_window_max_width: 1600.0,
+            fit_window_min_height: 512.0,
+            fit_window_max_height: 1000.0,
+            fit_window_preserve_aspect: true,
+            fit_window_center: true,
         }
     }
 }

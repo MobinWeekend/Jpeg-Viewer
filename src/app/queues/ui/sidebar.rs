@@ -1,5 +1,5 @@
 //! Queue and favorites tab content.
-use super::layout::{CELL_MIN, GAP, fit_cards};
+use super::layout::{GAP, fit_cards};
 use crate::app::queues::actions;
 use crate::app::queues::storage::{absolute_path, paths_equal};
 use crate::app::types::ViewerApp;
@@ -16,7 +16,7 @@ impl ViewerApp {
         ui.heading("Queue");
         ui.label(format!("{} items", self.queue_paths.len()));
         let mut entry_size = self.settings_manager.get().queue_entry_size;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Entry size");
             if ui
                 .add(crate::ui_theme::BorderedSlider::new(
@@ -39,7 +39,7 @@ impl ViewerApp {
             });
         });
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("+ files").clicked() {
                 if let Some(paths) = rfd::FileDialog::new().pick_files() {
                     let mut added = 0;
@@ -60,7 +60,7 @@ impl ViewerApp {
                 self.add_current_folder_images();
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("Use Browse list if empty")
                 .on_hover_text("Only fills the queue when it is empty")
@@ -74,7 +74,7 @@ impl ViewerApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("+ Folder…")
                 .on_hover_text("Add images from a folder and its subfolders")
@@ -102,7 +102,7 @@ impl ViewerApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("Open queue").clicked() {
                 self.open_queue_in_viewer(ctx);
             }
@@ -148,12 +148,10 @@ impl ViewerApp {
                     self.queue_status = Some("Queue cleared.".into());
                 }
             });
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 crate::ui_theme::switch(ui, &mut self.queue_repeat, "Repeat queue");
             });
         });
-        ui.separator();
-
         if self.queue_paths.is_empty() {
             ui.label(
                 "Queue is empty. Add files, the current image, or the images listed in Browse.",
@@ -165,11 +163,12 @@ impl ViewerApp {
             let mut open_index = None;
 
             // Dynamic sizing — same logic as the Browse sidebar.
-            let available = ui.available_width().max(CELL_MIN);
+            let available = ui.available_width().max(1.0);
             let (columns, card_size) =
                 fit_cards(available, self.settings_manager.get().queue_entry_size);
+            ui.spacing_mut().item_spacing.y = 0.0;
 
-            egui::ScrollArea::vertical()
+            egui::ScrollArea::both()
                 .id_salt("queue_sidebar_items")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -306,7 +305,7 @@ impl ViewerApp {
                 .show(ctx, |ui| {
                     ui.label(format!("The .jvq file contains {} item(s).", paths.len()));
                     ui.label("Add appends unique items; Replace discards the current queue.");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button("Add to queue").clicked() {
                             let mut added = 0;
                             for path in &paths {
@@ -343,7 +342,7 @@ impl ViewerApp {
         ui.heading("Favorites");
         ui.label(format!("{} saved item(s)", self.favorite_paths.len()));
         let mut entry_size = self.settings_manager.get().favorites_entry_size;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Entry size");
             if ui
                 .add(crate::ui_theme::BorderedSlider::new(
@@ -365,7 +364,7 @@ impl ViewerApp {
                 "Large"
             });
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("+ current image").clicked() {
                 self.add_current_image_to_favorites();
             }
@@ -377,7 +376,7 @@ impl ViewerApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .button("+ folder as entry…")
                 .on_hover_text("Save a folder as one favorite entry")
@@ -388,16 +387,16 @@ impl ViewerApp {
                 }
             }
         });
-        ui.separator();
         if self.favorite_paths.is_empty() {
             ui.label("No favorites yet. Right-click an image in Browse or Queue to add it here.");
             return;
         }
         let items = self.favorite_paths.clone();
-        let available = ui.available_width().max(CELL_MIN);
+        let available = ui.available_width().max(1.0);
         let (columns, card_size) =
             fit_cards(available, self.settings_manager.get().favorites_entry_size);
-        egui::ScrollArea::vertical()
+        ui.spacing_mut().item_spacing.y = 0.0;
+        egui::ScrollArea::both()
             .id_salt("favorites_sidebar_items")
             .auto_shrink([false, false])
             .show(ui, |ui| {

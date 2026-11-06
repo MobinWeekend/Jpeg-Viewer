@@ -79,7 +79,7 @@ impl ViewerApp {
             //general_settings(self, ui, ctx);
         });
         // Same mouse behavior as image view
-        self.handle_image_mouse_input(ctx, &response);
+        self.handle_image_mouse_input(ctx, &response, None);
         //use crate::app::ui::helpers::render_drag_area;
         //render_drag_area(ctx, ui);
     }

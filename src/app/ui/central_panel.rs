@@ -79,6 +79,7 @@ impl ViewerApp {
                 };
 
                 self.render_loading_ui(ui, &message, Some(progress_percent), is_extreme);
+                self.handle_background_window_drag(ui, ctx);
                 return;
             }
 
@@ -103,6 +104,7 @@ impl ViewerApp {
                         };
                         Self::draw_loading_overlay(&painter, available_rect, message);
                     }
+                    self.handle_background_window_drag(ui, ctx);
                     return;
                 }
                 let error = self.image_error.clone();
@@ -115,6 +117,7 @@ impl ViewerApp {
                     return;
                 } else if self.is_gif {
                     self.render_loading_ui(ui, "Loading GIF frame...", None, false);
+                    self.handle_background_window_drag(ui, ctx);
                     return;
                 }
                 return;
@@ -139,11 +142,21 @@ impl ViewerApp {
                     );
                 }
 
-                let vt = self.virtual_texture.as_mut().unwrap();
-                // Check if virtual texture is ready
-                if !vt.is_ready() {
-                    let total_tiles = vt.total_tiles();
-                    let prepared_tiles = vt.prepared_tiles_count();
+                // Snapshot the virtual texture state in a short immutable-borrow
+                // scope. This lets the loading branch call back into `self` to
+                // handle background window dragging without overlapping a borrow
+                // of `self.virtual_texture`.
+                let (is_ready, total_tiles, prepared_tiles, dimensions) = {
+                    let vt = self.virtual_texture.as_ref().unwrap();
+                    (
+                        vt.is_ready(),
+                        vt.total_tiles(),
+                        vt.prepared_tiles_count(),
+                        vt.dimensions(),
+                    )
+                };
+
+                if !is_ready {
                     let progress_percent = if total_tiles > 0 {
                         prepared_tiles as f32 / total_tiles as f32
                     } else {
@@ -163,20 +176,31 @@ impl ViewerApp {
                     };
 
                     self.render_loading_ui(ui, &message, Some(progress_percent), is_extreme);
+                    self.handle_background_window_drag(ui, ctx);
                     return;
                 }
 
                 // Get dimensions from virtual texture
-                let (vt_width, vt_height) = vt.dimensions();
+                let (vt_width, vt_height) = dimensions;
                 let texture_size = egui::vec2(vt_width as f32, vt_height as f32);
+                if self.window_fit_pending && self.wrap_window_around_image(ctx, texture_size) {
+                    // Let the viewport command take effect before computing the image
+                    // fit against the new available rectangle.
+                    self.b_fit_to_window = true;
+                    ctx.request_repaint();
+                    return;
+                }
                 // Update fit-to-window if needed for virtual texture
                 if self.b_fit_to_window {
                     self.calculate_fit_zoom(texture_size, image_viewport_rect.size());
                     self.b_fit_to_window = false;
                 }
 
-                // Render using virtual texture
+                // Render using virtual texture. Keep the exact screen-space image
+                // bounds so an empty margin drag can move the native window.
                 let available_rect = ui.available_rect_before_wrap();
+                let virtual_image_rect = self.get_image_rect(texture_size, image_viewport_rect.center());
+                self.image_rect = Some(virtual_image_rect);
 
                 // Create the painter and immediately use it in a limited scope
                 let texture_options = self.get_texture_options();
@@ -218,7 +242,7 @@ impl ViewerApp {
                 // Allocate the same rect for interaction (drag/pan)
                 let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
-                self.handle_image_mouse_input(ctx, &response);
+                self.handle_image_mouse_input(ctx, &response, Some(virtual_image_rect));
 
                 // Show loading indicator overlay if still loading
                 if self.is_loading()
@@ -250,6 +274,13 @@ impl ViewerApp {
                 }
             };
 
+            if self.window_fit_pending && self.wrap_window_around_image(ctx, texture_size) {
+                // Recalculate fit zoom on the next frame, after the new viewport
+                // dimensions have been delivered by the window manager.
+                self.b_fit_to_window = true;
+                ctx.request_repaint();
+                return;
+            }
             if self.b_fit_to_window {
                 self.calculate_fit_zoom(texture_size, image_viewport_rect.size());
                 self.b_fit_to_window = false;
@@ -494,13 +525,13 @@ impl ViewerApp {
                 if self.crop_tool_active {
                     self.handle_crop_mouse_input(ctx, &response, image_rect);
                 } else {
-                    self.handle_image_mouse_input(ctx, &response);
+                    self.handle_image_mouse_input(ctx, &response, Some(image_rect));
                 }
                 if self.crop_tool_active || self.crop_selection.is_some() {
                     self.paint_crop_selection(ui.painter(), image_rect);
                 }
             } else {
-                self.handle_image_mouse_input(ctx, &response);
+                self.handle_image_mouse_input(ctx, &response, Some(image_rect));
             }
 
             if self.is_loading()
@@ -516,6 +547,17 @@ impl ViewerApp {
                 Self::draw_loading_overlay(&painter, available_rect, message);
             }
         });
+    }
+
+    /// Allow the empty portion of the central view to move a window even while
+    /// an image is indexing/loading and there is no image rectangle to pan.
+    fn handle_background_window_drag(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let response = ui.interact(
+            ui.max_rect(),
+            ui.id().with("main_view_background_drag"),
+            egui::Sense::click_and_drag(),
+        );
+        self.handle_image_mouse_input(ctx, &response, None);
     }
 
     // New unified loading UI with optional progress and extreme ratio indicator
@@ -766,43 +808,33 @@ fn fitted_image_viewport_rect(
     settings: &crate::settings::AppSettings,
     fit_mode: bool,
 ) -> egui::Rect {
-    if !fit_mode {
+    // Preserve the original Look behavior: default and fine-tuned toolbar clearance
+    // is reserved in fit mode. Explicit custom padding remains active while zooming.
+    if !fit_mode && settings.view_padding_mode != "custom" {
         return available;
     }
 
     let profile = crate::ui_theme::current_look_profile(ctx);
-    if profile != "cosmic" && profile != "gnome" && profile != "win98" {
-        return available;
+    let placement = crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
+    let mut padding = crate::app::ui::settings_menu::viewing::effective_padding(settings, profile, placement);
+
+    let max_horizontal = (available.width() - 1.0).max(0.0) * 0.5;
+    let max_vertical = (available.height() - 1.0).max(0.0) * 0.5;
+    let horizontal_total = padding[1] + padding[3];
+    let vertical_total = padding[0] + padding[2];
+    if horizontal_total > max_horizontal * 2.0 && horizontal_total > 0.0 {
+        let scale = (max_horizontal * 2.0) / horizontal_total;
+        padding[1] *= scale;
+        padding[3] *= scale;
+    }
+    if vertical_total > max_vertical * 2.0 && vertical_total > 0.0 {
+        let scale = (max_vertical * 2.0) / vertical_total;
+        padding[0] *= scale;
+        padding[2] *= scale;
     }
 
-    const EDGE_PADDING: f32 = 12.0;
-    const TOOLBAR_CLEARANCE: f32 = 58.0;
-    let placement =
-        crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
-    let mut top = EDGE_PADDING;
-    let mut bottom = EDGE_PADDING;
-    match placement {
-        "cosmic" => bottom += TOOLBAR_CLEARANCE,
-        "gnome" | "win98" => top += TOOLBAR_CLEARANCE,
-        // With the original split toolbar, leave room at both ends so neither
-        // the zoom controls nor the bottom navigation overlap a fitted image.
-        _ => {
-            top += 40.0;
-            bottom += 40.0;
-        }
-    }
-
-    let max_vertical_inset = (available.height() - 1.0).max(0.0);
-    let vertical_total = top + bottom;
-    if vertical_total > max_vertical_inset && vertical_total > 0.0 {
-        let factor = max_vertical_inset / vertical_total;
-        top *= factor;
-        bottom *= factor;
-    }
-
-    let horizontal = EDGE_PADDING.min((available.width() - 1.0).max(0.0) * 0.5);
     egui::Rect::from_min_max(
-        egui::pos2(available.left() + horizontal, available.top() + top),
-        egui::pos2(available.right() - horizontal, available.bottom() - bottom),
+        egui::pos2(available.left() + padding[3], available.top() + padding[0]),
+        egui::pos2(available.right() - padding[1], available.bottom() - padding[2]),
     )
 }

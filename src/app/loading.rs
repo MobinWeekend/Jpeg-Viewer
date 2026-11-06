@@ -151,6 +151,7 @@ impl ViewerApp {
     }
 
     fn load_current_image_mode(&mut self, develop_raw: bool) {
+        self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.showing_raw_developed = develop_raw;
         self.clear_current_image_state();
 
@@ -238,6 +239,7 @@ impl ViewerApp {
     // ====== IMAGE ENTRY SETUP ======
 
     pub fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
+        self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.image_entries = entries;
         self.current_index = current_index;
         self.preload_origin = current_index;

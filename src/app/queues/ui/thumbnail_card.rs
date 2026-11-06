@@ -1,5 +1,5 @@
 //! Custom-painted thumbnail cards used by Browse, Queue, and Favorites.
-use super::layout::fit_label;
+use super::layout::wrap_label;
 use crate::app::types::ViewerApp;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -25,11 +25,11 @@ impl ViewerApp {
         let label_height = if compact {
             0.0
         } else {
-            (card_width * 0.22).clamp(20.0, 32.0)
+            (card_width * 0.24).clamp(28.0, 48.0)
         };
         // Compact entries are horizontal rows with a 8:1 width-to-height ratio.
         let card_height = if compact {
-            (card_width / 8.0).max(18.0)
+            (card_width / 7.0).max(24.0)
         } else {
             card_width.max(1.0)
         };
@@ -102,7 +102,10 @@ impl ViewerApp {
                 image_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "📁", //folder icon
-                egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0)),
+                egui::FontId::proportional(scaled_text_size(
+                    ui.ctx(),
+                    if context_mode == 2 { (entry_size * 0.28).clamp(16.0, 56.0) } else { 14.0 },
+                )),
                 card_text_color,
             );
         } else if let Some(texture) = self.sidebar_thumbnails.get(key) {
@@ -154,7 +157,7 @@ impl ViewerApp {
             painter.text(
                 text_rect.left_center(),
                 egui::Align2::LEFT_CENTER,
-                fit_label(ui, label, (text_rect.width() - 4.0).max(4.0)),
+                wrap_label(ui, label, (text_rect.width() - 4.0).max(4.0), 2),
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 12.0)),
                 card_text_color,
             );
@@ -164,7 +167,7 @@ impl ViewerApp {
             painter.text(
                 label_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                fit_label(ui, label, (label_rect.width() - 8.0).max(8.0)),
+                wrap_label(ui, label, (label_rect.width() - 8.0).max(8.0), 2),
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 12.0)),
                 card_text_color,
             );

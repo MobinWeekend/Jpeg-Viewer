@@ -348,6 +348,21 @@ impl SettingsManager {
             "favorites_entry_size",
             settings.favorites_entry_size.to_string(),
         );
+        section.set("single_instance_enabled", if settings.single_instance_enabled { "true" } else { "false" });
+        section.set("view_padding_mode", &settings.view_padding_mode);
+        for profile in ["native", "cosmic", "gnome", "win98"] {
+            let values = settings.view_padding_fine_tune.get(profile).copied().unwrap_or([0.0; 4]);
+            section.set(format!("view_padding_fine_tune_{profile}"), format!("{},{},{},{}", values[0], values[1], values[2], values[3]));
+        }
+        section.set("view_padding_custom", format!("{},{},{},{}", settings.view_padding_custom[0], settings.view_padding_custom[1], settings.view_padding_custom[2], settings.view_padding_custom[3]));
+        section.set("fit_window_to_image", if settings.fit_window_to_image { "true" } else { "false" });
+        section.set("fit_window_limit", &settings.fit_window_limit);
+        section.set("fit_window_min_width", settings.fit_window_min_width.to_string());
+        section.set("fit_window_max_width", settings.fit_window_max_width.to_string());
+        section.set("fit_window_min_height", settings.fit_window_min_height.to_string());
+        section.set("fit_window_max_height", settings.fit_window_max_height.to_string());
+        section.set("fit_window_preserve_aspect", if settings.fit_window_preserve_aspect { "true" } else { "false" });
+        section.set("fit_window_center", if settings.fit_window_center { "true" } else { "false" });
 
         Self::write_ini_safely(path, &conf)
     }

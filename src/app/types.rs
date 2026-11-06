@@ -94,10 +94,16 @@ pub struct ViewerApp {
     pub b_zoom_used: bool,
     pub image_rect: Option<egui::Rect>,
     pub last_window_size: Option<egui::Vec2>,
+    /// Pending automatic or user-requested window fit, performed once image dimensions are ready.
+    pub window_fit_pending: bool,
     pub zoom_drag_start_pos: Option<egui::Pos2>,
     pub zoom_drag_start_zoom: f32,
     pub zoom_drag_start_pan: egui::Vec2,
     pub zoom_drag_start_center: egui::Pos2,
+    /// True while a primary-button drag that began on the image is panning it.
+    pub main_view_pan_drag_active: bool,
+    /// True while a primary-button drag that began outside the image moves the window.
+    pub main_view_window_drag_active: bool,
 
     // ====== CACHE ======
     pub image_cache: LruCache<String, CachedImage>,
@@ -197,6 +203,8 @@ pub struct ViewerApp {
     // ====== WINDOW ======
     pub startup_fullscreen_handled: bool,
     pub startup_window_placement_handled: bool,
+    /// Keep the saved maximized state until the native window manager confirms restoration.
+    pub startup_restore_maximize_pending: bool,
     pub sidebar_width_needs_save: bool,
     /// Actual width allocated to the left sidebar this frame, used to position overlays.
     pub sidebar_actual_width: f32,
@@ -216,6 +224,16 @@ pub struct ViewerApp {
     // ====== LOADING ======
     pub loading_state: LoadingState,
     pub indexing_receiver: Option<Receiver<(Vec<PathBuf>, Option<PathBuf>)>>,
+    /// Optional IPC server used to receive file-open requests from later launches.
+    pub instance_server: Option<crate::instance::InstanceServer>,
+    /// File paths collected from startup/IPC launches before opening as one selection.
+    pub pending_open_paths: Vec<PathBuf>,
+    /// Quiet-period deadline used to group Explorer multi-select launches.
+    pub pending_open_deadline: Option<Instant>,
+    /// Recently opened external selection, allowing slightly staggered Explorer
+    /// per-file activations to be merged even if one request arrives after the
+    /// initial quiet period has elapsed.
+    pub recent_external_open_batch: Option<(Vec<PathBuf>, Instant)>,
 
     // ====== Sort method ======
     pub sort_method: SortMethod,
@@ -354,10 +372,13 @@ impl Default for ViewerApp {
             b_zoom_used: false,
             image_rect: None,
             last_window_size: None,
+            window_fit_pending: false,
             zoom_drag_start_pos: None,
             zoom_drag_start_zoom: 1.0,
             zoom_drag_start_pan: egui::Vec2::ZERO,
             zoom_drag_start_center: egui::Pos2::ZERO,
+            main_view_pan_drag_active: false,
+            main_view_window_drag_active: false,
 
             // ====== CACHE ======
             image_cache: LruCache::new(
@@ -457,6 +478,7 @@ impl Default for ViewerApp {
             // ====== WINDOW ======
             startup_fullscreen_handled: false,
             startup_window_placement_handled: false,
+            startup_restore_maximize_pending: settings.window_maximized && !settings.start_fullscreen,
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
             right_sidebar_actual_width: 0.0,
@@ -473,6 +495,10 @@ impl Default for ViewerApp {
             // ====== LOADING ======
             loading_state: LoadingState::Idle,
             indexing_receiver: None,
+            instance_server: None,
+            pending_open_paths: Vec::new(),
+            pending_open_deadline: None,
+            recent_external_open_batch: None,
 
             // ====== Sort method ======
             sort_method: SortMethod::Natural,

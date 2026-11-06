@@ -10,12 +10,14 @@ A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse im
 
 - **Image formats:** JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, HEIC/HEIF, JPEG XL, SVG, HDR/EXR, and more; includes in-process camera RAW decoding (support varies by camera model).
 - **Archives:** browse images inside ZIP, 7z, and RAR archives without extracting them.
-- **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan, fullscreen, and compact mode.
-- **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable.
+- **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan, fullscreen, and compact mode. In windowed mode, drag the image-view margins to move the window.
+- **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable. With single-instance mode enabled, file-manager multi-selections are forwarded to the existing window and shown as the selected collection.
 - **Queues:** create a viewing/slideshow sequence, save and load `.jvq` lists, export paths, shuffle, repeat, and remap moved folders.
 - **Editing:** crop, resize with optional aspect-ratio locking, rotate, flip, adjust brightness/contrast/saturation/hue, undo/redo, and export to a selected format. The source is unchanged until you save or overwrite it.
 - **GIFs and slideshows:** playback speed controls, configurable intervals, transitions, pan/zoom motion, looping, and optional prevention of system sleep.
-- **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98.
+- **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98. Main-view padding can follow the active Look, be fine-tuned per Look, or use custom values.
+- **Window sizing:** optionally fit the window to each viewed image, use monitor or custom size limits, preserve the image aspect ratio when constrained, and center the resized window.
+- **Single-instance mode:** optionally forward later file-open requests to the existing window, including multi-file selections.
 - **Performance:** background decoding and preloading, configurable cache, virtual texturing for very large images, and an adjustable frame limiter.
 - **File actions:** drag and drop, Open With, locate in file manager, rename supported filesystem images, copy image/path, and trash integration where supported.
 
@@ -61,10 +63,11 @@ cargo run --release       # build and run
 cargo build --release     # build only
 ```
 
-The executable is placed in `target/release/`. Open a file directly by passing its path:
+The executable is placed in `target/release/`. Open a file directly by passing its path. Pass multiple image paths to open only that explicit selection rather than indexing their containing directory:
 
 ```bash
 jpeg_viewer image.jpg
+jpeg_viewer one.jpg two.png three.webp
 ```
 
 ## Architecture notes
@@ -107,7 +110,7 @@ Queues currently store standalone filesystem image files only; images inside arc
 
 ## Documentation
 
-- [Getting Started](QUICK_START.md) — essential controls, sidebar collections, editing, appearance, and troubleshooting.
+- [Getting Started](QUICK_START.md) — essential controls, file-manager multi-selection, window gestures and sizing, sidebar collections, editing, appearance, and troubleshooting.
 - In-app Help — press **F1** for shortcuts and mouse controls.
 
 ## License

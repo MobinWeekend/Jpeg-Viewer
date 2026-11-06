@@ -99,6 +99,7 @@ impl ViewerApp {
 
         // Reset image view
         self.b_fit_to_window = true;
+        self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.image_rect = None;
         self.b_zoom_used = false;
 

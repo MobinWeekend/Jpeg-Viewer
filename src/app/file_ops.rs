@@ -7,6 +7,13 @@ use crate::image_entry::ImageEntry;
 use arboard::Clipboard;
 use eframe::egui;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+/// Group closely timed process launches from file managers into one selection.
+const OPEN_REQUEST_QUIET_PERIOD: Duration = Duration::from_millis(450);
+/// Some Windows shell integrations launch selected files a little apart. Retain
+/// the most recent same-folder open briefly so late process activations can join it.
+const OPEN_REQUEST_GROUP_WINDOW: Duration = Duration::from_millis(1_500);
 
 impl ViewerApp {
     pub fn open_path(&mut self, path: PathBuf) {
@@ -142,8 +149,10 @@ impl ViewerApp {
         });
         let mut geometry_was_saved = false;
         if !is_fullscreen {
-            self.settings_manager.settings.window_maximized = is_maximized;
-            if !is_maximized {
+            if !self.startup_restore_maximize_pending {
+                self.settings_manager.settings.window_maximized = is_maximized;
+            }
+            if !is_maximized && !self.startup_restore_maximize_pending {
                 if let (Some(pos), Some(size)) = (pos, size) {
                     if size.x > 100.0 && size.y > 100.0 {
                         let pos_arr = [pos.x, pos.y];
@@ -264,6 +273,11 @@ impl ViewerApp {
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.set_loading_state(LoadingState::Idle);
+        // A preceding single-file launch may have started an asynchronous scan of
+        // its containing directory. Explicit file selections replace that scan;
+        // dropping its receiver prevents the old directory result from replacing
+        // the selected-only image list when it finishes later.
+        self.indexing_receiver = None;
 
         // Reset preload state
         self.image_cache.clear();
@@ -297,7 +311,10 @@ impl ViewerApp {
         }
 
         // Convert to ImageEntries
-        let entries: Vec<ImageEntry> = image_paths.into_iter().map(ImageEntry::File).collect();
+        let mut entries: Vec<ImageEntry> = image_paths.into_iter().map(ImageEntry::File).collect();
+        // Apply the user's normal ordering to the selected set without indexing
+        // any neighboring files from the containing directory.
+        crate::sort::sort_images(&mut entries, self.sort_method);
 
         // Set image entries starting at index 0
         self.set_image_entries(entries, 0);
@@ -309,6 +326,128 @@ impl ViewerApp {
         // Cache already cleared above; no need to clear again.
 
         println!("Loaded {} dropped image(s)", self.image_entries.len());
+    }
+
+
+    /// Queue paths from a process launch. A quiet period lets file-manager
+    /// one-process-per-file activations arrive as one multi-selection.
+    pub fn enqueue_external_open_paths(&mut self, paths: Vec<PathBuf>, ctx: &egui::Context) {
+        // Restore and activate the primary window, including an empty launch.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        ctx.request_repaint();
+
+        if paths.is_empty() {
+            return;
+        }
+
+        self.stop_slideshow();
+
+        let now = Instant::now();
+        let incoming_paths = paths;
+
+        // Some shell integrations start one process per selected file and do not
+        // launch all helper processes at exactly the same time. If a prior batch
+        // from the same folder was just displayed, prepend it so the final result
+        // remains the exact Explorer selection rather than a directory listing or
+        // only the late-arriving tail of that selection.
+        if incoming_paths.len() == 1 && self.pending_open_paths.is_empty() {
+            if let Some((recent_paths, expires_at)) = self.recent_external_open_batch.take() {
+                let same_directory = recent_paths.first()
+                    .and_then(|path| path.parent())
+                    == incoming_paths.first().and_then(|path| path.parent());
+                if now <= expires_at && same_directory {
+                    for path in recent_paths {
+                        if !incoming_paths.contains(&path) {
+                            self.pending_open_paths.push(path);
+                        }
+                    }
+                }
+            }
+        } else if incoming_paths.len() > 1 {
+            // A complete multi-selection arrived in one activation; it is already
+            // authoritative and must not be mixed with a previous independent open.
+            self.recent_external_open_batch = None;
+        }
+
+        for path in incoming_paths {
+            // Keep first-seen order while avoiding duplicate command-line paths.
+            if !self.pending_open_paths.contains(&path) {
+                self.pending_open_paths.push(path);
+            }
+        }
+        self.pending_open_deadline = Some(now + OPEN_REQUEST_QUIET_PERIOD);
+        ctx.request_repaint_after(OPEN_REQUEST_QUIET_PERIOD);
+    }
+
+    /// Open the collected paths once no additional launch requests have arrived.
+    pub fn process_pending_open_paths(&mut self, ctx: &egui::Context) {
+        let Some(deadline) = self.pending_open_deadline else {
+            return;
+        };
+        let now = Instant::now();
+        if now < deadline {
+            ctx.request_repaint_after(deadline.saturating_duration_since(now));
+            return;
+        }
+
+        self.pending_open_deadline = None;
+        let paths = std::mem::take(&mut self.pending_open_paths);
+        if paths.is_empty() {
+            return;
+        }
+
+        let is_queue_file = paths.len() == 1
+            && paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
+        let can_replace_current_view = !self.edit_session.as_ref().is_some_and(|session| session.dirty);
+
+        if is_queue_file {
+            self.open_queue_file(&paths[0], ctx, false);
+            self.recent_external_open_batch = None;
+        } else if paths.len() == 1 {
+            self.open_path(paths[0].clone());
+            if can_replace_current_view && paths[0].is_file() && is_supported_image(&paths[0]) {
+                self.recent_external_open_batch = Some((
+                    paths.clone(),
+                    Instant::now() + OPEN_REQUEST_GROUP_WINDOW,
+                ));
+            } else {
+                self.recent_external_open_batch = None;
+            }
+        } else {
+            // Explicit multi-file opens must contain only the selected files;
+            // never index the directory containing those files.
+            self.load_dropped_files(paths.clone());
+
+            let only_same_folder_images = paths.first()
+                .and_then(|path| path.parent())
+                .is_some_and(|parent| {
+                    paths.iter().all(|path| {
+                        path.parent() == Some(parent)
+                            && path.is_file()
+                            && is_supported_image(path)
+                    })
+                });
+            if can_replace_current_view && only_same_folder_images {
+                self.recent_external_open_batch = Some((
+                    paths,
+                    Instant::now() + OPEN_REQUEST_GROUP_WINDOW,
+                ));
+            } else {
+                self.recent_external_open_batch = None;
+            }
+        }
+
+        // Repeat activation after the new selection has been installed. This is
+        // intentional: the initial focus request wakes/restores the window early,
+        // while this one makes the completed open visible after the UI state changes.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        ctx.request_repaint();
+    }
+
+    pub fn handle_forwarded_open_request(&mut self, paths: Vec<PathBuf>, ctx: &egui::Context) {
+        self.enqueue_external_open_paths(paths, ctx);
     }
 
     pub fn copy_path_to_clipboard(&self) {

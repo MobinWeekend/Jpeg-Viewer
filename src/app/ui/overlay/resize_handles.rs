@@ -8,7 +8,10 @@ const FRAME_STROKE_ALPHA: u8 = 72; // visually subtle; hit areas stay fully acti
 
 pub fn render_resize_handles(ctx: &egui::Context, thickness: f32, border_color: egui::Color32) {
     let viewport = ctx.input(|input| input.viewport().clone());
-    if viewport.fullscreen.unwrap_or(false) || viewport.minimized.unwrap_or(false) {
+    if viewport.fullscreen.unwrap_or(false)
+        || viewport.maximized.unwrap_or(false)
+        || viewport.minimized.unwrap_or(false)
+    {
         return;
     }
 

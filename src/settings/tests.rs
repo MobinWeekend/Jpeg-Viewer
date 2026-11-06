@@ -34,7 +34,7 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=5"));
+    assert!(saved.contains("schema_version=6"));
     let _ = fs::remove_file(path);
 }
 
@@ -60,7 +60,7 @@ fn legacy_window_geometry_is_normalized_once_for_saved_ui_scale() {
     assert_eq!(loaded.window_pos, Some([300.0, 150.0]));
     assert_eq!(loaded.window_size, Some([900.0, 600.0]));
 
-    // Once written as schema 5, the normalized geometry must not be scaled again.
+    // Once written with the current schema, the normalized geometry must not be scaled again.
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let loaded_again = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
@@ -251,4 +251,42 @@ fn test_default_settings() {
     assert!(settings.slideshow_loop);
     assert!(!settings.slideshow_random);
     assert!(!settings.start_fullscreen);
+}
+
+
+#[test]
+fn viewing_and_single_instance_settings_round_trip() {
+    let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let path = std::env::temp_dir().join(format!("jpeg-viewer-viewing-settings-{}.ini", unique));
+    let mut settings = AppSettings::default();
+    settings.single_instance_enabled = true;
+    settings.view_padding_mode = "fine_tune".to_string();
+    settings.view_padding_fine_tune.insert("cosmic".to_string(), [2.0, 4.0, 6.0, 8.0]);
+    settings.view_padding_custom = [10.0, 20.0, 30.0, 40.0];
+    settings.fit_window_to_image = true;
+    settings.fit_window_limit = "custom".to_string();
+    settings.fit_window_min_width = 640.0;
+    settings.fit_window_max_width = 1800.0;
+    settings.fit_window_min_height = 512.0;
+    settings.fit_window_max_height = 1200.0;
+    settings.fit_window_preserve_aspect = false;
+    settings.fit_window_center = false;
+
+    SettingsManager::save_to_file(&path, &settings).unwrap();
+    let mut error = None;
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert!(loaded.single_instance_enabled);
+    assert_eq!(loaded.view_padding_mode, "fine_tune");
+    assert_eq!(loaded.view_padding_fine_tune.get("cosmic"), Some(&[2.0, 4.0, 6.0, 8.0]));
+    assert_eq!(loaded.view_padding_custom, [10.0, 20.0, 30.0, 40.0]);
+    assert!(loaded.fit_window_to_image);
+    assert_eq!(loaded.fit_window_limit, "custom");
+    assert_eq!(loaded.fit_window_min_width, 640.0);
+    assert_eq!(loaded.fit_window_max_width, 1800.0);
+    assert_eq!(loaded.fit_window_min_height, 512.0);
+    assert_eq!(loaded.fit_window_max_height, 1200.0);
+    assert!(!loaded.fit_window_preserve_aspect);
+    assert!(!loaded.fit_window_center);
+    let _ = fs::remove_file(path);
 }

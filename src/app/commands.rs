@@ -70,6 +70,9 @@ impl ViewerApp {
                 self.b_fit_to_window = true;
                 self.b_zoom_used = false;
             }
+            ViewerCommand::WrapWindowToImage => {
+                self.request_wrap_window_around_image(ctx);
+            }
             ViewerCommand::OpenFile => {
                 self.update_window_title(ctx);
                 self.open_file_dialog();

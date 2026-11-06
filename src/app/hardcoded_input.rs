@@ -7,61 +7,111 @@ impl ViewerApp {
     // Handle all hardcoded input events (keyboard, mouse, drag & drop)
 
     // Handle mouse input on the image response.
-    pub fn handle_image_mouse_input(&mut self, ctx: &egui::Context, response: &egui::Response) {
-        if !response.hovered() {
+    pub fn handle_image_mouse_input(
+        &mut self,
+        ctx: &egui::Context,
+        response: &egui::Response,
+        image_rect: Option<egui::Rect>,
+    ) {
+        let (fullscreen, maximized, alt, ctrl, left_down, right_down, delta, hover_pos) =
+            ctx.input(|input| {
+                (
+                    input.viewport().fullscreen.unwrap_or(false),
+                    input.viewport().maximized.unwrap_or(false),
+                    input.modifiers.alt,
+                    input.modifiers.ctrl,
+                    input.pointer.button_down(egui::PointerButton::Primary),
+                    input.pointer.button_down(egui::PointerButton::Secondary),
+                    input.pointer.delta(),
+                    input.pointer.hover_pos(),
+                )
+            });
+        let windowed = !fullscreen && !maximized;
+
+        // Select the gesture mode once at drag start. Do not recalculate it while
+        // panning, because the image rectangle itself moves as pan is applied.
+        if response.drag_stopped_by(egui::PointerButton::Primary) || !left_down {
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+        }
+
+        if !response.hovered() && !left_down && !right_down {
             return;
         }
 
         // Trackpad pinch gestures: preserve existing zoom behavior.
         let zoom_delta = ctx.input(|i| i.zoom_delta());
-
         if zoom_delta.is_finite() && (zoom_delta - 1.0).abs() > 0.001 {
             if !self.image_entries.is_empty() {
                 let center = response.rect.center();
                 let offset = center - response.rect.center();
                 let image_point = offset / self.zoom - self.pan;
-
                 self.zoom = (self.zoom * zoom_delta).clamp(0.005, 50.0);
                 self.pan = offset / self.zoom - image_point;
-
                 self.b_zoom_used = true;
                 self.mark_interaction();
                 ctx.request_repaint();
             }
-
             return;
         }
 
-        let (alt, ctrl) = ctx.input(|i| (i.modifiers.alt, i.modifiers.ctrl));
-
-        // CTRL + LEFT DRAG -> RESIZE WINDOW
-        // BeginResize expects the LEFT mouse button to be the
-        // button that initiated the resize.
-        if ctrl && response.drag_started_by(egui::PointerButton::Primary) {
+        // CTRL + LEFT DRAG -> RESIZE WINDOW. Native resize is unavailable while
+        // maximized/fullscreen, so do not start a resize gesture in those states.
+        if ctrl && windowed && response.drag_started_by(egui::PointerButton::Primary) {
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(
                 egui::viewport::ResizeDirection::SouthEast,
             ));
-
             ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
             return;
         }
 
-        // ALT + LEFT DRAG -> MOVE WINDOW
+        // ALT + LEFT DRAG -> MOVE WINDOW, even when the drag starts on the image.
         if alt && response.drag_started_by(egui::PointerButton::Primary) {
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
             return;
         }
 
-        // Alt/Ctrl are reserved for window operations.
-        // ctrl + wheel bypass
+        // Plain left drag on the visible image pans it. A drag in the margins
+        // around the image moves the window instead, but only when windowed.
+        if response.drag_started_by(egui::PointerButton::Primary) {
+            let drag_origin = ctx.input(|input| input.pointer.press_origin())
+                .or_else(|| response.interact_pointer_pos());
+            let started_on_image = drag_origin.is_some_and(|position| {
+                image_rect.is_some_and(|rect| rect.contains(position))
+            });
+
+            if started_on_image && !self.image_entries.is_empty() {
+                self.main_view_pan_drag_active = true;
+                self.main_view_window_drag_active = false;
+            } else if windowed {
+                self.main_view_pan_drag_active = false;
+                self.main_view_window_drag_active = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                return;
+            }
+        }
+
+        // Once the OS has taken over the window drag, never also pan the image.
+        if self.main_view_window_drag_active {
+            if left_down {
+                ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            }
+            return;
+        }
+
+        // Alt/Ctrl are reserved for window operations; Ctrl + wheel remains valid.
         if alt || ctrl {
             let modified_wheel = ctx.input(|i| {
                 i.events
                     .iter()
                     .any(|event| matches!(event, egui::Event::MouseWheel { .. }))
             });
-
             if !modified_wheel {
                 return;
             }
@@ -78,14 +128,6 @@ impl ViewerApp {
             self.handle_command(ctx, command);
         }
 
-        let (left_down, right_down, delta) = ctx.input(|i| {
-            (
-                i.pointer.button_down(egui::PointerButton::Primary),
-                i.pointer.button_down(egui::PointerButton::Secondary),
-                i.pointer.delta(),
-            )
-        });
-
         if response.drag_started_by(egui::PointerButton::Secondary) {
             self.zoom_drag_start_pos = response.interact_pointer_pos();
             self.zoom_drag_start_zoom = self.zoom;
@@ -100,47 +142,41 @@ impl ViewerApp {
             let Some(start_pos) = self.zoom_drag_start_pos else {
                 return;
             };
-
             let Some(current_pos) = response.interact_pointer_pos() else {
                 return;
             };
 
             let start_zoom = self.zoom_drag_start_zoom;
-
-            // Use the actual pointer movement instead of drag_delta().
             let vertical_delta = current_pos.y - start_pos.y;
-
             let new_zoom = (start_zoom * (-vertical_delta * 0.005).exp()).clamp(0.005, 50.0);
-
             let start_center = self.zoom_drag_start_center;
-
-            // Screen-space position of the mouse relative to the
-            // image viewport when the drag started.
             let mouse_offset = start_pos - start_center;
-
-            // Find the image-space point that was underneath the
-            // mouse when the drag started.
             let image_point = mouse_offset / start_zoom - self.zoom_drag_start_pan;
-
-            // Apply the new zoom and calculate the pan required
-            // to keep that same image point under the mouse.
             self.zoom = new_zoom;
-
             self.pan = mouse_offset / new_zoom - image_point;
-
             self.b_zoom_used = true;
-
             ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
             return;
         }
 
-        // LEFT DRAG -> PAN
-        if left_down && response.dragged_by(egui::PointerButton::Primary) {
-            if self.image_entries.is_empty() {
-                return;
-            }
-            self.pan += delta / self.zoom;
+        // LEFT DRAG -> PAN, only when the press began on the image itself.
+        if self.main_view_pan_drag_active
+            && left_down
+            && response.dragged_by(egui::PointerButton::Primary)
+        {
+            self.pan += delta / self.zoom.max(0.001);
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+            return;
+        }
+
+        // Show the grab cursor over the actual image area, not the surrounding margins.
+        if response.hovered()
+            && !left_down
+            && !right_down
+            && hover_pos.is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)))
+            && !self.image_entries.is_empty()
+        {
+            ctx.set_cursor_icon(egui::CursorIcon::Grab);
         }
     }
 
@@ -164,27 +200,36 @@ impl ViewerApp {
 
         crate::app::ui::update_overlay_visibility(self, ctx);
 
-        // Escape first stops playback and consumes the key; it must not also
-        // toggle fullscreen or close the application on the same keypress.
-        if self.handle_escape_key(ctx) {
-            return;
-        }
-
-        // F2 renames the current filesystem image; the dialog preserves its extension.
-        if ctx.input(|i| i.key_pressed(egui::Key::F2)) && self.rename_dialog.is_none() && self.sidebar_number_edit.is_none() {
-            self.begin_rename_current();
-            if self.rename_dialog.is_some() {
-                let _ = self.settings_manager.update(|settings| settings.show_file_sidebar = true);
+        // Do not steal keystrokes while a TextEdit (search, rename, numeric input,
+        // etc.) owns keyboard focus. egui widgets still receive their normal keys.
+        if ctx.wants_keyboard_input() {
+            self.delete_key_was_pressed = false;
+        } else {
+            // Escape first stops playback and consumes the key; it must not also
+            // toggle fullscreen or close the application on the same keypress.
+            if self.handle_escape_key(ctx) {
+                return;
             }
-        }
 
-        // Standard keyboard shortcuts
-        for command in handle_keyboard(ctx, &self.input_bindings) {
-            self.handle_command(ctx, command);
-        }
+            // F2 renames the current filesystem image; the dialog preserves its extension.
+            if ctx.input(|i| i.key_pressed(egui::Key::F2))
+                && self.rename_dialog.is_none()
+                && self.sidebar_number_edit.is_none()
+            {
+                self.begin_rename_current();
+                if self.rename_dialog.is_some() {
+                    let _ = self.settings_manager.update(|settings| settings.show_file_sidebar = true);
+                }
+            }
 
-        // Delete key handling
-        self.handle_delete_key(ctx);
+            // Standard keyboard shortcuts
+            for command in handle_keyboard(ctx, &self.input_bindings) {
+                self.handle_command(ctx, command);
+            }
+
+            // Delete key handling
+            self.handle_delete_key(ctx);
+        }
 
         // Drag & drop
         self.handle_drag_drop(ctx);

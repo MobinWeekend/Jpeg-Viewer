@@ -35,6 +35,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
         ui.label(egui::RichText::new("Startup").strong());
         render_startup_fullscreen(app, ui);
         render_start_centered(app, ui);
+        render_single_instance(app, ui);
     });
 }
 
@@ -439,4 +440,13 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
             app.load_current_image_with_cache();
         }
     }
+}
+
+
+fn render_single_instance(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut enabled = app.settings_manager.get().single_instance_enabled;
+    if crate::ui_theme::switch(ui, &mut enabled, "Run only one instance") {
+        let _ = app.settings_manager.update(|settings| settings.single_instance_enabled = enabled);
+    }
+    ui.label(egui::RichText::new("When enabled, later launches send their selected files to the running window. Restart the app to apply changes.").small().weak());
 }

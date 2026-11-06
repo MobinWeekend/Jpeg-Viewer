@@ -221,7 +221,9 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 }
 
 fn render_custom_frame_resize_handles(app: &ViewerApp, ctx: &egui::Context) {
-    if app.settings_manager.get().show_titlebar {
+    if app.settings_manager.get().show_titlebar
+        || ctx.input(|input| input.viewport().maximized.unwrap_or(false) || input.viewport().fullscreen.unwrap_or(false))
+    {
         return;
     }
     let thickness = app.settings_manager.get().custom_window_frame_thickness;

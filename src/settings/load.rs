@@ -281,7 +281,7 @@ impl SettingsManager {
                     }
                     if let Some(value) = section.get("file_sidebar_width") {
                         if let Ok(width) = value.parse::<f32>() {
-                            if width.is_finite() && (180.0..=520.0).contains(&width) {
+                            if width.is_finite() && (90.0..=520.0).contains(&width) {
                                 settings.file_sidebar_width = width;
                             }
                         }
@@ -308,6 +308,65 @@ impl SettingsManager {
                                 }
                             }
                         }
+                    }
+                    if let Some(value) = section.get("single_instance_enabled") {
+                        settings.single_instance_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("view_padding_mode") {
+                        if matches!(value, "look" | "fine_tune" | "custom") {
+                            settings.view_padding_mode = value.to_string();
+                        }
+                    }
+                    for profile in ["native", "cosmic", "gnome", "win98"] {
+                        let key = format!("view_padding_fine_tune_{profile}");
+                        if let Some(value) = section.get(&key) {
+                            if let Some(values) = Self::parse_f32_quad(value) {
+                                if values.iter().all(|v| v.is_finite() && (-300.0..=300.0).contains(v)) {
+                                    settings.view_padding_fine_tune.insert(profile.to_string(), values);
+                                }
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("view_padding_custom") {
+                        if let Some(values) = Self::parse_f32_quad(value) {
+                            if values.iter().all(|v| v.is_finite() && (0.0..=400.0).contains(v)) {
+                                settings.view_padding_custom = values;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("fit_window_to_image") {
+                        settings.fit_window_to_image = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("fit_window_limit") {
+                        if matches!(value, "monitor" | "custom") {
+                            settings.fit_window_limit = value.to_string();
+                        }
+                    }
+                    for (key, target, min, max) in [
+                        ("fit_window_min_width", &mut settings.fit_window_min_width, 512.0, 8192.0),
+                        ("fit_window_max_width", &mut settings.fit_window_max_width, 512.0, 16384.0),
+                        ("fit_window_min_height", &mut settings.fit_window_min_height, 512.0, 8192.0),
+                        ("fit_window_max_height", &mut settings.fit_window_max_height, 512.0, 16384.0),
+                    ] {
+                        if let Some(value) = section.get(key) {
+                            if let Ok(parsed) = value.parse::<f32>() {
+                                if parsed.is_finite() && (min..=max).contains(&parsed) {
+                                    *target = parsed;
+                                }
+                            }
+                        }
+                    }
+                    if settings.fit_window_min_width > settings.fit_window_max_width {
+                        settings.fit_window_min_width = settings.fit_window_max_width;
+                    }
+                    if settings.fit_window_min_height > settings.fit_window_max_height {
+                        settings.fit_window_min_height = settings.fit_window_max_height;
+                    }
+                    if let Some(value) = section.get("fit_window_preserve_aspect") {
+                        settings.fit_window_preserve_aspect = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("fit_window_center") {
+                        settings.fit_window_center = Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("ui_scale") {
                         if let Ok(v) = value.parse::<f32>() {
@@ -604,6 +663,20 @@ impl SettingsManager {
     pub(super) fn parse_bool(value: &str) -> bool {
         let lower = value.to_lowercase();
         matches!(lower.as_str(), "true" | "1" | "yes" | "on")
+    }
+
+    fn parse_f32_quad(value: &str) -> Option<[f32; 4]> {
+        let mut parts = value.split(',').map(str::trim).map(str::parse::<f32>);
+        let values = [
+            parts.next()?.ok()?,
+            parts.next()?.ok()?,
+            parts.next()?.ok()?,
+            parts.next()?.ok()?,
+        ];
+        if parts.next().is_some() {
+            return None;
+        }
+        Some(values)
     }
 
     fn parse_f32_pair(value: &str) -> Option<(f32, f32)> {

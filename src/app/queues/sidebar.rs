@@ -26,7 +26,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     // The 50% value is a ceiling, not the target width. Keep the user's
     // saved width whenever it fits, with a modest minimum for usable controls.
     let max_sidebar_width = (window_width * 0.5).max(1.0);
-    let min_sidebar_width = 256.0_f32.min(max_sidebar_width);
+    let min_sidebar_width = 90.0_f32.min(max_sidebar_width);
     let default_width = app
         .settings_manager
         .get()
@@ -79,7 +79,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             ui.set_min_width(0.0);
             ui.set_max_width(sidebar_content_width);
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 // Drawer toggle belongs to the sidebar edge, not the navigation
                 // toolbar. Use a panel-and-arrow glyph to show the action clearly.
                 let hide_sidebar = ui.add(
@@ -150,6 +150,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             // Keep every tab's content area tied to the panel width. This is
             // intentionally independent of the active tab's widget contents.
             let tab_content_width = ui.available_width().max(0.0);
+            ui.set_width(tab_content_width);
             ui.set_min_width(0.0);
             ui.set_max_width(tab_content_width);
 
@@ -163,7 +164,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 app.queue_drop_rect = None;
                 ui.heading("Image information");
                 ui.separator();
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
                     if let Some(metadata) = app.file_metadata.clone() {
                         app.render_file_metadata(ui, &metadata);
                     } else {
@@ -176,14 +177,14 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             } else {
                 app.queue_drop_rect = None;
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(format!("{} images  |  ", app.image_entries.len()));
 
                     //sorting
                     crate::app::ui::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
                 });
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label("Entry size");
                     if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut entry_size, 64.0..=240.0).show_value(false).step_by(8.0))).changed() {
                         let _ = app.settings_manager.update(|settings| settings.browse_entry_size = entry_size);
@@ -200,10 +201,14 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                 let mut selected = None;
 
-                egui::ScrollArea::vertical()
+                egui::ScrollArea::both()
                     .id_salt("file_sidebar_list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        // Overflow stays in this scrollable child; its viewport is
+                        // fixed to the width allocated by the parent SidePanel.
+                        ui.set_min_width(0.0);
+                        ui.set_max_width(available.max(1.0));
                         egui::Grid::new("file_sidebar_thumbnail_grid")
                             .num_columns(columns)
                             .spacing(egui::vec2(GAP, GAP))

@@ -17,5 +17,6 @@ pub mod types;
 pub(crate) mod ui;
 mod update;
 mod virtual_texture;
+mod window_sizing;
 
 pub use types::ViewerApp;

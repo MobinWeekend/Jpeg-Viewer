@@ -22,7 +22,7 @@ impl ViewerApp {
             .default_pos(default_pos)
             .default_size(default_size)
             .min_size([400.0, 400.0])
-            .max_size([700.0, 800.0])
+            .max_size([500.0, 600.0])
             .open(&mut open)
             .show(ctx, |ui| {
                 // Keep the application version pinned to the help window's bottom edge.
@@ -116,6 +116,8 @@ impl ViewerApp {
                             "• Desktop looks for JPEG Viewer, COSMIC, GNOME / Adwaita, and Windows 98",
                             "• UI scaling, custom accents, transparency checkerboard, and optional OS/DE glass",
                             "• Background decoding, preloading, cache controls, and tiled rendering for very large images",
+                            "• Optional single-instance mode forwards later file opens and multi-file selections to the running window",
+                            "• Adjustable main-view padding and automatic or one-time window fitting around the current image",
                             "• File actions include Open With, locate, rename, copy path, and trash where supported",
                         ];
 
@@ -149,6 +151,7 @@ impl ViewerApp {
                         Self::render_shortcut_row(ui, "+ / -", "Zoom in / Zoom out");
                         Self::render_shortcut_row(ui, "W / ↑", "Reset zoom to 100%");
                         Self::render_shortcut_row(ui, "S / ↓ / 0", "Fit image to window");
+                        Self::render_shortcut_row(ui, "Ctrl+Alt+W", "Wrap window around the current image");
                         Self::render_shortcut_row(ui, "Scroll", "Navigate images (with Ctrl: Zoom)");
 
                         ui.add_space(4.0);
@@ -157,7 +160,8 @@ impl ViewerApp {
                         ui.label(egui::RichText::new("Display").size(14.0).strong());
                         ui.add_space(4.0);
                         Self::render_shortcut_row(ui, "F11 / F / Enter", "Toggle fullscreen");
-                        Self::render_shortcut_row(ui, "Tab", "Open settings menu");
+                        Self::render_shortcut_row(ui, "F5", "Open settings menu");
+                        Self::render_shortcut_row(ui, "T / F3", "Toggle file sidebar");
                         Self::render_shortcut_row(ui, "F1", "Open this help window");
 
                         ui.add_space(4.0);
@@ -218,13 +222,14 @@ impl ViewerApp {
 
                         Self::render_mouse_row(ui, "Scroll", "Navigate between images");
                         Self::render_mouse_row(ui, "Ctrl + Scroll", "Zoom in/out");
-                        Self::render_mouse_row(ui, "Left Drag", "Pan image");
+                        Self::render_mouse_row(ui, "Left Drag on image", "Pan image (cursor: grab / grabbing)");
+                        Self::render_mouse_row(ui, "Left Drag outside image", "Move window in windowed mode");
                         Self::render_mouse_row(ui, "Right Drag", "Zoom in/out");
                         Self::render_mouse_row(ui, "Double-click Left", "Open file dialog (on empty screen)");
                         Self::render_mouse_row(ui, "Middle Click", "Toggle fullscreen");
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
-                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window");
-                        Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window");
+                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window from anywhere in the main view");
+                        Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window in windowed mode");
                         Self::render_mouse_row(ui, "Touchpad scroll", "Navigate images; Ctrl + scroll zooms unless inverted in Settings");
                         Self::render_mouse_row(ui, "Sidebar thumbnails", "Select to open; drag to reorder Queue/Favorites entries");
                         Self::render_mouse_row(ui, "Entry number", "Enter a position to move the item in supported lists");
@@ -245,7 +250,11 @@ impl ViewerApp {
                             "• OS/DE blur or glass depends on compositor support; it can be disabled for fullscreen",
                             "• Disable native window decorations to use the custom frame and its resize edges/corners",
                             "• Use Remap missing root when a saved queue's folder tree has moved",
-                            "• Pass a file path on launch: jpeg_viewer image.jpg",
+                            "• Pass one or more file paths on launch: jpeg_viewer image.jpg image2.png",
+                            "• Enable Settings → General → Startup → Run only one instance to forward later launches to the existing window; restart after changing it",
+                            "• Select multiple files in your file manager to open that selection without indexing neighboring files when single-instance mode is enabled",
+                            "• Settings → Viewing controls image padding and automatic window sizing; View → Wrap Window Around Image (Ctrl+Alt+W) performs a one-time fit",
+                            "• Viewer shortcuts are paused while a text field has keyboard focus",
                             "• If the file extension does not match the detected format, the toolbar may offer a rename suggestion",
                             "• Very large images can use tiled virtual textures; tune Advanced settings if memory use is high",
                         ];
@@ -295,7 +304,11 @@ impl ViewerApp {
     fn render_shortcut_row(ui: &mut egui::Ui, key: &str, description: &str) {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
-            ui.label(egui::RichText::new(key).strong().color(ui.visuals().hyperlink_color));
+            ui.label(
+                egui::RichText::new(key)
+                    .strong()
+                    .color(ui.visuals().hyperlink_color),
+            );
             ui.add_space(8.0);
             ui.label("=");
             ui.add_space(8.0);
@@ -308,7 +321,11 @@ impl ViewerApp {
     fn render_mouse_row(ui: &mut egui::Ui, control: &str, action: &str) {
         ui.horizontal(|ui| {
             ui.add_space(16.0);
-            ui.label(egui::RichText::new(control).strong().color(ui.visuals().hyperlink_color));
+            ui.label(
+                egui::RichText::new(control)
+                    .strong()
+                    .color(ui.visuals().hyperlink_color),
+            );
             ui.add_space(8.0);
             ui.label("=");
             ui.add_space(8.0);

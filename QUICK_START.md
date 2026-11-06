@@ -7,7 +7,11 @@ This guide covers the common workflows. For the supported formats, build instruc
 - **Ctrl+O:** open an image.
 - **Ctrl+Shift+O:** open a folder and browse its supported images.
 - Drag an image, folder, or supported archive (ZIP, 7z, RAR) into the window.
-- From a terminal, pass a path: `jpeg_viewer image.jpg`.
+- From a terminal, pass a path: `jpeg_viewer image.jpg`. Pass several paths to open exactly that set of images: `jpeg_viewer one.jpg two.png three.webp`.
+
+### Open a selection from your file manager
+
+Select several supported images in your file manager and open them with JPEG Viewer. To keep the selection in one existing window when the file manager starts separate application processes, enable **Run only one instance** under **Settings → General → Startup**, then restart JPEG Viewer. Later launches are forwarded to the running window, which is restored/focused and displays the selected files as a collection rather than scanning neighboring files in the same folder. This option is disabled by default.
 
 ## Essential controls
 
@@ -17,15 +21,30 @@ This guide covers the common workflows. For the supported formats, build instruc
 | First / last image | **Home / End**; **Ctrl+Left / Ctrl+Right** |
 | Zoom in / out | **+ / -** or **Ctrl+Scroll** |
 | Fit to window / 100% | **S**, **Down**, or **0** / **W** or **Up** |
-| Pan zoomed image | Left-drag; right-drag adjusts zoom |
+| Pan zoomed image / zoom by dragging | Left-drag starting on the image / right-drag |
+| Move window | Left-drag starting outside the image (windowed mode), or **Alt+Left-drag** in the main view |
+| Resize window | **Ctrl+Left-drag** in the main view (windowed mode); custom-frame resize edges/corners when enabled |
 | Fullscreen | **F**, **F11**, **Enter**, or middle-click |
-| Settings / Help | **Tab** / **F1** |
+| Settings / Help | **F5** / **F1** |
+| Toggle sidebar | **T** or **F3** |
 | Toggle compact mode / slideshow | **F4** / **L** |
 | Copy image / copy path | **Ctrl+C** / **Ctrl+Shift+C** |
 | Move current image to Trash / Recycle Bin | **Delete** |
 | Exit fullscreen / close | **Escape** |
 
-With **Invert Scroll Zoom** enabled in Settings, **Ctrl+Scroll** navigates instead of zooming. Mouse gestures and window controls can vary slightly by operating system.
+With **Invert Scroll Zoom** enabled in Settings, **Ctrl+Scroll** navigates instead of zooming. The cursor changes to a grab hand over the image and to a grabbing hand while panning. App shortcuts are ignored while a text field (for example search, rename, or a numeric setting) has keyboard focus, so typing does not trigger viewer commands. Mouse gestures and window controls can vary slightly by operating system.
+
+## Viewing, padding, and window sizing
+
+Open **Settings → Viewing** for image-view layout controls:
+
+- **Padding:** choose **Use look defaults**, **Fine-tune current look**, or **Use custom padding**. Fine-tuning is saved separately for each Look profile. Top, right, bottom, and left values are shown in logical points.
+- **Automatically fit window to each image:** when enabled, the window resizes as a new image is displayed. This only operates in windowed mode; maximized and fullscreen windows are left alone.
+- **Size limits:** choose the monitor's available size or define custom minimum and maximum width and height. Custom values are in logical points.
+- **Preserve image aspect ratio:** keep the image's proportions when its size is constrained.
+- **Keep window centered:** center the window after an image-driven resize.
+
+To run the same fit once without enabling automatic fitting, use **View → Wrap Window Around Image** or press **Ctrl+Alt+W**. The command also only resizes a window that is neither maximized nor fullscreen.
 
 ## Browse, Queue, and Favorites
 
@@ -94,5 +113,7 @@ For a `.tar.gz` release, extract the archive and run `./jpeg_viewer`. To add an 
 - **Large image uses too much memory:** check virtual-texture settings.
 - **Thumbnails are slow:** increase thumbnail workers and restart.
 - **Transparent areas are hard to inspect:** enable the checkerboard; it is hidden during slideshows.
-- **Window resizing is difficult without a title bar:** enable the custom frame and adjust its thickness under Advanced → Window.
+- **Window resizing is difficult without a title bar:** enable the custom frame and adjust its thickness under Advanced → Window. In the main view, Ctrl+Left-drag starts a window resize while the window is in windowed mode.
+- **A file-manager multi-selection opens in separate windows:** enable **Settings → General → Startup → Run only one instance** and restart the application. Subsequent launches are forwarded to the existing window.
+- **Image-driven window resizing does not happen:** automatic fitting is disabled by default and only works in windowed mode. Enable it under **Settings → Viewing → Window sizing**, or use **View → Wrap Window Around Image** / **Ctrl+Alt+W** for a one-time fit.
 - **Linux taskbar icon does not restore the window:** use the latest release package with the matching desktop entry; behavior should be checked on the specific desktop environment if it persists.
