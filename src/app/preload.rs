@@ -3,12 +3,12 @@
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
 use crate::decoder::default_registry;
 use crate::decoder::format_detection::load_bytes_with_detection;
-use crate::gif::detection::is_gif_entry;
-use crate::gif::loader::{
+use crate::decoder::gif::detection::is_gif_entry;
+use crate::decoder::gif::loader::{
     load_gif_preview_from_7z, load_gif_preview_from_rar, load_gif_preview_from_zip,
 };
-use crate::image_core::DecodeOptions;
-use crate::image_entry::ImageEntry;
+use crate::imaging::core::DecodeOptions;
+use crate::imaging::entry::ImageEntry;
 
 use eframe::egui;
 use rayon::spawn;
@@ -287,7 +287,7 @@ impl ViewerApp {
                         .ok_or_else(|| "Failed to load GIF preview from ZIP".to_string());
                 }
 
-                crate::loader::load_zip_image(zip)
+                crate::imaging::loader::load_zip_image(zip)
                     .map(LoadedImage::Static)
                     .map_err(|err| err.to_string())
             }
@@ -299,7 +299,7 @@ impl ViewerApp {
                         .ok_or_else(|| "Failed to load GIF preview from 7z".to_string());
                 }
 
-                crate::loader::load_7z_image(s7z)
+                crate::imaging::loader::load_7z_image(s7z)
                     .map(LoadedImage::Static)
                     .map_err(|err| err.to_string())
             }
@@ -311,7 +311,7 @@ impl ViewerApp {
                         .ok_or_else(|| "Failed to load GIF preview from RAR".to_string());
                 }
 
-                crate::loader::load_rar_image(rar)
+                crate::imaging::loader::load_rar_image(rar)
                     .map(LoadedImage::Static)
                     .map_err(|err| err.to_string())
             }
@@ -381,8 +381,8 @@ impl ViewerApp {
         std::path::Path::new(name.as_ref())
             .extension()
             .and_then(|extension| extension.to_str())
-            .and_then(crate::image_core::ImageFormat::from_extension)
-            == Some(crate::image_core::ImageFormat::CameraRaw)
+            .and_then(crate::imaging::core::ImageFormat::from_extension)
+            == Some(crate::imaging::core::ImageFormat::CameraRaw)
     }
 
     /// Start preload workers until all available slots are filled.

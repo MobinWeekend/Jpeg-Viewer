@@ -101,7 +101,12 @@ pub fn os_background_blur_enabled(ctx: &egui::Context) -> bool {
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     let suppressed_in_fullscreen =
         fullscreen && disable_os_background_blur_in_fullscreen_preference(ctx);
-    requested && current_look_profile(ctx) != "win98" && !suppressed_in_fullscreen
+    let cosmic_allows_frosted = current_look_profile(ctx) != "cosmic"
+        || super::profiles::cosmic_frosted_preference(ctx);
+    requested
+        && cosmic_allows_frosted
+        && current_look_profile(ctx) != "win98"
+        && !suppressed_in_fullscreen
 }
 
 /// Synchronize the native backdrop with the effective UI preference. Returns true if
@@ -124,7 +129,7 @@ pub fn sync_os_background_blur(ctx: &egui::Context) -> bool {
         ctx.data(|data| data.get_temp::<bool>(egui::Id::new(OS_BACKGROUND_BLUR_APPLIED_ID)));
     if previous_native_request != Some(effective) {
         // The native module safely handles unsupported versions and desktops.
-        crate::platform_backdrop::set_enabled(effective);
+        crate::ui_theme::platform_backdrop::set_enabled(effective);
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new(OS_BACKGROUND_BLUR_APPLIED_ID), effective);
         });

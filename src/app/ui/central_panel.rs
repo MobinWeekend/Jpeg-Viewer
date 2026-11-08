@@ -301,16 +301,16 @@ impl ViewerApp {
                     .clamp(0.0, 1.0);
                 let effect = if self.slideshow_motion == "random" {
                     match self.current_index % 5 {
-                        0 => crate::slideshow::MotionEffect::PanHorizontal,
-                        1 => crate::slideshow::MotionEffect::PanVertical,
-                        2 => crate::slideshow::MotionEffect::ZoomIn,
-                        3 => crate::slideshow::MotionEffect::ZoomOut,
-                        _ => crate::slideshow::MotionEffect::Smart,
+                        0 => crate::app::slideshow::MotionEffect::PanHorizontal,
+                        1 => crate::app::slideshow::MotionEffect::PanVertical,
+                        2 => crate::app::slideshow::MotionEffect::ZoomIn,
+                        3 => crate::app::slideshow::MotionEffect::ZoomOut,
+                        _ => crate::app::slideshow::MotionEffect::Smart,
                     }
                 } else {
-                    crate::slideshow::MotionEffect::from_setting(&self.slideshow_motion)
+                    crate::app::slideshow::MotionEffect::from_setting(&self.slideshow_motion)
                 };
-                let frame = crate::slideshow::transform(
+                let frame = crate::app::slideshow::transform(
                     base_image_rect,
                     image_viewport_rect,
                     motion_progress,
@@ -816,7 +816,7 @@ fn fitted_image_viewport_rect(
 
     let profile = crate::ui_theme::current_look_profile(ctx);
     let placement = crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
-    let mut padding = crate::app::ui::settings_menu::viewing::effective_padding(settings, profile, placement);
+    let mut padding = crate::app::settings_menu::viewing::effective_padding(settings, profile, placement);
 
     let max_horizontal = (available.width() - 1.0).max(0.0) * 0.5;
     let max_vertical = (available.height() - 1.0).max(0.0) * 0.5;

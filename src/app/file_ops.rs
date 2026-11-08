@@ -1,9 +1,9 @@
 use super::types::{LoadingState, ViewerApp};
-use crate::archive::{scan_7z, scan_rar, scan_zip};
-use crate::constants::ARCHIVE_EXT;
-use crate::helpers::{get_extension, is_supported_image};
-use crate::image_core::ImageFormat;
-use crate::image_entry::ImageEntry;
+use crate::imaging::archive::{scan_7z, scan_rar, scan_zip};
+use crate::app::constants::ARCHIVE_EXT;
+use crate::imaging::helpers::{get_extension, is_supported_image};
+use crate::imaging::core::ImageFormat;
+use crate::imaging::entry::ImageEntry;
 use arboard::Clipboard;
 use eframe::egui;
 use std::path::PathBuf;
@@ -116,6 +116,43 @@ impl ViewerApp {
         if let Some(path) = path {
             self.open_path(path);
         }
+    }
+
+    /// Open every supported image in a selected folder and its subfolders.
+    pub fn open_folder_recursively_dialog(&mut self) {
+        self.stop_slideshow();
+
+        self.dialog_open = true;
+        let folder = rfd::FileDialog::new().pick_folder();
+        self.dialog_open = false;
+
+        let Some(folder) = folder else { return };
+        if !self.prepare_for_image_change(
+            "Save or discard unsaved edits before opening this folder.",
+        ) {
+            return;
+        }
+        let paths = crate::app::queues::collect_folder_images(&folder);
+        if paths.is_empty() {
+            self.queue_status = Some(format!(
+                "No supported images found in {} or its subfolders.",
+                folder.display()
+            ));
+            return;
+        }
+        self.sidebar_queue_tab = false;
+        self.sidebar_favorites_tab = false;
+        self.sidebar_info_tab = false;
+        self.queue_drop_rect = None;
+        self.queue_mode = false;
+        self.queue_previous_entries = None;
+        let count = paths.len();
+        self.load_dropped_files(paths);
+        self.current_directory = Some(folder.clone());
+        self.queue_status = Some(format!(
+            "Opened {count} image(s) from {} and its subfolders.",
+            folder.display()
+        ));
     }
 
     pub fn toggle_fullscreen(&self, ctx: &egui::Context) {
@@ -293,7 +330,7 @@ impl ViewerApp {
             .into_iter()
             .filter(|path| {
                 if path.is_file() {
-                    crate::helpers::is_supported_image(path)
+                    crate::imaging::helpers::is_supported_image(path)
                 } else {
                     false
                 }
@@ -314,7 +351,7 @@ impl ViewerApp {
         let mut entries: Vec<ImageEntry> = image_paths.into_iter().map(ImageEntry::File).collect();
         // Apply the user's normal ordering to the selected set without indexing
         // any neighboring files from the containing directory.
-        crate::sort::sort_images(&mut entries, self.sort_method);
+        crate::imaging::sort::sort_images(&mut entries, self.sort_method);
 
         // Set image entries starting at index 0
         self.set_image_entries(entries, 0);
@@ -329,8 +366,9 @@ impl ViewerApp {
     }
 
 
-    /// Queue paths from a process launch. A quiet period lets file-manager
-    /// one-process-per-file activations arrive as one multi-selection.
+    /// Open the first image from a process launch immediately, then keep collecting
+    /// closely timed launches so file managers that spawn one process per selected
+    /// file can still be represented as one exact multi-file selection.
     pub fn enqueue_external_open_paths(&mut self, paths: Vec<PathBuf>, ctx: &egui::Context) {
         // Restore and activate the primary window, including an empty launch.
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
@@ -345,6 +383,8 @@ impl ViewerApp {
 
         let now = Instant::now();
         let incoming_paths = paths;
+        let first_incoming_path = incoming_paths.first().cloned();
+        let had_pending_batch = !self.pending_open_paths.is_empty();
 
         // Some shell integrations start one process per selected file and do not
         // launch all helper processes at exactly the same time. If a prior batch
@@ -370,6 +410,20 @@ impl ViewerApp {
             self.recent_external_open_batch = None;
         }
 
+        // Do not make the user wait for the grouping window. Open the first path
+        // from this activation immediately; later requests are still accumulated
+        // below and can replace it with the complete multi-file selection.
+        if !had_pending_batch {
+            if let Some(path) = first_incoming_path.as_ref() {
+                let is_queue_file = path.extension()
+                    .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
+                if !is_queue_file {
+                    self.open_path(path.clone());
+                    self.pending_open_first_opened = true;
+                }
+            }
+        }
+
         for path in incoming_paths {
             // Keep first-seen order while avoiding duplicate command-line paths.
             if !self.pending_open_paths.contains(&path) {
@@ -380,7 +434,7 @@ impl ViewerApp {
         ctx.request_repaint_after(OPEN_REQUEST_QUIET_PERIOD);
     }
 
-    /// Open the collected paths once no additional launch requests have arrived.
+    /// Finish grouping after no additional launch requests have arrived.
     pub fn process_pending_open_paths(&mut self, ctx: &egui::Context) {
         let Some(deadline) = self.pending_open_deadline else {
             return;
@@ -393,6 +447,7 @@ impl ViewerApp {
 
         self.pending_open_deadline = None;
         let paths = std::mem::take(&mut self.pending_open_paths);
+        let first_was_opened = std::mem::replace(&mut self.pending_open_first_opened, false);
         if paths.is_empty() {
             return;
         }
@@ -405,7 +460,11 @@ impl ViewerApp {
             self.open_queue_file(&paths[0], ctx, false);
             self.recent_external_open_batch = None;
         } else if paths.len() == 1 {
-            self.open_path(paths[0].clone());
+            // The first image was already displayed when the request arrived.
+            // Avoid reopening/redecoding it just because the quiet period expired.
+            if !first_was_opened {
+                self.open_path(paths[0].clone());
+            }
             if can_replace_current_view && paths[0].is_file() && is_supported_image(&paths[0]) {
                 self.recent_external_open_batch = Some((
                     paths.clone(),
@@ -438,9 +497,7 @@ impl ViewerApp {
             }
         }
 
-        // Repeat activation after the new selection has been installed. This is
-        // intentional: the initial focus request wakes/restores the window early,
-        // while this one makes the completed open visible after the UI state changes.
+        // Repeat activation after the completed selection has been installed.
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         ctx.request_repaint();
@@ -503,7 +560,7 @@ impl ViewerApp {
                         .filter_map(|entry| {
                             let entry = entry.ok()?;
                             let path = entry.path();
-                            if path.is_file() && crate::helpers::is_supported_image(&path) {
+                            if path.is_file() && crate::imaging::helpers::is_supported_image(&path) {
                                 Some(path)
                             } else {
                                 None
@@ -514,7 +571,7 @@ impl ViewerApp {
                 .collect();
 
             // Sort images using current sort method
-            crate::sort::sort_images(&mut files, self.sort_method);
+            crate::imaging::sort::sort_images(&mut files, self.sort_method);
         }
     }
 }

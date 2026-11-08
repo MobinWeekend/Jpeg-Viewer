@@ -312,6 +312,9 @@ impl SettingsManager {
                     if let Some(value) = section.get("single_instance_enabled") {
                         settings.single_instance_enabled = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("drag_drop_folders_recursive") {
+                        settings.drag_drop_folders_recursive = Self::parse_bool(value);
+                    }
                     if let Some(value) = section.get("view_padding_mode") {
                         if matches!(value, "look" | "fine_tune" | "custom") {
                             settings.view_padding_mode = value.to_string();

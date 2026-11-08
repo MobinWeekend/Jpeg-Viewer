@@ -57,6 +57,12 @@ enough = "0.4.3"
 [target.'cfg(not(windows))'.dependencies]
 natord = "1.0"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Request compositor-managed blur on Wayland desktops that implement
+# ext-background-effect-v1 (including COSMIC).
+wayland-client = { version = "0.31.15", features = ["system"] }
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_Shell", "Win32_System_Power"] }
 
@@ -72,6 +78,7 @@ maintainer = "MobinWeekend"
 section = "graphics"
 priority = "optional"
 depends = "$auto"
+maintainer-scripts = "packaging/linux/debian"
 
 assets = [
     [
@@ -80,7 +87,7 @@ assets = [
         "755"
     ],
     [
-        "packaging/linux/com.jpegviewer.JpegViewer.desktop",
+        "packaging/linux/com.jpegviewer.JpegViewer.deb.desktop",
         "usr/share/applications/com.jpegviewer.JpegViewer.desktop",
         "644"
     ],

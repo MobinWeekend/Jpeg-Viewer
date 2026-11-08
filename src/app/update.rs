@@ -13,7 +13,7 @@ impl eframe::App for ViewerApp {
         );
         let appearance_settings = self.settings_manager.get().clone();
         self.update_window_title(ctx);
-        crate::platform_backdrop::set_native_titlebar_color(
+        crate::ui_theme::platform_backdrop::set_native_titlebar_color(
             crate::ui_theme::native_title_bar_color(
                 ctx,
                 &appearance_settings.title_bar_color_mode,
@@ -51,7 +51,7 @@ impl eframe::App for ViewerApp {
         // A forwarded launch can include many selected files. Process its request
         // on the UI thread so it uses the same selected-files path as drag-and-drop.
         let forwarded_requests = self.instance_server.as_ref()
-            .map(crate::instance::InstanceServer::drain_requests)
+            .map(crate::platform::instance::InstanceServer::drain_requests)
             .unwrap_or_default();
         for paths in forwarded_requests {
             self.handle_forwarded_open_request(paths, ctx);
@@ -637,9 +637,8 @@ impl eframe::App for ViewerApp {
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if cfg!(any(target_os = "windows", target_os = "macos"))
-            && self.settings_manager.get().os_background_blur
-            && crate::platform_backdrop::is_active()
+        if self.settings_manager.get().os_background_blur
+            && crate::ui_theme::platform_backdrop::is_active()
         {
             egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
         } else {
@@ -653,6 +652,9 @@ impl eframe::App for ViewerApp {
 
 impl Drop for ViewerApp {
     fn drop(&mut self) {
+        // Wayland backdrop proxies borrow eframe's display/surface, so release
+        // them before the native window and its display connection are torn down.
+        crate::ui_theme::platform_backdrop::shutdown();
         if let Some(handle) = self.virtual_texture_thread.take() {
             let _ = handle.join();
         }

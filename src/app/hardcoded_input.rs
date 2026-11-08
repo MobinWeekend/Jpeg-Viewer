@@ -1,5 +1,6 @@
 use super::types::ViewerApp;
-use crate::shortcuts::{handle_keyboard, handle_mouse};
+use crate::input::keyboard::handle_keyboard;
+use crate::input::mouse::handle_mouse;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -306,10 +307,33 @@ impl ViewerApp {
             self.update_window_title(ctx);
         }
 
-        let paths: Vec<PathBuf> = dropped_files
+        let dropped_paths: Vec<PathBuf> = dropped_files
             .iter()
             .filter_map(|file| file.path.clone())
             .collect();
+        let recursive_folder_drop = self.settings_manager.get().drag_drop_folders_recursive
+            && !dropped_on_queue
+            && !dropped_on_favorites;
+        let expanded_folder_drop = recursive_folder_drop
+            && dropped_paths.iter().any(|path| path.is_dir());
+        let paths: Vec<PathBuf> = if recursive_folder_drop {
+            dropped_paths
+                .into_iter()
+                .flat_map(|path| {
+                    if path.is_dir() {
+                        crate::app::queues::collect_folder_images(&path)
+                    } else {
+                        vec![path]
+                    }
+                })
+                .collect()
+        } else {
+            dropped_paths
+        };
+        if expanded_folder_drop && paths.is_empty() {
+            self.queue_status = Some("No supported images found in the dropped folder or its subfolders.".into());
+            return;
+        }
 
         // A single .jvq is a queue document, not an image or folder.
         if paths.len() == 1 && paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {
@@ -325,13 +349,17 @@ impl ViewerApp {
                     let before = self.favorite_paths.len();
                     self.add_favorite_path(path);
                     added += usize::from(self.favorite_paths.len() > before);
-                } else if path.is_file() && crate::helpers::is_supported_image(&path) {
+                } else if path.is_file() && crate::imaging::helpers::is_supported_image(&path) {
                     let before = self.favorite_paths.len();
                     self.add_favorite_path(path);
                     added += usize::from(self.favorite_paths.len() > before);
                 } else { ignored += 1; }
             }
             self.queue_status = Some(format!("Added {added} favorite(s); ignored {ignored} unsupported item(s)."));
+        } else if expanded_folder_drop {
+            // A recursively expanded folder is an explicit selection, even if it
+            // contains only one image; do not index neighboring files outside it.
+            self.load_dropped_files(paths);
         } else if paths.len() == 1 {
             // Single file: open it (preserve the normal drop behavior outside the queue).
             if let Some(path) = paths.first() {

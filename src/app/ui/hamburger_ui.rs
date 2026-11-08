@@ -1,6 +1,6 @@
 use crate::app::types::ViewerApp;
 use crate::app::ui::toolbar_frame;
-use crate::shortcuts::ViewerCommand;
+use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
@@ -93,6 +93,7 @@ impl ViewerApp {
 
                 self.hamburger_open_file_button(ctx, ui);
                 self.hamburger_open_folder_button(ctx, ui);
+                self.hamburger_open_folder_recursive_button(ctx, ui);
                 self.hamburger_open_with_button(ctx, ui);
                 self.hamburger_locate_in_file_manager_button(ctx, ui);
 
@@ -184,15 +185,15 @@ impl ViewerApp {
             .get(self.current_index)
             .is_some_and(|entry| {
                 let name = match entry {
-                    crate::image_entry::ImageEntry::File(path) => path.as_path(),
-                    crate::image_entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
-                    crate::image_entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
-                    crate::image_entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
+                    crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
+                    crate::imaging::entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
+                    crate::imaging::entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
+                    crate::imaging::entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
                 };
                 name.extension()
                     .and_then(|extension| extension.to_str())
-                    .and_then(crate::image_core::ImageFormat::from_extension)
-                    == Some(crate::image_core::ImageFormat::CameraRaw)
+                    .and_then(crate::imaging::core::ImageFormat::from_extension)
+                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
             });
         if !current_is_raw {
             return;
@@ -311,6 +312,26 @@ impl ViewerApp {
         }
     }
 
+    /// Open a folder and recursively include images from all nested folders.
+    fn hamburger_open_folder_recursive_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("📂  Open Folder + Subfolders")
+                        .size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Open supported images from this folder and every nested folder")
+            .clicked()
+        {
+            self.open_folder_recursively_dialog();
+            self.hamburger_menu_open = false;
+        }
+    }
+
     /// "🗄️ Show/Hide Sidebar" — toggles the file sidebar visibility.
     fn hamburger_sidebar_toggle_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         let sidebar_visible = self.settings_manager.get().show_file_sidebar;
@@ -369,7 +390,7 @@ impl ViewerApp {
     fn hamburger_delete_image_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         let can_delete_current = matches!(
             self.image_entries.get(self.current_index),
-            Some(crate::image_entry::ImageEntry::File(_))
+            Some(crate::imaging::entry::ImageEntry::File(_))
         );
         if ui
             .add_enabled(

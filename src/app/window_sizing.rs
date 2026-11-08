@@ -146,7 +146,7 @@ impl ViewerApp {
             &settings.main_ui_placement_preference,
             ctx,
         );
-        let base = crate::app::ui::settings_menu::viewing::default_look_padding(profile, placement);
+        let base = crate::app::settings_menu::viewing::default_look_padding(profile, placement);
         match settings.view_padding_mode.as_str() {
             "custom" => settings.view_padding_custom.map(|value| value.clamp(0.0, 400.0)),
             "fine_tune" => {

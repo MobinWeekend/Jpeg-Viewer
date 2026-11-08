@@ -3,7 +3,7 @@ use super::layout::{GAP, fit_cards};
 use crate::app::queues::actions;
 use crate::app::queues::storage::{absolute_path, paths_equal};
 use crate::app::types::ViewerApp;
-use crate::helpers::is_supported_image;
+use crate::imaging::helpers::is_supported_image;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -453,11 +453,11 @@ impl ViewerApp {
                                                 favorite_entries.extend(
                                                     actions::collect_folder_images(favorite)
                                                         .into_iter()
-                                                        .map(crate::image_entry::ImageEntry::File),
+                                                        .map(crate::imaging::entry::ImageEntry::File),
                                                 );
                                             } else {
                                                 favorite_entries.push(
-                                                    crate::image_entry::ImageEntry::File(
+                                                    crate::imaging::entry::ImageEntry::File(
                                                         favorite.clone(),
                                                     ),
                                                 );

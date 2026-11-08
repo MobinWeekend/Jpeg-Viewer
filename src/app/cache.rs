@@ -1,5 +1,5 @@
 use super::types::{CachedImage, LoadedImage, ViewerApp};
-use crate::constants::MAX_TILE_SIZE;
+use crate::app::constants::MAX_TILE_SIZE;
 use eframe::egui;
 
 impl ViewerApp {

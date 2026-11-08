@@ -18,7 +18,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         frame_limiter::render(app, ui, ctx);
         ui.separator();
         ui.add_space(4.0);
-        crate::app::ui::settings_menu::general::render_thumbnail_workers(app, ui);
+        crate::app::settings_menu::general::render_thumbnail_workers(app, ui);
 
         ui.add_space(4.0);
     });

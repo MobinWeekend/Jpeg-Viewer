@@ -1,11 +1,11 @@
-// src/format_detection.rs
+// src/decoder/format_detection.rs
 // Pure magic‑byte detection – no external crate dependencies.
 use crate::app::types::LoadedImage;
-use crate::constants::MAX_TILE_SIZE;
+use crate::app::constants::MAX_TILE_SIZE;
 use crate::decoder::{DecoderRegistry, default_registry};
-use crate::gif::animation::GifAnimation;
-use crate::image_core::ImageFormat;
-use crate::image_core::{DecodeOptions, ImageError};
+use crate::decoder::gif::animation::GifAnimation;
+use crate::imaging::core::ImageFormat;
+use crate::imaging::core::{DecodeOptions, ImageError};
 
 /// Detect the image format from raw bytes.
 ///

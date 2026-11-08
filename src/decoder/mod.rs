@@ -1,8 +1,9 @@
 // src/decoder/mod.rs
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageError};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageError};
 
 pub mod format_detection;
+pub mod gif;
 
 mod heic;
 mod image_rs;

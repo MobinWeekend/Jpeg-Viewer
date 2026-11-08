@@ -93,20 +93,16 @@ pub fn set_look_profile(ctx: &egui::Context, preference: &str) {
         // Cache this desktop preference rather than reading a config file in every frame.
         data.insert_temp(egui::Id::new("jpeg_viewer_cosmic_frosted"), cosmic_frosted);
     });
-    let requested_blur = super::backdrop::os_background_blur_preference(ctx);
-    crate::platform_backdrop::set_enabled(requested_blur && profile != "win98");
+    let effective_blur = super::backdrop::os_background_blur_enabled(ctx);
+    crate::ui_theme::platform_backdrop::set_enabled(effective_blur);
 }
 
-/*
-/// Whether the detected COSMIC theme requests frosted surfaces. Egui can only
-/// reproduce translucency inside the application; compositor-level blur remains
-/// controlled by COSMIC and is not enabled by this flag.
+/// Whether the active COSMIC theme allows frosted window surfaces. When the
+/// setting is absent (older COSMIC versions), preserve the app's normal preference.
 pub fn cosmic_frosted_preference(ctx: &egui::Context) -> bool {
     ctx.data(|data| data.get_temp::<bool>(egui::Id::new("jpeg_viewer_cosmic_frosted")))
         .unwrap_or(true)
 }
-
- */
 
 #[cfg(test)]
 mod navigation_tests {

@@ -1,5 +1,6 @@
 mod aspect_ratio;
 mod cache;
+pub(crate) mod constants;
 mod commands;
 mod editing;
 mod external_open;
@@ -13,6 +14,8 @@ mod loading;
 mod navigation;
 mod preload;
 pub(crate) mod queues;
+pub(crate) mod settings_menu;
+pub(crate) mod slideshow;
 pub mod types;
 pub(crate) mod ui;
 mod update;

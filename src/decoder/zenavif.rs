@@ -1,6 +1,6 @@
 // src/decoder/zenavif.rs
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc;

@@ -1,4 +1,4 @@
-use crate::image_entry::ImageEntry;
+use crate::imaging::entry::ImageEntry;
 use zip::ZipArchive;
 use std::fs::File;
 use std::io::Read;

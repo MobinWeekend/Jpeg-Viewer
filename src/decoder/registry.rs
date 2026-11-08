@@ -1,6 +1,6 @@
 // src/decoder/registry.rs
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
 use std::collections::HashMap;
 
 pub struct DecoderRegistry {
@@ -48,7 +48,7 @@ impl DecoderRegistry {
         &self,
         bytes: &[u8],
         format: ImageFormat,
-    ) -> Result<Option<crate::image_core::ImageColorInfo>, ImageError> {
+    ) -> Result<Option<crate::imaging::core::ImageColorInfo>, ImageError> {
         let decoder = self
             .get_decoder(format)
             .ok_or(ImageError::NoDecoder(format))?;

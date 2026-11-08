@@ -1,5 +1,5 @@
-use crate::helpers::is_supported_image;
-use crate::image_entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveImage};
+use crate::imaging::helpers::is_supported_image;
+use crate::imaging::entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveImage};
 use sevenz_rust2::Archive as SevenZipArchive;
 use std::fs::File;
 use std::path::Path;

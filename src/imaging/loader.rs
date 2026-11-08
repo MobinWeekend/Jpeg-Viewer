@@ -1,8 +1,8 @@
 use crate::decoder::decode_bytes;
-use crate::helpers::is_supported_image;
-use crate::image_core::{DecodedImage, ImageError};
-use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
-use crate::sort::{SortMethod, sort_images};
+use crate::imaging::helpers::is_supported_image;
+use crate::imaging::core::{DecodedImage, ImageError};
+use crate::imaging::entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
+use crate::imaging::sort::{SortMethod, sort_images};
 use sevenz_rust2::{ArchiveReader, Password};
 use std::fs;
 use std::fs::File;

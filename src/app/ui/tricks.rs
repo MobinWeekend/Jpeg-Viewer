@@ -254,7 +254,7 @@ impl ViewerApp {
                                 );
                             }
                             let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-                            crate::gif::animation::GifAnimation::from_bytes_bounded(
+                            crate::decoder::gif::animation::GifAnimation::from_bytes_bounded(
                                 &bytes, 180, 12_000_000, 256,
                             )
                         })();

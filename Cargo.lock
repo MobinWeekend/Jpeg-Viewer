@@ -2458,6 +2458,8 @@ dependencies = [
  "thiserror 2.0.20",
  "trash",
  "unrar",
+ "wayland-client",
+ "wayland-protocols",
  "windows 0.62.2",
  "winresource",
  "zenavif",

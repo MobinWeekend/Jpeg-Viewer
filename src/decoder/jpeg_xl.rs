@@ -1,6 +1,6 @@
 // src/decoder/jpeg_xl.rs
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
 
 use jxl_oxide::JxlImage;
 use std::io::Cursor;

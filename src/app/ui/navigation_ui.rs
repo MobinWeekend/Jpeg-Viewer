@@ -1,7 +1,7 @@
 //use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::app::ui::helpers::paint_sidebar_drawer_icon;
-use crate::shortcuts::ViewerCommand;
+use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
@@ -126,7 +126,7 @@ impl ViewerApp {
     /// Slideshow options row, rendered beside the navigation bar while playback is active.
     /// The second row uses the same switches and persisted controls as Settings > Slideshow.
     pub fn slideshow_speed_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        use crate::sort::SortMethod;
+        use crate::imaging::sort::SortMethod;
 
         let interval_ms = self.slideshow_interval.as_millis().max(500) as u64;
         let mut photos_per_min = ((60_000.0 / interval_ms as f64).round() as i32).clamp(1, 120);
@@ -207,7 +207,7 @@ impl ViewerApp {
                 .get(self.current_index)
                 .map(|entry| entry.get_id());
             if !self.image_entries.is_empty() {
-                crate::sort::sort_images(&mut self.image_entries, self.sort_method);
+                crate::imaging::sort::sort_images(&mut self.image_entries, self.sort_method);
                 if let Some(id) = selected_id {
                     if let Some(index) = self
                         .image_entries

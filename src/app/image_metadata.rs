@@ -1,8 +1,8 @@
 use crate::app::types::ViewerApp;
 use crate::decoder::default_registry;
 use crate::decoder::format_detection::detect_format;
-use crate::image_core::ImageFormat;
-use crate::image_entry::ImageEntry;
+use crate::imaging::core::ImageFormat;
+use crate::imaging::entry::ImageEntry;
 use crate::ui_theme::scaled_text_size;
 use chrono::{DateTime, Local};
 use eframe::egui;
@@ -129,7 +129,7 @@ impl ViewerApp {
                 }
             }
             if matches!(format, Some(ImageFormat::Gif)) {
-                if let Ok(gif) = crate::gif::animation::GifAnimation::from_bytes(bytes) {
+                if let Ok(gif) = crate::decoder::gif::animation::GifAnimation::from_bytes(bytes) {
                     metadata.frame_count = Some(gif.frame_count());
                     metadata.animated = Some(gif.is_animated());
                 }

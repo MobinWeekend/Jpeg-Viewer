@@ -1,8 +1,8 @@
 // src/app/virtual_texture.rs
 //! Virtual texture manager – uses `DecodedImage` (plain RGBA8) and generates tiles on demand.
 
-use crate::constants::MAX_TILE_SIZE;
-use crate::image_core::DecodedImage;
+use crate::app::constants::MAX_TILE_SIZE;
+use crate::imaging::core::DecodedImage;
 use eframe::egui;
 use rayon::prelude::*;
 use std::sync::Arc;

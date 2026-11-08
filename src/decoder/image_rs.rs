@@ -1,7 +1,7 @@
 // src/decoder/image_rs.rs
 // This file is the sole place where `image` is used.
 
-use crate::image_core::{
+use crate::imaging::core::{
     DecodeOptions, DecodedImage, ImageColorInfo, ImageDecoder, ImageError, ImageFormat,
 };
 use image::{DynamicImage, GenericImageView, ImageDecoder as _, ImageReader};

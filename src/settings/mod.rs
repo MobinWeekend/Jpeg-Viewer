@@ -138,6 +138,8 @@ pub struct AppSettings {
     pub favorites_entry_size: f32,
     /// Forward subsequent launches to the existing application process.
     pub single_instance_enabled: bool,
+    /// Recursively include images from subfolders when a folder is dropped onto the viewer.
+    pub drag_drop_folders_recursive: bool,
     // Viewing padding mode: look, fine_tune, or custom.
     pub view_padding_mode: String,
     /// Per-look adjustments in [top, right, bottom, left] order.
@@ -242,6 +244,7 @@ impl Default for AppSettings {
             queue_entry_size: 176.0,
             favorites_entry_size: 176.0,
             single_instance_enabled: false,
+            drag_drop_folders_recursive: false,
             view_padding_mode: "look".to_string(),
             view_padding_fine_tune: HashMap::from([
                 ("native".to_string(), [0.0; 4]),

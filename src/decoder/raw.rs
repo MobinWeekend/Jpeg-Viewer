@@ -3,7 +3,7 @@
 //! The main viewer develops the actual RAW sensor data at full resolution.
 //! Embedded JPEG previews remain reserved for sidebar thumbnails.
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
 use enough::Unstoppable;
 use zenraw::{DemosaicMethod, OutputMode, OutputPrimaries, RawDecodeConfig};
 

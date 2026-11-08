@@ -1,26 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-mod archive;
-pub mod constants;
 mod decoder;
-mod gif;
-mod helpers;
-mod instance;
-mod image_core;
-mod image_entry;
-mod loader;
+mod imaging;
+mod input;
 mod settings;
-mod power;
-mod platform_backdrop;
-mod shortcuts;
-mod sort;
-mod slideshow;
+mod platform;
 mod ui_theme;
 
 use app::ViewerApp;
 use eframe::egui;
-use raw_window_handle::HasWindowHandle;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
 fn open_startup_paths(app: &mut ViewerApp, startup_paths: Vec<std::path::PathBuf>, ctx: &egui::Context) {
     if startup_paths.len() == 1
@@ -39,9 +29,9 @@ fn main() -> eframe::Result<()> {
     let app_settings = settings_manager.get().clone();
     let startup_paths: Vec<std::path::PathBuf> = std::env::args_os().skip(1).map(Into::into).collect();
     let instance_server = if app_settings.single_instance_enabled {
-        match crate::instance::launch_or_forward(settings_manager.path(), startup_paths.clone()) {
-            Ok(crate::instance::LaunchOutcome::Primary(server)) => Some(server),
-            Ok(crate::instance::LaunchOutcome::Forwarded) => return Ok(()),
+        match crate::platform::instance::launch_or_forward(settings_manager.path(), startup_paths.clone()) {
+            Ok(crate::platform::instance::LaunchOutcome::Primary(server)) => Some(server),
+            Ok(crate::platform::instance::LaunchOutcome::Forwarded) => return Ok(()),
             Err(error) => {
                 eprintln!("Could not contact the running JPEG Viewer instance: {error}");
                 // Do not start a second process when the single-instance lock is held
@@ -70,9 +60,10 @@ fn main() -> eframe::Result<()> {
         .with_icon(icon)
         .with_min_inner_size(egui::vec2(512.0, 512.0))
         .with_decorations(app_settings.show_titlebar)
-        // Keep the native window alpha-capable on platforms that implement system
-        // backdrops. The preference decides whether alpha is actually used.
-        .with_transparent(cfg!(any(target_os = "windows", target_os = "macos")))
+        // Keep an alpha-capable native surface on all desktop platforms. Linux
+        // Wayland uses ext-background-effect-v1 when supported; other platforms
+        // retain an opaque clear color unless their native backdrop is active.
+        .with_transparent(true)
         .with_resizable(true);
 
     if !app_settings.start_centered {
@@ -107,11 +98,12 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_fonts(initial_font_definitions);
-            crate::platform_backdrop::initialize(
+            crate::ui_theme::platform_backdrop::initialize(
                 cc.window_handle().ok().map(|window| window.as_raw()),
+                cc.display_handle().ok().map(|display| display.as_raw()),
             );
 
-            crate::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);
+            crate::ui_theme::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);
 
             let mut app = ViewerApp::default();
             app.instance_server = instance_server;

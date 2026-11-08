@@ -4,7 +4,7 @@ use rand::thread_rng;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::image_entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
+use crate::imaging::entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
 
 /// Sort method enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,9 +82,9 @@ impl AsPath for Path {
     }
 }
 
-impl AsPath for crate::image_entry::ImageEntry {
+impl AsPath for crate::imaging::entry::ImageEntry {
     fn as_path(&self) -> &Path {
-        use crate::image_entry::ImageEntry;
+        use crate::imaging::entry::ImageEntry;
         match self {
             ImageEntry::File(path) => path.as_path(),
             ImageEntry::Zip(item) => item.archive_path.as_path(),
@@ -94,7 +94,7 @@ impl AsPath for crate::image_entry::ImageEntry {
     }
 
     fn get_file_name(&self) -> Option<&std::ffi::OsStr> {
-        use crate::image_entry::ImageEntry;
+        use crate::imaging::entry::ImageEntry;
         match self {
             ImageEntry::File(path) => path.file_name(),
             ImageEntry::Zip(item) => Path::new(&item.name).file_name(),

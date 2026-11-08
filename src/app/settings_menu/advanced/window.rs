@@ -51,7 +51,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut native_rounding = app.settings_manager.get().native_window_rounding;
         if crate::ui_theme::switch(ui, &mut native_rounding, "OS-managed rounded window corners") {
             let _ = app.settings_manager.update(|settings| settings.native_window_rounding = native_rounding);
-            crate::platform_backdrop::set_native_window_shape(native_rounding);
+            crate::ui_theme::platform_backdrop::set_native_window_shape(native_rounding);
             ctx.request_repaint();
         }
         ui.label(egui::RichText::new("Requests native corner rounding where the OS exposes it. The OS shadow is retained where supported. Linux compositors, especially under Wayland, own window shape and shadow policy and may ignore application requests.").small().weak());

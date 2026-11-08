@@ -107,7 +107,7 @@ fn decode_checked_sidebar_image(
     if rgba_bytes > MAX_THUMB_SOURCE_PIXELS * 4 {
         return Err(format!("Decoded image would exceed thumbnail memory limit: {name}"));
     }
-    let decoded = registry.decode(bytes, format, &crate::image_core::DecodeOptions::default())
+    let decoded = registry.decode(bytes, format, &crate::imaging::core::DecodeOptions::default())
         .map_err(|e| e.to_string())?;
     image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.into_data())
         .ok_or_else(|| format!("Invalid decoded image data: {name}"))
@@ -142,8 +142,8 @@ impl ViewerApp {
                 // thumbnail API for sidebar cards; never develop the full sensor data
                 // just to populate a small thumbnail.
                 let is_raw = path.extension().and_then(|e| e.to_str())
-                    .and_then(crate::image_core::ImageFormat::from_extension)
-                    == Some(crate::image_core::ImageFormat::CameraRaw)
+                    .and_then(crate::imaging::core::ImageFormat::from_extension)
+                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
                     || zenraw::is_raw_file(&bytes);
 
                 // RAW already uses its embedded preview/thumbnail path. For other
@@ -176,7 +176,7 @@ impl ViewerApp {
     #[allow(unused_assignments)]
     pub(crate) fn request_sidebar_archive_thumbnail(
         &mut self,
-        entry: crate::image_entry::ImageEntry,
+        entry: crate::imaging::entry::ImageEntry,
         key: String,
         ctx: &egui::Context,
     ) {
@@ -195,10 +195,10 @@ impl ViewerApp {
             let result = (|| -> Result<(usize, usize, Vec<u8>), String> {
                 use std::io::Read;
                 let bytes = match &entry {
-                    crate::image_entry::ImageEntry::File(path) => {
+                    crate::imaging::entry::ImageEntry::File(path) => {
                         std::fs::read(path).map_err(|e| e.to_string())?
                     }
-                    crate::image_entry::ImageEntry::Zip(item) => {
+                    crate::imaging::entry::ImageEntry::Zip(item) => {
                         let file =
                             std::fs::File::open(&item.archive_path).map_err(|e| e.to_string())?;
                         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -211,7 +211,7 @@ impl ViewerApp {
                             .map_err(|e| e.to_string())?;
                         bytes
                     }
-                    crate::image_entry::ImageEntry::S7z(item) => {
+                    crate::imaging::entry::ImageEntry::S7z(item) => {
                         let mut archive = sevenz_rust2::ArchiveReader::open(
                             &item.archive_path,
                             sevenz_rust2::Password::empty(),
@@ -219,7 +219,7 @@ impl ViewerApp {
                         .map_err(|e| e.to_string())?;
                         archive.read_file(&item.name).map_err(|e| e.to_string())?
                     }
-                    crate::image_entry::ImageEntry::Rar(item) => {
+                    crate::imaging::entry::ImageEntry::Rar(item) => {
                         let mut archive = unrar::Archive::new(&item.archive_path)
                             .open_for_processing()
                             .map_err(|e| e.to_string())?;
@@ -238,15 +238,15 @@ impl ViewerApp {
                     }
                 };
                 let name = match &entry {
-                    crate::image_entry::ImageEntry::File(path) => path.display().to_string(),
-                    crate::image_entry::ImageEntry::Zip(item) => item.name.clone(),
-                    crate::image_entry::ImageEntry::S7z(item) => item.name.clone(),
-                    crate::image_entry::ImageEntry::Rar(item) => item.name.clone(),
+                    crate::imaging::entry::ImageEntry::File(path) => path.display().to_string(),
+                    crate::imaging::entry::ImageEntry::Zip(item) => item.name.clone(),
+                    crate::imaging::entry::ImageEntry::S7z(item) => item.name.clone(),
+                    crate::imaging::entry::ImageEntry::Rar(item) => item.name.clone(),
                 };
                 let is_raw = std::path::Path::new(&name)
                     .extension().and_then(|e| e.to_str())
-                    .and_then(crate::image_core::ImageFormat::from_extension)
-                    == Some(crate::image_core::ImageFormat::CameraRaw)
+                    .and_then(crate::imaging::core::ImageFormat::from_extension)
+                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
                     || zenraw::is_raw_file(&bytes);
                 let rgba = decode_checked_sidebar_image(&bytes, &name, is_raw, None)?;
                 fit_thumbnail(rgba)

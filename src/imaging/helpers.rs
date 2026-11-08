@@ -1,4 +1,4 @@
-use crate::image_core::ImageFormat;
+use crate::imaging::core::ImageFormat;
 use std::path::Path;
 
 pub fn get_extension(path: &Path) -> Option<String> {

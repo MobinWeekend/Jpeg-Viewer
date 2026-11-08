@@ -3,7 +3,7 @@
 //! TGA does not have a reliable magic signature, so asking `ImageReader` to
 //! guess the format again after the registry has already selected TGA can fail.
 
-use crate::image_core::{
+use crate::imaging::core::{
     DecodeOptions, DecodedImage, ImageColorInfo, ImageDecoder, ImageError, ImageFormat,
 };
 use image::{DynamicImage, GenericImageView, ImageDecoder as _, ImageReader};

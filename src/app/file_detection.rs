@@ -1,7 +1,7 @@
 // src/app/file_detection.rs
 use super::types::{FileTypeDetection, LoadingState, ViewerApp};
 use crate::decoder::format_detection::detect_format;
-use crate::image_entry::ImageEntry;
+use crate::imaging::entry::ImageEntry;
 use std::path::PathBuf;
 
 impl ViewerApp {

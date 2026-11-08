@@ -1,5 +1,5 @@
-use crate::gif::animation::GifAnimation;
-use crate::image_entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveImage};
+use crate::decoder::gif::animation::GifAnimation;
+use crate::imaging::entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveImage};
 use sevenz_rust2::{ArchiveReader, Password};
 use std::fs::File;
 use std::io::Read;

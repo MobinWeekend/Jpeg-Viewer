@@ -314,15 +314,18 @@ fn cosmic_theme_config_value_for_mode(dark: bool, key: &str, versions: &[&str]) 
     roots.push(std::path::PathBuf::from("/usr/share/cosmic"));
 
     // Prefer user customizations, and within each location prefer the newest config
-    // schema. COSMIC currently has both v1 and v2 theme files on some installations.
+    // schema. COSMIC has both ordinary theme files and Builder variants on some
+    // installations, with v1/v2 schemas coexisting during upgrades.
     for root in roots {
-        for version in versions {
-            let path = root
-                .join(format!("com.system76.CosmicTheme.{mode}"))
-                .join(version)
-                .join(key);
-            if let Ok(value) = std::fs::read_to_string(path) {
-                return Some(value);
+        for theme_name in [
+            format!("com.system76.CosmicTheme.{mode}"),
+            format!("com.system76.CosmicTheme.{mode}.Builder"),
+        ] {
+            for version in versions {
+                let path = root.join(&theme_name).join(version).join(key);
+                if let Ok(value) = std::fs::read_to_string(path) {
+                    return Some(value);
+                }
             }
         }
     }
@@ -335,7 +338,10 @@ pub(super) fn detect_cosmic_frosted(dark: bool) -> Option<bool> {
         return None;
     }
 
-    let value = cosmic_theme_config_value_for_mode(dark, "frosted", &["v2"])
+    // Current COSMIC themes expose the application-window toggle as
+    // `frosted_windows`; older theme schemas used a generic `frosted` flag.
+    let value = cosmic_theme_config_value_for_mode(dark, "frosted_windows", &["v2", "v1"])
+        .or_else(|| cosmic_theme_config_value_for_mode(dark, "frosted", &["v2"]))
         .or_else(|| cosmic_theme_config_value_for_mode(dark, "is_frosted", &["v1"]))?;
     match value
         .trim()

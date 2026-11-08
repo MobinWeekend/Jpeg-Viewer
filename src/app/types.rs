@@ -1,13 +1,13 @@
 use super::editing::EditOutputFormat;
 use super::image_metadata::FileMetadata;
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
-use crate::gif::animation::GifAnimation;
-use crate::image_core::DecodedImage;
-use crate::image_core::ImageFormat;
-use crate::image_entry::ImageEntry;
+use crate::decoder::gif::animation::GifAnimation;
+use crate::imaging::core::DecodedImage;
+use crate::imaging::core::ImageFormat;
+use crate::imaging::entry::ImageEntry;
 use crate::settings::SettingsManager;
-use crate::shortcuts::InputBindings;
-use crate::sort::SortMethod;
+use crate::input::shortcuts::InputBindings;
+use crate::imaging::sort::SortMethod;
 use eframe::egui;
 use lru::LruCache;
 use std::collections::HashSet;
@@ -147,7 +147,7 @@ pub struct ViewerApp {
 
     // ====== SLIDESHOW ======
     pub slideshow_enabled: bool,
-    pub power_inhibitor: crate::power::PowerInhibitor,
+    pub power_inhibitor: crate::platform::power::PowerInhibitor,
     pub slideshow_interval: Duration,
     pub slideshow_loop: bool,
     pub slideshow_random: bool,
@@ -225,11 +225,13 @@ pub struct ViewerApp {
     pub loading_state: LoadingState,
     pub indexing_receiver: Option<Receiver<(Vec<PathBuf>, Option<PathBuf>)>>,
     /// Optional IPC server used to receive file-open requests from later launches.
-    pub instance_server: Option<crate::instance::InstanceServer>,
+    pub instance_server: Option<crate::platform::instance::InstanceServer>,
     /// File paths collected from startup/IPC launches before opening as one selection.
     pub pending_open_paths: Vec<PathBuf>,
     /// Quiet-period deadline used to group Explorer multi-select launches.
     pub pending_open_deadline: Option<Instant>,
+    /// Whether the first image in the pending external-open batch was already opened eagerly.
+    pub pending_open_first_opened: bool,
     /// Recently opened external selection, allowing slightly staggered Explorer
     /// per-file activations to be merged even if one request arrives after the
     /// initial quiet period has elapsed.
@@ -428,7 +430,7 @@ impl Default for ViewerApp {
 
             // ====== SLIDESHOW ======
             slideshow_enabled: false,
-            power_inhibitor: crate::power::PowerInhibitor::default(),
+            power_inhibitor: crate::platform::power::PowerInhibitor::default(),
             slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
             slideshow_loop: settings.slideshow_loop,
             slideshow_random: settings.slideshow_random,
@@ -498,6 +500,7 @@ impl Default for ViewerApp {
             instance_server: None,
             pending_open_paths: Vec::new(),
             pending_open_deadline: None,
+            pending_open_first_opened: false,
             recent_external_open_batch: None,
 
             // ====== Sort method ======
@@ -823,7 +826,7 @@ impl ViewerApp {
             );
 
             let result = std::panic::catch_unwind(|| {
-                crate::gif::loader::load_full_gif_from_entry(entry)
+                crate::decoder::gif::loader::load_full_gif_from_entry(entry)
                     .map(|gif| LoadedImage::Animated(gif, false))
             });
 

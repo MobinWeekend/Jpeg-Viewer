@@ -317,11 +317,11 @@ impl ViewerApp {
                                 entries.extend(
                                     crate::app::queues::actions::collect_folder_images(favorite)
                                         .into_iter()
-                                        .map(crate::image_entry::ImageEntry::File),
+                                        .map(crate::imaging::entry::ImageEntry::File),
                                 );
                             } else {
                                 entries
-                                    .push(crate::image_entry::ImageEntry::File(favorite.clone()));
+                                    .push(crate::imaging::entry::ImageEntry::File(favorite.clone()));
                             }
                         }
                         if !entries.is_empty() {
@@ -413,7 +413,7 @@ impl ViewerApp {
                                 self.image_entries
                                     .insert(insert_at.min(self.image_entries.len()), item);
                                 if let Some(path) = selected_path {
-                                    if let Some(new_index) = self.image_entries.iter().position(|e| matches!(e, crate::image_entry::ImageEntry::File(p) if p == &path)) { self.current_index = new_index; }
+                                    if let Some(new_index) = self.image_entries.iter().position(|e| matches!(e, crate::imaging::entry::ImageEntry::File(p) if p == &path)) { self.current_index = new_index; }
                                 }
                                 self.sidebar_last_current_index = None;
                                 self.image_cache.clear();

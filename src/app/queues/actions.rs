@@ -2,14 +2,14 @@
 use super::super::types::ViewerApp;
 use super::entry_path;
 use super::storage::{absolute_path, paths_equal, read_queue, remap_paths, write_queue};
-use crate::helpers::is_supported_image;
-use crate::image_entry::ImageEntry;
+use crate::imaging::helpers::is_supported_image;
+use crate::imaging::entry::ImageEntry;
 use eframe::egui;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Collect supported images recursively from a folder in stable path order.
-pub(super) fn collect_folder_images(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn collect_folder_images(root: &Path) -> Vec<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     let mut found = Vec::new();
     while let Some(folder) = stack.pop() {

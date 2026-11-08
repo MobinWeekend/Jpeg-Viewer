@@ -1,6 +1,6 @@
 // src/decoder/svg.rs
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
 
 use resvg::{tiny_skia, usvg};
 

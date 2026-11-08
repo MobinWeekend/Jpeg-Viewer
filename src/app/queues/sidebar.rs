@@ -1,7 +1,7 @@
 //! Resizable file and image-information sidebar.
 use super::ui::{GAP, fit_cards};
 use crate::app::types::ViewerApp;
-use crate::image_entry::ImageEntry;
+use crate::imaging::entry::ImageEntry;
 use eframe::egui;
 
 pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
@@ -181,7 +181,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     ui.label(format!("{} images  |  ", app.image_entries.len()));
 
                     //sorting
-                    crate::app::ui::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
+                    crate::app::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
                 });
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
                 ui.horizontal_wrapped(|ui| {

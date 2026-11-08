@@ -8,7 +8,7 @@ mod settings_file;
 mod slideshow;
 pub(crate) mod viewing;
 
-use super::tricks;
+use crate::app::ui::tricks;
 use crate::app::types::ViewerApp;
 use eframe::egui;
 

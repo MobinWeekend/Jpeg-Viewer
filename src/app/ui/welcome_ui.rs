@@ -1,6 +1,6 @@
 /// Draw the welcome/placeholder UI when no image is loaded
 use crate::app::types::ViewerApp;
-use crate::shortcuts::ViewerCommand;
+use crate::input::shortcuts::ViewerCommand;
 use eframe::egui;
 
 impl ViewerApp {

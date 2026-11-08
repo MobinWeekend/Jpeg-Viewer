@@ -8,8 +8,7 @@ pub(crate) mod helpers;
 mod metainfo;
 mod navigation_ui;
 mod overlay;
-pub mod settings_menu;
-mod tricks;
+pub(crate) mod tricks;
 mod welcome_ui;
 
 pub use desktop_menu_bar::{
@@ -21,7 +20,7 @@ pub use overlay::{
     custom_titlebar_height, render_overlay_ui, reserve_custom_titlebar_space, toolbar_frame,
     update_overlay_visibility,
 };
-pub use settings_menu::{render_settings_menu, toggle_settings_menu};
+pub(crate) use crate::app::settings_menu::{render_settings_menu, toggle_settings_menu};
 
 /// Return a viewport-local rectangle for effects that must stay attached to the
 /// window. `ViewportInfo::inner_rect` can carry a desktop-space origin; using it

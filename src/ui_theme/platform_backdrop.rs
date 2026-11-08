@@ -2,26 +2,28 @@
 //!
 //! On Windows 11 this requests the DWM transient-window backdrop (the acrylic-like
 //! system material). On macOS it wraps the eframe content view in an AppKit
-//! `NSVisualEffectView`. Unsupported desktops simply retain the application's
-//! translucent egui surfaces; no system utility or shared library is downloaded.
+//! `NSVisualEffectView`. On Wayland it requests compositor blur through
+//! `ext-background-effect-v1` when the compositor advertises that protocol.
 
-use raw_window_handle::RawWindowHandle;
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+use std::sync::atomic::AtomicBool;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 #[cfg(target_os = "windows")]
 static MAIN_HWND: AtomicUsize = AtomicUsize::new(0);
 #[cfg(target_os = "macos")]
 static MAIN_NS_VIEW: AtomicUsize = AtomicUsize::new(0);
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 static NATIVE_BACKDROP_ACTIVE: AtomicBool = AtomicBool::new(false);
 // 0 = OS corners disabled, 1 = enabled, 2 = not yet applied.
 static LAST_NATIVE_WINDOW_SHAPE: AtomicU8 = AtomicU8::new(2);
 
 /// Retain the root OS view handle so the preference can be changed at runtime.
-pub fn initialize(handle: Option<RawWindowHandle>) {
+pub fn initialize(handle: Option<RawWindowHandle>, display: Option<RawDisplayHandle>) {
     #[cfg(target_os = "windows")]
     if let Some(RawWindowHandle::Win32(handle)) = handle {
         MAIN_HWND.store(handle.hwnd.get() as usize, Ordering::Relaxed);
@@ -32,7 +34,17 @@ pub fn initialize(handle: Option<RawWindowHandle>) {
         MAIN_NS_VIEW.store(handle.ns_view.as_ptr() as usize, Ordering::Relaxed);
     }
 
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    if let (Some(RawWindowHandle::Wayland(window)), Some(RawDisplayHandle::Wayland(display))) =
+        (handle, display)
+    {
+        wayland_backdrop::initialize(display.display.as_ptr(), window.surface.as_ptr());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    let _ = display;
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let _ = handle;
 }
 
@@ -54,8 +66,26 @@ pub fn set_enabled(enabled: bool) {
         NATIVE_BACKDROP_ACTIVE.store(active, Ordering::Relaxed);
     }
 
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        let active = enabled && wayland_backdrop::set_enabled(true);
+        if !enabled {
+            let _ = wayland_backdrop::set_enabled(false);
+        }
+        NATIVE_BACKDROP_ACTIVE.store(active, Ordering::Relaxed);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     let _ = enabled;
+}
+
+
+/// Release any native backdrop resources while the native window/display is still alive.
+pub fn shutdown() {
+    set_enabled(false);
+
+    #[cfg(target_os = "linux")]
+    wayland_backdrop::shutdown();
 }
 
 /// Best-effort native caption-color override. Passing `None` restores the OS default.
@@ -89,14 +119,14 @@ pub fn set_native_window_shape(enabled: bool) {
     let _ = enabled;
 }
 
-/// Whether a native system backdrop was successfully requested and is enabled.
-/// Other platforms use egui's translucent-surface fallback and keep an opaque window.
+/// Whether the native system/compositor backdrop was successfully requested and is enabled.
+/// Unsupported Linux compositors and non-native desktop environments retain an opaque window.
 pub fn is_active() -> bool {
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     {
         return NATIVE_BACKDROP_ACTIVE.load(Ordering::Relaxed);
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         false
     }
@@ -446,3 +476,7 @@ mod macos_backdrop {
         apply_window_shape(view_handle as Obj, enabled);
     }
 }
+
+
+#[cfg(target_os = "linux")]
+mod wayland_backdrop;

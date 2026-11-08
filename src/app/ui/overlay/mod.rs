@@ -20,7 +20,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     // Native corner rounding is a windowed-mode treatment. Ask the OS to remove
     // it while fullscreen and restore the user's preference when leaving fullscreen.
-    crate::platform_backdrop::set_native_window_shape(
+    crate::ui_theme::platform_backdrop::set_native_window_shape(
         app.settings_manager.get().native_window_rounding && !fullscreen,
     );
     let custom_titlebar = !app.settings_manager.get().show_titlebar

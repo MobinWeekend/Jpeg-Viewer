@@ -6,8 +6,8 @@
 //! - Sorting method
 
 use crate::app::types::ViewerApp;
-use crate::shortcuts::ViewerCommand;
-use crate::sort::SortMethod;
+use crate::input::shortcuts::ViewerCommand;
+use crate::imaging::sort::SortMethod;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
@@ -24,6 +24,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
         ui.separator();
         ui.label(egui::RichText::new("Input").strong());
         render_invert_scroll_zoom(app, ui);
+        render_recursive_folder_drop(app, ui);
 
         ui.add_space(6.0);
         ui.separator();
@@ -418,7 +419,7 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
             .get(app.current_index)
             .map(|entry| entry.get_id());
         if !app.image_entries.is_empty() {
-            crate::sort::sort_images(&mut app.image_entries, app.sort_method);
+            crate::imaging::sort::sort_images(&mut app.image_entries, app.sort_method);
             if let Some(id) = selected_id {
                 if let Some(index) = app
                     .image_entries
@@ -449,4 +450,15 @@ fn render_single_instance(app: &mut ViewerApp, ui: &mut egui::Ui) {
         let _ = app.settings_manager.update(|settings| settings.single_instance_enabled = enabled);
     }
     ui.label(egui::RichText::new("When enabled, later launches send their selected files to the running window. Restart the app to apply changes.").small().weak());
+}
+
+
+fn render_recursive_folder_drop(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut enabled = app.settings_manager.get().drag_drop_folders_recursive;
+    if crate::ui_theme::switch(ui, &mut enabled, "Open dropped folders with all subfolders") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.drag_drop_folders_recursive = enabled;
+        });
+    }
+    ui.label(egui::RichText::new("When enabled, dropping a folder opens all supported images found inside it and its nested folders.").small().weak());
 }

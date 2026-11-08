@@ -1,5 +1,5 @@
 use super::types::ViewerApp;
-use crate::shortcuts::ViewerCommand;
+use crate::input::shortcuts::ViewerCommand;
 use eframe::egui;
 use std::time::Instant;
 

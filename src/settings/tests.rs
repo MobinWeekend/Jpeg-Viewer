@@ -260,6 +260,7 @@ fn viewing_and_single_instance_settings_round_trip() {
     let path = std::env::temp_dir().join(format!("jpeg-viewer-viewing-settings-{}.ini", unique));
     let mut settings = AppSettings::default();
     settings.single_instance_enabled = true;
+    settings.drag_drop_folders_recursive = true;
     settings.view_padding_mode = "fine_tune".to_string();
     settings.view_padding_fine_tune.insert("cosmic".to_string(), [2.0, 4.0, 6.0, 8.0]);
     settings.view_padding_custom = [10.0, 20.0, 30.0, 40.0];
@@ -277,6 +278,7 @@ fn viewing_and_single_instance_settings_round_trip() {
     let loaded = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
     assert!(loaded.single_instance_enabled);
+    assert!(loaded.drag_drop_folders_recursive);
     assert_eq!(loaded.view_padding_mode, "fine_tune");
     assert_eq!(loaded.view_padding_fine_tune.get("cosmic"), Some(&[2.0, 4.0, 6.0, 8.0]));
     assert_eq!(loaded.view_padding_custom, [10.0, 20.0, 30.0, 40.0]);

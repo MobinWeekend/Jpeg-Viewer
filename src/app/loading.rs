@@ -1,9 +1,9 @@
 use super::types::{LoadedImage, LoadingState, ViewerApp};
 use crate::decoder::format_detection::load_bytes_with_detection;
-use crate::image_core::DecodeOptions;
-use crate::image_entry::ImageEntry;
-use crate::loader::load_directory_images;
-use crate::sort::SortMethod;
+use crate::imaging::core::DecodeOptions;
+use crate::imaging::entry::ImageEntry;
+use crate::imaging::loader::load_directory_images;
+use crate::imaging::sort::SortMethod;
 use rayon::spawn;
 use std::io::Read;
 use std::path::PathBuf;
@@ -381,8 +381,8 @@ fn load_entry_content(entry: ImageEntry, threshold: u32, develop_raw: bool) -> R
     let extension_is_raw = path_hint
         .and_then(std::path::Path::extension)
         .and_then(|extension| extension.to_str())
-        .and_then(crate::image_core::ImageFormat::from_extension)
-        == Some(crate::image_core::ImageFormat::CameraRaw);
+        .and_then(crate::imaging::core::ImageFormat::from_extension)
+        == Some(crate::imaging::core::ImageFormat::CameraRaw);
     // Some RAW files arrive from archives or have misleading extensions. Use
     // Rawler/zenraw's content detection as a second signal before deciding to
     // run the expensive sensor-development path.

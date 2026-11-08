@@ -219,8 +219,8 @@ pub fn apply_polished_style_with_options(
     visuals.menu_corner_radius = surface_radius;
 
     // Give COSMIC and GNOME their own surface hierarchy and spacing conventions.
-    // These are faithfully styled egui widgets, not embedded native GTK/libcosmic
-    // widgets; genuine compositor backdrop blur is not exposed through eframe.
+    // These are styled egui widgets, not embedded native GTK/libcosmic widgets;
+    // compositor blur is requested separately by the platform backdrop layer.
     match look_profile {
         "win98" => {
             // Classic Windows 98 system colors in light mode, plus a genuinely

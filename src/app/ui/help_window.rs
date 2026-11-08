@@ -245,6 +245,8 @@ impl ViewerApp {
 
                         let tips = vec![
                             "• Drag an image, folder, or supported archive into the window to open it",
+                            "• Use File → Open Folder + Subfolders to include images from every nested folder",
+                            "• Settings → General → Input can make folder drag-and-drop include all subfolders",
                             "• Use Settings → Look to choose Automatic, JPEG Viewer, COSMIC, GNOME / Adwaita, or Windows 98 styling",
                             "• Windows 98 look includes an optional dial-up-style image reveal and adjustable connection speed",
                             "• OS/DE blur or glass depends on compositor support; it can be disabled for fullscreen",

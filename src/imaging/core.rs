@@ -1,4 +1,4 @@
-// src/image_core.rs
+// src/imaging/core.rs
 // Core types and the decoder trait – no dependency on `image`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

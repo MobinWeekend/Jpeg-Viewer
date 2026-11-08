@@ -1,6 +1,6 @@
 // src/decoder/heic.rs
 
-use crate::image_core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
+use crate::imaging::core::{DecodeOptions, DecodedImage, ImageDecoder, ImageError, ImageFormat};
 
 use heic::{DecoderConfig, PixelLayout};
 

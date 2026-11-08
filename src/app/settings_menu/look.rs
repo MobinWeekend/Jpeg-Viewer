@@ -108,8 +108,8 @@ fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
 
         ui.separator();
         ui.label(egui::RichText::new("Theme and UI appearance").strong());
-        crate::app::ui::settings_menu::general::render_theme(app, ui, ctx);
-        crate::app::ui::settings_menu::general::render_ui_appearance(app, ui, ctx);
+        crate::app::settings_menu::general::render_theme(app, ui, ctx);
+        crate::app::settings_menu::general::render_ui_appearance(app, ui, ctx);
     });
 }
 

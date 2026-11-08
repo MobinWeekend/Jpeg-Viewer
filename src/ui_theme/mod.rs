@@ -7,6 +7,7 @@ mod backdrop;
 mod colors;
 mod controls;
 mod platform;
+pub(crate) mod platform_backdrop;
 mod profiles;
 mod style;
 

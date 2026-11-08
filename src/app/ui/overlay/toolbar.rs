@@ -1,5 +1,5 @@
 use crate::app::types::ViewerApp;
-//use crate::app::ui::settings_menu::general::sort_method_horizontal_ui;
+//use crate::app::settings_menu::general::sort_method_horizontal_ui;
 use eframe::egui;
 
 const TOOLBAR_BG_ALPHA: u8 = 198;
@@ -443,7 +443,7 @@ fn render_win98_primary_row(
         let consumed = (ui.next_widget_position().x - row_start).max(0.0);
         app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
     } else if ui.button("Open Image…").clicked() {
-        app.handle_command(ctx, crate::shortcuts::ViewerCommand::OpenFile);
+        app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
     }
 }
 
@@ -509,7 +509,7 @@ fn render_platform_primary_row(
             app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
         } else if placement == "win98" {
             if ui.button("Open Image…").clicked() {
-                app.handle_command(ctx, crate::shortcuts::ViewerCommand::OpenFile);
+                app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
             }
         }
     });
