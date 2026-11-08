@@ -27,7 +27,8 @@ struct WaylandState {
 
 struct WaylandBackdrop {
     connection: Connection,
-    surface: wl_surface::WlSurface,
+    // Keep the foreign surface proxy alive for the lifetime of the backdrop.
+    _surface: wl_surface::WlSurface,
     effect: ExtBackgroundEffectSurfaceV1,
     region: wl_region::WlRegion,
 }
@@ -61,12 +62,8 @@ impl WaylandBackdrop {
 
         // wayland-client 0.31 uses the argument order:
         // (global_name, version, queue_handle, user_data).
-        let manager = registry.bind::<ExtBackgroundEffectManagerV1, _, _>(
-            manager_name,
-            1,
-            &queue_handle,
-            (),
-        );
+        let manager =
+            registry.bind::<ExtBackgroundEffectManagerV1, _, _>(manager_name, 1, &queue_handle, ());
         let compositor = registry.bind::<wl_compositor::WlCompositor, _, _>(
             compositor_name,
             1,
@@ -98,7 +95,7 @@ impl WaylandBackdrop {
 
         Some(Self {
             connection,
-            surface,
+            _surface: surface,
             effect,
             region,
         })
@@ -162,7 +159,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
         _connection: &Connection,
         _queue_handle: &QueueHandle<Self>,
     ) {
-        if let wl_registry::Event::Global { name, interface, version } = event {
+        if let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        {
             state.globals.push((name, interface, version));
         }
     }
@@ -176,7 +178,8 @@ impl Dispatch<wl_callback::WlCallback, ()> for WaylandState {
         _data: &(),
         _connection: &Connection,
         _queue_handle: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
@@ -187,7 +190,8 @@ impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
         _data: &(),
         _connection: &Connection,
         _queue_handle: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<wl_region::WlRegion, ()> for WaylandState {
@@ -198,7 +202,8 @@ impl Dispatch<wl_region::WlRegion, ()> for WaylandState {
         _data: &(),
         _connection: &Connection,
         _queue_handle: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<ExtBackgroundEffectManagerV1, ()> for WaylandState {
@@ -227,7 +232,8 @@ impl Dispatch<ExtBackgroundEffectSurfaceV1, ()> for WaylandState {
         _data: &(),
         _connection: &Connection,
         _queue_handle: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Drop for WaylandBackdrop {
