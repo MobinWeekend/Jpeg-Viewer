@@ -59,16 +59,18 @@ impl WaylandBackdrop {
             .find(|(_, interface, _)| interface == "wl_compositor")
             .map(|(name, _, _)| *name)?;
 
+        // wayland-client 0.31 uses the argument order:
+        // (global_name, version, queue_handle, user_data).
         let manager = registry.bind::<ExtBackgroundEffectManagerV1, _, _>(
-            &queue_handle,
             manager_name,
             1,
+            &queue_handle,
             (),
         );
         let compositor = registry.bind::<wl_compositor::WlCompositor, _, _>(
-            &queue_handle,
             compositor_name,
             1,
+            &queue_handle,
             (),
         );
         queue.roundtrip(&mut state).ok()?;
