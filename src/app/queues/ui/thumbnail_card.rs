@@ -45,6 +45,8 @@ impl ViewerApp {
             0.14,
         );
         let painter = ui.painter();
+        let cached_thumbnail = self.get_shared_thumbnail(key, 128);
+        let needs_thumbnail_upgrade = !path.is_dir() && !self.has_shared_thumbnail_at_least(key, 128);
         let inner = cell_rect.shrink(3.0);
         let image_rect = if compact {
             let number_width = if context_index.is_some() { 20.0 } else { 0.0 };
@@ -97,6 +99,10 @@ impl ViewerApp {
             egui::Color32::from_rgb(78, 82, 88)
         };
 
+        if needs_thumbnail_upgrade && ui.is_rect_visible(image_rect) {
+            self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string(), ctx);
+        }
+
         if path.is_dir() {
             painter.text(
                 image_rect.center(),
@@ -108,7 +114,7 @@ impl ViewerApp {
                 )),
                 card_text_color,
             );
-        } else if let Some(texture) = self.sidebar_thumbnails.get(key) {
+        } else if let Some(texture) = cached_thumbnail.as_ref() {
             let size = texture.size_vec2();
             if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
                 let scale = (image_rect.width() / size.x).min(image_rect.height() / size.y);
@@ -126,7 +132,7 @@ impl ViewerApp {
         } else {
             let message = if !path.exists() {
                 "Missing"
-            } else if self.sidebar_thumbnail_failed.contains(key) {
+            } else if self.shared_thumbnail_failed(key, 128) {
                 "No preview"
             } else {
                 "Loading…"
@@ -138,9 +144,6 @@ impl ViewerApp {
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 11.0)),
                 card_weak_text_color,
             );
-            if !path.is_dir() && ui.is_rect_visible(image_rect) {
-                self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string(), ctx);
-            }
         }
 
         if compact {

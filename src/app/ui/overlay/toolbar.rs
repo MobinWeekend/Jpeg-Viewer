@@ -131,17 +131,17 @@ pub fn render_top_toolbar(
                         this.render_hamburger_ui(ui);
                     }
                     let space = if compact { 8.0 } else { 1.0 };
-                    if no_image {
+                    if no_image && max_width >= 156.0 {
                         separator(ui, space);
                         this.zoom_out_ui(ctx, ui);
                         this.zoom_text(ctx, ui);
                         this.zoom_in_ui(ctx, ui);
                     }
-                    if this.is_gif {
+                    if this.is_gif && max_width >= 300.0 {
                         separator(ui, space);
                         this.gif_controls_ui(ui);
                     }
-                    if no_image {
+                    if no_image && max_width >= 340.0 {
                         separator(ui, space);
                         let consumed = (ui.next_widget_position().x - row_start).max(0.0);
                         this.file_metadata_button_with_width(ui, (budget - consumed).max(0.0));
@@ -155,28 +155,18 @@ pub fn render_bottom_toolbar(
     app: &mut ViewerApp,
     ctx: &egui::Context,
     left_offset: f32,
-    _max_width: f32,
+    max_width: f32,
 ) {
     if app.image_entries.is_empty() {
         return;
     }
 
-    let viewport_width = ctx.input(|input| {
-        input
-            .viewport()
-            .inner_rect
-            .map(|rect| rect.width())
-            .unwrap_or(1280.0)
-    });
-
-    let right_offset = if app.show_settings_menu || app.show_edit_menu {
-        app.settings_manager.get().settings_sidebar_width
-    } else {
-        0.0
-    };
-
-    // Calculate width from the actual viewport, not the Area's previous size.
-    let usable_width = (viewport_width - left_offset - right_offset - 16.0).max(128.0);
+    // `max_width` is derived from the actual CentralPanel rectangle. Do not
+    // recalculate it from the outer window and saved sidebar preferences here.
+    let usable_width = max_width.max(0.0);
+    if usable_width < 96.0 {
+        return;
+    }
 
     let compact = app.compactui;
 
@@ -329,11 +319,7 @@ pub fn render_platform_toolbar(
             // Win98 keeps its full-width classic strip. COSMIC and GNOME only use
             // max-width constraints: their Area must size to the controls' content
             // instead of stretching from one side of the central canvas to the other.
-            let frame_width = if classic_win98 {
-                max_width.max(1.0)
-            } else {
-                max_width.max(96.0)
-            };
+            let frame_width = max_width.max(1.0);
             if classic_win98 {
                 ui.set_min_width(frame_width);
             }
@@ -341,9 +327,9 @@ pub fn render_platform_toolbar(
             let content_width = toolbar_content_width_budget(ctx, compact, frame_width);
             let frame_response = toolbar_frame_mode(ctx, compact).show(ui, |ui| {
                 if classic_win98 {
-                    ui.set_min_width((frame_width - 2.0).max(72.0));
+                    ui.set_min_width(content_width);
                 }
-                ui.set_max_width((frame_width - 2.0).max(72.0));
+                ui.set_max_width(content_width);
                 if classic_win98 {
                     // Classic Windows 98 toolbar fills only the central viewport between
                     // docked sidebars, with the action group aligned to the left edge.
@@ -439,9 +425,14 @@ fn render_win98_primary_row(
                 app.gif_controls_ui(ui);
             }
         }
-        separator(ui, 1.0);
-        let consumed = (ui.next_widget_position().x - row_start).max(0.0);
-        app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
+        // Metadata is optional and may be wider than the remaining viewport in
+        // ultra-compact mode. Hide it rather than letting the toolbar escape the
+        // main-view rectangle between the docked sidebars.
+        if width_budget >= 340.0 {
+            separator(ui, 1.0);
+            let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+            app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
+        }
     } else if ui.button("Open Image…").clicked() {
         app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
     }
@@ -486,27 +477,31 @@ fn render_platform_primary_row(
                 separator(ui, if compact { 8.0 } else { 1.0 });
             }
 
-            // Keep the standard control sequence identical while a slideshow is
-            // active; slideshow_ui swaps its start icon for pause/resume in-place.
+            // The primary navigation trio remains available even when sidebars
+            // leave a narrow central view. Optional controls are progressively
+            // omitted rather than forcing the overlay outside the main viewport.
             app.navigation_previous_ui(ctx, ui);
             app.slideshow_ui(ctx, ui);
             app.navigation_next_ui(ctx, ui);
 
-            if !ultra_compact {
+            let narrow_view = width_budget < 280.0;
+            if !ultra_compact && !narrow_view {
                 separator(ui, if compact { 8.0 } else { 1.0 });
                 app.zoom_out_ui(ctx, ui);
                 app.zoom_text(ctx, ui);
                 app.zoom_in_ui(ctx, ui);
             }
 
-            if app.is_gif && !auto_compact_for_toolbar(compact, ultra_compact) {
+            if app.is_gif && !auto_compact_for_toolbar(compact, ultra_compact) && !narrow_view {
                 separator(ui, if compact { 8.0 } else { 1.0 });
                 app.gif_controls_ui(ui);
             }
 
-            separator(ui, 1.0);
-            let consumed = (ui.next_widget_position().x - row_start).max(0.0);
-            app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
+            if width_budget >= 340.0 {
+                separator(ui, 1.0);
+                let consumed = (ui.next_widget_position().x - row_start).max(0.0);
+                app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
+            }
         } else if placement == "win98" {
             if ui.button("Open Image…").clicked() {
                 app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
@@ -531,7 +526,8 @@ pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context, rig
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     let (anchor, offset, id) = if placement == "cosmic" {
         let top_offset = if fullscreen {
-            MENU_OFFSET
+            // Keep the fullscreen image counter below the floating workspace tabs.
+            MENU_OFFSET + 44.0
         } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
             crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
         } else if app.settings_manager.get().show_titlebar {

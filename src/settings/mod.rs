@@ -24,7 +24,7 @@ pub struct AppSettings {
     pub cache_delta_factor: f32,
     pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
-    /// Number of background workers used for sidebar thumbnail generation (1-8).
+    /// One shared worker count for Browse, Queue, Favorites, and Masonry thumbnails (1-8). Masonry jobs receive priority.
     pub thumbnail_workers: usize,
     pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches
@@ -140,6 +140,12 @@ pub struct AppSettings {
     pub single_instance_enabled: bool,
     /// Recursively include images from subfolders when a folder is dropped onto the viewer.
     pub drag_drop_folders_recursive: bool,
+    /// Restore workspace tabs at startup: automatic, ask, or never.
+    pub session_restore_preference: String,
+    /// Preferred Masonry tile width in logical points; columns fill available width automatically.
+    pub masonry_thumbnail_size: f32,
+    /// Show a full-width folder heading before each recursive Folder Masonry group.
+    pub masonry_show_folder_headers: bool,
     // Viewing padding mode: look, fine_tune, or custom.
     pub view_padding_mode: String,
     /// Per-look adjustments in [top, right, bottom, left] order.
@@ -245,6 +251,9 @@ impl Default for AppSettings {
             favorites_entry_size: 176.0,
             single_instance_enabled: false,
             drag_drop_folders_recursive: false,
+            session_restore_preference: "automatic".to_string(),
+            masonry_thumbnail_size: 220.0,
+            masonry_show_folder_headers: true,
             view_padding_mode: "look".to_string(),
             view_padding_fine_tune: HashMap::from([
                 ("native".to_string(), [0.0; 4]),

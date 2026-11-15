@@ -32,6 +32,7 @@ impl ViewerApp {
     ) {
         self.indexing_receiver = None;
         self.current_directory = Some(directory.clone());
+        self.record_welcome_recent_path(directory.clone());
         self.clear_current_image_state();
 
         // When a specific image was opened, begin loading it immediately instead
@@ -285,6 +286,7 @@ impl ViewerApp {
         };
         if let ImageEntry::File(path) = &entry {
             self.current_image_path = Some(path.clone());
+            self.record_welcome_recent_path(path.clone());
         } else {
             self.current_image_path = None;
         }
@@ -317,7 +319,7 @@ impl ViewerApp {
 /// Load an entry through the shared format-detection and decoding pipeline.
 ///
 /// This function runs on a background worker and must not touch UI state.
-fn load_entry_content(entry: ImageEntry, threshold: u32, develop_raw: bool) -> Result<LoadedImage, String> {
+pub(crate) fn load_entry_content(entry: ImageEntry, threshold: u32, develop_raw: bool) -> Result<LoadedImage, String> {
     // Helper to read bytes from any entry.
     let bytes = match &entry {
         ImageEntry::File(path) => {

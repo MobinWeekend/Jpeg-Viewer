@@ -350,6 +350,9 @@ impl SettingsManager {
         );
         section.set("single_instance_enabled", if settings.single_instance_enabled { "true" } else { "false" });
         section.set("drag_drop_folders_recursive", if settings.drag_drop_folders_recursive { "true" } else { "false" });
+        section.set("session_restore_preference", &settings.session_restore_preference);
+        section.set("masonry_thumbnail_size", settings.masonry_thumbnail_size.to_string());
+        section.set("masonry_show_folder_headers", if settings.masonry_show_folder_headers { "true" } else { "false" });
         section.set("view_padding_mode", &settings.view_padding_mode);
         for profile in ["native", "cosmic", "gnome", "win98"] {
             let values = settings.view_padding_fine_tune.get(profile).copied().unwrap_or([0.0; 4]);

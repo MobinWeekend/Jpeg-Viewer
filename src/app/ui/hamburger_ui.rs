@@ -92,10 +92,24 @@ impl ViewerApp {
                 ui.separator();
 
                 self.hamburger_open_file_button(ctx, ui);
+                if ui.add(
+                    egui::Button::new(
+                        egui::RichText::new("✦  New Welcome Tab").size(scaled_text_size(ui.ctx(), 14.0)),
+                    )
+                    .min_size(egui::vec2(180.0, 30.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
+                ).on_hover_text("Open a Firefox-style new Welcome tab (Ctrl+T)").clicked() {
+                    self.open_new_welcome_tab();
+                    self.hamburger_menu_open = false;
+                }
                 self.hamburger_open_folder_button(ctx, ui);
                 self.hamburger_open_folder_recursive_button(ctx, ui);
                 self.hamburger_open_with_button(ctx, ui);
                 self.hamburger_locate_in_file_manager_button(ctx, ui);
+
+                ui.separator();
+                self.hamburger_masonry_buttons(ui);
 
                 ui.separator();
 
@@ -173,6 +187,33 @@ impl ViewerApp {
             .clicked()
         {
             self.handle_command(ctx, ViewerCommand::OpenFile);
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    fn hamburger_masonry_buttons(&mut self, ui: &mut egui::Ui) {
+        if ui.add(
+            egui::Button::new(
+                egui::RichText::new("▦  Masonry · Current entries")
+                    .size(scaled_text_size(ui.ctx(), 14.0)),
+            )
+            .min_size(egui::vec2(180.0, 30.0))
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(egui::Stroke::NONE),
+        ).clicked() {
+            self.open_local_masonry();
+            self.hamburger_menu_open = false;
+        }
+        if ui.add(
+            egui::Button::new(
+                egui::RichText::new("▦  Masonry · Current folder")
+                    .size(scaled_text_size(ui.ctx(), 14.0)),
+            )
+            .min_size(egui::vec2(180.0, 30.0))
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(egui::Stroke::NONE),
+        ).clicked() {
+            self.open_folder_masonry();
             self.hamburger_menu_open = false;
         }
     }

@@ -180,8 +180,11 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(format!("{} images  |  ", app.image_entries.len()));
 
-                    //sorting
+                    // Sorting and Masonry both operate on the current Browse collection.
                     crate::app::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
+                    if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Open in Masonry")).clicked() {
+                        app.open_local_masonry();
+                    }
                 });
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
                 ui.horizontal_wrapped(|ui| {
@@ -327,9 +330,11 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         }
                                                     });
 
-                                                    if let Some(texture) =
-                                                        app.sidebar_thumbnails.get(&key)
-                                                    {
+                                                    let thumbnail_has_sufficient_resolution = app.has_shared_thumbnail_at_least(&key, 128);
+                                                    if !thumbnail_has_sufficient_resolution && ui.is_rect_visible(rect) {
+                                                        app.request_sidebar_archive_thumbnail(entry.clone(), key.clone(), ctx);
+                                                    }
+                                                    if let Some(texture) = app.get_shared_thumbnail(&key, 128) {
                                                         let size = texture.size_vec2();
                                                         if size.x > 0.0 && size.y > 0.0 {
                                                             let scale = (rect.width() / size.x)
@@ -361,9 +366,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         ui.painter().text(
                                                             rect.center(),
                                                             egui::Align2::CENTER_CENTER,
-                                                            if app
-                                                                .sidebar_thumbnail_failed
-                                                                .contains(&key)
+                                                            if app.shared_thumbnail_failed(&key, 128)
                                                             {
                                                                 "No preview"
                                                             } else {
@@ -372,13 +375,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             egui::FontId::proportional(crate::ui_theme::scaled_text_size(ui.ctx(), 11.0)),
                                                             ui.visuals().weak_text_color(),
                                                         );
-                                                        if ui.is_rect_visible(rect) {
-                                                            app.request_sidebar_archive_thumbnail(
-                                                                entry.clone(),
-                                                                key.clone(),
-                                                                ctx,
-                                                            );
-                                                        }
                                                     }
 
                                                     if index == app.current_index

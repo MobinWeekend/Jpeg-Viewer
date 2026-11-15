@@ -4,9 +4,10 @@
 use crate::app::constants::MAX_TILE_SIZE;
 use crate::imaging::core::DecodedImage;
 use eframe::egui;
-use rayon::prelude::*;
-use std::sync::Arc;
+use rayon::spawn;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::Arc;
 
 // Atomic state constants
 const STATE_NOT_STARTED: u8 = 0;
@@ -34,20 +35,23 @@ impl Default for PreparationProgress {
     }
 }
 
-/// A single tile – raw RGBA8 data and optional GPU texture.
+/// Metadata for one virtual tile. Pixel data stays in the source image buffer
+/// until this tile is actually visible and needs to be uploaded to the GPU.
 struct Tile {
     grid_x: u32,
     grid_y: u32,
-    data: Vec<u8>, // RGBA8 tile data
     width: u32,
     height: u32,
     texture: Option<egui::TextureHandle>,
+    pending: Option<Receiver<Result<Vec<u8>, String>>>,
+    failed: bool,
+    last_used_frame: u64,
 }
 
 /// Virtual texture manager – holds the full image and generates tiles on demand.
 pub struct VirtualTexture {
     id: usize,
-    data: Vec<u8>, // RGBA8 data of the full image
+    data: Arc<Vec<u8>>, // one shared RGBA8 source buffer; tile copies are temporary
     width: u32,
     height: u32,
     tile_size: u32,
@@ -55,8 +59,9 @@ pub struct VirtualTexture {
     tiles_y: usize,
     total_tiles: usize,
     tiles: Vec<Tile>,
-    prepared_tiles: Arc<AtomicUsize>,
+    prepared_tiles: AtomicUsize,
     state: AtomicU8,
+    frame_index: u64,
 }
 
 impl VirtualTexture {
@@ -68,7 +73,7 @@ impl VirtualTexture {
 
         let width = img.width();
         let height = img.height();
-        let data = img.into_data(); // consumes DecodedImage, returns RGBA8 Vec<u8>
+        let data = Arc::new(img.into_data()); // one shared source buffer for asynchronous tile extraction
 
         let tiles_x = (width as usize).div_ceil(tile_size as usize);
         let tiles_y = (height as usize).div_ceil(tile_size as usize);
@@ -87,66 +92,49 @@ impl VirtualTexture {
             tiles_y,
             total_tiles,
             tiles: Vec::new(),
-            prepared_tiles: Arc::new(AtomicUsize::new(0)),
+            prepared_tiles: AtomicUsize::new(0),
             state: AtomicU8::new(STATE_NOT_STARTED),
+            frame_index: 0,
         }
     }
 
-    /// Synchronous tile preparation – call off the UI thread.
+    /// Build lightweight tile metadata without copying the source pixels.
+    /// Actual tile extraction and GPU upload are deferred until render() finds
+    /// a tile visible (or within its small prefetch margin).
     pub fn prepare(&mut self) {
         if self.state.load(Ordering::Acquire) == STATE_COMPLETE {
             return;
         }
 
-        let w = self.width;
-        let h = self.height;
-        let tile_size = self.tile_size;
-        let tiles_x = self.tiles_x;
-        let total_tiles = self.total_tiles;
-
-        // Share the data reference; we will not mutate it during tile generation.
-        let data = &self.data;
-        //let row_stride = (w * 4) as usize; // bytes per row
-
-        // Reset progress and mark as preparing.
         self.prepared_tiles.store(0, Ordering::Relaxed);
         self.state.store(STATE_PREPARING, Ordering::Release);
 
-        let prepared_tiles = Arc::clone(&self.prepared_tiles);
-
-        let tiles: Vec<Tile> = (0..total_tiles)
-            .into_par_iter()
-            .map(|index| {
-                let tx = index % tiles_x;
-                let ty = index / tiles_x;
-                let x = (tx * tile_size as usize) as u32;
-                let y = (ty * tile_size as usize) as u32;
-                let tile_w = (x + tile_size).min(w) - x;
-                let tile_h = (y + tile_size).min(h) - y;
-
-                // Extract tile data from the full RGBA8 buffer.
-                let mut tile_data = Vec::with_capacity((tile_w * tile_h * 4) as usize);
-                let src_start = (y * w + x) as usize * 4;
-                for row in 0..tile_h {
-                    let src_off = src_start + (row * w) as usize * 4;
-                    //let dst_off = row as usize * (tile_w as usize * 4);
-                    tile_data.extend_from_slice(&data[src_off..src_off + (tile_w as usize * 4)]);
+        let capacity = self.total_tiles;
+        let mut tiles = Vec::with_capacity(capacity);
+        for ty in 0..self.tiles_y {
+            for tx in 0..self.tiles_x {
+                let x = (tx as u64 * u64::from(self.tile_size)) as u32;
+                let y = (ty as u64 * u64::from(self.tile_size)) as u32;
+                let tile_width = self.tile_size.min(self.width.saturating_sub(x));
+                let tile_height = self.tile_size.min(self.height.saturating_sub(y));
+                if tile_width == 0 || tile_height == 0 {
+                    continue;
                 }
-
-                prepared_tiles.fetch_add(1, Ordering::Relaxed);
-
-                Tile {
+                tiles.push(Tile {
                     grid_x: tx as u32,
                     grid_y: ty as u32,
-                    data: tile_data,
-                    width: tile_w,
-                    height: tile_h,
+                    width: tile_width,
+                    height: tile_height,
                     texture: None,
-                }
-            })
-            .collect();
+                    pending: None,
+                    failed: false,
+                    last_used_frame: 0,
+                });
+            }
+        }
 
         self.tiles = tiles;
+        self.prepared_tiles.store(self.tiles.len(), Ordering::Relaxed);
         self.state.store(STATE_COMPLETE, Ordering::Release);
     }
 
@@ -175,21 +163,96 @@ impl VirtualTexture {
         self.prepared_tiles.load(Ordering::Relaxed)
     }
 
-    /// Upload a single tile's texture (if not already uploaded).
-    fn upload_tile(tile: &mut Tile, ctx: &egui::Context, options: egui::TextureOptions, id: usize) {
-        if tile.texture.is_none() {
-            let width = tile.width;
-            let height = tile.height;
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(
-                [width as usize, height as usize],
-                &tile.data,
-            );
-            let texture = ctx.load_texture(
-                &format!("vt_{}_tile_{}_{}", id, tile.grid_x, tile.grid_y),
-                color_image,
-                options,
-            );
-            tile.texture = Some(texture);
+    /// Configured source-pixel size of each virtual tile (edge tiles may be smaller).
+    pub fn tile_size(&self) -> u32 {
+        self.tile_size
+    }
+
+    /// Number of tile textures currently resident on the GPU.
+    pub fn resident_tiles_count(&self) -> usize {
+        self.tiles.iter().filter(|tile| tile.texture.is_some()).count()
+    }
+
+    /// Schedule one visible tile for background extraction. The image source
+    /// buffer is shared, and only the requested tile's temporary pixel buffer
+    /// is allocated. GPU texture creation remains on the UI thread.
+    fn request_tile(
+        tile: &mut Tile,
+        source: Arc<Vec<u8>>,
+        source_width: u32,
+        tile_size: u32,
+        ctx: &egui::Context,
+    ) {
+        if tile.texture.is_some() || tile.pending.is_some() || tile.failed {
+            return;
+        }
+
+        let tile_x = tile.grid_x;
+        let tile_y = tile.grid_y;
+        let width = tile.width as usize;
+        let height = tile.height as usize;
+        let source_width = source_width as usize;
+        let tile_size = tile_size as usize;
+        let (sender, receiver) = mpsc::channel();
+        tile.pending = Some(receiver);
+        let repaint = ctx.clone();
+
+        spawn(move || {
+            let result = (|| -> Result<Vec<u8>, String> {
+                let x = (tile_x as usize).checked_mul(tile_size)
+                    .ok_or_else(|| "Virtual tile X offset overflowed.".to_owned())?;
+                let y = (tile_y as usize).checked_mul(tile_size)
+                    .ok_or_else(|| "Virtual tile Y offset overflowed.".to_owned())?;
+                let row_bytes = width.checked_mul(4)
+                    .ok_or_else(|| "Virtual tile row size overflowed.".to_owned())?;
+                let capacity = row_bytes.checked_mul(height)
+                    .ok_or_else(|| "Virtual tile allocation size overflowed.".to_owned())?;
+                let mut pixels = Vec::with_capacity(capacity);
+
+                for row in 0..height {
+                    let source_row = y.checked_add(row)
+                        .ok_or_else(|| "Virtual tile row offset overflowed.".to_owned())?;
+                    let pixel_offset = source_row.checked_mul(source_width)
+                        .and_then(|value| value.checked_add(x))
+                        .ok_or_else(|| "Virtual tile pixel offset overflowed.".to_owned())?;
+                    let start = pixel_offset.checked_mul(4)
+                        .ok_or_else(|| "Virtual tile byte offset overflowed.".to_owned())?;
+                    let end = start.checked_add(row_bytes)
+                        .ok_or_else(|| "Virtual tile byte range overflowed.".to_owned())?;
+                    let row_data = source.get(start..end)
+                        .ok_or_else(|| "Virtual tile falls outside the decoded pixel buffer.".to_owned())?;
+                    pixels.extend_from_slice(row_data);
+                }
+                Ok(pixels)
+            })();
+            let _ = sender.send(result);
+            repaint.request_repaint();
+        });
+    }
+
+    /// Poll one tile worker and upload its completed pixels through egui.
+    fn collect_tile(
+        tile: &mut Tile,
+        ctx: &egui::Context,
+        options: egui::TextureOptions,
+        id: usize,
+    ) {
+        let Some(receiver) = tile.pending.take() else { return; };
+        match receiver.try_recv() {
+            Ok(Ok(pixels)) => {
+                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                    [tile.width as usize, tile.height as usize],
+                    &pixels,
+                );
+                tile.texture = Some(ctx.load_texture(
+                    format!("vt_{}_tile_{}_{}", id, tile.grid_x, tile.grid_y),
+                    color_image,
+                    options,
+                ));
+            }
+            Ok(Err(_error)) => tile.failed = true,
+            Err(TryRecvError::Empty) => tile.pending = Some(receiver),
+            Err(TryRecvError::Disconnected) => tile.failed = true,
         }
     }
 
@@ -209,6 +272,8 @@ impl VirtualTexture {
             return;
         }
 
+        self.frame_index = self.frame_index.wrapping_add(1).max(1);
+        let current_frame = self.frame_index;
         debug_assert!(zoom > 0.0, "zoom must be positive");
 
         const PREFETCH: i32 = 1;
@@ -243,11 +308,25 @@ impl VirtualTexture {
         start_gy = start_gy.max(0);
         end_gy = end_gy.min(tiles_y);
 
+        let source_pixels = Arc::clone(&self.data);
+        let source_width = self.width;
+        let tile_size = self.tile_size;
+        let texture_id = self.id;
         for gy in start_gy..end_gy {
             for gx in start_gx..end_gx {
                 let idx = (gy * tiles_x + gx) as usize;
                 if let Some(tile) = self.tiles.get_mut(idx) {
-                    Self::upload_tile(tile, ctx, options, self.id);
+                    tile.last_used_frame = current_frame;
+                    Self::collect_tile(tile, ctx, options, texture_id);
+                    if tile.texture.is_none() && !tile.failed {
+                        Self::request_tile(
+                            tile,
+                            Arc::clone(&source_pixels),
+                            source_width,
+                            tile_size,
+                            ctx,
+                        );
+                    }
 
                     let tile_x = gx as f32 * tile_size_f;
                     let tile_y = gy as f32 * tile_size_f;
@@ -273,6 +352,35 @@ impl VirtualTexture {
                         );
                     }
                 }
+            }
+        }
+
+        // Keep a bounded GPU texture working set. Tiles used this frame are
+        // never evicted; older off-screen textures are dropped least-recently
+        // used first so repeated panning stays smooth without retaining every
+        // tile from a very large source in GPU memory.
+        const GPU_TILE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+        const MAX_RESIDENT_TILES: usize = 128;
+        let tile_bytes = (self.tile_size as usize)
+            .saturating_mul(self.tile_size as usize)
+            .saturating_mul(4)
+            .max(1);
+        let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes)
+            .clamp(1, MAX_RESIDENT_TILES);
+        let resident_count = self.tiles.iter().filter(|tile| tile.texture.is_some()).count();
+        if resident_count > resident_limit {
+            let mut eviction_candidates = self.tiles.iter().enumerate()
+                .filter(|(_, tile)| tile.texture.is_some() && tile.last_used_frame != current_frame)
+                .map(|(index, tile)| (index, tile.last_used_frame))
+                .collect::<Vec<_>>();
+            eviction_candidates.sort_unstable_by_key(|(_, last_used)| *last_used);
+            let mut to_evict = resident_count.saturating_sub(resident_limit);
+            for (index, _) in eviction_candidates {
+                if to_evict == 0 {
+                    break;
+                }
+                self.tiles[index].texture = None;
+                to_evict -= 1;
             }
         }
     }

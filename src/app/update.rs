@@ -48,6 +48,11 @@ impl eframe::App for ViewerApp {
                 appearance_settings.ui_text_scale,
             );
         }
+        // Restore a previous session before processing new external opens. Explicit
+        // launch arguments were installed before the first frame and are detected by
+        // check_workspace_session_restore, so they take precedence over restoration.
+        self.check_workspace_session_restore();
+
         // A forwarded launch can include many selected files. Process its request
         // on the UI thread so it uses the same selected-files path as drag-and-drop.
         let forwarded_requests = self.instance_server.as_ref()
@@ -381,7 +386,9 @@ impl eframe::App for ViewerApp {
                             }
                         }
                         self.update_window_title(ctx);
-                        self.preload_adjacent_images();
+                        if self.workspace.should_preload() {
+                            self.preload_adjacent_images();
+                        }
                         self.mark_interaction();
 
                         // Now spawn the full GIF loading if needed
@@ -573,7 +580,11 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== PRELOAD ==========
-        if !self.image_entries.is_empty() && !self.is_loading() && self.image_error.is_none() {
+        if self.workspace.should_preload()
+            && !self.image_entries.is_empty()
+            && !self.is_loading()
+            && self.image_error.is_none()
+        {
             self.preload_adjacent_images();
         }
 
@@ -596,11 +607,14 @@ impl eframe::App for ViewerApp {
             crate::app::ui::render_settings_menu(self, ctx);
         }
         self.render_central_panel(ctx);
+        self.render_workspace_session_prompt(ctx);
         crate::app::ui::render_overlay_ui(self, ctx);
+        // Workspace activation and tab creation happen during UI rendering;
+        // update the native title after those interactions in the same frame.
+        self.update_window_title(ctx);
 
-        if self.texture.is_none() && !self.is_loading() && self.image_entries.is_empty() {
-            self.render_shortcut_help(ctx);
-        }
+        // Empty Viewer tabs deliberately remain empty; the launch/recent UI is
+        // rendered only by an explicit Welcome workspace tab.
 
         // ========== FRAME LIMITER ==========
         self.schedule_repaint(ctx);
@@ -611,6 +625,7 @@ impl eframe::App for ViewerApp {
         // ========== CLEANUP ==========
         if ctx.input(|i| i.viewport().close_requested()) {
             self.stop_caching();
+            self.save_workspace_session();
             self.save_window_state(ctx);
         }
 

@@ -181,6 +181,8 @@ pub struct ViewerApp {
 
     // ====== SETTINGS ======
     pub settings_manager: SettingsManager,
+    /// Independent Viewer, Image, Masonry, and Compare workspace tabs.
+    pub(crate) workspace: super::workspace::WorkspaceManager,
     pub input_bindings: InputBindings,
 
     // ====== UI ======
@@ -210,6 +212,10 @@ pub struct ViewerApp {
     pub sidebar_actual_width: f32,
     /// Actual width allocated to the active right-side panel (Settings or Edit) this frame.
     pub right_sidebar_actual_width: f32,
+    /// Screen-space rectangle allocated to egui's CentralPanel after docked sidebars.
+    /// Overlay toolbars and fullscreen workspace tabs use this instead of estimating
+    /// width by subtracting preferred sidebar sizes from the outer window.
+    pub central_panel_rect: egui::Rect,
     /// True only when the user began dragging the sidebar resize handle.
     pub sidebar_resize_dragging: bool,
     pub window_always_on_top: bool,
@@ -324,8 +330,9 @@ pub struct ViewerApp {
     /// Browse-sidebar drag source index, used to reorder image entries.
     pub sidebar_drag_index: Option<usize>,
     pub sidebar_drag_collection: u8,
-    /// LRU cache of thumbnail textures. At 128x128 RGBA and 256 entries, the
-    /// worst-case pixel payload is about 16 MiB; evicted handles release textures.
+    /// LRU cache shared by sidebar and Masonry thumbnails. Masonry entries may
+    /// be 64–512px; collection enforces both a 256-entry cap and a 96 MiB
+    /// approximate texture budget so high-DPI galleries stay bounded.
     pub sidebar_thumbnails: LruCache<String, egui::TextureHandle>,
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
@@ -459,6 +466,7 @@ impl Default for ViewerApp {
 
             // ====== SETTINGS ======
             settings_manager,
+            workspace: super::workspace::WorkspaceManager::default(),
             input_bindings: InputBindings::default(),
 
             // ====== UI ======
@@ -484,6 +492,7 @@ impl Default for ViewerApp {
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
             right_sidebar_actual_width: 0.0,
+            central_panel_rect: egui::Rect::NOTHING,
             sidebar_resize_dragging: false,
             window_always_on_top: false,
 
@@ -633,15 +642,23 @@ impl ViewerApp {
     }
 
     pub fn window_title(&self) -> String {
+        match self.workspace.active_kind() {
+            super::workspace::WorkspaceTabKind::Masonry
+            | super::workspace::WorkspaceTabKind::Compare
+            | super::workspace::WorkspaceTabKind::Welcome => {
+                let workspace_name = self.workspace.active_tab_title().unwrap_or("Workspace");
+                return format!("{workspace_name} — JPEG Viewer");
+            }
+            super::workspace::WorkspaceTabKind::Viewer
+            | super::workspace::WorkspaceTabKind::Image => {}
+        }
+
         let filename = self.get_current_filename();
         let total = self.image_entries.len();
-
         let slideshow_indicator = if self.slideshow_enabled { " ▶" } else { "" };
-
         if total == 0 {
             return "JPEG Viewer".to_string();
         }
-
         format!(
             "({}/{}) {}{}",
             self.current_index + 1,

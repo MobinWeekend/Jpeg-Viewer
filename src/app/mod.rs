@@ -21,5 +21,6 @@ pub(crate) mod ui;
 mod update;
 mod virtual_texture;
 mod window_sizing;
+pub(crate) mod workspace;
 
 pub use types::ViewerApp;

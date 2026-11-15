@@ -206,6 +206,14 @@ impl ViewerApp {
         if ctx.wants_keyboard_input() {
             self.delete_key_was_pressed = false;
         } else {
+            // Masonry owns selection shortcuts while it is active. Consume these
+            // before the viewer's Ctrl+A (jump to first) and Delete-current-image
+            // bindings can see them.
+            if self.handle_workspace_shortcuts(ctx) {
+                self.delete_key_was_pressed = false;
+                self.handle_drag_drop(ctx);
+                return;
+            }
             // Escape first stops playback and consumes the key; it must not also
             // toggle fullscreen or close the application on the same keypress.
             if self.handle_escape_key(ctx) {

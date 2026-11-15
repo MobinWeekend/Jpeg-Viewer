@@ -106,6 +106,10 @@ impl ViewerApp {
             if ui.button("Open queue").clicked() {
                 self.open_queue_in_viewer(ctx);
             }
+            if ui.button("Open in Masonry").clicked() {
+                let paths = self.queue_paths.clone();
+                self.open_masonry_from_paths(&paths, "Masonry · Queue");
+            }
             if ui
                 .button("Return")
                 .on_hover_text("Return to the previous browsing view")
@@ -385,6 +389,10 @@ impl ViewerApp {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.add_favorite_path(path);
                 }
+            }
+            if ui.button("Open in Masonry").clicked() {
+                let paths = self.favorite_paths.clone();
+                self.open_masonry_from_paths(&paths, "Masonry · Favorites");
             }
         });
         if self.favorite_paths.is_empty() {

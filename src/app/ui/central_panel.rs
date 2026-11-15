@@ -3,6 +3,52 @@ use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 
 impl ViewerApp {
+    /// Exact central viewing rectangle in window-local coordinates. egui's
+    /// CentralPanel allocation already excludes docked side panels, so callers
+    /// must not subtract the configured or measured sidebar widths again.
+    pub fn main_view_rect(&self, ctx: &egui::Context) -> egui::Rect {
+        let viewport = ctx.input(|input| {
+            input.viewport().inner_rect.map(|rect| {
+                egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size())
+            })
+        });
+        let central = self.central_panel_rect;
+        if central.width().is_finite() && central.height().is_finite() && central.width() > 0.0 && central.height() > 0.0 {
+            viewport.map(|viewport| central.intersect(viewport)).unwrap_or(central)
+        } else {
+            viewport.unwrap_or_else(|| egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 800.0),
+            ))
+        }
+    }
+
+    /// Available horizontal space for main-view overlays and workspace strips.
+    /// This is the only supported width source for controls that belong to the
+    /// central view; callers must not subtract the configured sidebar widths.
+    pub fn main_view_width(&self, ctx: &egui::Context) -> f32 {
+        self.main_view_rect(ctx).width().max(0.0)
+    }
+
+    /// Horizontal offset of the central view's center from the native window
+    /// center. Centered overlay toolbars use this instead of estimating offsets
+    /// from sidebar settings or stale window dimensions.
+    pub fn main_view_center_offset_x(&self, ctx: &egui::Context) -> f32 {
+        let viewport_width = ctx.input(|input| {
+            input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+        });
+        self.main_view_rect(ctx).center().x - viewport_width * 0.5
+    }
+
+    /// Empty space to the right of the central view, used by right-anchored
+    /// overlays so they remain inside the central view when a right sidebar opens.
+    pub fn main_view_right_gap(&self, ctx: &egui::Context) -> f32 {
+        let viewport_width = ctx.input(|input| {
+            input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+        });
+        (viewport_width - self.main_view_rect(ctx).right()).max(0.0)
+    }
+
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
         if self.inspect_mode && self.inspect_source_path != self.current_image_path {
             self.inspect_source = None;
@@ -23,6 +69,14 @@ impl ViewerApp {
             .fill(view_bg)
             .stroke(egui::Stroke::NONE);
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            // CentralPanel already excludes the actual left/right SidePanel widths.
+            // Store its real screen rectangle so overlays and workspace surfaces do
+            // not subtract sidebar widths a second time.
+            self.central_panel_rect = ui.max_rect().intersect(ui.clip_rect());
+            self.render_workspace_tabs(ui, ctx);
+            if self.render_active_workspace(ui, ctx) {
+                return;
+            }
             // Paint the central viewport's clipped share of the single
             // window-aligned Tricks backdrop. The custom title bar paints its
             // own clipped share using this exact same backdrop rectangle/UV map.
@@ -85,9 +139,17 @@ impl ViewerApp {
 
             // Get the available rect. Platform-style fit mode reserves a little space
             // around the image and for the top/bottom centered toolbar.
-            let available_rect = ui.available_rect_before_wrap();
+            let available_rect = ui.available_rect_before_wrap()
+                .intersect(ui.clip_rect())
+                .intersect(self.central_panel_rect);
             let image_viewport_rect =
                 fitted_image_viewport_rect(available_rect, ctx, &settings, !self.b_zoom_used);
+            // User-defined padding may be negative to bring the image closer to
+            // the window edge. Never let that extend the image layer above the
+            // content viewport (especially over the browser-style workspace tabs).
+            let image_clip_rect = image_viewport_rect
+                .intersect(available_rect)
+                .intersect(ui.clip_rect());
 
             if self.texture.is_none() && self.virtual_texture.is_none() {
                 // Handle loading states when no texture and no virtual texture
@@ -113,7 +175,8 @@ impl ViewerApp {
                     return;
                 }
                 if self.image_entries.is_empty() {
-                    self.render_welcome_ui(ctx, ui);
+                    // Welcome is a dedicated workspace tab. An empty Viewer tab
+                    // remains visually empty instead of reusing Welcome content.
                     return;
                 } else if self.is_gif {
                     self.render_loading_ui(ui, "Loading GIF frame...", None, false);
@@ -198,7 +261,9 @@ impl ViewerApp {
 
                 // Render using virtual texture. Keep the exact screen-space image
                 // bounds so an empty margin drag can move the native window.
-                let available_rect = ui.available_rect_before_wrap();
+                let available_rect = ui.available_rect_before_wrap()
+                    .intersect(ui.clip_rect())
+                    .intersect(self.central_panel_rect);
                 let virtual_image_rect = self.get_image_rect(texture_size, image_viewport_rect.center());
                 self.image_rect = Some(virtual_image_rect);
 
@@ -206,7 +271,7 @@ impl ViewerApp {
                 let texture_options = self.get_texture_options();
 
                 if let Some(vt) = &mut self.virtual_texture {
-                    let painter = ui.painter();
+                    let painter = ui.painter().with_clip_rect(image_clip_rect);
 
                     vt.render(
                         ctx,
@@ -405,7 +470,10 @@ impl ViewerApp {
             self.image_rect = Some(image_rect);
             let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
-            let painter = ui.painter();
+            // A panned image may extend beyond its intended viewport. Clip the
+            // image painter to the fitted viewport so it can never paint over
+            // the workspace tabs or surrounding application controls.
+            let painter = ui.painter().with_clip_rect(image_clip_rect);
             let tricks_time = ctx.input(|i| i.time);
             let dialup_settings = self.settings_manager.get().clone();
             let current_profile = crate::ui_theme::current_look_profile(ctx);
@@ -414,7 +482,7 @@ impl ViewerApp {
             // keep the user's checkerboard preference intact for when Dial-up is disabled.
             if settings.show_alpha_checkerboard && !self.slideshow_enabled && !dialup_active {
                 paint_checkerboard(
-                    painter,
+                    &painter,
                     image_rect,
                     settings.alpha_checkerboard_size,
                     settings.alpha_checkerboard_brightness,
@@ -424,7 +492,7 @@ impl ViewerApp {
             // The behind-image layer sits above the checkerboard base so particles
             // remain visible through transparent pixels, but below the actual photo.
             if !settings.tricks_snow_above_image {
-                self.paint_tricks_snow(painter, available_rect, &settings, tricks_time);
+                self.paint_tricks_snow(&painter, available_rect, &settings, tricks_time);
             }
             if let Some((previous_texture, previous_rect, previous_tint)) = outgoing_frame {
                 painter.image(
@@ -504,10 +572,10 @@ impl ViewerApp {
             // Front-layer particles and watermarks are painted after the photo but
             // before the foreground overlay UI. Clip them to the central image viewport.
             if settings.tricks_snow_above_image {
-                self.paint_tricks_snow(painter, available_rect, &settings, tricks_time);
+                self.paint_tricks_snow(&painter, available_rect, &settings, tricks_time);
             }
             self.paint_tricks_watermark(
-                painter,
+                &painter,
                 available_rect,
                 &settings,
                 tricks_time,

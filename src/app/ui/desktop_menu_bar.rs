@@ -528,6 +528,15 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             }
         }
         ui.separator();
+        if ui.button("Masonry · Current entries").clicked() {
+            app.open_local_masonry();
+            ui.close();
+        }
+        if ui.button("Masonry · Current folder").clicked() {
+            app.open_folder_masonry();
+            ui.close();
+        }
+        ui.separator();
         if ui.button("Browse Sidebar").clicked() {
             select_sidebar_tab(app, "browse");
             ui.close();

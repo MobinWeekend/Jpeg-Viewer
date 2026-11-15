@@ -17,6 +17,13 @@ const OPEN_REQUEST_GROUP_WINDOW: Duration = Duration::from_millis(1_500);
 
 impl ViewerApp {
     pub fn open_path(&mut self, path: PathBuf) {
+        let is_archive = matches!(
+            path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),
+            "zip" | "7z" | "rar"
+        );
+        if path.is_dir() || is_archive {
+            self.record_welcome_recent_path(path.clone());
+        }
         if self
             .edit_session
             .as_ref()
@@ -29,6 +36,9 @@ impl ViewerApp {
             self.show_settings_menu = false;
             return;
         }
+        // File-open actions always target the primary collection Viewer, not a
+        // background Image/Masonry/Compare workspace left active from the session.
+        self.activate_primary_viewer_tab();
         self.queue_mode = false;
         self.queue_previous_entries = None;
         if self.edit_session.is_some() {
@@ -149,6 +159,7 @@ impl ViewerApp {
         let count = paths.len();
         self.load_dropped_files(paths);
         self.current_directory = Some(folder.clone());
+        self.record_welcome_recent_path(folder.clone());
         self.queue_status = Some(format!(
             "Opened {count} image(s) from {} and its subfolders.",
             folder.display()
@@ -300,6 +311,9 @@ impl ViewerApp {
             return;
         }
 
+        // Dropped multi-selections and explicit file lists belong to the normal
+        // collection Viewer even when a Masonry or Compare workspace was active.
+        self.activate_primary_viewer_tab();
         self.b_zoom_used = false;
         self.b_fit_to_window = true;
         self.image_rect = None;

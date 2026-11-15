@@ -427,6 +427,13 @@ impl ViewerApp {
     // ====== MAIN PRELOAD PIPELINE ======
 
     pub fn preload_adjacent_images(&mut self) {
+        // Guard at the pipeline entry point as well as at the UI call sites.
+        // Settings panels and other helpers can request preloading directly;
+        // Masonry/Compare must never start the normal adjacent-image pipeline.
+        if !self.workspace.should_preload() {
+            self.should_stop_caching = true;
+            return;
+        }
         if self.should_stop_caching {
             return;
         }

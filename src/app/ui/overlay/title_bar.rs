@@ -225,7 +225,10 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             app.render_hamburger_ui(ui);
                         }
 
-                        if integrate_navigation && !app.image_entries.is_empty() {
+                        if integrate_navigation
+                            && !app.image_entries.is_empty()
+                            && !app.active_workspace_hides_image_navigation()
+                        {
                             ui.add_space(6.0);
                             app.navigation_previous_ui(ctx, ui);
                             app.slideshow_ui(ctx, ui);

@@ -28,6 +28,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
 
         ui.add_space(6.0);
         ui.separator();
+        ui.label(egui::RichText::new("Masonry browsing").strong());
+        render_masonry_folder_headers(app, ui);
+
+        ui.add_space(6.0);
+        ui.separator();
         ui.label(egui::RichText::new("Image rendering").strong());
         render_texture_filter(app, ui);
 
@@ -36,8 +41,24 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
         ui.label(egui::RichText::new("Startup").strong());
         render_startup_fullscreen(app, ui);
         render_start_centered(app, ui);
+        render_session_restore(app, ui);
         render_single_instance(app, ui);
     });
+}
+
+
+fn render_masonry_folder_headers(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut show_headers = app.settings_manager.get().masonry_show_folder_headers;
+    if crate::ui_theme::switch(ui, &mut show_headers, "Show folder headers") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.masonry_show_folder_headers = show_headers;
+        });
+    }
+    ui.label(
+        egui::RichText::new("When entries come from multiple folders, or Folder Masonry includes subfolders, start each folder group with a heading.")
+            .small()
+            .weak(),
+    );
 }
 
 fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
@@ -51,7 +72,7 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let current = app.settings_manager.get().thumbnail_workers;
     let mut workers = current as u32;
     ui.horizontal(|ui| {
-        ui.label("Thumbnail workers");
+        ui.label("Shared thumbnail workers");
         ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut workers, 1..=8).show_value(true)));
     });
     if workers as usize != current {
@@ -59,7 +80,7 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
             .settings_manager
             .update(|settings| settings.thumbnail_workers = workers as usize);
     }
-    ui.label("Default: 3. Restart the app to apply worker-count changes.");
+    ui.label("Default: 3. Shared by Browse, Queue, Favorites, and Masonry. Visible Masonry tiles have priority. Restart to apply changes.");
 }
 
 // Invert Scroll Zoom
@@ -386,6 +407,31 @@ fn theme_label_str(theme: &str) -> &'static str {
 }
 
 // Startup Fullscreen
+
+fn render_session_restore(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let current = app.settings_manager.get().session_restore_preference.clone();
+    let mut selected = current.clone();
+    ui.horizontal(|ui| {
+        ui.label("Restore workspace session");
+        egui::ComboBox::from_id_salt("session_restore_preference")
+            .selected_text(match selected.as_str() {
+                "automatic" => "Restore automatically",
+                "ask" => "Ask every startup",
+                "never" => "Never restore",
+                _ => "Restore automatically",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut selected, "automatic".to_owned(), "Restore automatically");
+                ui.selectable_value(&mut selected, "ask".to_owned(), "Ask every startup");
+                ui.selectable_value(&mut selected, "never".to_owned(), "Never restore");
+            });
+    });
+    if selected != current {
+        let _ = app.settings_manager.update(|settings| settings.session_restore_preference = selected);
+    }
+    ui.label(egui::RichText::new("Controls whether open Viewer, Masonry, Image, and Compare tabs are restored when JPEG Viewer starts.").small().weak());
+}
+
 fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut start_fs = app.settings_manager.get().start_fullscreen;
     if crate::ui_theme::switch(ui, &mut start_fs, "Start in fullscreen mode") {

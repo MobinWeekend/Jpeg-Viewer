@@ -315,6 +315,21 @@ impl SettingsManager {
                     if let Some(value) = section.get("drag_drop_folders_recursive") {
                         settings.drag_drop_folders_recursive = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("session_restore_preference") {
+                        if matches!(value, "automatic" | "ask" | "never") {
+                            settings.session_restore_preference = value.to_string();
+                        }
+                    }
+                    if let Some(value) = section.get("masonry_thumbnail_size") {
+                        if let Ok(size) = value.parse::<f32>() {
+                            if size.is_finite() && (76.0..=512.0).contains(&size) {
+                                settings.masonry_thumbnail_size = size;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("masonry_show_folder_headers") {
+                        settings.masonry_show_folder_headers = Self::parse_bool(value);
+                    }
                     if let Some(value) = section.get("view_padding_mode") {
                         if matches!(value, "look" | "fine_tune" | "custom") {
                             settings.view_padding_mode = value.to_string();

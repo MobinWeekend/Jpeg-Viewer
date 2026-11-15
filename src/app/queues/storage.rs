@@ -92,7 +92,7 @@ pub(super) fn write_queue(
     Ok(())
 }
 
-pub(super) fn read_queue(path: &Path) -> Result<(Vec<PathBuf>, Option<PathBuf>), String> {
+pub(crate) fn read_queue(path: &Path) -> Result<(Vec<PathBuf>, Option<PathBuf>), String> {
     let contents = fs::read_to_string(path).map_err(|e| e.to_string())?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let mut lines = contents.lines();

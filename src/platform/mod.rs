@@ -2,3 +2,5 @@
 
 pub mod instance;
 pub mod power;
+
+pub mod thumbnails;
