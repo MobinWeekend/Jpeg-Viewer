@@ -17,7 +17,9 @@ mod tests;
 pub struct AppSettings {
     pub b_ctrl_invert: bool,
     /// Multiplicative zoom factor applied by keyboard and wheel zoom commands.
-    pub zoom_step: f32,
+    pub zoom_step_mouse_right_button: f32,
+    pub zoom_step_mouse_wheel: f32,
+    pub zoom_step_keyboard: f32,
     pub window_pos: Option<[f32; 2]>,
     pub window_size: Option<[f32; 2]>,
     /// Restore the window maximized when it was maximized on the last normal exit.
@@ -174,7 +176,9 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             b_ctrl_invert: false,
-            zoom_step: 1.2,
+            zoom_step_mouse_right_button: 1.2,
+            zoom_step_mouse_wheel: 1.2,
+            zoom_step_keyboard: 1.2,
             window_pos: None,
             window_size: None,
             window_maximized: false,

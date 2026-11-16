@@ -29,7 +29,9 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
     let loaded = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
     assert!(loaded.b_ctrl_invert);
-    assert!((loaded.zoom_step - 1.2).abs() < f32::EPSILON);
+    assert!((loaded.zoom_step_mouse_right_button - 1.2).abs() < f32::EPSILON);
+    assert!((loaded.zoom_step_mouse_wheel - 1.2).abs() < f32::EPSILON);
+    assert!((loaded.zoom_step_keyboard - 1.2).abs() < f32::EPSILON);
     assert_eq!(loaded.cache_radius, 3);
     assert_eq!(loaded.tile_size, AppSettings::default().tile_size);
 
@@ -48,26 +50,42 @@ fn new_tab_recent_rows_round_trip_and_migrate_legacy_options() {
     let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-new-tab-{}.ini", unique));
     let mut settings = AppSettings::default();
     settings.new_tab_recent_rows = 0;
-    settings.zoom_step = 1.5;
+    settings.zoom_step_mouse_right_button = 1.5;
+    settings.zoom_step_mouse_wheel = 1.5;
+    settings.zoom_step_keyboard = 1.5;
 
     SettingsManager::save_to_file(&path, &settings).unwrap();
     let mut error: Option<String> = None;
     let loaded = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
     assert_eq!(loaded.new_tab_recent_rows, 0);
-    assert!((loaded.zoom_step - 1.5).abs() < f32::EPSILON);
+    assert!((loaded.zoom_step_mouse_right_button - 1.5).abs() < f32::EPSILON);
+    assert!((loaded.zoom_step_mouse_wheel - 1.5).abs() < f32::EPSILON);
+    assert!((loaded.zoom_step_keyboard - 1.5).abs() < f32::EPSILON);
 
-    fs::write(&path, "[Settings]\nnew_tab_show_recent=true\nnew_tab_recent_count=6\n").unwrap();
+    fs::write(
+        &path,
+        "[Settings]\nnew_tab_show_recent=true\nnew_tab_recent_count=6\n",
+    )
+    .unwrap();
     let loaded = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
     assert_eq!(loaded.new_tab_recent_rows, 1);
 
-    fs::write(&path, "[Settings]\nnew_tab_show_recent=true\nnew_tab_recent_count=50\n").unwrap();
+    fs::write(
+        &path,
+        "[Settings]\nnew_tab_show_recent=true\nnew_tab_recent_count=50\n",
+    )
+    .unwrap();
     let loaded = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
     assert_eq!(loaded.new_tab_recent_rows, 2);
 
-    fs::write(&path, "[Settings]\nnew_tab_show_recent=false\nnew_tab_recent_count=6\n").unwrap();
+    fs::write(
+        &path,
+        "[Settings]\nnew_tab_show_recent=false\nnew_tab_recent_count=6\n",
+    )
+    .unwrap();
     let loaded = SettingsManager::load_from_file(&path, &mut error);
     assert!(error.is_none());
     assert_eq!(loaded.new_tab_recent_rows, 0);
@@ -116,8 +134,7 @@ fn main_ui_placement_preference_round_trips() {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path =
-        std::env::temp_dir().join(format!("jpeg-viewer-settings-placement-{}.ini", unique));
+    let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-placement-{}.ini", unique));
     let mut settings = AppSettings::default();
     settings.main_ui_placement_preference = "cosmic".to_string();
     settings.desktop_menu_bar_preference = "off".to_string();
@@ -188,8 +205,7 @@ fn invalid_values_fall_back_to_safe_defaults() {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path =
-        std::env::temp_dir().join(format!("jpeg-viewer-settings-invalid-{}.ini", unique));
+    let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-invalid-{}.ini", unique));
     fs::write(
         &path,
         "[Settings]\ntexture_filter=unexpected\nmax_fps=NaN\ncache_delta_factor=inf\n",
@@ -294,16 +310,20 @@ fn test_default_settings() {
     assert!(!settings.start_fullscreen);
 }
 
-
 #[test]
 fn viewing_and_single_instance_settings_round_trip() {
-    let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let path = std::env::temp_dir().join(format!("jpeg-viewer-viewing-settings-{}.ini", unique));
     let mut settings = AppSettings::default();
     settings.single_instance_enabled = true;
     settings.drag_drop_folders_recursive = true;
     settings.view_padding_mode = "fine_tune".to_string();
-    settings.view_padding_fine_tune.insert("cosmic".to_string(), [2.0, 4.0, 6.0, 8.0]);
+    settings
+        .view_padding_fine_tune
+        .insert("cosmic".to_string(), [2.0, 4.0, 6.0, 8.0]);
     settings.view_padding_custom = [10.0, 20.0, 30.0, 40.0];
     settings.fit_window_to_image = true;
     settings.fit_window_limit = "custom".to_string();
@@ -321,7 +341,10 @@ fn viewing_and_single_instance_settings_round_trip() {
     assert!(loaded.single_instance_enabled);
     assert!(loaded.drag_drop_folders_recursive);
     assert_eq!(loaded.view_padding_mode, "fine_tune");
-    assert_eq!(loaded.view_padding_fine_tune.get("cosmic"), Some(&[2.0, 4.0, 6.0, 8.0]));
+    assert_eq!(
+        loaded.view_padding_fine_tune.get("cosmic"),
+        Some(&[2.0, 4.0, 6.0, 8.0])
+    );
     assert_eq!(loaded.view_padding_custom, [10.0, 20.0, 30.0, 40.0]);
     assert!(loaded.fit_window_to_image);
     assert_eq!(loaded.fit_window_limit, "custom");

@@ -43,10 +43,28 @@ impl SettingsManager {
                     if let Some(value) = section.get("b_ctrl_invert") {
                         settings.b_ctrl_invert = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("zoom_step") {
-                        if let Ok(step) = value.parse::<f32>() {
-                            if step.is_finite() && (1.05..=2.0).contains(&step) {
-                                settings.zoom_step = step;
+                    if let Some(value) = section.get("zoom_step_mouse_right_button") {
+                        if let Ok(step_mouse_right_button) = value.parse::<f32>() {
+                            if step_mouse_right_button.is_finite()
+                                && (1.05..=2.0).contains(&step_mouse_right_button)
+                            {
+                                settings.zoom_step_mouse_right_button = step_mouse_right_button;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("zoom_step_mouse_wheel") {
+                        if let Ok(step_mouse_wheel) = value.parse::<f32>() {
+                            if step_mouse_wheel.is_finite()
+                                && (1.05..=2.0).contains(&step_mouse_wheel)
+                            {
+                                settings.zoom_step_mouse_wheel = step_mouse_wheel;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("zoom_step_keyboard") {
+                        if let Ok(step_keyboard) = value.parse::<f32>() {
+                            if step_keyboard.is_finite() && (1.05..=2.0).contains(&step_keyboard) {
+                                settings.zoom_step_keyboard = step_keyboard;
                             }
                         }
                     }
@@ -262,8 +280,11 @@ impl SettingsManager {
                     if let Some(value) = section.get("workspace_tabs_in_titlebar") {
                         settings.workspace_tabs_in_titlebar = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("custom_titlebar_navigation_preference_configured") {
-                        settings.custom_titlebar_navigation_preference_configured = Self::parse_bool(value);
+                    if let Some(value) =
+                        section.get("custom_titlebar_navigation_preference_configured")
+                    {
+                        settings.custom_titlebar_navigation_preference_configured =
+                            Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("title_bar_color_mode") {
                         if matches!(value, "system" | "main_view" | "main_color") {
@@ -372,15 +393,23 @@ impl SettingsManager {
                         let key = format!("view_padding_fine_tune_{profile}");
                         if let Some(value) = section.get(&key) {
                             if let Some(values) = Self::parse_f32_quad(value) {
-                                if values.iter().all(|v| v.is_finite() && (-300.0..=300.0).contains(v)) {
-                                    settings.view_padding_fine_tune.insert(profile.to_string(), values);
+                                if values
+                                    .iter()
+                                    .all(|v| v.is_finite() && (-300.0..=300.0).contains(v))
+                                {
+                                    settings
+                                        .view_padding_fine_tune
+                                        .insert(profile.to_string(), values);
                                 }
                             }
                         }
                     }
                     if let Some(value) = section.get("view_padding_custom") {
                         if let Some(values) = Self::parse_f32_quad(value) {
-                            if values.iter().all(|v| v.is_finite() && (0.0..=400.0).contains(v)) {
+                            if values
+                                .iter()
+                                .all(|v| v.is_finite() && (0.0..=400.0).contains(v))
+                            {
                                 settings.view_padding_custom = values;
                             }
                         }
@@ -394,10 +423,30 @@ impl SettingsManager {
                         }
                     }
                     for (key, target, min, max) in [
-                        ("fit_window_min_width", &mut settings.fit_window_min_width, 512.0, 8192.0),
-                        ("fit_window_max_width", &mut settings.fit_window_max_width, 512.0, 16384.0),
-                        ("fit_window_min_height", &mut settings.fit_window_min_height, 512.0, 8192.0),
-                        ("fit_window_max_height", &mut settings.fit_window_max_height, 512.0, 16384.0),
+                        (
+                            "fit_window_min_width",
+                            &mut settings.fit_window_min_width,
+                            512.0,
+                            8192.0,
+                        ),
+                        (
+                            "fit_window_max_width",
+                            &mut settings.fit_window_max_width,
+                            512.0,
+                            16384.0,
+                        ),
+                        (
+                            "fit_window_min_height",
+                            &mut settings.fit_window_min_height,
+                            512.0,
+                            8192.0,
+                        ),
+                        (
+                            "fit_window_max_height",
+                            &mut settings.fit_window_max_height,
+                            512.0,
+                            16384.0,
+                        ),
                     ] {
                         if let Some(value) = section.get(key) {
                             if let Ok(parsed) = value.parse::<f32>() {

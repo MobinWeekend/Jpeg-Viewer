@@ -48,10 +48,10 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
             egui::Margin {
                 left: 2,
                 right: 0,
-                top: -2,
-                bottom: 2,
+                top: -3,
+                bottom: -2,
             },
-            egui::vec2(46.0, 36.0),
+            egui::vec2(46.0, 37.0),
         )
     };
     let panel_response = egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar")
@@ -248,14 +248,9 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             } else {
                                 "Open current entries in Masonry"
                             };
-                            if crate::app::ui::masonry_toggle_button(
-                                ui,
-                                masonry_active,
-                                true,
-                                30.0,
-                            )
-                            .on_hover_text(tip)
-                            .clicked()
+                            if crate::app::ui::masonry_toggle_button(ui, masonry_active, true, 30.0)
+                                .on_hover_text(tip)
+                                .clicked()
                             {
                                 app.activate_masonry_from_navigation_button();
                             }
@@ -287,17 +282,21 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                         let actions_end = ui.next_widget_position().x;
                         let caption_start = ui.max_rect().right() - controls_width;
                         let drag_width = (caption_start - actions_end).max(0.0);
-                        let title_click_rename = app.settings_manager.get().rename_file_from_titlebar
-                            && !app.is_home_surface_active();
+                        let title_click_rename =
+                            app.settings_manager.get().rename_file_from_titlebar
+                                && !app.is_home_surface_active();
                         let (drag_rect, _) = ui.allocate_exact_size(
                             egui::vec2(drag_width, row_height),
                             egui::Sense::hover(),
                         );
-                        let title_font = egui::FontId::proportional(if win98 { 13.0 } else { 14.0 });
+                        let title_font =
+                            egui::FontId::proportional(if win98 { 13.0 } else { 14.0 });
                         let title_text = app.window_title();
-                        let title_width = ui.painter()
+                        let title_width = ui
+                            .painter()
                             .layout_no_wrap(title_text.clone(), title_font.clone(), foreground)
-                            .size().x;
+                            .size()
+                            .x;
                         let title_visible = drag_width >= (title_width + 16.0);
                         // The tab strip consumes only the width its visible tabs need.
                         // Use any remaining space for the centered window title; even
@@ -354,7 +353,10 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             let maximized =
                                 ctx.input(|input| input.viewport().maximized.unwrap_or(false));
                             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                        } else if show_window_title && title_click_rename && title_response.clicked() {
+                        } else if show_window_title
+                            && title_click_rename
+                            && title_response.clicked()
+                        {
                             app.begin_rename_current();
                         } else if title_response.drag_started() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);

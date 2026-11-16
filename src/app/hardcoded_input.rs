@@ -14,8 +14,8 @@ impl ViewerApp {
         response: &egui::Response,
         image_rect: Option<egui::Rect>,
     ) {
-        let (fullscreen, maximized, alt, ctrl, left_down, right_down, delta, hover_pos) =
-            ctx.input(|input| {
+        let (fullscreen, maximized, alt, ctrl, left_down, right_down, delta, hover_pos) = ctx
+            .input(|input| {
                 (
                     input.viewport().fullscreen.unwrap_or(false),
                     input.viewport().maximized.unwrap_or(false),
@@ -81,11 +81,11 @@ impl ViewerApp {
         // Plain left drag on the visible image pans it. A drag in the margins
         // around the image moves the window instead, but only when windowed.
         if response.drag_started_by(egui::PointerButton::Primary) {
-            let drag_origin = ctx.input(|input| input.pointer.press_origin())
+            let drag_origin = ctx
+                .input(|input| input.pointer.press_origin())
                 .or_else(|| response.interact_pointer_pos());
-            let started_on_image = drag_origin.is_some_and(|position| {
-                image_rect.is_some_and(|rect| rect.contains(position))
-            });
+            let started_on_image = drag_origin
+                .is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)));
 
             if started_on_image && !self.image_entries.is_empty() {
                 self.main_view_pan_drag_active = true;
@@ -150,7 +150,11 @@ impl ViewerApp {
 
             let start_zoom = self.zoom_drag_start_zoom;
             let vertical_delta = current_pos.y - start_pos.y;
-            let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+            let step = self
+                .settings_manager
+                .get()
+                .zoom_step_mouse_right_button
+                .clamp(1.05, 2.0);
             let sensitivity = step.ln() / 40.0;
             let new_zoom = (start_zoom * (-vertical_delta * sensitivity).exp()).clamp(0.005, 50.0);
             let start_center = self.zoom_drag_start_center;
@@ -179,7 +183,8 @@ impl ViewerApp {
             && response.hovered()
             && !left_down
             && !right_down
-            && hover_pos.is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)))
+            && hover_pos
+                .is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)))
             && !self.image_entries.is_empty()
         {
             ctx.set_cursor_icon(egui::CursorIcon::Grab);
@@ -232,20 +237,28 @@ impl ViewerApp {
             {
                 self.begin_rename_current();
                 if self.rename_dialog.is_some() {
-                    let _ = self.settings_manager.update(|settings| settings.show_file_sidebar = true);
+                    let _ = self
+                        .settings_manager
+                        .update(|settings| settings.show_file_sidebar = true);
                 }
             }
 
             // Standard keyboard shortcuts
-            let compare_active = self.workspace.tabs.get(self.workspace.active_index)
+            let compare_active = self
+                .workspace
+                .tabs
+                .get(self.workspace.active_index)
                 .is_some_and(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Compare);
             for command in handle_keyboard(ctx, &self.input_bindings) {
-                if compare_active && matches!(command,
-                    crate::input::shortcuts::ViewerCommand::ZoomIn
-                    | crate::input::shortcuts::ViewerCommand::ZoomOut
-                    | crate::input::shortcuts::ViewerCommand::ResetZoom
-                    | crate::input::shortcuts::ViewerCommand::MakeFit
-                ) {
+                if compare_active
+                    && matches!(
+                        command,
+                        crate::input::shortcuts::ViewerCommand::ZoomIn
+                            | crate::input::shortcuts::ViewerCommand::ZoomOut
+                            | crate::input::shortcuts::ViewerCommand::ResetZoom
+                            | crate::input::shortcuts::ViewerCommand::MakeFit
+                    )
+                {
                     continue;
                 }
                 self.handle_command(ctx, command);
@@ -337,8 +350,8 @@ impl ViewerApp {
         let recursive_folder_drop = self.settings_manager.get().drag_drop_folders_recursive
             && !dropped_on_queue
             && !dropped_on_favorites;
-        let expanded_folder_drop = recursive_folder_drop
-            && dropped_paths.iter().any(|path| path.is_dir());
+        let expanded_folder_drop =
+            recursive_folder_drop && dropped_paths.iter().any(|path| path.is_dir());
         let paths: Vec<PathBuf> = if recursive_folder_drop {
             dropped_paths
                 .into_iter()
@@ -354,12 +367,17 @@ impl ViewerApp {
             dropped_paths
         };
         if expanded_folder_drop && paths.is_empty() {
-            self.queue_status = Some("No supported images found in the dropped folder or its subfolders.".into());
+            self.queue_status =
+                Some("No supported images found in the dropped folder or its subfolders.".into());
             return;
         }
 
         // A single .jvq is a queue document, not an image or folder.
-        if paths.len() == 1 && paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {
+        if paths.len() == 1
+            && paths[0]
+                .extension()
+                .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"))
+        {
             self.sidebar_queue_tab = dropped_on_queue || self.sidebar_queue_tab;
             self.open_queue_file(&paths[0], ctx, dropped_on_queue);
         } else if dropped_on_queue {
@@ -376,9 +394,13 @@ impl ViewerApp {
                     let before = self.favorite_paths.len();
                     self.add_favorite_path(path);
                     added += usize::from(self.favorite_paths.len() > before);
-                } else { ignored += 1; }
+                } else {
+                    ignored += 1;
+                }
             }
-            self.queue_status = Some(format!("Added {added} favorite(s); ignored {ignored} unsupported item(s)."));
+            self.queue_status = Some(format!(
+                "Added {added} favorite(s); ignored {ignored} unsupported item(s)."
+            ));
         } else if expanded_folder_drop {
             // A recursively expanded folder is an explicit selection, even if it
             // contains only one image; do not index neighboring files outside it.

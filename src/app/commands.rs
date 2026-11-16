@@ -15,7 +15,10 @@ impl ViewerApp {
                 | ViewerCommand::OpenFolder
         );
         if is_navigation_command
-            && self.edit_session.as_ref().is_some_and(|session| session.dirty)
+            && self
+                .edit_session
+                .as_ref()
+                .is_some_and(|session| session.dirty)
         {
             self.edit_status = Some(
                 "Save or discard the unsaved working copy before navigating or opening another file."
@@ -54,8 +57,15 @@ impl ViewerApp {
             }
             ViewerCommand::ZoomIn => {
                 let from = self.zoom;
-                let base = self.zoom_animation.map(|(_, target, _, _)| target).unwrap_or(from);
-                let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                let base = self
+                    .zoom_animation
+                    .map(|(_, target, _, _)| target)
+                    .unwrap_or(from);
+                let step = self
+                    .settings_manager
+                    .get()
+                    .zoom_step_keyboard
+                    .clamp(1.05, 2.0);
                 let target = (base * step).clamp(0.01, 10.0);
                 self.zoom_animation = Some((from, target, Instant::now(), true));
                 self.b_fit_to_window = false;
@@ -64,8 +74,15 @@ impl ViewerApp {
             }
             ViewerCommand::ZoomOut => {
                 let from = self.zoom;
-                let base = self.zoom_animation.map(|(_, target, _, _)| target).unwrap_or(from);
-                let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                let base = self
+                    .zoom_animation
+                    .map(|(_, target, _, _)| target)
+                    .unwrap_or(from);
+                let step = self
+                    .settings_manager
+                    .get()
+                    .zoom_step_keyboard
+                    .clamp(1.05, 2.0);
                 let target = (base / step).clamp(0.01, 10.0);
                 self.zoom_animation = Some((from, target, Instant::now(), false));
                 self.b_fit_to_window = false;
@@ -181,7 +198,6 @@ impl ViewerApp {
         }
     }
 
-
     /// Advance keyboard/menu zoom with a short directional easing curve.
     /// Zoom-in accelerates (ease-in); zoom-out decelerates (ease-out).
     pub(crate) fn update_zoom_animation(&mut self, ctx: &egui::Context) {
@@ -190,7 +206,11 @@ impl ViewerApp {
         };
         let duration = std::time::Duration::from_millis(180);
         let t = (started.elapsed().as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0);
-        let eased = if zooming_in { t * t * t } else { 1.0 - (1.0 - t).powi(3) };
+        let eased = if zooming_in {
+            t * t * t
+        } else {
+            1.0 - (1.0 - t).powi(3)
+        };
         self.zoom = from + (to - from) * eased;
         if t >= 1.0 {
             self.zoom = to;

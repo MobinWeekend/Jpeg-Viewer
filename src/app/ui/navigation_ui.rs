@@ -11,6 +11,9 @@ trait ProfileToolbarButtonExt {
     fn add_profile_button<'a>(&mut self, button: egui::Button<'a>) -> egui::Response;
 }
 
+///Button height for the navigation ui
+const BTN_HEIGHT: f32 = 20.0;
+
 impl ProfileToolbarButtonExt for egui::Ui {
     fn add_profile_button<'a>(&mut self, button: egui::Button<'a>) -> egui::Response {
         let response = self.add(button);
@@ -46,10 +49,12 @@ impl ViewerApp {
                     .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text(tooltip);
-
         // Paint the custom icon *over* the already-rendered button.
-        let icon_rect =
-            egui::Rect::from_center_size(response.rect.center(), egui::vec2(24.0, 28.0));
+        let offset = egui::vec2(0.0, 3.0);
+        let icon_rect = egui::Rect::from_center_size(
+            response.rect.center() + offset,
+            egui::vec2(BTN_HEIGHT + 4.0, BTN_HEIGHT + 8.0),
+        );
         paint_sidebar_drawer_icon(ui, icon_rect, !sidebar_open);
 
         if response.clicked() {
@@ -65,10 +70,12 @@ impl ViewerApp {
     pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add_profile_button(
-                egui::Button::new(egui::RichText::new("◀").size(scaled_text_size(ui.ctx(), 22.0)))
-                    .min_size(self.btn_size())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new(
+                    egui::RichText::new("◀").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
+                )
+                .min_size(self.btn_size())
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Previous")
             .clicked()
@@ -79,10 +86,12 @@ impl ViewerApp {
     pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add_profile_button(
-                egui::Button::new(egui::RichText::new("▶").size(scaled_text_size(ui.ctx(), 22.0)))
-                    .min_size(self.btn_size())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new(
+                    egui::RichText::new("▶").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
+                )
+                .min_size(self.btn_size())
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Next")
             .clicked()
@@ -110,7 +119,8 @@ impl ViewerApp {
         let button = ui
             .add_profile_button(
                 egui::Button::new(
-                    egui::RichText::new(slideshow_icon).size(scaled_text_size(ui.ctx(), 22.0)),
+                    egui::RichText::new(slideshow_icon)
+                        .size(scaled_text_size(ui.ctx(), BTN_HEIGHT + 2.0)),
                 )
                 .min_size(self.btn_size())
                 .fill(toolbar_button_fill(ui))
@@ -319,8 +329,8 @@ impl ViewerApp {
         // percentage is painted independently so its text may visually overflow the
         // slot instead of forcing neighboring toolbar controls to shift.
         let (zoom_rect, response) =
-            ui.allocate_exact_size(egui::vec2(50.0, 24.0), egui::Sense::click());
-        let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), 14.0));
+            ui.allocate_exact_size(egui::vec2(BTN_HEIGHT, BTN_HEIGHT), egui::Sense::click());
+        let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), BTN_HEIGHT - 4.0));
         ui.painter().text(
             zoom_rect.center(),
             egui::Align2::CENTER_CENTER,
@@ -343,10 +353,12 @@ impl ViewerApp {
     pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add_profile_button(
-                egui::Button::new(egui::RichText::new("+").size(scaled_text_size(ui.ctx(), 22.0)))
-                    .min_size(self.btn_size_small())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new(
+                    egui::RichText::new("+").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
+                )
+                .min_size(self.btn_size_small())
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Zoom in")
             .clicked()
@@ -358,10 +370,12 @@ impl ViewerApp {
     pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add_profile_button(
-                egui::Button::new(egui::RichText::new("−").size(scaled_text_size(ui.ctx(), 22.0)))
-                    .min_size(self.btn_size_small())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new(
+                    egui::RichText::new("−").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
+                )
+                .min_size(self.btn_size_small())
+                .fill(toolbar_button_fill(ui))
+                .stroke(toolbar_button_stroke(ui)),
             )
             .on_hover_text("Zoom out")
             .clicked()
@@ -432,7 +446,8 @@ impl ViewerApp {
         if ui
             .add_profile_button(
                 egui::Button::new(
-                    egui::RichText::new(play_text).size(scaled_text_size(ui.ctx(), 22.0)),
+                    egui::RichText::new(play_text)
+                        .size(scaled_text_size(ui.ctx(), BTN_HEIGHT - 2.0)),
                 )
                 .min_size(btn)
                 .fill(toolbar_button_fill(ui))
@@ -457,7 +472,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new(&speed_text).size(scaled_text_size(ui.ctx(), 12.0)),
                 )
-                .min_size(egui::vec2(40.0, 24.0))
+                .min_size(egui::vec2(2.0 * (BTN_HEIGHT - 4.0), BTN_HEIGHT))
                 .fill(toolbar_button_fill(ui))
                 .stroke(toolbar_button_stroke(ui)),
             )
@@ -559,27 +574,27 @@ impl ViewerApp {
     /// Standard toolbar button size.
     fn btn_size(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(22.0, 20.0) // compact
+            egui::vec2(BTN_HEIGHT - 2.0, BTN_HEIGHT - 4.0) // compact
         } else {
-            egui::vec2(28.0, 24.0) // normal
+            egui::vec2(BTN_HEIGHT + 4.0, BTN_HEIGHT) // normal
         }
     }
 
     /// Small toolbar button size (used for +/−, 1:1, fit, pin, etc.)
     fn btn_size_small(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(18.0, 20.0)
+            egui::vec2(BTN_HEIGHT - 6.0, BTN_HEIGHT - 4.0)
         } else {
-            egui::vec2(20.0, 24.0)
+            egui::vec2(BTN_HEIGHT - 4.0, BTN_HEIGHT)
         }
     }
 
     /// Medium button size (slower/faster, zoom text)
     fn btn_size_medium(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(20.0, 20.0)
+            egui::vec2(BTN_HEIGHT - 4.0, BTN_HEIGHT - 4.0)
         } else {
-            egui::vec2(24.0, 24.0)
+            egui::vec2(BTN_HEIGHT + 4.0, BTN_HEIGHT)
         }
     }
 }

@@ -240,14 +240,36 @@ impl crate::app::types::ViewerApp {
             let pane_count = self.workspace.tabs[tab_index].entries.len();
             let mut angles = vec![None; pane_count];
             for index in 0..pane_count {
-                if !self.workspace.tabs[tab_index].pane_sync.get(index).copied().unwrap_or(true) {
+                if !self.workspace.tabs[tab_index]
+                    .pane_sync
+                    .get(index)
+                    .copied()
+                    .unwrap_or(true)
+                {
                     continue;
                 }
-                let first = self.workspace.tabs[tab_index].anchors.get(index).copied().flatten();
-                let second = self.workspace.tabs[tab_index].anchors_second.get(index).copied().flatten();
-                let Some((first, second)) = first.zip(second) else { continue; };
+                let first = self.workspace.tabs[tab_index]
+                    .anchors
+                    .get(index)
+                    .copied()
+                    .flatten();
+                let second = self.workspace.tabs[tab_index]
+                    .anchors_second
+                    .get(index)
+                    .copied()
+                    .flatten();
+                let Some((first, second)) = first.zip(second) else {
+                    continue;
+                };
                 let key = self.workspace.tabs[tab_index].entries[index].get_id();
-                let Some((width, height)) = self.workspace.compare_images.get(&key).map(VirtualTexture::dimensions) else { continue; };
+                let Some((width, height)) = self
+                    .workspace
+                    .compare_images
+                    .get(&key)
+                    .map(VirtualTexture::dimensions)
+                else {
+                    continue;
+                };
                 let dx = (second[0] - first[0]) * width as f32;
                 let dy = (second[1] - first[1]) * height as f32;
                 if dx.hypot(dy) > 0.01 {
@@ -269,7 +291,10 @@ impl crate::app::types::ViewerApp {
                     }
                 }
             } else {
-                self.queue_status = Some("Set both anchors on at least two loaded images before rotating to align.".into());
+                self.queue_status = Some(
+                    "Set both anchors on at least two loaded images before rotating to align."
+                        .into(),
+                );
             }
         }
 
@@ -301,7 +326,9 @@ impl crate::app::types::ViewerApp {
                     .resize(pane_count, 1.0);
             }
             if self.workspace.tabs[tab_index].pane_rotation.len() != pane_count {
-                self.workspace.tabs[tab_index].pane_rotation.resize(pane_count, 0.0);
+                self.workspace.tabs[tab_index]
+                    .pane_rotation
+                    .resize(pane_count, 0.0);
             }
             if self.workspace.tabs[tab_index].pane_sync.len() != pane_count {
                 self.workspace.tabs[tab_index]
@@ -484,7 +511,7 @@ impl crate::app::types::ViewerApp {
                                             .zip(response.interact_pointer_pos())
                                             .map(|(start, current)| {
                                                 ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
-                                                let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                                                let step = self.settings_manager.get().zoom_step_mouse_right_button.clamp(1.05, 2.0);
                                                 let sensitivity = step.ln() / 40.0;
                                                 (self.zoom_drag_start_zoom * (-(current.y - start.y) * sensitivity).exp())
                                                     .clamp(0.01, 100.0)
@@ -514,7 +541,7 @@ impl crate::app::types::ViewerApp {
                                             let delta = input.raw_scroll_delta.y;
                                             let zooming = (!self.b_ctrl_invert && input.modifiers.ctrl)
                                                 || (self.b_ctrl_invert && !input.modifiers.ctrl);
-                                            let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                                            let step = self.settings_manager.get().zoom_step_mouse_wheel.clamp(1.05, 2.0);
                                             (zooming && delta.abs() > 0.0).then_some(if delta > 0.0 { step } else { 1.0 / step })
                                         });
                                         let custom_mouse_zoom = ctx.input(|input| {
@@ -530,8 +557,8 @@ impl crate::app::types::ViewerApp {
                                             .or_else(|| pinch_zoom.map(|factor| (previous * factor).clamp(0.01, 100.0)))
                                             .or_else(|| wheel_zoom.map(|factor| (previous * factor).clamp(0.01, 100.0)))
                                             .or_else(|| match zoom_command.or(custom_mouse_zoom) {
-                                                Some(crate::input::shortcuts::ViewerCommand::ZoomIn) => Some((previous * self.settings_manager.get().zoom_step.clamp(1.05, 2.0)).clamp(0.01, 100.0)),
-                                                Some(crate::input::shortcuts::ViewerCommand::ZoomOut) => Some((previous / self.settings_manager.get().zoom_step.clamp(1.05, 2.0)).clamp(0.01, 100.0)),
+                                                Some(crate::input::shortcuts::ViewerCommand::ZoomIn) => Some((previous * self.settings_manager.get().zoom_step_keyboard.clamp(1.05, 2.0)).clamp(0.01, 100.0)),
+                                                Some(crate::input::shortcuts::ViewerCommand::ZoomOut) => Some((previous / self.settings_manager.get().zoom_step_keyboard.clamp(1.05, 2.0)).clamp(0.01, 100.0)),
                                                 Some(crate::input::shortcuts::ViewerCommand::ResetZoom)
                                                 | Some(crate::input::shortcuts::ViewerCommand::MakeFit) => Some(1.0),
                                                 _ => None,
@@ -949,11 +976,21 @@ impl crate::app::types::ViewerApp {
                         tab.anchors_second[index] = Some(anchor);
                     }
                     tab.anchor_editing = None;
-                    align_compare_anchor_pairs(tab, &anchor_metrics, &anchor_image_sizes, &anchor_source_sizes);
+                    align_compare_anchor_pairs(
+                        tab,
+                        &anchor_metrics,
+                        &anchor_image_sizes,
+                        &anchor_source_sizes,
+                    );
                 }
             } else if align_anchors_requested {
                 let tab = &mut self.workspace.tabs[tab_index];
-                align_compare_anchor_pairs(tab, &anchor_metrics, &anchor_image_sizes, &anchor_source_sizes);
+                align_compare_anchor_pairs(
+                    tab,
+                    &anchor_metrics,
+                    &anchor_image_sizes,
+                    &anchor_source_sizes,
+                );
             }
         }
         if close {
@@ -1009,9 +1046,21 @@ fn align_compare_anchor_pairs(
     let Some(reference_first_raw) = tab.anchors[reference_index] else {
         return;
     };
-    let reference_rotation = tab.pane_rotation.get(reference_index).copied().unwrap_or(0.0);
-    let reference_source_size = source_sizes.get(reference_index).copied().flatten().unwrap_or([1.0, 1.0]);
-    let reference_first = compare_anchor_in_rotated_bounds(reference_first_raw, reference_source_size, reference_rotation);
+    let reference_rotation = tab
+        .pane_rotation
+        .get(reference_index)
+        .copied()
+        .unwrap_or(0.0);
+    let reference_source_size = source_sizes
+        .get(reference_index)
+        .copied()
+        .flatten()
+        .unwrap_or([1.0, 1.0]);
+    let reference_first = compare_anchor_in_rotated_bounds(
+        reference_first_raw,
+        reference_source_size,
+        reference_rotation,
+    );
     let Some(reference_metrics) = metrics.get(reference_index).copied().flatten() else {
         return;
     };
@@ -1032,7 +1081,11 @@ fn align_compare_anchor_pairs(
         .flatten()
         .zip(image_sizes.get(reference_index).copied().flatten())
         .map(|(second, size)| {
-            let source_size = source_sizes.get(reference_index).copied().flatten().unwrap_or(size);
+            let source_size = source_sizes
+                .get(reference_index)
+                .copied()
+                .flatten()
+                .unwrap_or(size);
             let second = compare_anchor_in_rotated_bounds(second, source_size, reference_rotation);
             let dx = (second[0] - reference_first[0]) * size[0];
             let dy = (second[1] - reference_first[1]) * size[1];
@@ -1056,7 +1109,11 @@ fn align_compare_anchor_pairs(
             continue;
         };
         let pane_rotation = tab.pane_rotation.get(pane_index).copied().unwrap_or(0.0);
-        let source_size = source_sizes.get(pane_index).copied().flatten().unwrap_or([1.0, 1.0]);
+        let source_size = source_sizes
+            .get(pane_index)
+            .copied()
+            .flatten()
+            .unwrap_or([1.0, 1.0]);
         let first = compare_anchor_in_rotated_bounds(first_raw, source_size, pane_rotation);
         let Some(mut pane_metrics) = metrics.get(pane_index).copied().flatten() else {
             continue;
@@ -1093,7 +1150,6 @@ fn align_compare_anchor_pairs(
         ];
     }
 }
-
 
 #[cfg(test)]
 mod compare_rotation_tests {
