@@ -20,7 +20,7 @@ enum WelcomeAction {
     RemovePin(PathBuf),
     AddImages,
     AddFolder,
-    AddPlaylist,
+    AddQueues,
 }
 
 impl ViewerApp {
@@ -38,12 +38,14 @@ impl ViewerApp {
         let recent_rows = new_tab_settings.new_tab_recent_rows.clamp(0, 2);
         let show_recent = recent_rows > 0;
         let recent_limit = recent_rows * 6;
-        let recent_paths = if show_recent { self.welcome_recent_paths() } else { Vec::new() };
+        let recent_paths = if show_recent {
+            self.welcome_recent_paths()
+        } else {
+            Vec::new()
+        };
         let pinned_paths = self.welcome_pinned_paths();
-        let recent = self.build_new_tab_cards(
-            &recent_paths[..recent_paths.len().min(recent_limit)],
-            ctx,
-        );
+        let recent =
+            self.build_new_tab_cards(&recent_paths[..recent_paths.len().min(recent_limit)], ctx);
         let pinned = self.build_new_tab_cards(&pinned_paths, ctx);
         self.ensure_favorites_loaded();
         let favorites_count = self.favorite_paths.len();
@@ -115,10 +117,10 @@ impl ViewerApp {
                                         hero.set_min_width((content_width - 42.0).max(0.0));
                                         hero.horizontal(|hero| {
                                             if let Some(icon) = &self.logo_texture {
-                                                hero.image((icon.id(), egui::vec2(84.0, 84.0)));
+                                                hero.image((icon.id(), egui::vec2(160.0, 160.0)));
                                             } else {
                                                 let (logo_rect, _) = hero.allocate_exact_size(
-                                                    egui::vec2(84.0, 84.0),
+                                                    egui::vec2(160.0, 160.0),
                                                     egui::Sense::hover(),
                                                 );
                                                 hero.painter().text(
@@ -137,7 +139,7 @@ impl ViewerApp {
                                                     egui::RichText::new("Pick up where you left off, or open something new.")
                                                         .color(content.visuals().weak_text_color()),
                                                 );
-                                                content.add_space(14.0);
+                                                content.add_space(32.0);
                                                 content.horizontal_wrapped(|buttons| {
                                                     buttons.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
                                                     if buttons.add_sized([150.0, 38.0], egui::Button::new("＋  Open images…")).clicked() {
@@ -214,22 +216,28 @@ impl ViewerApp {
                     .pick_files();
                 self.dialog_open = false;
                 if let Some(paths) = paths {
-                    for path in paths { self.add_welcome_pin(path); }
+                    for path in paths {
+                        self.add_welcome_pin(path);
+                    }
                 }
             }
             Some(WelcomeAction::AddFolder) => {
                 self.dialog_open = true;
                 let path = rfd::FileDialog::new().pick_folder();
                 self.dialog_open = false;
-                if let Some(path) = path { self.add_welcome_pin(path); }
+                if let Some(path) = path {
+                    self.add_welcome_pin(path);
+                }
             }
-            Some(WelcomeAction::AddPlaylist) => {
+            Some(WelcomeAction::AddQueues) => {
                 self.dialog_open = true;
                 let path = rfd::FileDialog::new()
-                    .add_filter("JPEG Viewer playlists", &["jvq", "txt"])
+                    .add_filter("JPEG Viewer queues", &["jvq", "txt"])
                     .pick_file();
                 self.dialog_open = false;
-                if let Some(path) = path { self.add_welcome_pin(path); }
+                if let Some(path) = path {
+                    self.add_welcome_pin(path);
+                }
             }
             None => {}
         }
@@ -242,28 +250,34 @@ impl ViewerApp {
             .into_iter()
             .find(|size| *size as f32 >= physical_preview_width)
             .unwrap_or(512);
-        paths.iter().map(|path| {
-            let preview_entry = if let Some(cached) = self.workspace.welcome_thumbnail_sources.get(path) {
-                cached.clone()
-            } else {
-                let resolved = welcome_preview_entry(path);
-                self.workspace.welcome_thumbnail_sources.insert(path.clone(), resolved.clone());
-                resolved
-            };
-            let thumbnail = preview_entry.and_then(|entry| {
-                let key = crate::app::queues::source_thumbnail_key(&entry);
-                if !self.has_shared_thumbnail_at_least(&key, target_thumbnail_size) {
-                    self.request_masonry_thumbnail(entry, target_thumbnail_size, ctx);
+        paths
+            .iter()
+            .map(|path| {
+                let preview_entry =
+                    if let Some(cached) = self.workspace.welcome_thumbnail_sources.get(path) {
+                        cached.clone()
+                    } else {
+                        let resolved = welcome_preview_entry(path);
+                        self.workspace
+                            .welcome_thumbnail_sources
+                            .insert(path.clone(), resolved.clone());
+                        resolved
+                    };
+                let thumbnail = preview_entry.and_then(|entry| {
+                    let key = crate::app::queues::source_thumbnail_key(&entry);
+                    if !self.has_shared_thumbnail_at_least(&key, target_thumbnail_size) {
+                        self.request_masonry_thumbnail(entry, target_thumbnail_size, ctx);
+                    }
+                    self.get_shared_thumbnail(&key, target_thumbnail_size)
+                });
+                NewTabCard {
+                    path: path.clone(),
+                    label: welcome_path_label(path),
+                    kind: welcome_path_kind(path),
+                    thumbnail,
                 }
-                self.get_shared_thumbnail(&key, target_thumbnail_size)
-            });
-            NewTabCard {
-                path: path.clone(),
-                label: welcome_path_label(path),
-                kind: welcome_path_kind(path),
-                thumbnail,
-            }
-        }).collect()
+            })
+            .collect()
     }
 
     /// The session prompt is intentionally checked before rendering Welcome so
@@ -297,8 +311,10 @@ fn render_recent_section(
             .inner_margin(egui::Margin::same(16))
             .show(ui, |empty| {
                 empty.label(
-                    egui::RichText::new("Folders, saved queues, and archives you open will appear here.")
-                        .color(empty.visuals().weak_text_color()),
+                    egui::RichText::new(
+                        "Folders, saved queues, and archives you open will appear here.",
+                    )
+                    .color(empty.visuals().weak_text_color()),
                 );
             });
     } else {
@@ -321,20 +337,17 @@ fn render_recent_section(
     open_path
 }
 
-fn render_shortcuts_section(
-    ui: &mut egui::Ui,
-    pinned: &[NewTabCard],
-) -> Option<WelcomeAction> {
+fn render_shortcuts_section(ui: &mut egui::Ui, pinned: &[NewTabCard]) -> Option<WelcomeAction> {
     let mut action = None;
     ui.horizontal_wrapped(|header| {
         header.heading("Your shortcuts");
-        if header.button("＋ Playlist").clicked() {
-            action = Some(WelcomeAction::AddPlaylist);
+        if header.button("+ Queues").clicked() {
+            action = Some(WelcomeAction::AddQueues);
         }
-        if header.button("＋ Folder").clicked() {
+        if header.button("+ Folder").clicked() {
             action = Some(WelcomeAction::AddFolder);
         }
-        if header.button("＋ Images").clicked() {
+        if header.button("+ Images").clicked() {
             action = Some(WelcomeAction::AddImages);
         }
     });
@@ -346,8 +359,10 @@ fn render_shortcuts_section(
             .inner_margin(egui::Margin::same(16))
             .show(ui, |empty| {
                 empty.label(
-                    egui::RichText::new("Pin images, folders, or .jvq playlists here for quick access.")
-                        .color(empty.visuals().weak_text_color()),
+                    egui::RichText::new(
+                        "Pin images, folders, or .jvq Queues here for quick access.",
+                    )
+                    .color(empty.visuals().weak_text_color()),
                 );
             });
     } else {
@@ -389,10 +404,8 @@ fn render_new_tab_card(
 ) -> (bool, bool) {
     let mut removed = false;
     let visuals = ui.visuals().clone();
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(card_width, 132.0),
-        egui::Sense::click(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(card_width, 132.0), egui::Sense::click());
     // Use the same theme-driven hover state and short animation as Masonry's
     // thumbnail cards. The hover fill belongs to the card surface; it must not
     // become a translucent wash over the image or reduce label contrast.
@@ -401,11 +414,9 @@ fn render_new_tab_card(
     // animation ID from this widget's unique egui response ID so cards never
     // drive one another's hover animation.
     let card_id = response.id.with(("new-tab-card", card.path.clone()));
-    let hover_t = ui.ctx().animate_bool_with_time(
-        card_id.with("hover-animation"),
-        response.hovered(),
-        0.14,
-    );
+    let hover_t =
+        ui.ctx()
+            .animate_bool_with_time(card_id.with("hover-animation"), response.hovered(), 0.14);
     let card_fill = if hover_t > 0.01 {
         visuals.widgets.hovered.bg_fill
     } else {
@@ -432,11 +443,15 @@ fn render_new_tab_card(
         rect.min + egui::vec2(4.0, 4.0),
         egui::vec2((rect.width() - 8.0).max(1.0), 82.0),
     );
-    painter.rect_filled(preview_rect, egui::CornerRadius::same(7), visuals.extreme_bg_color);
+    painter.rect_filled(
+        preview_rect,
+        egui::CornerRadius::same(7),
+        visuals.extreme_bg_color,
+    );
     if let Some(texture) = &card.thumbnail {
         let size = texture.size_vec2();
-        let scale = (preview_rect.width() / size.x.max(1.0))
-            .min(preview_rect.height() / size.y.max(1.0));
+        let scale =
+            (preview_rect.width() / size.x.max(1.0)).min(preview_rect.height() / size.y.max(1.0));
         let image_size = size * scale;
         let image_rect = egui::Rect::from_center_size(preview_rect.center(), image_size);
         painter.image(
@@ -464,16 +479,18 @@ fn render_new_tab_card(
 
     let max_chars = ((rect.width() / 7.2).floor() as usize).clamp(5, 21);
     let title = truncate_card_label(&card.label, max_chars);
-    painter.with_clip_rect(egui::Rect::from_min_max(
-        egui::pos2(rect.left() + 6.0, preview_rect.bottom() + 6.0),
-        egui::pos2(rect.right() - 6.0, rect.bottom() - 20.0),
-    )).text(
-        egui::pos2(rect.left() + 7.0, preview_rect.bottom() + 7.0),
-        egui::Align2::LEFT_TOP,
-        title,
-        egui::FontId::proportional(12.5),
-        card_text_color,
-    );
+    painter
+        .with_clip_rect(egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 6.0, preview_rect.bottom() + 6.0),
+            egui::pos2(rect.right() - 6.0, rect.bottom() - 20.0),
+        ))
+        .text(
+            egui::pos2(rect.left() + 7.0, preview_rect.bottom() + 7.0),
+            egui::Align2::LEFT_TOP,
+            title,
+            egui::FontId::proportional(12.5),
+            card_text_color,
+        );
     painter.text(
         egui::pos2(rect.left() + 7.0, rect.bottom() - 7.0),
         egui::Align2::LEFT_BOTTOM,
@@ -546,7 +563,13 @@ fn welcome_preview_entry_at_depth(path: &Path, depth: u8) -> Option<ImageEntry> 
         return Some(ImageEntry::File(path.to_path_buf()));
     }
 
-    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "zip" => crate::imaging::archive::scan_zip(path).into_iter().next(),
         "7z" => crate::imaging::archive::scan_7z(path).into_iter().next(),
         "rar" => crate::imaging::archive::scan_rar(path).into_iter().next(),
@@ -564,7 +587,13 @@ fn truncate_card_label(label: &str, max_chars: usize) -> String {
     if label.chars().count() <= max_chars {
         label.to_owned()
     } else {
-        format!("{}…", label.chars().take(max_chars.saturating_sub(1)).collect::<String>())
+        format!(
+            "{}…",
+            label
+                .chars()
+                .take(max_chars.saturating_sub(1))
+                .collect::<String>()
+        )
     }
 }
 
@@ -579,7 +608,13 @@ fn welcome_path_kind(path: &Path) -> &'static str {
     if path.is_dir() {
         "📁 Folder"
     } else {
-        match path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+        match path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str()
+        {
             "jvq" | "txt" => "▤ Queue",
             "zip" => "▧ ZIP archive",
             "7z" => "▧ 7Z archive",
