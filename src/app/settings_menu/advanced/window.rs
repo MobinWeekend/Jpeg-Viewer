@@ -36,6 +36,15 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         });
         ui.label(egui::RichText::new("The custom frame provides the resize hit area when native window decorations are disabled.").small().weak());
 
+        let mut tabs_in_titlebar = app.settings_manager.get().workspace_tabs_in_titlebar;
+        ui.add_enabled_ui(!app.settings_manager.get().show_titlebar, |ui| {
+            if crate::ui_theme::switch(ui, &mut tabs_in_titlebar, "Show workspace tabs in custom title bar") {
+                let _ = app.settings_manager.update(|settings| settings.workspace_tabs_in_titlebar = tabs_in_titlebar);
+                ctx.request_repaint();
+            }
+        });
+        ui.label(egui::RichText::new("When enabled, workspace tabs share the custom title bar row. Native window decorations keep tabs in the main content area.").small().weak());
+
         let mut center_title = app.settings_manager.get().center_custom_window_title;
         if crate::ui_theme::switch(ui, &mut center_title, "Center window title in available space") {
             let _ = app.settings_manager.update(|settings| settings.center_custom_window_title = center_title);

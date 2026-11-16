@@ -252,6 +252,9 @@ impl SettingsManager {
                     if let Some(value) = section.get("custom_titlebar_navigation") {
                         settings.custom_titlebar_navigation = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("workspace_tabs_in_titlebar") {
+                        settings.workspace_tabs_in_titlebar = Self::parse_bool(value);
+                    }
                     if let Some(value) = section.get("custom_titlebar_navigation_preference_configured") {
                         settings.custom_titlebar_navigation_preference_configured = Self::parse_bool(value);
                     }

@@ -172,12 +172,12 @@ impl ViewerApp {
                         // Workspace Tabs
                         ui.label(egui::RichText::new("Workspace Tabs").size(14.0).strong());
                         ui.add_space(4.0);
-                        Self::render_shortcut_row(ui, "Ctrl+T", "Open a new tab");
                         Self::render_shortcut_row(ui, "Ctrl+PageUp / PageDown", "Switch to previous / next workspace tab");
                         Self::render_shortcut_row(ui, "Ctrl+Shift+PageUp / PageDown", "Move the active tab left / right");
                         Self::render_shortcut_row(ui, "Ctrl+Shift+Left / Right", "Alternative tab-reordering shortcuts");
                         Self::render_shortcut_row(ui, "Drag tab", "Reorder workspace tabs, as in Firefox");
-                        ui.label(egui::RichText::new("In fullscreen, the workspace tab strip floats above the image and viewer overlays.").small().weak());
+                        Self::render_shortcut_row(ui, "+", "Choose an image and open it in a separate workspace tab");
+                        ui.label(egui::RichText::new("Home is part of the primary Viewer workspace. The + button is in the navigation overlay. When enabled, workspace tabs share the custom title-bar row; in fullscreen they return to the main view.").small().weak());
 
                         ui.add_space(4.0);
 

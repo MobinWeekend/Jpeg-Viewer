@@ -6,7 +6,7 @@
 | --- | --- |
 | `core.rs` | Open workspace collections, snapshot the primary viewer, and stop viewer preloading when switching surfaces |
 | `tabs.rs` | Activate, close, reorder, and render tabs; handle tab keyboard shortcuts |
-| `new_tab.rs` | Recently opened paths, pinned shortcuts, New Tab data persistence, and New Tab actions |
+| `new_tab.rs` | Recently opened paths, pinned shortcuts, Home data persistence, and Home actions |
 | `session.rs` | Save and restore workspace sessions, including the restore prompt and session serialization |
 | `masonry.rs` | Masonry workspace surface, filtering, sorting, selection, and grid layout |
 | `masonry_group.rs` | Folder groups, thumbnail cards, context menus, and entry pointer interaction |

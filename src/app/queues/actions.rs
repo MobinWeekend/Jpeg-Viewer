@@ -52,6 +52,9 @@ impl ViewerApp {
     }
 
     pub fn begin_rename(&mut self, path: &Path) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if !path.is_file() {
             self.queue_status = Some("Only existing filesystem files can be renamed.".into());
             return;
@@ -61,6 +64,9 @@ impl ViewerApp {
     }
 
     pub fn begin_rename_current(&mut self) {
+        if self.is_home_surface_active() {
+            return;
+        }
         let path = self.image_entries.get(self.current_index).and_then(entry_path).cloned();
         if let Some(path) = path { self.begin_rename(&path); }
         else { self.queue_status = Some("The current entry cannot be renamed as a filesystem file.".into()); }

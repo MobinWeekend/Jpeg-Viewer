@@ -127,10 +127,25 @@ pub fn render_top_toolbar(
                 ui,
                 content_width,
                 |this, ui, budget, row_start| {
+                    let native_window_titlebar = this.settings_manager.get().show_titlebar;
                     if !this.workspace_tab_strip_hosts_hamburger(ctx)
-                        && !crate::app::ui::uses_desktop_menu_bar(ctx)
+                        && (!crate::app::ui::uses_desktop_menu_bar(ctx) || native_window_titlebar)
                     {
                         this.render_hamburger_ui(ui);
+                    }
+                    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+                    let masonry_is_in_fullscreen_strip = fullscreen && this.workspace_tab_strip_visible(ctx);
+                    if !crate::app::ui::uses_desktop_menu_bar(ctx)
+                        && this.masonry_toggle_available()
+                        && !masonry_is_in_fullscreen_strip
+                    {
+                        let active = this.workspace.active_kind()
+                            == crate::app::workspace::WorkspaceTabKind::Masonry;
+                        let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
+                            .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+                        if toggle.clicked() {
+                            this.toggle_masonry_workspace();
+                        }
                     }
                     let space = if compact { 8.0 } else { 1.0 };
                     if no_image && max_width >= 156.0 {
@@ -280,7 +295,11 @@ pub fn render_platform_toolbar(
     let has_desktop_menu_bar = crate::app::ui::uses_desktop_menu_bar(ctx);
     // COSMIC/GNOME can rely on the menu bar for actions when no image is loaded.
     // Win98 keeps a classic toolbar below its always-on menu bar even on the welcome UI.
-    if app.image_entries.is_empty() && has_desktop_menu_bar && placement != "win98" {
+    if app.image_entries.is_empty()
+        && has_desktop_menu_bar
+        && !app.settings_manager.get().show_titlebar
+        && placement != "win98"
+    {
         return;
     }
 
@@ -412,8 +431,23 @@ fn render_win98_primary_row(
 ) {
     let row_start = ui.next_widget_position().x;
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
-    if fullscreen && !app.workspace_tab_strip_visible(ctx) {
+    let native_window_titlebar = app.settings_manager.get().show_titlebar;
+    let hamburger_is_in_tab_strip = app.workspace_tab_strip_hosts_hamburger(ctx);
+    if native_window_titlebar || (fullscreen && !hamburger_is_in_tab_strip) {
         app.render_hamburger_ui(ui);
+        separator(ui, 1.0);
+    }
+    let masonry_is_in_fullscreen_strip = fullscreen && app.workspace_tab_strip_visible(ctx);
+    if native_window_titlebar && !crate::app::ui::uses_desktop_menu_bar(ctx)
+        && app.masonry_toggle_available() && !masonry_is_in_fullscreen_strip
+    {
+        let active = app.workspace.active_kind()
+            == crate::app::workspace::WorkspaceTabKind::Masonry;
+        let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
+            .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+        if toggle.clicked() {
+            app.toggle_masonry_workspace();
+        }
         separator(ui, 1.0);
     }
     // Classic controls are aligned left within the central viewport, never over
@@ -482,14 +516,28 @@ fn render_platform_primary_row(
             // If the sole Viewer hides the row, keep the menu reachable here.
             !app.workspace_tab_strip_visible(ctx)
         } else {
-            !has_desktop_menu_bar && (!ultra_compact || !has_images)
+            app.settings_manager.get().show_titlebar
+                || (!has_desktop_menu_bar && (!ultra_compact || !has_images))
         };
         if has_hamburger {
             app.render_hamburger_ui(ui);
         }
+        let masonry_is_in_fullscreen_strip = fullscreen && app.workspace_tab_strip_visible(ctx);
+        if !has_desktop_menu_bar
+            && app.masonry_toggle_available()
+            && !masonry_is_in_fullscreen_strip
+        {
+            let active = app.workspace.active_kind()
+                == crate::app::workspace::WorkspaceTabKind::Masonry;
+            let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
+                .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+            if toggle.clicked() {
+                app.toggle_masonry_workspace();
+            }
+        }
 
         if has_images {
-            if has_hamburger {
+            if has_hamburger || has_images {
                 separator(ui, if compact { 8.0 } else { 1.0 });
             }
 

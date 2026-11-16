@@ -1,4 +1,4 @@
-//! New Tab shortcuts, recently opened paths, pinning, and persisted link data.
+//! Home shortcuts, recently opened paths, pinning, and persisted link data.
 
 use super::*;
 use super::helpers::*;
@@ -44,7 +44,7 @@ impl crate::app::types::ViewerApp {
         let path = self.welcome_data_path();
         if let Some(parent) = path.parent() {
             if let Err(error) = fs::create_dir_all(parent) {
-                eprintln!("Could not create New Tab data directory: {error}");
+                eprintln!("Could not create Home data directory: {error}");
                 return;
             }
         }
@@ -112,6 +112,26 @@ impl crate::app::types::ViewerApp {
         }
     }
 
+    pub(crate) fn reorder_welcome_pins(&mut self, from: &Path, to: &Path, before: bool) {
+        self.ensure_welcome_data_loaded();
+        let Some(from_index) = self.workspace.welcome_pinned.iter()
+            .position(|path| welcome_paths_equal(path, from)) else { return; };
+        let Some(_) = self.workspace.welcome_pinned.iter()
+            .position(|path| welcome_paths_equal(path, to)) else { return; };
+        if welcome_paths_equal(from, to) { return; }
+        let item = self.workspace.welcome_pinned.remove(from_index);
+        let target_index = self.workspace.welcome_pinned.iter()
+            .position(|path| welcome_paths_equal(path, to))
+            .unwrap_or(self.workspace.welcome_pinned.len());
+        let insert_at = if before {
+            target_index
+        } else {
+            target_index.saturating_add(1).min(self.workspace.welcome_pinned.len())
+        };
+        self.workspace.welcome_pinned.insert(insert_at, item);
+        self.save_welcome_data();
+    }
+
     pub(crate) fn remove_welcome_pin(&mut self, path: &Path) {
         self.ensure_welcome_data_loaded();
         self.workspace.welcome_pinned.retain(|existing| !welcome_paths_equal(existing, path));
@@ -131,7 +151,7 @@ impl crate::app::types::ViewerApp {
 
         let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase();
         if extension != "jvq" && extension != "txt" {
-            self.queue_status = Some("New Tab shortcuts support image files, folders, and .jvq playlists.".into());
+            self.queue_status = Some("Home shortcuts support image files, folders, and .jvq playlists.".into());
             return;
         }
         let paths = match crate::app::queues::read_queue(&path) {
@@ -183,6 +203,22 @@ impl crate::app::types::ViewerApp {
         ctx.request_repaint();
     }
 
+    pub(crate) fn remove_welcome_recent(&mut self, path: &Path) {
+        self.ensure_welcome_data_loaded();
+        self.workspace.welcome_recent.retain(|existing| !welcome_paths_equal(existing, path));
+        self.workspace.welcome_thumbnail_sources.remove(path);
+        self.prune_welcome_thumbnail_sources();
+        self.save_welcome_data();
+    }
+
+    pub(crate) fn open_welcome_path_in_masonry(&mut self, path: PathBuf) {
+        let title = format!(
+            "Masonry · {}",
+            path.file_name().and_then(|name| name.to_str()).unwrap_or("Collection")
+        );
+        self.open_masonry_from_paths(std::slice::from_ref(&path), &title);
+    }
+
     pub(crate) fn load_favorites_from_welcome(&mut self) {
         self.ensure_favorites_loaded();
         let paths = self.favorite_paths.clone();
@@ -193,18 +229,22 @@ impl crate::app::types::ViewerApp {
         self.open_masonry_from_paths(&paths, "Masonry · Favorites");
     }
 
-    pub(crate) fn open_new_welcome_tab(&mut self) {
-        self.snapshot_active_viewer_tab();
-        let id = self.workspace.allocate_id();
-        self.workspace.tabs.push(WorkspaceTab::welcome(id));
-        self.workspace.active_index = self.workspace.tabs.len() - 1;
-        self.stop_preloading_for_workspace();
+    /// Show the single Home surface inside the primary Viewer workspace.
+    /// Repeated invocations simply return to that same surface.
+    pub(crate) fn open_home_page(&mut self) {
+        self.activate_primary_viewer_tab();
+        self.workspace.home_page_visible = true;
+        // Home is a navigation surface, never an editing canvas. Keep a working
+        // copy intact so it can be resumed after returning to an image, but hide
+        // its controls while Home is visible.
+        self.show_edit_menu = false;
+        self.crop_tool_active = false;
+        self.crop_drag_start_image = None;
+        self.crop_selection = None;
     }
 
     pub(crate) fn active_workspace_hides_image_navigation(&self) -> bool {
-        matches!(
-            self.workspace.active_kind(),
-            WorkspaceTabKind::Masonry | WorkspaceTabKind::Compare | WorkspaceTabKind::Welcome
-        )
+        matches!(self.workspace.active_kind(), WorkspaceTabKind::Masonry | WorkspaceTabKind::Compare)
+            || self.is_home_surface_active()
     }
 }

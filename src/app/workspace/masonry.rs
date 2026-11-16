@@ -7,7 +7,15 @@ impl crate::app::types::ViewerApp {
     /// Returns true when a non-viewer workspace rendered the central surface.
     pub(crate) fn render_active_workspace(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
         match self.workspace.active_kind() {
-            WorkspaceTabKind::Viewer | WorkspaceTabKind::Image => false,
+            WorkspaceTabKind::Viewer => {
+                if self.is_home_surface_active() && !self.workspace.session_prompt {
+                    self.render_welcome_ui(ctx, ui);
+                    true
+                } else {
+                    false
+                }
+            }
+            WorkspaceTabKind::Image => false,
             WorkspaceTabKind::Masonry => {
                 self.render_masonry_workspace(ui, ctx);
                 true
@@ -65,6 +73,13 @@ impl crate::app::types::ViewerApp {
             ),
         );
 
+        // Temporarily take ownership of the Masonry entry vector while building
+        // the scroll area. Cloning the complete collection here used to duplicate
+        // every PathBuf/archive name on every repaint for large folders.
+        let masonry_entries = std::mem::take(
+            &mut self.workspace.tabs[tab_index].entries,
+        );
+
         // The content scroll area is constrained to the actual remaining CentralPanel
         // rect, which already accounts for both docked sidebars. The scrollbar is
         // widened and kept inside that rect; no outer-window subtraction is needed.
@@ -96,11 +111,10 @@ impl crate::app::types::ViewerApp {
                                 let content_width = (viewport_width - 24.0).max(1.0);
                                 grid_ui.set_min_width(content_width);
                                 grid_ui.set_max_width(content_width);
-
-                                let (entries, selected, search, extension_filter, folder_masonry, recursive, directory, preferred_size) = {
+                                let entries = &masonry_entries;
+                                let (selected, search, extension_filter, folder_masonry, recursive, directory, preferred_size) = {
                                     let tab = &self.workspace.tabs[tab_index];
                                     (
-                                        tab.entries.clone(),
                                         tab.selected.clone(),
                                         tab.search.to_lowercase(),
                                         tab.extension_filter.to_lowercase(),
@@ -110,12 +124,33 @@ impl crate::app::types::ViewerApp {
                                         tab.masonry_tile_size,
                                     )
                                 };
-                                let filtered = entries.into_iter().filter(|entry| {
-                                    let name = entry_display_name(entry).to_lowercase();
-                                    let ext = Path::new(&name).extension().and_then(|value| value.to_str()).unwrap_or("").to_lowercase();
-                                    (search.is_empty() || name.contains(&search))
-                                        && (extension_filter.is_empty() || ext == extension_filter)
-                                }).collect::<Vec<_>>();
+                                // Keep references into the one required snapshot rather
+                                // than moving/cloning every ImageEntry again during filtering
+                                // and folder grouping.
+                                let selected_entries = if selected.is_empty() {
+                                    Vec::new()
+                                } else {
+                                    entries.iter()
+                                        .filter(|entry| selected.contains(&entry.get_id()))
+                                        .collect::<Vec<_>>()
+                                };
+                                let filtered = if search.is_empty() && extension_filter.is_empty() {
+                                    // The default view displays the entire collection.
+                                    // Avoid allocating/lowercasing every filename just to
+                                    // discover that no filter removes anything.
+                                    entries.iter().collect::<Vec<_>>()
+                                } else {
+                                    entries.iter().filter(|entry| {
+                                        let name = entry_display_name(entry).to_lowercase();
+                                        let ext = Path::new(&name)
+                                            .extension()
+                                            .and_then(|value| value.to_str())
+                                            .unwrap_or("")
+                                            .to_owned();
+                                        (search.is_empty() || name.contains(&search))
+                                            && (extension_filter.is_empty() || ext == extension_filter)
+                                    }).collect::<Vec<_>>()
+                                };
 
                                 if filtered.is_empty() {
                                     grid_ui.allocate_ui_with_layout(
@@ -123,7 +158,7 @@ impl crate::app::types::ViewerApp {
                                         egui::Layout::top_down(egui::Align::Center),
                                         |empty_ui| {
                                             empty_ui.add_space((content_rect.height() * 0.25).max(20.0));
-                                            empty_ui.label(if self.workspace.tabs[tab_index].entries.is_empty() {
+                                            empty_ui.label(if entries.is_empty() {
                                                 "No supported images in this collection."
                                             } else {
                                                 "No images match the current filters."
@@ -136,19 +171,35 @@ impl crate::app::types::ViewerApp {
                                     // Local collections also get grouped when they contain images
                                     // from more than one source folder (or archive subfolder), so
                                     // the user can tell where each entry belongs while scrolling.
-                                    let distinct_folders = filtered
-                                        .iter()
-                                        .map(|entry| entry_breadcrumb(entry, directory.as_deref()))
-                                        .collect::<HashSet<_>>();
-                                    let show_folder_headers = headers_enabled
-                                        && ((folder_masonry && recursive) || distinct_folders.len() > 1);
-                                    let mut groups: Vec<(String, Vec<ImageEntry>)> = Vec::new();
+                                    // Most local collections contain images from one
+                                    // directory. Detect the first differing folder and
+                                    // stop immediately instead of allocating a HashSet
+                                    // of breadcrumb Strings for the entire list each frame.
+                                    let show_folder_headers = if !headers_enabled {
+                                        false
+                                    } else if folder_masonry && recursive {
+                                        true
+                                    } else if let Some(first) = filtered.first() {
+                                        let first = entry_folder_parts(first, directory.as_deref());
+                                        filtered.iter().skip(1).any(|entry| {
+                                            entry_folder_parts(entry, directory.as_deref()) != first
+                                        })
+                                    } else {
+                                        false
+                                    };
+                                    let mut groups: Vec<(String, Vec<&ImageEntry>)> = Vec::new();
                                     if show_folder_headers {
+                                        // Preserve first-seen group order while using O(1)
+                                        // average lookup instead of scanning all existing
+                                        // groups for every image in a large collection.
+                                        let mut group_indices = HashMap::<String, usize>::new();
                                         for entry in filtered {
-                                            let label = entry_breadcrumb(&entry, directory.as_deref());
-                                            if let Some((_, group_entries)) = groups.iter_mut().find(|(name, _)| *name == label) {
-                                                group_entries.push(entry);
+                                            let label = entry_breadcrumb(entry, directory.as_deref());
+                                            if let Some(index) = group_indices.get(&label).copied() {
+                                                groups[index].1.push(entry);
                                             } else {
+                                                let index = groups.len();
+                                                group_indices.insert(label.clone(), index);
                                                 groups.push((label, vec![entry]));
                                             }
                                         }
@@ -225,6 +276,7 @@ impl crate::app::types::ViewerApp {
                                                 tab_id,
                                                 &group_entries,
                                                 &selected,
+                                                &selected_entries,
                                                 preferred_size,
                                                 ctx,
                                                 &mut action,
@@ -242,6 +294,10 @@ impl crate::app::types::ViewerApp {
                     });
             },
         );
+
+        // Restore the collection before drawing the footer or dispatching any
+        // deferred actions; those controls operate on the tab's owned entries.
+        self.workspace.tabs[tab_index].entries = masonry_entries;
 
         // Look-aware bottom dock. Normal mode is exactly two rows; selection mode
         // adds only one third row for bulk selection and file-management actions.
@@ -447,6 +503,7 @@ impl crate::app::types::ViewerApp {
                 let valid_ids = refreshed.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
                 let tab = &mut self.workspace.tabs[tab_index];
                 tab.entries = refreshed;
+                tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
                 tab.selected.retain(|id| valid_ids.contains(id));
             }
         }

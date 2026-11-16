@@ -3,6 +3,9 @@ use eframe::egui;
 
 impl ViewerApp {
     pub(crate) fn toggle_inspect_mode(&mut self, ctx: &egui::Context) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.inspect_mode {
             self.inspect_mode = false;
             self.inspect_texture = None;
@@ -17,6 +20,13 @@ impl ViewerApp {
     }
 
     pub(crate) fn prepare_inspect_source(&mut self, ctx: &egui::Context) {
+        if self.is_home_surface_active() {
+            self.inspect_mode = false;
+            self.inspect_texture = None;
+            self.inspect_source = None;
+            self.inspect_source_path = None;
+            return;
+        }
         let Some(path) = self.current_image_path.clone() else {
             self.edit_status = Some("Inspect requires an image with a readable file path.".into());
             self.inspect_mode = false;

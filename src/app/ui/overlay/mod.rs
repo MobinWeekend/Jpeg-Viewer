@@ -26,9 +26,10 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     let custom_titlebar = !app.settings_manager.get().show_titlebar
         && !fullscreen
         && app.settings_manager.get().custom_titlebar_navigation;
-    // The desktop menu bar replaces the hamburger in windowed mode. Fullscreen
-    // hides that bar, so keep the tab-row hamburger and its popup fully functional.
-    if desktop_menu_bar && !fullscreen {
+    // With native decorations, Home keeps its landing-page navigation available;
+    // in other workspaces the floating controls follow the navigation auto-hide state.
+    let native_window_titlebar = app.settings_manager.get().show_titlebar;
+    if desktop_menu_bar && !fullscreen && !native_window_titlebar {
         app.hamburger_menu_open = false;
     }
     // Sidebar drawer handle is separate from the navigation toolbar and follows
@@ -41,10 +42,22 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // when the user hides the viewer overlays or the file sidebar.
     crate::app::queues::render_rename_dialog(app, ctx);
     if !app.overlay_visible {
+        // Native-titlebar navigation auto-hides with the rest of the toolbar. Home
+        // is the exception: its navigation entry points remain available.
+        if native_window_titlebar && !fullscreen && app.is_home_surface_active() {
+            // Home remains a navigable landing surface even when image overlays are
+            // hidden; other workspaces do not leave floating navigation buttons behind.
+            let central_rect = app.main_view_rect(ctx);
+            render_main_surface_navigation_controls(
+                app,
+                ctx,
+                egui::pos2(central_rect.left() + MENU_OFFSET, get_menu_offset_y(app, ctx)),
+            );
+        }
         // Desktop profile menu bars are always visible, even while the floating
         // viewer controls are hidden. Their application menu must remain usable.
         if app.hamburger_menu_open
-            && (!desktop_menu_bar || custom_titlebar || app.active_workspace_hides_image_navigation())
+            && (!desktop_menu_bar || custom_titlebar || native_window_titlebar)
         {
             render_hamburger_menu(app, ctx, placement);
         }
@@ -69,7 +82,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             // Fullscreen's tab row reserves the first 40px of the central view.
             52.0
         } else if is_fullscreen {
-            // With only the primary Viewer tab, the strip (including +) is hidden.
+            // With only the primary Viewer tab, the workspace strip is hidden.
             MENU_OFFSET
         } else {
             let base = if crate::app::ui::uses_desktop_menu_bar(ctx) {
@@ -102,11 +115,15 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     let hide_image_navigation = app.active_workspace_hides_image_navigation();
 
     if hide_image_navigation {
-        // Masonry, Compare and New Tab own the central view and do not show
-        // image-navigation overlays. The standalone hamburger is used only when
-        // the tab strip does not host it (native-titlebar multi-tab and fullscreen
-        // layouts place it at the strip's leading edge).
-        if !custom_titlebar
+        // Masonry, Compare and Home own the central view and do not show
+        // image-navigation overlays. Native-titlebar navigation is rendered separately.
+        if app.settings_manager.get().show_titlebar && !is_fullscreen {
+            render_main_surface_navigation_controls(
+                app,
+                ctx,
+                egui::pos2(central_left + MENU_OFFSET, menu_offset_y),
+            );
+        } else if !custom_titlebar
             && !is_fullscreen
             && !desktop_menu_bar
             && !app.workspace_tab_strip_hosts_hamburger(ctx)
@@ -195,7 +212,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     }
 
     // Render the popup after the toolbar so it can use the button's actual screen rect.
-    if !desktop_menu_bar || is_fullscreen {
+    if !desktop_menu_bar || is_fullscreen || native_window_titlebar {
         render_hamburger_menu(app, ctx, placement);
     }
 
@@ -254,6 +271,34 @@ fn render_hamburger_button_at(
         .fixed_pos(position)
         .show(ctx, |ui| {
             app.render_hamburger_ui(ui);
+        });
+}
+
+/// Native-titlebar navigation actions for non-image surfaces. When overlays are
+/// hidden, this row is kept persistent on Home only; other workspaces hide these
+/// controls together with the navigation UI. With a desktop menu bar, Masonry is
+/// hosted immediately before File instead of being duplicated in this row.
+fn render_main_surface_navigation_controls(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    position: egui::Pos2,
+) {
+    egui::Area::new(egui::Id::new("main_surface_navigation_controls"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(position)
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                app.render_hamburger_ui(ui);
+                if !crate::app::ui::uses_desktop_menu_bar(ctx) && app.masonry_toggle_available() {
+                    let active = app.workspace.active_kind()
+                        == crate::app::workspace::WorkspaceTabKind::Masonry;
+                    let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
+                        .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+                    if toggle.clicked() {
+                        app.toggle_masonry_workspace();
+                    }
+                }
+            });
         });
 }
 
@@ -353,6 +398,7 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
         .constrain(true)
         .show(ctx, |ui| app.render_hamburger_menu_ui(ctx, ui));
 }
+
 
 fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
     const MENU_OFFSET: f32 = 8.0;

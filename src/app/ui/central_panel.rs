@@ -137,13 +137,12 @@ impl ViewerApp {
                 return;
             }
 
-            // Get the available rect. Platform-style fit mode reserves a little space
-            // around the image and for the top/bottom centered toolbar.
+            // Get the available image rectangle. Navigation toolbars are foreground
+            // overlays, so their geometry must not reduce this content area.
             let available_rect = ui.available_rect_before_wrap()
                 .intersect(ui.clip_rect())
                 .intersect(self.central_panel_rect);
-            let image_viewport_rect =
-                fitted_image_viewport_rect(available_rect, ctx, &settings, !self.b_zoom_used);
+            let image_viewport_rect = fitted_image_viewport_rect(available_rect, ctx, &settings);
             // User-defined padding may be negative to bring the image closer to
             // the window edge. Never let that extend the image layer above the
             // content viewport (especially over the browser-style workspace tabs).
@@ -868,20 +867,14 @@ fn paint_checkerboard(
     }
 }
 
-/// Reserve non-overlapping room for centered platform toolbars only while the
-/// image is in fit-to-window mode. The original JPEG Viewer layout is unchanged.
+/// Apply the user's image-edge padding independently of the floating navigation
+/// controls. The toolbar is a foreground overlay, so the image viewport must not
+/// grow or shrink when switching between fit and manual zoom.
 fn fitted_image_viewport_rect(
     available: egui::Rect,
     ctx: &egui::Context,
     settings: &crate::settings::AppSettings,
-    fit_mode: bool,
 ) -> egui::Rect {
-    // Preserve the original Look behavior: default and fine-tuned toolbar clearance
-    // is reserved in fit mode. Explicit custom padding remains active while zooming.
-    if !fit_mode && settings.view_padding_mode != "custom" {
-        return available;
-    }
-
     let profile = crate::ui_theme::current_look_profile(ctx);
     let placement = crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
     let mut padding = crate::app::settings_menu::viewing::effective_padding(settings, profile, placement);

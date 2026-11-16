@@ -24,6 +24,7 @@ impl crate::app::types::ViewerApp {
             return;
         };
         self.activate_workspace_tab(id);
+        self.workspace.home_page_visible = false;
     }
 
     pub(crate) fn activate_workspace_tab(&mut self, id: u64) {
@@ -44,14 +45,25 @@ impl crate::app::types::ViewerApp {
                 let tab = &self.workspace.tabs[target_index];
                 let entries = tab.entries.clone();
                 let entry_count = entries.len();
-                let index = tab.current_index;
+                let index = tab.current_index.min(entry_count.saturating_sub(1));
                 let directory = tab.directory.clone();
                 let zoom = tab.zoom;
                 let pan = tab.pan;
                 let fit = tab.fit_to_window;
                 let zoom_used = tab.zoom_used;
                 self.current_directory = directory;
-                self.set_image_entries(entries, index.min(entry_count.saturating_sub(1)));
+
+                // Masonry and Compare do not replace the underlying Viewer
+                // collection. When returning to the same collection/index, keep
+                // its in-flight decoder or displayed texture alive rather than
+                // resetting the renderer and starting the decode again.
+                let same_viewer_item = self.current_index == index
+                    && self.image_entries.len() == entries.len()
+                    && self.image_entries.iter().zip(entries.iter())
+                        .all(|(current, restored)| current.get_id() == restored.get_id());
+                if !same_viewer_item {
+                    self.set_image_entries_preserving_cache(entries, index);
+                }
                 self.zoom = zoom.max(0.01);
                 self.pan = pan;
                 self.b_fit_to_window = fit;
@@ -238,6 +250,9 @@ impl crate::app::types::ViewerApp {
         if self.workspace.pending_compare_target_id == Some(id) {
             self.workspace.pending_compare_target_id = None;
         }
+        if self.workspace.masonry_return_tab_id == Some(id) {
+            self.workspace.masonry_return_tab_id = None;
+        }
         self.workspace.tabs.remove(index);
         if self.workspace.last_image_tab_id == Some(id) {
             self.workspace.last_image_tab_id = self
@@ -265,18 +280,36 @@ impl crate::app::types::ViewerApp {
         }
     }
 
+    /// Whether the main-surface Masonry toggle can switch to or from the
+    /// singleton Masonry workspace. Home is still the primary Viewer surface,
+    /// so an already-loaded Viewer collection remains available from Home.
+    pub(crate) fn masonry_toggle_available(&self) -> bool {
+        let active_kind = self.workspace.active_kind();
+        active_kind == WorkspaceTabKind::Masonry
+            || (matches!(active_kind, WorkspaceTabKind::Viewer | WorkspaceTabKind::Image)
+                && !self.image_entries.is_empty())
+    }
+
     /// Whether the workspace tab strip is actually rendered in the current
     /// viewport. Overlay placement uses the same decision so fullscreen controls
     /// never reserve space for a row that is hidden with the sole Viewer tab.
     pub(crate) fn workspace_tab_strip_visible(&self, ctx: &egui::Context) -> bool {
-        let only_primary_viewer = self.workspace.tabs.len() == 1
-            && self.workspace.tabs[0].kind == WorkspaceTabKind::Viewer;
+        let has_secondary_tabs = self.workspace.tabs.iter().any(|tab| {
+            !(tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+                && tab.kind != WorkspaceTabKind::Masonry
+                && tab.kind != WorkspaceTabKind::Welcome
+        });
         let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
-        !only_primary_viewer && (!fullscreen || self.overlay_visible)
+        let inline_titlebar_tabs = !self.settings_manager.get().show_titlebar
+            && self.settings_manager.get().workspace_tabs_in_titlebar
+            && !fullscreen;
+        has_secondary_tabs
+            && !inline_titlebar_tabs
+            && (!fullscreen || self.overlay_visible)
     }
 
-    /// Whether the navigation hamburger is hosted by the leading edge of the
-    /// workspace tab strip instead of by the floating navigation toolbar.
+    /// Whether the navigation hamburger is hosted by the workspace strip.
+    /// This is now reserved for fullscreen, where the strip occupies the top row.
     pub(crate) fn workspace_tab_strip_hosts_hamburger(&self, ctx: &egui::Context) -> bool {
         // The hamburger is part of the tab strip, not an independently floating
         // overlay. Its visibility therefore follows the exact same predicate as
@@ -285,17 +318,206 @@ impl crate::app::types::ViewerApp {
             return false;
         }
         let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+        // With native decorations, the menu and Masonry toggle belong to the
+        // floating navigation overlay beside zoom controls, not the document tab row.
         fullscreen
-            || (self.settings_manager.get().show_titlebar
-                && !crate::app::ui::uses_desktop_menu_bar(ctx))
+    }
+
+    /// Compact tab controls for the custom title bar's single horizontal row.
+    /// Returns the actual horizontal width used by the visible workspace tabs.
+    /// The remaining title-bar space can then host the window title and drag area.
+    pub(crate) fn render_workspace_tabs_inline(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> f32 {
+        if self.settings_manager.get().show_titlebar
+            || !self.settings_manager.get().workspace_tabs_in_titlebar
+            || ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
+            || self.workspace.tabs.len() <= 1
+        {
+            return 0.0;
+        }
+
+        let active_id = self.workspace.tabs.get(self.workspace.active_index).map(|tab| tab.id);
+        let tabs = self.workspace.tabs.iter()
+            .filter(|tab| !(tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+                && tab.kind != WorkspaceTabKind::Masonry
+                && tab.kind != WorkspaceTabKind::Welcome)
+            .map(|tab| (tab.id, tab.title.clone(), tab.kind))
+            .collect::<Vec<_>>();
+        if tabs.is_empty() {
+            return 0.0;
+        }
+
+        // Reserve only the actual tab widths, leaving remaining space for the
+        // centered window title and a usable draggable title-bar region.
+        let win98 = crate::ui_theme::current_look_profile(ctx) == "win98";
+        let caption_button_width = if win98 { 22.0 } else { 46.0 };
+        let controls_width = caption_button_width * 3.0 + 4.0;
+        let tab_gap = 3.0;
+        let desired_tabs_width = tabs.iter().map(|(_, title, kind)| {
+            let icon = match kind {
+                WorkspaceTabKind::Viewer => "▣",
+                WorkspaceTabKind::Image => "▧",
+                WorkspaceTabKind::Masonry => "",
+                WorkspaceTabKind::Compare => "⇄",
+                WorkspaceTabKind::Welcome => "⌂",
+            };
+            let short_title = if title.chars().count() > 16 {
+                format!("{}…", title.chars().take(15).collect::<String>())
+            } else {
+                title.clone()
+            };
+            let label = format!("{icon}  {short_title}");
+            (label.chars().count() as f32 * 7.0 + 42.0).clamp(88.0, 220.0)
+        }).sum::<f32>() + tab_gap * tabs.len().saturating_sub(1) as f32;
+        let min_drag_width = 84.0;
+        let tab_width = desired_tabs_width.min(
+            (ui.available_width() - controls_width - min_drag_width).max(0.0).min(720.0),
+        );
+        if tab_width < 64.0 {
+            return 0.0;
+        }
+
+        let mut activate = None;
+        let mut close = None;
+        // Match the actual caption-control row height and center the chips in
+        // that full-height host, including the shorter Win98 title-bar profile.
+        let row_height = if win98 { 24.0 } else { 36.0 };
+        let chip_height = if win98 { 22.0 } else { 28.0 };
+        ui.allocate_ui_with_layout(
+            egui::vec2(tab_width, row_height),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |host| {
+                host.set_min_width(tab_width);
+                host.set_max_width(tab_width);
+                egui::ScrollArea::horizontal()
+                    .id_salt("custom_titlebar_workspace_tabs")
+                    .auto_shrink([false, false])
+                    .max_width(tab_width)
+                    .max_height(row_height)
+                    .show(host, |scroll| {
+                        scroll.set_min_height(row_height);
+                        scroll.set_max_height(row_height);
+                        scroll.with_layout(
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |row| {
+                                row.set_min_height(row_height);
+                                row.set_max_height(row_height);
+                                row.spacing_mut().item_spacing.x = 3.0;
+                                for (id, title, kind) in &tabs {
+                                    let active = Some(*id) == active_id;
+                                    let can_close = !(*kind == WorkspaceTabKind::Viewer && *id == 1);
+                                    let icon = match kind {
+                                        WorkspaceTabKind::Viewer => "▣",
+                                        WorkspaceTabKind::Image => "▧",
+                                        WorkspaceTabKind::Masonry => "▦",
+                                        WorkspaceTabKind::Compare => "⇄",
+                                        WorkspaceTabKind::Welcome => "⌂",
+                                    };
+                                    let short_title = if title.chars().count() > 16 {
+                                        format!("{}…", title.chars().take(15).collect::<String>())
+                                    } else {
+                                        title.clone()
+                                    };
+                                    let label = format!("{icon}  {short_title}");
+                                    let width = (label.chars().count() as f32 * 7.0
+                                        + if can_close { 42.0 } else { 22.0 })
+                                        .clamp(88.0, 220.0);
+                                    let (rect, response) = row.allocate_exact_size(
+                                        egui::vec2(width, chip_height),
+                                        egui::Sense::click_and_drag(),
+                                    );
+                                    let visuals = row.visuals();
+                                    let rounding = if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                                        egui::CornerRadius::ZERO
+                                    } else {
+                                        egui::CornerRadius::same(7)
+                                    };
+                                    let fill = if active {
+                                        visuals.selection.bg_fill
+                                    } else if response.hovered() {
+                                        visuals.widgets.hovered.bg_fill
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    };
+                                    row.painter().rect_filled(rect, rounding, fill);
+                                    row.painter().rect_stroke(
+                                        rect,
+                                        rounding,
+                                        if active { visuals.selection.stroke }
+                                        else { egui::Stroke::new(0.5_f32, visuals.widgets.inactive.bg_stroke.color) },
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    let close_rect = egui::Rect::from_center_size(
+                                        egui::pos2(rect.right() - 13.0, rect.center().y),
+                                        egui::vec2(20.0, 20.0),
+                                    );
+                                    let label_rect = egui::Rect::from_min_max(
+                                        rect.min + egui::vec2(8.0, 1.0),
+                                        egui::pos2(
+                                            if can_close { close_rect.left() - 2.0 } else { rect.right() - 5.0 },
+                                            rect.bottom() - 1.0,
+                                        ),
+                                    );
+                                    row.painter().with_clip_rect(label_rect).text(
+                                        egui::pos2(rect.left() + 8.0, rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        label,
+                                        egui::FontId::proportional(12.5),
+                                        if active { visuals.text_color() } else { visuals.weak_text_color() },
+                                    );
+                                    let close_hovered = can_close && ctx.pointer_hover_pos()
+                                        .is_some_and(|pos| close_rect.contains(pos));
+                                    if can_close && (response.hovered() || close_hovered) {
+                                        row.painter().circle_filled(
+                                            close_rect.center(),
+                                            8.5,
+                                            visuals.widgets.hovered.bg_fill,
+                                        );
+                                        row.painter().text(
+                                            close_rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            "×",
+                                            egui::FontId::proportional(16.0),
+                                            visuals.text_color(),
+                                        );
+                                    }
+
+                                    if response.clicked_by(egui::PointerButton::Middle) {
+                                        if can_close { close = Some(*id); }
+                                    } else if response.clicked() {
+                                        if can_close && response.interact_pointer_pos()
+                                            .is_some_and(|pos| close_rect.contains(pos))
+                                        {
+                                            close = Some(*id);
+                                        } else {
+                                            activate = Some(*id);
+                                        }
+                                    }
+                                    if response.drag_started() && response.interact_pointer_pos()
+                                        .is_some_and(|pos| !close_rect.contains(pos))
+                                    {
+                                        self.workspace.dragging_tab_id = Some(*id);
+                                    }
+                                }
+                            },
+                        );
+                    });
+            },
+        );
+
+        if let Some(id) = close {
+            self.close_workspace_tab(id);
+        } else if let Some(id) = activate {
+            self.activate_workspace_tab(id);
+        }
+        tab_width
     }
 
     pub(crate) fn render_workspace_tabs(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         self.handle_workspace_tab_shortcuts(ctx);
         // In fullscreen the strip is a real CentralPanel row, not a floating
-        // overlay. This reserves its height so Masonry, Compare, New Tab, and the
+        // overlay. This reserves its height so Masonry, Compare, Home, and the
         // image viewport all begin below it instead of being covered by the tabs.
-        // When only the pinned Viewer remains, hide the entire strip, including +.
+        // When only the primary Viewer remains, hide the workspace strip.
         if self.workspace_tab_strip_visible(ctx) {
             self.render_workspace_tab_strip(ui, ctx, self.main_view_width(ctx));
         }
@@ -305,12 +527,6 @@ impl crate::app::types::ViewerApp {
         // Browser-style keyboard navigation/reordering. Do not steal shortcuts
         // while the user is typing in a search field or another text editor.
         if ctx.wants_keyboard_input() {
-            return;
-        }
-        let open_welcome =
-            ctx.input(|input| input.modifiers.ctrl && input.key_pressed(egui::Key::T));
-        if open_welcome {
-            self.open_new_welcome_tab();
             return;
         }
         let tab_action = ctx.input(|input| {
@@ -376,23 +592,33 @@ impl crate::app::types::ViewerApp {
                     .min(self.workspace.tabs.len() - 1),
             )
             .map(|tab| tab.id);
+        let active_kind = self.workspace.active_kind();
         let descriptors = self
             .workspace
             .tabs
             .iter()
-            .map(|tab| {
-                (
-                    tab.id,
-                    tab.title.clone(),
-                    tab.kind,
-                    Some(tab.id) == active_id,
-                )
-            })
+            // Viewer/Home and Masonry are two modes of the main surface, not
+            // document tabs. Masonry is represented by the dedicated toggle.
+            .filter(|tab| !(tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+                && tab.kind != WorkspaceTabKind::Masonry
+                && tab.kind != WorkspaceTabKind::Welcome)
+            .map(|tab| (
+                tab.id,
+                tab.title.clone(),
+                tab.kind,
+                Some(tab.id) == active_id,
+            ))
             .collect::<Vec<_>>();
+        let masonry_active = active_kind == WorkspaceTabKind::Masonry;
+        let masonry_available = self.masonry_toggle_available();
+        if descriptors.is_empty() && !masonry_available {
+            return;
+        }
         let show_tab_strip_hamburger = self.workspace_tab_strip_hosts_hamburger(ctx);
+        let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+        let show_tab_strip_masonry_toggle = masonry_available && fullscreen;
         let mut activate = None;
         let mut close = None;
-        let mut open_welcome = false;
         let mut tab_rects: Vec<(u64, egui::Rect)> = Vec::with_capacity(descriptors.len());
 
         let profile = crate::ui_theme::current_look_profile(ctx);
@@ -421,7 +647,13 @@ impl crate::app::types::ViewerApp {
                         let body_width = (strip_width - 12.0).max(0.0);
                         body.set_min_width(body_width);
                         body.set_max_width(body_width);
-                        body.horizontal(|row| {
+                        let body_height = body.available_height().max(32.0);
+                        body.allocate_ui_with_layout(
+                            egui::vec2(body_width, body_height),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |row| {
+                            row.set_min_height(body_height);
+                            row.set_max_height(body_height);
                             row.spacing_mut().item_spacing.x = 4.0;
                             // When the tab strip hosts the menu, keep it before the
                             // first tab rather than overlaying or following the tabs.
@@ -438,7 +670,19 @@ impl crate::app::types::ViewerApp {
                             } else {
                                 0.0
                             };
-                            let tab_viewport_width = (body_width - hamburger_width).max(0.0);
+                            let masonry_toggle_width = if show_tab_strip_masonry_toggle { 34.0 } else { 0.0 };
+                            if show_tab_strip_masonry_toggle {
+                                let toggle = crate::app::ui::masonry_toggle_button(
+                                    row,
+                                    masonry_active,
+                                    true,
+                                    30.0,
+                                ).on_hover_text(if masonry_active { "Return to Viewer" } else { "Open current entries in Masonry" });
+                                if toggle.clicked() {
+                                    self.toggle_masonry_workspace();
+                                }
+                            }
+                            let tab_viewport_width = (body_width - hamburger_width - masonry_toggle_width).max(0.0);
                             row.allocate_ui_with_layout(
                                 egui::vec2(tab_viewport_width, 32.0),
                                 egui::Layout::left_to_right(egui::Align::Center),
@@ -606,13 +850,14 @@ impl crate::app::types::ViewerApp {
                                                             );
                                                         }
                                                     }
-                                                    if response.clicked() {
+                                                    if response.clicked_by(egui::PointerButton::Middle) {
+                                                        // Middle-click is the browser-style close gesture.
+                                                        if can_close { close = Some(id); }
+                                                    } else if response.clicked() {
                                                         if can_close
                                                             && response
                                                                 .interact_pointer_pos()
-                                                                .is_some_and(|pos| {
-                                                                    close_rect.contains(pos)
-                                                                })
+                                                                .is_some_and(|pos| close_rect.contains(pos))
                                                         {
                                                             close = Some(id);
                                                         } else {
@@ -639,34 +884,7 @@ impl crate::app::types::ViewerApp {
                                                     tab_rects.push((id, rect));
                                                 }
 
-                                                // Keep + in the same scrollable sequence
-                                                // as the tabs so it is always the final tab action.
-                                                let (plus_rect, plus_response) = tabs_ui
-                                                    .allocate_exact_size(
-                                                        egui::vec2(32.0, 32.0),
-                                                        egui::Sense::click(),
-                                                    );
-                                                let plus_fill = if plus_response.hovered() {
-                                                    tabs_ui.visuals().widgets.hovered.bg_fill
-                                                } else {
-                                                    egui::Color32::TRANSPARENT
-                                                };
-                                                tabs_ui.painter().rect_filled(
-                                                    plus_rect,
-                                                    tab_rounding,
-                                                    plus_fill,
-                                                );
-                                                tabs_ui.painter().text(
-                                                    plus_rect.center(),
-                                                    egui::Align2::CENTER_CENTER,
-                                                    "+",
-                                                    egui::FontId::proportional(23.0),
-                                                    tabs_ui.visuals().text_color(),
-                                                );
-                                                if plus_response.clicked() {
-                                                    open_welcome = true;
-                                                }
-                                                plus_response.on_hover_text("New tab");
+
                                             });
                                         });
                                 },
@@ -700,8 +918,6 @@ impl crate::app::types::ViewerApp {
             self.close_workspace_tab(id);
         } else if let Some(id) = activate {
             self.activate_workspace_tab(id);
-        } else if open_welcome {
-            self.open_new_welcome_tab();
         }
     }
 

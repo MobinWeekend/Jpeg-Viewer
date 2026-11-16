@@ -237,16 +237,27 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                         // A dedicated shortcut opens the current Viewer
                         // collection in Masonry. Use the shared custom mark so
                         // every Masonry entry point has the same visual identity.
-                        if integrate_navigation
-                            && !app.active_workspace_hides_image_navigation()
-                            && !app.image_entries.is_empty()
-                        {
+                        let masonry_active = app.workspace.active_kind()
+                            == crate::app::workspace::WorkspaceTabKind::Masonry;
+                        let can_toggle_masonry = !crate::app::ui::uses_desktop_menu_bar(ctx)
+                            && app.masonry_toggle_available();
+                        if can_toggle_masonry {
                             ui.add_space(3.0);
-                            if crate::app::ui::masonry_button_quiet(ui, "", true, 30.0, true)
-                                .on_hover_text("Open current entries in Masonry")
-                                .clicked()
+                            let tip = if masonry_active {
+                                "Return to Viewer"
+                            } else {
+                                "Open current entries in Masonry"
+                            };
+                            if crate::app::ui::masonry_toggle_button(
+                                ui,
+                                masonry_active,
+                                true,
+                                30.0,
+                            )
+                            .on_hover_text(tip)
+                            .clicked()
                             {
-                                app.open_local_masonry();
+                                app.toggle_masonry_workspace();
                             }
                         }
 
@@ -269,32 +280,38 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             }
                         }
 
+                        // Workspace tabs occupy the same horizontal row as the title,
+                        // between navigation controls and the draggable title region.
+                        let _inline_tabs_width = app.render_workspace_tabs_inline(ui, ctx);
+
                         let actions_end = ui.next_widget_position().x;
                         let caption_start = ui.max_rect().right() - controls_width;
                         let drag_width = (caption_start - actions_end).max(0.0);
-                        let title_click_rename =
-                            app.settings_manager.get().rename_file_from_titlebar;
+                        let title_click_rename = app.settings_manager.get().rename_file_from_titlebar
+                            && !app.is_home_surface_active();
                         let (drag_rect, _) = ui.allocate_exact_size(
                             egui::vec2(drag_width, row_height),
                             egui::Sense::hover(),
                         );
-                        let title_visible = drag_width >= 90.0;
+                        let title_font = egui::FontId::proportional(if win98 { 13.0 } else { 14.0 });
+                        let title_text = app.window_title();
+                        let title_width = ui.painter()
+                            .layout_no_wrap(title_text.clone(), title_font.clone(), foreground)
+                            .size().x;
+                        let title_visible = drag_width >= (title_width + 16.0);
+                        // The tab strip consumes only the width its visible tabs need.
+                        // Use any remaining space for the centered window title; even
+                        // when the title is too wide, the full remainder stays draggable.
+                        let show_window_title = title_visible;
                         let title_response = ui.interact(
                             drag_rect,
                             egui::Id::new("custom_titlebar_title"),
                             egui::Sense::click_and_drag(),
                         );
-                        if title_visible {
-                            let title = app.window_title();
+                        if show_window_title {
+                            let title = title_text.clone();
                             let center_title =
                                 app.settings_manager.get().center_custom_window_title;
-                            let title_font =
-                                egui::FontId::proportional(if win98 { 13.0 } else { 14.0 });
-                            let title_width = ui
-                                .painter()
-                                .layout_no_wrap(title.clone(), title_font.clone(), foreground)
-                                .size()
-                                .x;
                             // Prefer the exact window midpoint. If the title would
                             // overlap the left-side actions or caption controls, center
                             // it in the remaining title area instead.
@@ -337,7 +354,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             let maximized =
                                 ctx.input(|input| input.viewport().maximized.unwrap_or(false));
                             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                        } else if title_visible && title_click_rename && title_response.clicked() {
+                        } else if show_window_title && title_click_rename && title_response.clicked() {
                             app.begin_rename_current();
                         } else if title_response.drag_started() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);

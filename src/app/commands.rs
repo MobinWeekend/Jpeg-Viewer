@@ -71,7 +71,9 @@ impl ViewerApp {
                 self.b_zoom_used = false;
             }
             ViewerCommand::WrapWindowToImage => {
-                self.request_wrap_window_around_image(ctx);
+                if !self.is_home_surface_active() && !self.image_entries.is_empty() {
+                    self.request_wrap_window_around_image(ctx);
+                }
             }
             ViewerCommand::OpenFile => {
                 self.update_window_title(ctx);

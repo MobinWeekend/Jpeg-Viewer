@@ -42,6 +42,10 @@ impl crate::app::types::ViewerApp {
             viewer.zoom_used = false;
         }
         self.workspace.active_index = viewer_index;
+        // Opening a Masonry card is an explicit request to view an image. Clear
+        // Home mode before the primary Viewer renders, otherwise a previously
+        // visible Home page can cover the selected image after the workspace switch.
+        self.workspace.home_page_visible = false;
         self.current_directory = directory;
         self.queue_mode = false;
         self.sidebar_queue_tab = false;
@@ -62,7 +66,7 @@ impl crate::app::types::ViewerApp {
         };
         match action {
             MasonryAction::Open(entry) => self.open_masonry_entry_in_viewer(tab_index, &entry, ctx),
-            MasonryAction::OpenNewTab(entry) => self.open_entry_in_image_tab(entry, false),
+            MasonryAction::OpenNewTab(entry) => self.open_entry_in_image_tab(entry, true),
             MasonryAction::ToggleSelection(entry_id) => {
                 let tab = &mut self.workspace.tabs[tab_index];
                 tab.selection_mode = true;
@@ -137,6 +141,7 @@ impl crate::app::types::ViewerApp {
                 tab.directory = directory;
                 tab.current_index = 0;
                 self.workspace.tabs.push(tab);
+                self.workspace.home_page_visible = false;
                 self.activate_workspace_tab(id);
                 self.sync_current_entry_after_collection_change(ctx);
             }

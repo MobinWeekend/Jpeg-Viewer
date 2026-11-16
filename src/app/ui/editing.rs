@@ -29,6 +29,13 @@ enum EditAction {
 
 impl ViewerApp {
     pub fn start_editing(&mut self, ctx: &egui::Context) {
+        if self.is_home_surface_active() {
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
+            return;
+        }
         if self.edit_session.is_some() {
             self.edit_output_format = self.last_export_format;
             self.show_edit_menu = !self.show_edit_menu;
@@ -111,6 +118,9 @@ impl ViewerApp {
     /// Enter image-edit mode and activate the interactive crop selection tool.
     /// This is shared by the Edit panel and the desktop menu bar.
     pub fn start_crop_tool(&mut self, ctx: &egui::Context) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.edit_session.is_none() {
             self.start_editing(ctx);
         } else {
@@ -142,6 +152,9 @@ impl ViewerApp {
     }
 
     fn rotate_current_image(&mut self, ctx: &egui::Context, clockwise: bool) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.edit_session.is_none() {
             self.start_editing(ctx);
         }

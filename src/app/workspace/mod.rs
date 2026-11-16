@@ -1,4 +1,4 @@
-//! Workspace state and the browser-style Viewer, New Tab, Masonry, and Compare surfaces.
+//! Workspace state and the browser-style Viewer, Home, Masonry, and Compare surfaces.
 //!
 //! The original ViewerApp remains the renderer/decoder for the primary image viewer.
 //! This module owns workspace data and delegates each substantial workflow to a
@@ -16,7 +16,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::path::{Path, PathBuf};
 
-const WELCOME_RECENT_LIMIT: usize = 12;
+const WELCOME_RECENT_LIMIT: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WorkspaceTabKind {
@@ -55,6 +55,9 @@ pub(crate) struct WorkspaceTab {
     pub collapsed_folders: HashSet<String>,
     /// Preferred Masonry tile width in logical points; columns are auto-filled.
     pub masonry_tile_size: f32,
+    /// Image aspect ratios retained independently of thumbnail texture residency.
+    /// LRU eviction must never change a tile's dimensions or Masonry column layout.
+    pub masonry_aspect_ratios: HashMap<String, f32>,
 
     // Compare state. Anchor coordinates are normalized image coordinates.
     pub anchors: Vec<Option<[f32; 2]>>,
@@ -101,6 +104,7 @@ impl WorkspaceTab {
             context_highlight: None,
             collapsed_folders: HashSet::new(),
             masonry_tile_size: 220.0,
+            masonry_aspect_ratios: HashMap::new(),
             anchors: Vec::new(),
             anchors_second: Vec::new(),
             offsets: Vec::new(),
@@ -118,10 +122,6 @@ impl WorkspaceTab {
         }
     }
 
-    fn welcome(id: u64) -> Self {
-        Self::new(id, "New Tab".to_owned(), WorkspaceTabKind::Welcome)
-    }
-
     fn new(id: u64, title: String, kind: WorkspaceTabKind) -> Self {
         let mut tab = Self::viewer();
         tab.id = id;
@@ -136,6 +136,8 @@ pub(crate) struct WorkspaceManager {
     pub active_index: usize,
     pub next_id: u64,
     pub last_image_tab_id: Option<u64>,
+    /// Workspace to return to after leaving the singleton Masonry view.
+    pub masonry_return_tab_id: Option<u64>,
     /// Existing comparison workspace awaiting additional entries from Masonry.
     pending_compare_target_id: Option<u64>,
     pub delete_confirmation: Option<(u64, Vec<ImageEntry>, usize)>,
@@ -150,23 +152,26 @@ pub(crate) struct WorkspaceManager {
     compare_pending: HashSet<String>,
     compare_failed: HashSet<String>,
     compare_receivers: Vec<Receiver<(String, Result<VirtualTexture, String>)>>,
-    /// Recently opened folders, saved queue lists, and archives displayed on New Tab pages.
+    /// Recently opened folders, saved queue lists, and archives displayed on Home pages.
     pub(crate) welcome_recent: Vec<PathBuf>,
-    /// User-pinned images, folders, and .jvq playlists displayed on New Tab pages.
+    /// User-pinned images, folders, and .jvq playlists displayed on Home pages.
     pub(crate) welcome_pinned: Vec<PathBuf>,
-    /// Resolved Masonry entries for New Tab card previews, cached to avoid rescanning
+    /// Resolved Masonry entries for Home card previews, cached to avoid rescanning
     /// folders, archives, and queue lists on every immediate-mode UI frame.
     pub(crate) welcome_thumbnail_sources: HashMap<PathBuf, Option<ImageEntry>>,
     welcome_data_loaded: bool,
+    /// The Home surface is shown inside the primary Viewer workspace, never as a tab.
+    pub(crate) home_page_visible: bool,
 }
 
 impl Default for WorkspaceManager {
     fn default() -> Self {
         Self {
-            tabs: vec![WorkspaceTab::viewer(), WorkspaceTab::welcome(2)],
-            active_index: 1,
-            next_id: 3,
+            tabs: vec![WorkspaceTab::viewer()],
+            active_index: 0,
+            next_id: 2,
             last_image_tab_id: None,
+            masonry_return_tab_id: None,
             pending_compare_target_id: None,
             delete_confirmation: None,
             pending_file_operation: None,
@@ -182,6 +187,7 @@ impl Default for WorkspaceManager {
             welcome_pinned: Vec::new(),
             welcome_thumbnail_sources: HashMap::new(),
             welcome_data_loaded: false,
+            home_page_visible: true,
         }
     }
 }

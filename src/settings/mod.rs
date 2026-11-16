@@ -115,6 +115,8 @@ pub struct AppSettings {
     pub show_titlebar: bool,
     /// Integrate primary navigation controls into the custom title bar when enabled.
     pub custom_titlebar_navigation: bool,
+    /// Render workspace tabs inline in the custom title-bar row.
+    pub workspace_tabs_in_titlebar: bool,
     /// Internal marker recording that the title-bar navigation default was selected once.
     pub custom_titlebar_navigation_preference_configured: bool,
     /// Title-bar color source: system, main_view, or main_color.
@@ -146,7 +148,7 @@ pub struct AppSettings {
     pub masonry_thumbnail_size: f32,
     /// Show a full-width folder heading before each recursive Folder Masonry group.
     pub masonry_show_folder_headers: bool,
-    /// Number of Recently opened rows on the New Tab page (0 = disabled, 1-2 rows).
+    /// Number of Recently opened rows on the Home page (0 = disabled, 1-2 rows).
     pub new_tab_recent_rows: usize,
     // Viewing padding mode: look, fine_tune, or custom.
     pub view_padding_mode: String,
@@ -238,6 +240,7 @@ impl Default for AppSettings {
             tile_size: 1024,
             show_titlebar: false,
             custom_titlebar_navigation: true,
+            workspace_tabs_in_titlebar: true,
             custom_titlebar_navigation_preference_configured: false,
             title_bar_color_mode: "main_view".to_string(),
             custom_window_frame_thickness: 2.0,

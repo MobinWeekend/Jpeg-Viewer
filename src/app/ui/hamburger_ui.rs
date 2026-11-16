@@ -92,15 +92,19 @@ impl ViewerApp {
                 ui.separator();
 
                 self.hamburger_open_file_button(ctx, ui);
-                if ui.add(
-                    egui::Button::new(
-                        egui::RichText::new("✦  New Tab").size(scaled_text_size(ui.ctx(), 14.0)),
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new("⌂  Home").size(scaled_text_size(ui.ctx(), 14.0)),
+                        )
+                        .min_size(egui::vec2(180.0, 30.0))
+                        .fill(egui::Color32::TRANSPARENT)
+                        .stroke(egui::Stroke::NONE),
                     )
-                    .min_size(egui::vec2(180.0, 30.0))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
-                ).on_hover_text("Open a new tab (Ctrl+T)").clicked() {
-                    self.open_new_welcome_tab();
+                    .on_hover_text("Show Home in the primary Viewer")
+                    .clicked()
+                {
+                    self.open_home_page();
                     self.hamburger_menu_open = false;
                 }
                 self.hamburger_open_folder_button(ctx, ui);
@@ -192,11 +196,27 @@ impl ViewerApp {
     }
 
     fn hamburger_masonry_buttons(&mut self, ui: &mut egui::Ui) {
-        if crate::app::ui::masonry_button(ui, "Masonry · Current entries", !self.image_entries.is_empty(), 180.0, true).clicked() {
+        if crate::app::ui::masonry_button(
+            ui,
+            "Masonry · Current entries",
+            !self.image_entries.is_empty(),
+            180.0,
+            true,
+        )
+        .clicked()
+        {
             self.open_local_masonry();
             self.hamburger_menu_open = false;
         }
-        if crate::app::ui::masonry_button(ui, "Masonry · Current folder", self.current_directory.is_some(), 180.0, true).clicked() {
+        if crate::app::ui::masonry_button(
+            ui,
+            "Masonry · Current folder",
+            self.current_directory.is_some(),
+            180.0,
+            true,
+        )
+        .clicked()
+        {
             self.open_folder_masonry();
             self.hamburger_menu_open = false;
         }
@@ -211,9 +231,15 @@ impl ViewerApp {
             .is_some_and(|entry| {
                 let name = match entry {
                     crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
-                    crate::imaging::entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
-                    crate::imaging::entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
-                    crate::imaging::entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
+                    crate::imaging::entry::ImageEntry::Zip(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                    crate::imaging::entry::ImageEntry::S7z(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                    crate::imaging::entry::ImageEntry::Rar(item) => {
+                        std::path::Path::new(&item.name)
+                    }
                 };
                 name.extension()
                     .and_then(|extension| extension.to_str())
@@ -252,11 +278,12 @@ impl ViewerApp {
     /// "↗ Open With…" — lets the OS choose an application for the original
     /// file. Archive entries are skipped (no persistent standalone path).
     fn hamburger_open_with_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        let Some(path) = self.current_image_path.clone() else {
-            return;
-        };
+        let path = self.current_image_path.clone();
+        let enabled =
+            !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
         if ui
-            .add(
+            .add_enabled(
+                enabled,
                 egui::Button::new(
                     egui::RichText::new("↗  Open With…").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
@@ -267,8 +294,11 @@ impl ViewerApp {
             .on_hover_text("Choose an application using the operating system's Open With dialog")
             .clicked()
         {
-            if let Err(error) = super::super::external_open::open_with(&path) {
-                self.queue_status = Some(format!("Could not open external application: {error}"));
+            if let Some(path) = path {
+                if let Err(error) = super::super::external_open::open_with(&path) {
+                    self.queue_status =
+                        Some(format!("Could not open external application: {error}"));
+                }
             }
             self.hamburger_menu_open = false;
         }
@@ -276,11 +306,12 @@ impl ViewerApp {
 
     /// "📂 Locate in File Manager" — reveals the current file in the OS file manager.
     fn hamburger_locate_in_file_manager_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        let Some(path) = self.current_image_path.clone() else {
-            return;
-        };
+        let path = self.current_image_path.clone();
+        let enabled =
+            !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
         if ui
-            .add(
+            .add_enabled(
+                enabled,
                 egui::Button::new(
                     egui::RichText::new("📂  Locate in File Manager")
                         .size(scaled_text_size(ui.ctx(), 14.0)),
@@ -291,8 +322,10 @@ impl ViewerApp {
             )
             .clicked()
         {
-            if let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
-                self.queue_status = Some(format!("Could not locate file: {error}"));
+            if let Some(path) = path {
+                if let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
+                    self.queue_status = Some(format!("Could not locate file: {error}"));
+                }
             }
             self.hamburger_menu_open = false;
         }
@@ -302,7 +335,7 @@ impl ViewerApp {
     fn hamburger_wrap_window_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
             .add_enabled(
-                !self.image_entries.is_empty(),
+                !self.is_home_surface_active() && !self.image_entries.is_empty(),
                 egui::Button::new(
                     egui::RichText::new("📐  Wrap Window").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
@@ -384,10 +417,7 @@ impl ViewerApp {
     /// separate image-editing mode. An existing working copy can be resumed
     /// without discarding unsaved changes.
     fn hamburger_edit_image_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if self.image_entries.is_empty() {
-            return;
-        }
-
+        let can_edit = !self.is_home_surface_active() && !self.image_entries.is_empty();
         let edit_label = if self.show_edit_menu {
             "✂️  Exit Edit Mode"
         } else if self.edit_session.is_some() {
@@ -396,13 +426,16 @@ impl ViewerApp {
             "✂️  Edit Image"
         };
         if ui
-            .add(
-                egui::Button::new(egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(egui::vec2(180.0, 30.0))
-                    .fill(egui::Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::NONE),
+            .add_enabled(
+                can_edit,
+                egui::Button::new(
+                    egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
             )
-            .on_hover_text("Toggle editing mode. Unsaved work stays in a working copy until saved or discarded.")
+            .on_hover_text("Editing is unavailable on Home. Open an image first.")
             .clicked()
         {
             self.start_editing(ctx);
@@ -413,10 +446,11 @@ impl ViewerApp {
     /// "🗑 Delete Image…" — moves the selected filesystem image to the
     /// system Trash/Recycle Bin. Disabled for archive entries.
     fn hamburger_delete_image_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        let can_delete_current = matches!(
-            self.image_entries.get(self.current_index),
-            Some(crate::imaging::entry::ImageEntry::File(_))
-        );
+        let can_delete_current = !self.is_home_surface_active()
+            && matches!(
+                self.image_entries.get(self.current_index),
+                Some(crate::imaging::entry::ImageEntry::File(_))
+            );
         if ui
             .add_enabled(
                 can_delete_current,
@@ -438,7 +472,8 @@ impl ViewerApp {
     /// "🔬 Inspect" — toggles the per-channel inspect view (temporary display mode).
     fn hamburger_inspect_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if ui
-            .add(
+            .add_enabled(
+                !self.is_home_surface_active() && !self.image_entries.is_empty(),
                 egui::Button::new(
                     egui::RichText::new("🔬  Inspect").size(scaled_text_size(ui.ctx(), 14.0)),
                 )

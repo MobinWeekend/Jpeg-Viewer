@@ -1,4 +1,4 @@
-//! Firefox-style New Tab surface.
+//! Firefox-style Home surface.
 use crate::app::types::ViewerApp;
 use crate::imaging::entry::ImageEntry;
 use crate::input::shortcuts::ViewerCommand;
@@ -17,18 +17,39 @@ enum WelcomeAction {
     OpenFolder,
     Favorites,
     OpenPath(PathBuf),
+    OpenMasonryPath(PathBuf),
+    RemoveRecent(PathBuf),
     RemovePin(PathBuf),
+    ReorderPins(PathBuf, PathBuf, bool),
     AddImages,
     AddFolder,
     AddQueues,
 }
 
 impl ViewerApp {
-    /// Render the New Tab workspace. The new-tab content is deliberately not
+
+    /// Render the Home workspace. The new-tab content is deliberately not
     /// used as the empty-state UI for ordinary Viewer tabs.
     pub fn render_welcome_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         if self.workspace_session_prompt_active() {
             return;
+        }
+
+        // Home is a launch surface rather than a document editor: prevent
+        // accidental text selection, and use otherwise-empty page space as a
+        // native window drag region. Interactive cards/buttons are registered
+        // later and therefore keep priority over this background response.
+        ui.style_mut().interaction.selectable_labels = false;
+        let background_drag = ui.interact(
+            ui.max_rect(),
+            egui::Id::new("home_background_window_drag"),
+            egui::Sense::click_and_drag(),
+        );
+        if background_drag.double_clicked() {
+            let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+        } else if background_drag.drag_started_by(egui::PointerButton::Primary) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
 
         // Complete asynchronous thumbnail jobs even when the user is not viewing
@@ -37,7 +58,7 @@ impl ViewerApp {
         let new_tab_settings = self.settings_manager.get().clone();
         let recent_rows = new_tab_settings.new_tab_recent_rows.clamp(0, 2);
         let show_recent = recent_rows > 0;
-        let recent_limit = recent_rows * 6;
+        let recent_limit = (recent_rows * 6).min(8);
         let recent_paths = if show_recent {
             self.welcome_recent_paths()
         } else {
@@ -162,13 +183,13 @@ impl ViewerApp {
                                         });
                                     });
 
-                                // Keep the New Tab hierarchy consistent at every window
+                                // Keep the Home hierarchy consistent at every window
                                 // size: header first, then full-width shortcuts, then the
                                 // optional Recently opened section. Both grids use six-card rows.
                                 page.add_space(26.0);
                                 let shortcuts_action = render_shortcuts_section(page, &pinned);
 
-                                let mut recent_action: Option<PathBuf> = None;
+                                let mut recent_action: Option<WelcomeAction> = None;
                                 if show_recent {
                                     page.add_space(26.0);
                                     recent_action = render_recent_section(
@@ -178,8 +199,8 @@ impl ViewerApp {
                                     );
                                 }
 
-                                if let Some(path) = recent_action {
-                                    action = Some(WelcomeAction::OpenPath(path));
+                                if recent_action.is_some() {
+                                    action = recent_action;
                                 }
                                 if shortcuts_action.is_some() {
                                     action = shortcuts_action;
@@ -189,7 +210,7 @@ impl ViewerApp {
                                 page.separator();
                                 page.add_space(8.0);
                                 page.label(
-                                    egui::RichText::new("Tip: press Ctrl+T or use the + button at the end of the tab bar to open another tab.")
+                                    egui::RichText::new("Tip: use Home from the application menu to return here at any time.")
                                         .small()
                                         .color(page.visuals().weak_text_color()),
                                 );
@@ -207,7 +228,12 @@ impl ViewerApp {
             Some(WelcomeAction::OpenFolder) => self.open_folder_dialog(),
             Some(WelcomeAction::Favorites) => self.load_favorites_from_welcome(),
             Some(WelcomeAction::OpenPath(path)) => self.open_welcome_shortcut(path, ctx),
+            Some(WelcomeAction::OpenMasonryPath(path)) => self.open_welcome_path_in_masonry(path),
+            Some(WelcomeAction::RemoveRecent(path)) => self.remove_welcome_recent(&path),
             Some(WelcomeAction::RemovePin(path)) => self.remove_welcome_pin(&path),
+            Some(WelcomeAction::ReorderPins(from, to, before)) => {
+                self.reorder_welcome_pins(&from, &to, before)
+            }
             Some(WelcomeAction::AddImages) => {
                 let extensions = crate::imaging::core::ImageFormat::all_extensions();
                 self.dialog_open = true;
@@ -291,9 +317,9 @@ fn render_recent_section(
     ui: &mut egui::Ui,
     recent: &[NewTabCard],
     recent_rows: usize,
-) -> Option<PathBuf> {
-    let mut open_path = None;
-    let recent_limit = recent_rows.clamp(1, 2) * 6;
+) -> Option<WelcomeAction> {
+    let mut selected_action = None;
+    let recent_limit = (recent_rows.clamp(1, 2) * 6).min(8);
     ui.horizontal(|header| {
         header.heading("Recently opened");
         header.add_space(8.0);
@@ -326,15 +352,16 @@ fn render_recent_section(
             ui.horizontal(|row_ui| {
                 row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
                 for card in row {
-                    let (opened, _) = render_new_tab_card(row_ui, card, false, card_width);
+                    let (opened, _, menu_action) = render_new_tab_card(row_ui, card, false, card_width);
                     if opened {
-                        open_path = Some(card.path.clone());
+                        selected_action = Some(WelcomeAction::OpenPath(card.path.clone()));
                     }
+                    if menu_action.is_some() { selected_action = menu_action; }
                 }
             });
         }
     }
-    open_path
+    selected_action
 }
 
 fn render_shortcuts_section(ui: &mut egui::Ui, pinned: &[NewTabCard]) -> Option<WelcomeAction> {
@@ -374,21 +401,35 @@ fn render_shortcuts_section(ui: &mut egui::Ui, pinned: &[NewTabCard]) -> Option<
             ui.horizontal(|row_ui| {
                 row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
                 for card in row {
-                    let (opened, removed) = render_new_tab_card(row_ui, card, true, card_width);
+                    let (opened, removed, menu_action) = render_new_tab_card(row_ui, card, true, card_width);
                     if removed {
                         action = Some(WelcomeAction::RemovePin(card.path.clone()));
                     } else if opened {
                         action = Some(WelcomeAction::OpenPath(card.path.clone()));
                     }
+                    if menu_action.is_some() { action = menu_action; }
                 }
             });
         }
     }
+    if ui.ctx().input(|input| input.pointer.any_released()) {
+        ui.ctx().data_mut(|data| {
+            data.remove::<PathBuf>(egui::Id::new("home_shortcut_drag_source"));
+        });
+    }
     action
 }
 
+
+fn welcome_path_matches(left: &Path, right: &Path) -> bool {
+    #[cfg(windows)]
+    { left.to_string_lossy().eq_ignore_ascii_case(&right.to_string_lossy()) }
+    #[cfg(not(windows))]
+    { left == right }
+}
+
 /// Six cards are laid out in every row. Both card width and inter-card gap
-/// contract with the page so the rows stay inside the centered New Tab column.
+/// contract with the page so the rows stay inside the centered Home column.
 fn new_tab_card_layout(ui: &egui::Ui) -> (f32, f32) {
     let available_width = ui.available_width().max(1.0);
     let gap = 10.0_f32.min((available_width / 12.0).max(0.0));
@@ -401,11 +442,14 @@ fn render_new_tab_card(
     card: &NewTabCard,
     removable: bool,
     card_width: f32,
-) -> (bool, bool) {
+) -> (bool, bool, Option<WelcomeAction>) {
     let mut removed = false;
+    let mut menu_action = None;
     let visuals = ui.visuals().clone();
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(card_width, 132.0), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(card_width, 132.0),
+        if removable { egui::Sense::click_and_drag() } else { egui::Sense::click() },
+    );
     // Use the same theme-driven hover state and short animation as Masonry's
     // thumbnail cards. The hover fill belongs to the card surface; it must not
     // become a translucent wash over the image or reduce label contrast.
@@ -414,6 +458,15 @@ fn render_new_tab_card(
     // animation ID from this widget's unique egui response ID so cards never
     // drive one another's hover animation.
     let card_id = response.id.with(("new-tab-card", card.path.clone()));
+    const SHORTCUT_DRAG_ID: &str = "home_shortcut_drag_source";
+    let shortcut_drag_id = egui::Id::new(SHORTCUT_DRAG_ID);
+    if removable && response.drag_started() {
+        ui.ctx().data_mut(|data| data.insert_temp(shortcut_drag_id, card.path.clone()));
+    }
+    let dragging_path = ui.ctx().data(|data| data.get_temp::<PathBuf>(shortcut_drag_id));
+    let is_drop_target = removable
+        && dragging_path.as_ref().is_some_and(|from| !welcome_path_matches(from, &card.path))
+        && response.hovered();
     let hover_t =
         ui.ctx()
             .animate_bool_with_time(card_id.with("hover-animation"), response.hovered(), 0.14);
@@ -529,8 +582,29 @@ fn render_new_tab_card(
     }
 
     let response = response.on_hover_text(card.path.display().to_string());
+    response.clone().context_menu(|menu| {
+        if menu.button("Open in Viewer").clicked() {
+            menu_action = Some(WelcomeAction::OpenPath(card.path.clone()));
+            menu.close();
+        }
+        if menu.button("Open in Masonry").clicked() {
+            menu_action = Some(WelcomeAction::OpenMasonryPath(card.path.clone()));
+            menu.close();
+        }
+        menu.separator();
+        if menu.button("Remove from list").clicked() {
+            menu_action = Some(if removable {
+                WelcomeAction::RemovePin(card.path.clone())
+            } else {
+                WelcomeAction::RemoveRecent(card.path.clone())
+            });
+            menu.close();
+        }
+    });
     let opened = card.path.exists() && response.clicked();
-    let border_color = if hover_t > 0.01 {
+    let border_color = if is_drop_target {
+        crate::ui_theme::main_accent_color(ui.ctx())
+    } else if hover_t > 0.01 {
         visuals.widgets.hovered.bg_stroke.color
     } else {
         visuals.widgets.noninteractive.bg_stroke.color
@@ -538,11 +612,27 @@ fn render_new_tab_card(
     painter.rect_stroke(
         rect,
         egui::CornerRadius::same(9),
-        egui::Stroke::new(1.0 + hover_t * 0.5, border_color),
+        egui::Stroke::new(if is_drop_target { 2.5 } else { 1.0 + hover_t * 0.5 }, border_color),
         egui::StrokeKind::Inside,
     );
+    if is_drop_target {
+        let pointer_x = ui.ctx().pointer_interact_pos().map_or(rect.center().x, |pos| pos.x);
+        let marker_x = if pointer_x < rect.center().x { rect.left() + 3.0 } else { rect.right() - 3.0 };
+        painter.line_segment(
+            [egui::pos2(marker_x, rect.top() + 10.0), egui::pos2(marker_x, rect.bottom() - 10.0)],
+            egui::Stroke::new(3.0_f32, crate::ui_theme::main_accent_color(ui.ctx())),
+        );
+    }
 
-    (opened, removed)
+    if removable && is_drop_target && ui.ctx().input(|input| input.pointer.any_released()) {
+        if let Some(from) = dragging_path {
+            let pointer_x = ui.ctx().pointer_interact_pos().map_or(rect.center().x, |pos| pos.x);
+            let before = pointer_x < rect.center().x;
+            menu_action = Some(WelcomeAction::ReorderPins(from, card.path.clone(), before));
+        }
+    }
+
+    (opened && !is_drop_target, removed, menu_action)
 }
 
 fn welcome_preview_entry(path: &Path) -> Option<ImageEntry> {

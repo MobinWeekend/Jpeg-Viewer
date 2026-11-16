@@ -63,9 +63,16 @@ impl crate::app::types::ViewerApp {
 
     pub(super) fn apply_workspace_session(&mut self, session: RestorableSession) {
         let (mut tabs, active_id, next_id, last_image_tab_id) = session;
-        // New Tab pages are transient launch surfaces, not part of a restored
+        // Home is a transient launch surface, not part of a restored
         // work session. Restoring must go directly to the saved workspaces.
         tabs.retain(|tab| tab.kind != WorkspaceTabKind::Welcome);
+        // Older sessions could contain multiple Masonry tabs. Keep the active
+        // one when possible, otherwise the first, to migrate to the singleton model.
+        let keep_masonry_id = tabs.iter()
+            .find(|tab| tab.kind == WorkspaceTabKind::Masonry && tab.id == active_id)
+            .or_else(|| tabs.iter().find(|tab| tab.kind == WorkspaceTabKind::Masonry))
+            .map(|tab| tab.id);
+        tabs.retain(|tab| tab.kind != WorkspaceTabKind::Masonry || Some(tab.id) == keep_masonry_id);
         if tabs.iter().all(|tab| tab.kind != WorkspaceTabKind::Viewer) {
             tabs.insert(0, WorkspaceTab::viewer());
         }
@@ -117,9 +124,13 @@ impl crate::app::types::ViewerApp {
         tabs.retain(|tab| tab.kind != WorkspaceTabKind::Image || !tab.entries.is_empty());
         let last_image_tab_id = last_image_tab_id.filter(|id| tabs.iter().any(|tab| tab.id == *id && tab.kind == WorkspaceTabKind::Image));
         self.workspace.tabs = tabs;
+        self.workspace.home_page_visible = false;
         self.workspace.active_index = usize::MAX;
         self.workspace.next_id = next_id.max(self.workspace.tabs.iter().map(|tab| tab.id).max().unwrap_or(1) + 1);
         self.workspace.last_image_tab_id = last_image_tab_id;
+        // The Masonry return target is intentionally transient; establish it from
+        // the next navigation action instead of retaining an ID from an old session.
+        self.workspace.masonry_return_tab_id = None;
         let id = if self.workspace.tabs.iter().any(|tab| tab.id == active_id) {
             active_id
         } else {

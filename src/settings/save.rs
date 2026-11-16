@@ -168,6 +168,10 @@ impl SettingsManager {
             if settings.custom_titlebar_navigation { "true" } else { "false" },
         );
         section.set(
+            "workspace_tabs_in_titlebar",
+            if settings.workspace_tabs_in_titlebar { "true" } else { "false" },
+        );
+        section.set(
             "custom_titlebar_navigation_preference_configured",
             if settings.custom_titlebar_navigation_preference_configured { "true" } else { "false" },
         );

@@ -43,18 +43,6 @@ pub(crate) fn masonry_button(
     masonry_button_impl(ui, label, enabled, min_width, flat, true)
 }
 
-/// Render a flat Masonry button without hover highlighting, for toolbar chrome
-/// that should behave like the hamburger control while remaining clickable.
-pub(crate) fn masonry_button_quiet(
-    ui: &mut egui::Ui,
-    label: &str,
-    enabled: bool,
-    min_width: f32,
-    flat: bool,
-) -> egui::Response {
-    masonry_button_impl(ui, label, enabled, min_width, flat, false)
-}
-
 fn masonry_button_impl(
     ui: &mut egui::Ui,
     label: &str,
@@ -122,5 +110,48 @@ fn masonry_button_impl(
             text_color,
         );
     }
+    response
+}
+
+/// Render a compact Masonry mode toggle using the same custom glyph as the
+/// larger Masonry actions. The selected state remains visible while Masonry is
+/// active, without representing Masonry as a separate workspace tab.
+pub(crate) fn masonry_toggle_button(
+    ui: &mut egui::Ui,
+    active: bool,
+    enabled: bool,
+    size: f32,
+) -> egui::Response {
+    let size = size.max(28.0);
+    let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), sense);
+    let visuals = ui.visuals();
+    let fill = if !enabled {
+        visuals.widgets.noninteractive.bg_fill
+    } else if active {
+        visuals.selection.bg_fill
+    } else if response.hovered() {
+        visuals.widgets.hovered.bg_fill
+    } else {
+        egui::Color32::TRANSPARENT
+    };
+    if fill != egui::Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, 6.0, fill);
+    }
+    if active {
+        ui.painter().rect_stroke(
+            rect,
+            6.0,
+            visuals.selection.stroke,
+            egui::StrokeKind::Inside,
+        );
+    }
+    let icon_color = if enabled {
+        if active { visuals.selection.stroke.color } else { visuals.text_color() }
+    } else {
+        visuals.weak_text_color()
+    };
+    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(19.0, 19.0));
+    draw_masonry_icon(&ui.painter().with_clip_rect(rect), icon_rect, icon_color);
     response
 }

@@ -140,6 +140,10 @@ impl ViewerApp {
 
     /// Clear state belonging to the currently displayed image.
     fn clear_current_image_state(&mut self) {
+        self.clear_current_image_state_with_cache(true);
+    }
+
+    fn clear_current_image_state_with_cache(&mut self, clear_cache: bool) {
         self.image_error = None;
         self.texture = None;
         self.gif_animation = None;
@@ -155,7 +159,9 @@ impl ViewerApp {
         self.virtual_texture_thread = None;
         self.file_type_detection = None;
         self.file_metadata_open = false;
-        self.image_cache.clear();
+        if clear_cache {
+            self.image_cache.clear();
+        }
         self.preloading_indices.clear();
         self.preload_tasks.clear();
         self.preload_workers = 0;
@@ -176,9 +182,19 @@ impl ViewerApp {
     }
 
     fn load_current_image_mode(&mut self, develop_raw: bool) {
+        self.load_current_image_mode_with_cache_policy(develop_raw, true);
+    }
+
+    /// Reload the current entry while preserving textures for other entries in
+    /// the active Viewer collection. Used when returning from Masonry/Compare.
+    pub(crate) fn load_current_image_preserving_cache(&mut self) {
+        self.load_current_image_mode_with_cache_policy(false, false);
+    }
+
+    fn load_current_image_mode_with_cache_policy(&mut self, develop_raw: bool, clear_cache: bool) {
         self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.showing_raw_developed = develop_raw;
-        self.clear_current_image_state();
+        self.clear_current_image_state_with_cache(clear_cache);
 
         let entry = match self.image_entries.get(self.current_index).cloned() {
             Some(e) => e,
@@ -264,10 +280,31 @@ impl ViewerApp {
     // ====== IMAGE ENTRY SETUP ======
 
     pub fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
+        self.set_image_entries_internal(entries, current_index, false);
+    }
+
+    /// Switch the shared Viewer renderer to another workspace snapshot without
+    /// discarding textures cached by stable image identity. This is used for
+    /// workspace navigation; explicit collection replacement still clears the
+    /// cache through `set_image_entries`.
+    pub(crate) fn set_image_entries_preserving_cache(
+        &mut self,
+        entries: Vec<ImageEntry>,
+        current_index: usize,
+    ) {
+        self.set_image_entries_internal(entries, current_index, true);
+    }
+
+    fn set_image_entries_internal(
+        &mut self,
+        entries: Vec<ImageEntry>,
+        current_index: usize,
+        preserve_cache: bool,
+    ) {
         self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.image_entries = entries;
-        self.current_index = current_index;
-        self.preload_origin = current_index;
+        self.current_index = current_index.min(self.image_entries.len().saturating_sub(1));
+        self.preload_origin = self.current_index;
         self.delta_threshold =
             ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
         self.b_fit_to_window = true;
@@ -284,7 +321,9 @@ impl ViewerApp {
         self.vt_total_tiles = 0;
         self.virtual_texture_thread = None;
 
-        self.image_cache.clear();
+        if !preserve_cache {
+            self.image_cache.clear();
+        }
         self.preloading_indices.clear();
         self.preload_tasks.clear();
         self.preload_workers = 0;
@@ -293,8 +332,17 @@ impl ViewerApp {
         self.file_type_detection = None;
         self.file_metadata_open = false;
 
+        self.update_current_image_path();
         self.detect_current_file_type();
-        self.load_current_image();
+        if preserve_cache && self.load_from_cache(self.current_index) {
+            self.set_loading_state(LoadingState::Idle);
+            self.image_error = None;
+            self.file_metadata = Some(self.build_file_metadata());
+        } else if preserve_cache {
+            self.load_current_image_preserving_cache();
+        } else {
+            self.load_current_image();
+        }
     }
 
     /// Updates `current_image_path` based on the current index.

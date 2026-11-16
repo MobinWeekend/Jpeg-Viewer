@@ -116,6 +116,33 @@ impl ViewerApp {
         }
     }
 
+    /// Choose an image and open it in its own workspace tab without replacing
+    /// the primary Viewer collection. The action is used by the overlay's + button.
+    pub fn open_image_in_new_tab_dialog(&mut self) {
+        let extensions = ImageFormat::all_extensions();
+        self.dialog_open = true;
+        let path = rfd::FileDialog::new()
+            .add_filter("Images", &extensions)
+            .pick_file();
+        self.dialog_open = false;
+
+        let Some(path) = path else { return; };
+        if !is_supported_image(&path) {
+            self.queue_status = Some("New image tabs support image files. Open archives or folders in the primary Viewer or Masonry.".into());
+            return;
+        }
+        // The active edit session is shared by the renderer rather than stored
+        // per tab, so resolve pending edits only after the file picker succeeds.
+        if !self.prepare_for_image_change(
+            "Save or discard unsaved edits before opening another image tab.",
+        ) {
+            return;
+        }
+        self.stop_slideshow();
+        self.record_welcome_recent_path(path.clone());
+        self.open_entry_in_image_tab(ImageEntry::File(path), true);
+    }
+
     pub fn open_folder_dialog(&mut self) {
         self.stop_slideshow();
 
@@ -224,6 +251,9 @@ impl ViewerApp {
     }
 
     pub fn delete_current_image(&mut self) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.image_entries.is_empty() {
             return;
         }

@@ -70,6 +70,44 @@ pub(super) fn entry_parent(entry: &ImageEntry) -> Option<PathBuf> {
     }
 }
 
+/// A borrowed, allocation-free identity for an entry's containing folder.
+/// It mirrors `entry_breadcrumb` but is intended for fast equality checks while
+/// deciding whether a large Masonry collection needs folder headers.
+pub(super) fn entry_folder_parts<'a>(
+    entry: &'a ImageEntry,
+    root: Option<&Path>,
+) -> (Option<&'a Path>, Option<&'a Path>) {
+    fn relative_container<'a>(container: &'a Path, root: Option<&Path>) -> &'a Path {
+        root.and_then(|root| container.strip_prefix(root).ok())
+            .unwrap_or(container)
+    }
+
+    match entry {
+        ImageEntry::File(path) => (
+            path.parent().map(|container| relative_container(container, root)),
+            None,
+        ),
+        ImageEntry::Zip(item) => (
+            Some(relative_container(&item.archive_path, root)),
+            Path::new(&item.name)
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty()),
+        ),
+        ImageEntry::S7z(item) => (
+            Some(relative_container(&item.archive_path, root)),
+            Path::new(&item.name)
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty()),
+        ),
+        ImageEntry::Rar(item) => (
+            Some(relative_container(&item.archive_path, root)),
+            Path::new(&item.name)
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty()),
+        ),
+    }
+}
+
 pub(super) fn entry_breadcrumb(entry: &ImageEntry, root: Option<&Path>) -> String {
     let (container, inner) = match entry {
         ImageEntry::File(path) => (path.parent(), None),

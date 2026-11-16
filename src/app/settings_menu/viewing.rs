@@ -3,23 +3,14 @@ use crate::app::types::ViewerApp;
 use crate::settings::AppSettings;
 use eframe::egui;
 
-/// Look-profile defaults are the same edge/toolbar clearances previously applied
-/// by fitted_image_viewport_rect, now exposed as editable defaults.
-pub(crate) fn default_look_padding(profile: &str, placement: &str) -> [f32; 4] {
+/// Look-profile defaults provide modest edge padding only. Navigation controls
+/// are foreground overlays and do not reserve space in the image viewport.
+pub(crate) fn default_look_padding(profile: &str, _placement: &str) -> [f32; 4] {
     // Order: top, right, bottom, left.
     if !matches!(profile, "cosmic" | "gnome" | "win98") {
         return [0.0; 4];
     }
-    let mut padding = [12.0, 12.0, 12.0, 12.0];
-    match placement {
-        "cosmic" => padding[2] += 58.0,
-        "gnome" | "win98" => padding[0] += 58.0,
-        _ => {
-            padding[0] += 40.0;
-            padding[2] += 40.0;
-        }
-    }
-    padding
+    [12.0, 12.0, 12.0, 12.0]
 }
 
 pub(crate) fn effective_padding(settings: &AppSettings, profile: &str, placement: &str) -> [f32; 4] {
@@ -117,7 +108,7 @@ fn render_padding(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
         }
         _ => {
-            ui.label(egui::RichText::new("Padding follows the active Look profile and its toolbar placement.").small().weak());
+            ui.label(egui::RichText::new("Padding follows the active Look profile. Navigation controls float above the image and do not reserve viewport space.").small().weak());
         }
     }
 }

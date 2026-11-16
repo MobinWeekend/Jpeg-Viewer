@@ -641,7 +641,17 @@ impl ViewerApp {
         }
     }
 
+    pub(crate) fn is_home_surface_active(&self) -> bool {
+        self.workspace.home_page_visible
+            && self.workspace.tabs.get(self.workspace.active_index).is_some_and(|tab| {
+                tab.id == 1 && tab.kind == super::workspace::WorkspaceTabKind::Viewer
+            })
+    }
+
     pub fn window_title(&self) -> String {
+        if self.is_home_surface_active() {
+            return "Home — JPEG Viewer".to_owned();
+        }
         match self.workspace.active_kind() {
             super::workspace::WorkspaceTabKind::Masonry
             | super::workspace::WorkspaceTabKind::Compare

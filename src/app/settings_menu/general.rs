@@ -33,7 +33,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("New Tab").strong());
+        ui.label(egui::RichText::new("Home").strong());
         render_new_tab_recent_options(app, ui);
 
         ui.add_space(6.0);
@@ -70,7 +70,7 @@ fn render_new_tab_recent_options(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut rows = app.settings_manager.get().new_tab_recent_rows.clamp(0, 2);
     ui.horizontal_wrapped(|ui| {
         ui.label("Recently opened");
-        egui::ComboBox::from_id_salt("new_tab_recent_rows")
+        egui::ComboBox::from_id_salt("home_recent_rows")
             .selected_text(match rows {
                 0 => "Disable",
                 1 => "1 row",
@@ -88,7 +88,7 @@ fn render_new_tab_recent_options(app: &mut ViewerApp, ui: &mut egui::Ui) {
         });
     }
     ui.label(
-        egui::RichText::new("Each row shows up to 6 folders, saved queue lists, or archives, for a maximum of 12 visible entries.")
+        egui::RichText::new("Home keeps up to 8 recently opened folders, saved queues, and archives.")
             .small()
             .weak(),
     );

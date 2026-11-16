@@ -389,7 +389,27 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
     trigger_style.visuals.widgets.open.bg_stroke = egui::Stroke::NONE;
     *ui.style_mut() = trigger_style;
 
-    // Keep conventional menu order: File, Edit, View, workflow tools, Help.
+    // The Masonry mode switch is a persistent top-level navigation item,
+    // placed before File in every desktop-menu-bar layout (standalone or inline).
+    // Use the same text-button treatment and row geometry as File/Edit/View.
+    let masonry_active = app.workspace.active_kind()
+        == crate::app::workspace::WorkspaceTabKind::Masonry;
+    let masonry_enabled = app.masonry_toggle_available();
+    let masonry_toggle = ui
+        .add_enabled_ui(masonry_enabled, |ui| {
+            ui.selectable_label(masonry_active, "Masonry")
+        })
+        .inner
+        .on_hover_text(if masonry_active {
+            "Return to Viewer"
+        } else {
+            "Open current entries in Masonry"
+        });
+    if masonry_toggle.clicked() {
+        app.toggle_masonry_workspace();
+    }
+
+    // Keep the conventional desktop menu order. Home belongs only in File.
     ui.menu_button("File", |ui| {
         *ui.style_mut() = popup_style.clone();
         if ui.button("Open File…").clicked() {
@@ -400,14 +420,16 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             app.handle_command(ctx, ViewerCommand::OpenFolder);
             ui.close();
         }
+        if ui.button("Home").clicked() {
+            app.open_home_page();
+            ui.close();
+        }
         if ui.button("Open Folder + Subfolders…").clicked() {
             app.open_folder_recursively_dialog();
             ui.close();
         }
-        let has_path = app
-            .current_image_path
-            .as_ref()
-            .is_some_and(|path| path.is_file());
+        let has_path = !app.is_home_surface_active()
+            && app.current_image_path.as_ref().is_some_and(|path| path.is_file());
         if ui
             .add_enabled(has_path, egui::Button::new("Open With…"))
             .clicked()
@@ -420,15 +442,18 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             }
             ui.close();
         }
-        if let Some(path) = app.current_image_path.as_deref().filter(|path| path.is_file()) {
-            if ui.button("Locate in File Manager").clicked() {
+        let locate_path = app.current_image_path.as_deref().filter(|path| {
+            !app.is_home_surface_active() && path.is_file()
+        });
+        if ui.add_enabled(locate_path.is_some(), egui::Button::new("Locate in File Manager")).clicked() {
+            if let Some(path) = locate_path {
                 if let Err(error) = crate::app::external_open::reveal_in_file_manager(path) {
                     app.queue_status = Some(format!("Could not locate file: {error}"));
                 }
-                ui.close();
             }
+            ui.close();
         }
-        let can_delete_current = matches!(
+        let can_delete_current = !app.is_home_surface_active() && matches!(
             app.image_entries.get(app.current_index),
             Some(crate::imaging::entry::ImageEntry::File(_))
         );
@@ -459,7 +484,7 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             ui.close();
         }
         ui.separator();
-        let can_edit = !app.image_entries.is_empty() && !app.is_loading();
+        let can_edit = !app.is_home_surface_active() && !app.image_entries.is_empty() && !app.is_loading();
         if ui
             .add_enabled(can_edit, egui::Button::new("Edit Image…"))
             .clicked()
@@ -528,11 +553,17 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             }
         }
         ui.separator();
-        if crate::app::ui::masonry_button(ui, "Masonry · Current entries", !app.image_entries.is_empty(), 0.0, true).clicked() {
+        if ui
+            .add_enabled(!app.image_entries.is_empty(), egui::Button::new("Masonry · Current entries"))
+            .clicked()
+        {
             app.open_local_masonry();
             ui.close();
         }
-        if crate::app::ui::masonry_button(ui, "Masonry · Current folder", app.current_directory.is_some(), 0.0, true).clicked() {
+        if ui
+            .add_enabled(app.current_directory.is_some(), egui::Button::new("Masonry · Current folder"))
+            .clicked()
+        {
             app.open_folder_masonry();
             ui.close();
         }
@@ -564,7 +595,7 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
         }
         if ui
             .add_enabled(
-                !app.image_entries.is_empty(),
+                !app.is_home_surface_active() && !app.image_entries.is_empty(),
                 egui::Button::new(if app.inspect_mode {
                     "Inspect ✓"
                 } else {
@@ -603,7 +634,7 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
         }
         if ui
             .add_enabled(
-                !app.image_entries.is_empty(),
+                !app.is_home_surface_active() && !app.image_entries.is_empty(),
                 egui::Button::new("Wrap Window Around Image  ·  Ctrl+Alt+W"),
             )
             .clicked()
