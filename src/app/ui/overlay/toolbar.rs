@@ -127,7 +127,9 @@ pub fn render_top_toolbar(
                 ui,
                 content_width,
                 |this, ui, budget, row_start| {
-                    if !crate::app::ui::uses_desktop_menu_bar(ctx) {
+                    if !this.workspace_tab_strip_hosts_hamburger(ctx)
+                        && !crate::app::ui::uses_desktop_menu_bar(ctx)
+                    {
                         this.render_hamburger_ui(ui);
                     }
                     let space = if compact { 8.0 } else { 1.0 };
@@ -409,6 +411,11 @@ fn render_win98_primary_row(
     width_budget: f32,
 ) {
     let row_start = ui.next_widget_position().x;
+    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+    if fullscreen && !app.workspace_tab_strip_visible(ctx) {
+        app.render_hamburger_ui(ui);
+        separator(ui, 1.0);
+    }
     // Classic controls are aligned left within the central viewport, never over
     // the docked sidebars. Narrow viewports use only the essential navigation trio.
     if !app.image_entries.is_empty() {
@@ -468,12 +475,21 @@ fn render_platform_primary_row(
     ui.horizontal(|ui| {
         let row_start = ui.next_widget_position().x;
         let has_images = !app.image_entries.is_empty();
-        if !has_desktop_menu_bar && (!ultra_compact || !has_images) {
+        let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+        let has_hamburger = if app.workspace_tab_strip_hosts_hamburger(ctx) {
+            false
+        } else if fullscreen {
+            // If the sole Viewer hides the row, keep the menu reachable here.
+            !app.workspace_tab_strip_visible(ctx)
+        } else {
+            !has_desktop_menu_bar && (!ultra_compact || !has_images)
+        };
+        if has_hamburger {
             app.render_hamburger_ui(ui);
         }
 
         if has_images {
-            if !has_desktop_menu_bar && (!ultra_compact || !has_images) {
+            if has_hamburger {
                 separator(ui, if compact { 8.0 } else { 1.0 });
             }
 
@@ -525,15 +541,19 @@ pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context, rig
     );
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     let (anchor, offset, id) = if placement == "cosmic" {
-        let top_offset = if fullscreen {
-            // Keep the fullscreen image counter below the floating workspace tabs.
+        let top_offset = if fullscreen && app.workspace_tab_strip_visible(ctx) {
+            // Keep the fullscreen image counter below the reserved workspace tabs.
             MENU_OFFSET + 44.0
-        } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
-            crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
-        } else if app.settings_manager.get().show_titlebar {
+        } else if fullscreen {
             MENU_OFFSET
+        } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
+            crate::app::ui::desktop_menu_bar_height(ctx)
+                + 2.0
+                + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
+        } else if app.settings_manager.get().show_titlebar {
+            MENU_OFFSET + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
         } else {
-            40.0
+            40.0 + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
         };
         (
             egui::Align2::RIGHT_TOP,

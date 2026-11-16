@@ -80,22 +80,25 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             ui.set_max_width(sidebar_content_width);
 
             ui.horizontal_wrapped(|ui| {
-                // Drawer toggle belongs to the sidebar edge, not the navigation
-                // toolbar. Use a panel-and-arrow glyph to show the action clearly.
-                let hide_sidebar = ui.add(
-                    egui::Button::new("")
-                        .frame(false)
-                        .min_size(egui::vec2(30.0, 28.0)),
-                );
-                crate::app::ui::helpers::paint_sidebar_drawer_icon(
-                    ui,
-                    hide_sidebar.rect,
-                    false,
-                );
-                if hide_sidebar.on_hover_text("Hide sidebar").clicked() {
-                    let _ = app.settings_manager.update(|settings| {
-                        settings.show_file_sidebar = false;
-                    });
+                // With the custom title bar enabled, the sidebar drawer control
+                // already lives in the title bar. Keep this in-sidebar duplicate
+                // only when Windows/native decorations own the title bar.
+                if sidebar_settings.show_titlebar {
+                    let hide_sidebar = ui.add(
+                        egui::Button::new("")
+                            .frame(false)
+                            .min_size(egui::vec2(30.0, 28.0)),
+                    );
+                    crate::app::ui::helpers::paint_sidebar_drawer_icon(
+                        ui,
+                        hide_sidebar.rect,
+                        false,
+                    );
+                    if hide_sidebar.on_hover_text("Hide sidebar").clicked() {
+                        let _ = app.settings_manager.update(|settings| {
+                            settings.show_file_sidebar = false;
+                        });
+                    }
                 }
                 ui.heading("JPEG Viewer");
             });
@@ -182,7 +185,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                     // Sorting and Masonry both operate on the current Browse collection.
                     crate::app::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
-                    if ui.add_enabled(!app.image_entries.is_empty(), egui::Button::new("Open in Masonry")).clicked() {
+                    if crate::app::ui::masonry_button(ui, "Open in Masonry", !app.image_entries.is_empty(), 0.0, false).clicked() {
                         app.open_local_masonry();
                     }
                 });

@@ -4,6 +4,7 @@ use eframe::egui;
 impl ViewerApp {
     pub fn render_error_ui(&mut self, ui: &mut egui::Ui, error: &str) {
         ui.style_mut().interaction.selectable_labels = false;
+        let empty_folder = self.image_entries.is_empty() && self.current_directory.is_some();
         let available_rect = ui.available_rect_before_wrap();
         let response = ui.interact(
             available_rect,
@@ -29,7 +30,11 @@ impl ViewerApp {
                     ui.add_space(4.0);
                     ui.vertical_centered(|ui| {
                         ui.label(
-                            egui::RichText::new("Failed to Load Image!")
+                                egui::RichText::new(if empty_folder {
+                                    "No Supported Formats Found"
+                                } else {
+                                    "Failed to Load Image!"
+                                })
                                 .size(32.0)
                                 .strong(),
                         );
@@ -46,32 +51,44 @@ impl ViewerApp {
 
                         ui.add_space(28.0);
 
-                        ui.horizontal(|ui| {
-                            ui.add_space(20.0);
+                        if empty_folder {
+                            ui.horizontal(|ui| {
+                                if ui.add_sized([180.0, 44.0], egui::Button::new("Open another folder…")).clicked() {
+                                    self.image_error = None;
+                                    self.open_folder_dialog();
+                                }
+                                if ui.add_sized([100.0, 44.0], egui::Button::new("Dismiss")).clicked() {
+                                    self.image_error = None;
+                                }
+                            });
+                        } else {
+                            ui.horizontal(|ui| {
+                                ui.add_space(20.0);
 
-                            let retry_button =
-                                egui::Button::new(egui::RichText::new("↻  Retry").size(15.0))
-                                    .min_size(egui::vec2(120.0, 44.0))
-                                    .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) });
+                                let retry_button =
+                                    egui::Button::new(egui::RichText::new("↻  Retry").size(15.0))
+                                        .min_size(egui::vec2(120.0, 44.0))
+                                        .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) });
 
-                            if ui.add(retry_button).clicked() {
-                                self.image_error = None;
-                                self.load_current_image_with_cache();
-                            }
+                                if ui.add(retry_button).clicked() {
+                                    self.image_error = None;
+                                    self.load_current_image_with_cache();
+                                }
 
-                            ui.add_space(12.0);
+                                ui.add_space(12.0);
 
-                            let skip_button =
-                                egui::Button::new(egui::RichText::new("Skip").size(15.0))
-                                    .min_size(egui::vec2(120.0, 44.0))
-                                    .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) });
+                                let skip_button =
+                                    egui::Button::new(egui::RichText::new("Skip").size(15.0))
+                                        .min_size(egui::vec2(120.0, 44.0))
+                                        .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) });
 
-                            if ui.add(skip_button).clicked() {
-                                self.navigate_images(ui.ctx(), 1);
-                            }
+                                if ui.add(skip_button).clicked() {
+                                    self.navigate_images(ui.ctx(), 1);
+                                }
 
-                            ui.add_space(20.0);
-                        });
+                                ui.add_space(20.0);
+                            });
+                        }
 
                         ui.add_space(8.0);
                     });

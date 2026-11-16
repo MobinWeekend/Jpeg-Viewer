@@ -46,6 +46,18 @@ impl ViewerApp {
             self.current_image_path = Some(path.clone());
             self.load_current_image();
         } else {
+            // Do not leave the previous folder's entries behind while a new
+            // directory is being indexed. In particular, an empty directory
+            // must be able to reach the empty-folder fallback instead of
+            // inheriting stale entries and remaining in the Indexing state.
+            self.image_entries.clear();
+            self.current_index = 0;
+            self.preload_origin = 0;
+            if let Some(tab) = self.workspace.active_tab_mut() {
+                tab.entries.clear();
+                tab.current_index = 0;
+                tab.directory = Some(directory.clone());
+            }
             self.set_loading_state(LoadingState::Indexing);
         }
 
@@ -69,12 +81,24 @@ impl ViewerApp {
         self.indexing_receiver = None;
 
         if paths.is_empty() {
-            println!("No images found in directory");
-            // If a specific image was opened, keep that image available even if
-            // the directory scan failed or returned no other entries.
-            if self.image_entries.is_empty() {
+            // An explicitly selected image is already loading independently of
+            // the containing-folder scan. Preserve it if the scan has no other
+            // supported entries; a direct folder open instead becomes a clear,
+            // non-loading empty state with an actionable error message.
+            if selected_path.is_none() {
                 self.current_index = 0;
                 self.set_loading_state(LoadingState::Idle);
+                self.image_error = Some(format!(
+                    "This folder has no supported image formats:\n{}",
+                    self.current_directory
+                        .as_deref()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|| "Unknown folder".to_owned()),
+                ));
+                if let Some(tab) = self.workspace.active_tab_mut() {
+                    tab.entries.clear();
+                    tab.current_index = 0;
+                }
             }
             return;
         }

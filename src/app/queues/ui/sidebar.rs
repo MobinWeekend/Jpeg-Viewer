@@ -106,7 +106,7 @@ impl ViewerApp {
             if ui.button("Open queue").clicked() {
                 self.open_queue_in_viewer(ctx);
             }
-            if ui.button("Open in Masonry").clicked() {
+            if crate::app::ui::masonry_button(ui, "Open in Masonry", !self.queue_paths.is_empty(), 0.0, false).clicked() {
                 let paths = self.queue_paths.clone();
                 self.open_masonry_from_paths(&paths, "Masonry · Queue");
             }
@@ -390,7 +390,7 @@ impl ViewerApp {
                     self.add_favorite_path(path);
                 }
             }
-            if ui.button("Open in Masonry").clicked() {
+            if crate::app::ui::masonry_button(ui, "Open in Masonry", !self.favorite_paths.is_empty(), 0.0, false).clicked() {
                 let paths = self.favorite_paths.clone();
                 self.open_masonry_from_paths(&paths, "Masonry · Favorites");
             }

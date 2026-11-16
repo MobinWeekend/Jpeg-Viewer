@@ -33,6 +33,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
 
         ui.add_space(6.0);
         ui.separator();
+        ui.label(egui::RichText::new("New Tab").strong());
+        render_new_tab_recent_options(app, ui);
+
+        ui.add_space(6.0);
+        ui.separator();
         ui.label(egui::RichText::new("Image rendering").strong());
         render_texture_filter(app, ui);
 
@@ -56,6 +61,34 @@ fn render_masonry_folder_headers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     }
     ui.label(
         egui::RichText::new("When entries come from multiple folders, or Folder Masonry includes subfolders, start each folder group with a heading.")
+            .small()
+            .weak(),
+    );
+}
+
+fn render_new_tab_recent_options(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut rows = app.settings_manager.get().new_tab_recent_rows.clamp(0, 2);
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Recently opened");
+        egui::ComboBox::from_id_salt("new_tab_recent_rows")
+            .selected_text(match rows {
+                0 => "Disable",
+                1 => "1 row",
+                _ => "2 rows",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut rows, 0, "Disable");
+                ui.selectable_value(&mut rows, 1, "1 row");
+                ui.selectable_value(&mut rows, 2, "2 rows");
+            });
+    });
+    if rows != app.settings_manager.get().new_tab_recent_rows {
+        let _ = app.settings_manager.update(|settings| {
+            settings.new_tab_recent_rows = rows;
+        });
+    }
+    ui.label(
+        egui::RichText::new("Each row shows up to 6 folders, saved queue lists, or archives, for a maximum of 12 visible entries.")
             .small()
             .weak(),
     );

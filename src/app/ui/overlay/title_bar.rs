@@ -37,10 +37,22 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
 
     let profile = crate::ui_theme::current_look_profile(ctx);
     let win98 = profile == "win98";
-    let (margin, button_size) = if win98 {
-        (3, egui::vec2(24.0, 24.0))
+    // In the modern custom-titlebar profile, caption controls are flush with
+    // the top edge and the Close control is flush with the right edge, matching
+    // Windows 11's integrated caption-button treatment. Keep the classic Win98
+    // layout unchanged.
+    let (panel_margin, button_size) = if win98 {
+        (egui::Margin::same(3), egui::vec2(24.0, 24.0))
     } else {
-        (4, egui::vec2(36.0, 32.0))
+        (
+            egui::Margin {
+                left: 2,
+                right: 0,
+                top: -2,
+                bottom: 2,
+            },
+            egui::vec2(46.0, 36.0),
+        )
     };
     let panel_response = egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar")
         .show_separator_line(false)
@@ -61,10 +73,9 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
             }
 
             // Resize hit areas live on the outer edge and must not reserve layout
-            // width. The top-left hit target is kept to the thin frame strip (see
-            // resize_handles) so the first title-bar control can start at x=0.
-            // Keep a one-pixel inner right margin. The top-right resize target
-            // occupies only the two outermost pixels, not a full button gap.
+            // width. The left inset keeps the first title-bar control clear of the
+            // top-left resize strip; the caption controls themselves reach the
+            // top and right edges of the reserved panel.
             if !window_width.is_finite() || window_width <= 0.0 {
                 return;
             }
@@ -158,14 +169,10 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE)
                 .corner_radius(radius)
-                .inner_margin(egui::Margin {
-                    left: margin,
-                    right: margin,
-                    top: margin,
-                    bottom: margin,
-                })
+                .inner_margin(panel_margin)
                 .show(panel_ui, |ui| {
-                    let inner_width = (window_width - 16.0).max(button_size.x * 3.0);
+                    let horizontal_margin = if win98 { 6.0 } else { 4.0 };
+                    let inner_width = (window_width - horizontal_margin).max(button_size.x * 3.0);
                     let row_height = button_size.y;
                     ui.set_min_width(inner_width);
                     ui.set_max_width(inner_width);
@@ -174,7 +181,9 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        let controls_width = button_size.x * 3.0;
+                        // Include the two gaps between the three caption buttons so
+                        // the draggable title region never overlaps their hitboxes.
+                        let controls_width = button_size.x * 3.0 + 4.0;
                         let integrate_navigation =
                             app.settings_manager.get().custom_titlebar_navigation;
                         let inner_available = ui.available_width().max(0.0);
@@ -220,9 +229,25 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                         // When integrated navigation is enabled, the hamburger has
                         // absolute priority and remains visible even at minimal width.
                         // Otherwise the title bar returns to its standard title-only layout.
-                        if integrate_navigation {
+                        if integrate_navigation && !crate::app::ui::uses_desktop_menu_bar(ctx) {
                             ui.add_space(3.0);
                             app.render_hamburger_ui(ui);
+                        }
+
+                        // A dedicated shortcut opens the current Viewer
+                        // collection in Masonry. Use the shared custom mark so
+                        // every Masonry entry point has the same visual identity.
+                        if integrate_navigation
+                            && !app.active_workspace_hides_image_navigation()
+                            && !app.image_entries.is_empty()
+                        {
+                            ui.add_space(3.0);
+                            if crate::app::ui::masonry_button_quiet(ui, "", true, 30.0, true)
+                                .on_hover_text("Open current entries in Masonry")
+                                .clicked()
+                            {
+                                app.open_local_masonry();
+                            }
                         }
 
                         if integrate_navigation
@@ -408,7 +433,9 @@ fn render_caption_button(
     let size = if win98 {
         egui::vec2(22.0, 22.0)
     } else {
-        egui::vec2(36.0, 28.0)
+        // Match the 40px titlebar reservation: buttons begin at its top edge,
+        // while the remaining 4px belongs to the lower titlebar surface.
+        egui::vec2(46.0, 36.0)
     };
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let pressed = response.is_pointer_button_down_on();
@@ -425,6 +452,15 @@ fn render_caption_button(
     };
     let radius = if win98 {
         egui::CornerRadius::ZERO
+    } else if is_close {
+        // Keep Close square against the window's top/right edges; only soften
+        // its lower-left inside corner so the control reads as part of the bar.
+        egui::CornerRadius {
+            nw: 0,
+            ne: 0,
+            sw: 5,
+            se: 0,
+        }
     } else {
         egui::CornerRadius::same(5)
     };

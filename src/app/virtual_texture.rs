@@ -163,16 +163,6 @@ impl VirtualTexture {
         self.prepared_tiles.load(Ordering::Relaxed)
     }
 
-    /// Configured source-pixel size of each virtual tile (edge tiles may be smaller).
-    pub fn tile_size(&self) -> u32 {
-        self.tile_size
-    }
-
-    /// Number of tile textures currently resident on the GPU.
-    pub fn resident_tiles_count(&self) -> usize {
-        self.tiles.iter().filter(|tile| tile.texture.is_some()).count()
-    }
-
     /// Schedule one visible tile for background extraction. The image source
     /// buffer is shared, and only the requested tile's temporary pixel buffer
     /// is allocated. GPU texture creation remains on the UI thread.

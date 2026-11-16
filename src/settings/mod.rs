@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 6;
+const SETTINGS_SCHEMA_VERSION: u32 = 7;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -146,6 +146,8 @@ pub struct AppSettings {
     pub masonry_thumbnail_size: f32,
     /// Show a full-width folder heading before each recursive Folder Masonry group.
     pub masonry_show_folder_headers: bool,
+    /// Number of Recently opened rows on the New Tab page (0 = disabled, 1-2 rows).
+    pub new_tab_recent_rows: usize,
     // Viewing padding mode: look, fine_tune, or custom.
     pub view_padding_mode: String,
     /// Per-look adjustments in [top, right, bottom, left] order.
@@ -254,6 +256,7 @@ impl Default for AppSettings {
             session_restore_preference: "automatic".to_string(),
             masonry_thumbnail_size: 220.0,
             masonry_show_folder_headers: true,
+            new_tab_recent_rows: 2,
             view_padding_mode: "look".to_string(),
             view_padding_fine_tune: HashMap::from([
                 ("native".to_string(), [0.0; 4]),

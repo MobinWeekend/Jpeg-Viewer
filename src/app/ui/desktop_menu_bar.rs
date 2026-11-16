@@ -528,11 +528,11 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             }
         }
         ui.separator();
-        if ui.button("Masonry · Current entries").clicked() {
+        if crate::app::ui::masonry_button(ui, "Masonry · Current entries", !app.image_entries.is_empty(), 0.0, true).clicked() {
             app.open_local_masonry();
             ui.close();
         }
-        if ui.button("Masonry · Current folder").clicked() {
+        if crate::app::ui::masonry_button(ui, "Masonry · Current folder", app.current_directory.is_some(), 0.0, true).clicked() {
             app.open_folder_masonry();
             ui.close();
         }

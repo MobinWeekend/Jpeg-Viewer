@@ -94,12 +94,12 @@ impl ViewerApp {
                 self.hamburger_open_file_button(ctx, ui);
                 if ui.add(
                     egui::Button::new(
-                        egui::RichText::new("✦  New Welcome Tab").size(scaled_text_size(ui.ctx(), 14.0)),
+                        egui::RichText::new("✦  New Tab").size(scaled_text_size(ui.ctx(), 14.0)),
                     )
                     .min_size(egui::vec2(180.0, 30.0))
                     .fill(egui::Color32::TRANSPARENT)
                     .stroke(egui::Stroke::NONE),
-                ).on_hover_text("Open a Firefox-style new Welcome tab (Ctrl+T)").clicked() {
+                ).on_hover_text("Open a new tab (Ctrl+T)").clicked() {
                     self.open_new_welcome_tab();
                     self.hamburger_menu_open = false;
                 }
@@ -192,27 +192,11 @@ impl ViewerApp {
     }
 
     fn hamburger_masonry_buttons(&mut self, ui: &mut egui::Ui) {
-        if ui.add(
-            egui::Button::new(
-                egui::RichText::new("▦  Masonry · Current entries")
-                    .size(scaled_text_size(ui.ctx(), 14.0)),
-            )
-            .min_size(egui::vec2(180.0, 30.0))
-            .fill(egui::Color32::TRANSPARENT)
-            .stroke(egui::Stroke::NONE),
-        ).clicked() {
+        if crate::app::ui::masonry_button(ui, "Masonry · Current entries", !self.image_entries.is_empty(), 180.0, true).clicked() {
             self.open_local_masonry();
             self.hamburger_menu_open = false;
         }
-        if ui.add(
-            egui::Button::new(
-                egui::RichText::new("▦  Masonry · Current folder")
-                    .size(scaled_text_size(ui.ctx(), 14.0)),
-            )
-            .min_size(egui::vec2(180.0, 30.0))
-            .fill(egui::Color32::TRANSPARENT)
-            .stroke(egui::Stroke::NONE),
-        ).clicked() {
+        if crate::app::ui::masonry_button(ui, "Masonry · Current folder", self.current_directory.is_some(), 180.0, true).clicked() {
             self.open_folder_masonry();
             self.hamburger_menu_open = false;
         }

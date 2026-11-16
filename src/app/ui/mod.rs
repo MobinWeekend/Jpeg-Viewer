@@ -6,6 +6,7 @@ mod hamburger_ui;
 mod help_window;
 pub(crate) mod helpers;
 mod metainfo;
+mod masonry_icon;
 mod navigation_ui;
 mod overlay;
 pub(crate) mod tricks;
@@ -20,6 +21,7 @@ pub use overlay::{
     custom_titlebar_height, render_overlay_ui, reserve_custom_titlebar_space, toolbar_frame,
     update_overlay_visibility,
 };
+pub(crate) use masonry_icon::{draw_masonry_icon, masonry_button, masonry_button_quiet};
 pub(crate) use crate::app::settings_menu::{render_settings_menu, toggle_settings_menu};
 
 /// Return a viewport-local rectangle for effects that must stay attached to the

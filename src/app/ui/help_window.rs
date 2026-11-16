@@ -172,7 +172,7 @@ impl ViewerApp {
                         // Workspace Tabs
                         ui.label(egui::RichText::new("Workspace Tabs").size(14.0).strong());
                         ui.add_space(4.0);
-                        Self::render_shortcut_row(ui, "Ctrl+T", "Open a new Welcome tab");
+                        Self::render_shortcut_row(ui, "Ctrl+T", "Open a new tab");
                         Self::render_shortcut_row(ui, "Ctrl+PageUp / PageDown", "Switch to previous / next workspace tab");
                         Self::render_shortcut_row(ui, "Ctrl+Shift+PageUp / PageDown", "Move the active tab left / right");
                         Self::render_shortcut_row(ui, "Ctrl+Shift+Left / Right", "Alternative tab-reordering shortcuts");

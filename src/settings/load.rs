@@ -330,6 +330,29 @@ impl SettingsManager {
                     if let Some(value) = section.get("masonry_show_folder_headers") {
                         settings.masonry_show_folder_headers = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("new_tab_recent_rows") {
+                        if let Ok(rows) = value.parse::<usize>() {
+                            settings.new_tab_recent_rows = rows.clamp(0, 2);
+                        }
+                    } else {
+                        // Migrate the previous toggle + item-count controls. The
+                        // New Tab grid now supports exactly six entries per row.
+                        let was_enabled = section
+                            .get("new_tab_show_recent")
+                            .map(Self::parse_bool)
+                            .unwrap_or(true);
+                        if !was_enabled {
+                            settings.new_tab_recent_rows = 0;
+                        } else {
+                            let old_count = section
+                                .get("new_tab_recent_count")
+                                .and_then(|value| value.parse::<usize>().ok())
+                                .unwrap_or(50)
+                                .clamp(1, 50);
+                            settings.new_tab_recent_rows = old_count.saturating_add(5) / 6;
+                            settings.new_tab_recent_rows = settings.new_tab_recent_rows.clamp(1, 2);
+                        }
+                    }
                     if let Some(value) = section.get("view_padding_mode") {
                         if matches!(value, "look" | "fine_tune" | "custom") {
                             settings.view_padding_mode = value.to_string();

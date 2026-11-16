@@ -34,7 +34,45 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=6"));
+    assert!(saved.contains("schema_version=7"));
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn new_tab_recent_rows_round_trip_and_migrate_legacy_options() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-new-tab-{}.ini", unique));
+    let mut settings = AppSettings::default();
+    settings.new_tab_recent_rows = 0;
+
+    SettingsManager::save_to_file(&path, &settings).unwrap();
+    let mut error: Option<String> = None;
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert_eq!(loaded.new_tab_recent_rows, 0);
+
+    fs::write(&path, "[Settings]\nnew_tab_show_recent=true\nnew_tab_recent_count=6\n").unwrap();
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert_eq!(loaded.new_tab_recent_rows, 1);
+
+    fs::write(&path, "[Settings]\nnew_tab_show_recent=true\nnew_tab_recent_count=50\n").unwrap();
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert_eq!(loaded.new_tab_recent_rows, 2);
+
+    fs::write(&path, "[Settings]\nnew_tab_show_recent=false\nnew_tab_recent_count=6\n").unwrap();
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert_eq!(loaded.new_tab_recent_rows, 0);
+
+    fs::write(&path, "[Settings]\nnew_tab_recent_rows=500\n").unwrap();
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert_eq!(loaded.new_tab_recent_rows, 2);
     let _ = fs::remove_file(path);
 }
 
@@ -129,13 +167,13 @@ fn save_preserves_unknown_keys_and_future_schema_version() {
     let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-future-{}.ini", unique));
     fs::write(
         &path,
-        "[Settings]\nschema_version=7\nfuture_option=keep-me\n[OtherSection]\ncustom=value\n",
+        "[Settings]\nschema_version=8\nfuture_option=keep-me\n[OtherSection]\ncustom=value\n",
     )
     .unwrap();
 
     SettingsManager::save_to_file(&path, &AppSettings::default()).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=7"));
+    assert!(saved.contains("schema_version=8"));
     assert!(saved.contains("future_option=keep-me"));
     assert!(saved.contains("custom=value"));
     let _ = fs::remove_file(path);

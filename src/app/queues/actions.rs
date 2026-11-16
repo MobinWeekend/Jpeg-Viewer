@@ -282,6 +282,7 @@ impl ViewerApp {
     pub fn open_queue_file(&mut self, path: &Path, ctx: &egui::Context, prompt: bool) {
         match read_queue(path) {
             Ok((paths, root)) => {
+                self.record_welcome_recent_path(path.to_path_buf());
                 if prompt {
                     self.queue_import_prompt = Some((paths, root));
                     self.queue_status = Some("Choose whether to add this saved queue or replace the current queue.".into());
@@ -306,6 +307,7 @@ impl ViewerApp {
         };
         match read_queue(&path) {
             Ok((paths, root)) => {
+                self.record_welcome_recent_path(path.clone());
                 self.queue_paths = paths;
                 self.queue_root = root;
                 let missing = self
