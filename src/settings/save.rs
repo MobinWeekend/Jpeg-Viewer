@@ -32,6 +32,7 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set("zoom_step", settings.zoom_step.clamp(1.05, 2.0).to_string());
 
         if let Some([x, y]) = settings.window_pos {
             section.set("window_pos", format!("{},{}", x, y));

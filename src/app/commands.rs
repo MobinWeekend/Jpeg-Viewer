@@ -53,20 +53,32 @@ impl ViewerApp {
                 self.navigate_images(ctx, -1);
             }
             ViewerCommand::ZoomIn => {
-                self.zoom *= 1.2;
-                self.zoom = self.zoom.clamp(0.01, 10.0);
+                let from = self.zoom;
+                let base = self.zoom_animation.map(|(_, target, _, _)| target).unwrap_or(from);
+                let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                let target = (base * step).clamp(0.01, 10.0);
+                self.zoom_animation = Some((from, target, Instant::now(), true));
+                self.b_fit_to_window = false;
                 self.b_zoom_used = true;
+                ctx.request_repaint();
             }
             ViewerCommand::ZoomOut => {
-                self.zoom /= 1.2;
-                self.zoom = self.zoom.clamp(0.01, 10.0);
+                let from = self.zoom;
+                let base = self.zoom_animation.map(|(_, target, _, _)| target).unwrap_or(from);
+                let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                let target = (base / step).clamp(0.01, 10.0);
+                self.zoom_animation = Some((from, target, Instant::now(), false));
+                self.b_fit_to_window = false;
                 self.b_zoom_used = true;
+                ctx.request_repaint();
             }
             ViewerCommand::ResetZoom => {
+                self.zoom_animation = None;
                 self.zoom = 1.0;
                 self.b_zoom_used = true;
             }
             ViewerCommand::MakeFit => {
+                self.zoom_animation = None;
                 self.b_fit_to_window = true;
                 self.b_zoom_used = false;
             }
@@ -166,6 +178,25 @@ impl ViewerApp {
             ViewerCommand::ToggleCompact => {
                 self.toggle_compactui();
             }
+        }
+    }
+
+
+    /// Advance keyboard/menu zoom with a short directional easing curve.
+    /// Zoom-in accelerates (ease-in); zoom-out decelerates (ease-out).
+    pub(crate) fn update_zoom_animation(&mut self, ctx: &egui::Context) {
+        let Some((from, to, started, zooming_in)) = self.zoom_animation else {
+            return;
+        };
+        let duration = std::time::Duration::from_millis(180);
+        let t = (started.elapsed().as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0);
+        let eased = if zooming_in { t * t * t } else { 1.0 - (1.0 - t).powi(3) };
+        self.zoom = from + (to - from) * eased;
+        if t >= 1.0 {
+            self.zoom = to;
+            self.zoom_animation = None;
+        } else {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
     }
 }

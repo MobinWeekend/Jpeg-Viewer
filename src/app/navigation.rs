@@ -97,7 +97,9 @@ impl ViewerApp {
         // Change image
         self.current_index = new_index;
 
-        // Reset image view
+        // Reset image view and stop any in-flight keyboard zoom animation so
+        // it cannot continue changing the next image's initial fit.
+        self.zoom_animation = None;
         self.b_fit_to_window = true;
         self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.image_rect = None;

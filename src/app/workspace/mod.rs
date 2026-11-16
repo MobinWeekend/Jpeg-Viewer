@@ -72,6 +72,8 @@ pub(crate) struct WorkspaceTab {
     pub sync_zoom: bool,
     pub sync_navigation: bool,
     pub pane_zoom: Vec<f32>,
+    /// Per-pane clockwise image rotation in radians, used to align corresponding anchors.
+    pub pane_rotation: Vec<f32>,
     /// Whether each pane participates as a target in synchronized pan/zoom.
     pub pane_sync: Vec<bool>,
     /// Per-pane width/height factors; 1.0 means the adaptive default size.
@@ -115,6 +117,7 @@ impl WorkspaceTab {
             sync_zoom: true,
             sync_navigation: false,
             pane_zoom: Vec::new(),
+            pane_rotation: Vec::new(),
             pane_sync: Vec::new(),
             pane_size: Vec::new(),
             compare_columns: 0,

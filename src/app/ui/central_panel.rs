@@ -50,6 +50,7 @@ impl ViewerApp {
     }
 
     pub fn render_central_panel(&mut self, ctx: &egui::Context) {
+        self.update_zoom_animation(ctx);
         if self.inspect_mode && self.inspect_source_path != self.current_image_path {
             self.inspect_source = None;
             self.inspect_texture = None;
@@ -142,7 +143,13 @@ impl ViewerApp {
             let available_rect = ui.available_rect_before_wrap()
                 .intersect(ui.clip_rect())
                 .intersect(self.central_panel_rect);
-            let image_viewport_rect = fitted_image_viewport_rect(available_rect, ctx, &settings);
+            let platform_overlay_padding = matches!(
+                crate::ui_theme::current_look_profile(ctx), "win98" | "cosmic" | "gnome"
+            );
+            let no_auto_fit_padding = settings.fit_window_to_image
+                && (self.zoom - 1.0).abs() < 0.001
+                && !platform_overlay_padding;
+            let image_viewport_rect = fitted_image_viewport_rect(available_rect, ctx, &settings, no_auto_fit_padding);
             // User-defined padding may be negative to bring the image closer to
             // the window edge. Never let that extend the image layer above the
             // content viewport (especially over the browser-style workspace tabs).
@@ -874,10 +881,20 @@ fn fitted_image_viewport_rect(
     available: egui::Rect,
     ctx: &egui::Context,
     settings: &crate::settings::AppSettings,
+    no_auto_fit_padding: bool,
 ) -> egui::Rect {
     let profile = crate::ui_theme::current_look_profile(ctx);
     let placement = crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
-    let mut padding = crate::app::settings_menu::viewing::effective_padding(settings, profile, placement);
+    let mut padding = if no_auto_fit_padding {
+        [0.0; 4]
+    } else {
+        crate::app::settings_menu::viewing::effective_padding(settings, profile, placement)
+    };
+    if settings.fit_window_to_image && matches!(profile, "win98" | "cosmic" | "gnome") {
+        // Image-aware sizing keeps the image edge-to-edge except for the top
+        // lane reserved for the platform navigation overlay.
+        padding = [padding[0], 0.0, 0.0, 0.0];
+    }
 
     let max_horizontal = (available.width() - 1.0).max(0.0) * 0.5;
     let max_vertical = (available.height() - 1.0).max(0.0) * 0.5;

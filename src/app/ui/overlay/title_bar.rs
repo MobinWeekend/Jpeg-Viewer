@@ -257,7 +257,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             .on_hover_text(tip)
                             .clicked()
                             {
-                                app.toggle_masonry_workspace();
+                                app.activate_masonry_from_navigation_button();
                             }
                         }
 

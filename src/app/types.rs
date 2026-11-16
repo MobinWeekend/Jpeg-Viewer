@@ -89,6 +89,8 @@ pub struct ViewerApp {
 
     // ====== IMAGE VIEW ======
     pub zoom: f32,
+    /// (start zoom, target zoom, animation start, zoom-in direction).
+    pub zoom_animation: Option<(f32, f32, Instant, bool)>,
     pub pan: egui::Vec2,
     pub b_fit_to_window: bool,
     pub b_zoom_used: bool,
@@ -376,6 +378,7 @@ impl Default for ViewerApp {
 
             // ====== IMAGE VIEW ======
             zoom: 1.0,
+            zoom_animation: None,
             pan: egui::Vec2::ZERO,
             b_fit_to_window: false,
             b_zoom_used: false,

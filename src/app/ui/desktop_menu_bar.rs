@@ -253,10 +253,15 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
             let total_width = panel_ui.available_width().max(0.0);
             let compact_labels = total_width < 520.0;
             let is_loading = app.is_loading();
-            let row_height = panel_ui.spacing().interact_size.y;
+            let native_titlebar = app.settings_manager.get().show_titlebar;
+            let row_height = if native_titlebar {
+                (panel_ui.spacing().interact_size.y - 4.0).max(22.0)
+            } else {
+                panel_ui.spacing().interact_size.y
+            };
             let bar_frame = egui::Frame::new()
                 .fill(fill)
-                .inner_margin(if profile == "win98" {
+                .inner_margin(if profile == "win98" || native_titlebar {
                     egui::Margin::ZERO
                 } else {
                     egui::Margin::symmetric(8, 0)
@@ -264,9 +269,12 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
                 .stroke(egui::Stroke::NONE);
 
             let bar_response = bar_frame.show(panel_ui, |bar_ui| {
-                // The panel and frame reserve only their measured content size.
-                // No width constraint, clipping viewport, or nested MenuBar is
-                // needed: the top panel already supplies the available window area.
+                // Native-titlebar mode uses a full-width, compact menu strip.
+                // Other modes retain the content-wrapping menu surface.
+                if native_titlebar {
+                    bar_ui.set_min_width(total_width);
+                    bar_ui.set_max_width(total_width);
+                }
                 bar_ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 bar_ui.horizontal(|row| {
                     row.spacing_mut().item_spacing.x = if compact_labels { 6.0 } else { 18.0 };
@@ -389,24 +397,26 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
     trigger_style.visuals.widgets.open.bg_stroke = egui::Stroke::NONE;
     *ui.style_mut() = trigger_style;
 
-    // The Masonry mode switch is a persistent top-level navigation item,
-    // placed before File in every desktop-menu-bar layout (standalone or inline).
-    // Use the same text-button treatment and row geometry as File/Edit/View.
+    // The Masonry mode switch precedes File in every desktop-menu-bar layout.
+    // Native decorations use the shared compact Masonry glyph to save row width.
     let masonry_active = app.workspace.active_kind()
         == crate::app::workspace::WorkspaceTabKind::Masonry;
     let masonry_enabled = app.masonry_toggle_available();
-    let masonry_toggle = ui
-        .add_enabled_ui(masonry_enabled, |ui| {
-            ui.selectable_label(masonry_active, "Masonry")
-        })
-        .inner
-        .on_hover_text(if masonry_active {
-            "Return to Viewer"
-        } else {
-            "Open current entries in Masonry"
-        });
-    if masonry_toggle.clicked() {
-        app.toggle_masonry_workspace();
+    if app.settings_manager.get().show_titlebar {
+        let masonry_toggle = crate::app::ui::masonry_toggle_button(
+            ui, masonry_active, masonry_enabled, 24.0,
+        ).on_hover_text(if masonry_active { "Return to Viewer" } else { "Open current entries in Masonry" });
+        if masonry_toggle.clicked() {
+            app.activate_masonry_from_navigation_button();
+        }
+    } else {
+        let masonry_toggle = ui
+            .add_enabled_ui(masonry_enabled, |ui| ui.selectable_label(masonry_active, "Masonry"))
+            .inner
+            .on_hover_text(if masonry_active { "Return to Viewer" } else { "Open current entries in Masonry" });
+        if masonry_toggle.clicked() {
+            app.activate_masonry_from_navigation_button();
+        }
     }
 
     // Keep the conventional desktop menu order. Home belongs only in File.
@@ -420,7 +430,7 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             app.handle_command(ctx, ViewerCommand::OpenFolder);
             ui.close();
         }
-        if ui.button("Home").clicked() {
+        if crate::app::ui::home_menu_button(ui, "Home", 180.0).clicked() {
             app.open_home_page();
             ui.close();
         }

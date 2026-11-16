@@ -144,7 +144,7 @@ pub fn render_top_toolbar(
                         let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
                             .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
                         if toggle.clicked() {
-                            this.toggle_masonry_workspace();
+                            this.activate_masonry_from_navigation_button();
                         }
                     }
                     let space = if compact { 8.0 } else { 1.0 };
@@ -446,7 +446,7 @@ fn render_win98_primary_row(
         let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
             .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
         if toggle.clicked() {
-            app.toggle_masonry_workspace();
+            app.activate_masonry_from_navigation_button();
         }
         separator(ui, 1.0);
     }
@@ -532,7 +532,7 @@ fn render_platform_primary_row(
             let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
                 .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
             if toggle.clicked() {
-                app.toggle_masonry_workspace();
+                app.activate_masonry_from_navigation_button();
             }
         }
 

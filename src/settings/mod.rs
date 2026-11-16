@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 7;
+const SETTINGS_SCHEMA_VERSION: u32 = 8;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -16,6 +16,8 @@ mod tests;
 #[derive(Debug, Clone)]
 pub struct AppSettings {
     pub b_ctrl_invert: bool,
+    /// Multiplicative zoom factor applied by keyboard and wheel zoom commands.
+    pub zoom_step: f32,
     pub window_pos: Option<[f32; 2]>,
     pub window_size: Option<[f32; 2]>,
     /// Restore the window maximized when it was maximized on the last normal exit.
@@ -172,6 +174,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             b_ctrl_invert: false,
+            zoom_step: 1.2,
             window_pos: None,
             window_size: None,
             window_maximized: false,

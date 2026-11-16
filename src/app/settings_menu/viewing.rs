@@ -1,16 +1,20 @@
-//! Main-view padding and image-aware window sizing settings.
+//! Main-view zoom, padding, and image-aware window sizing settings.
 use crate::app::types::ViewerApp;
 use crate::settings::AppSettings;
 use eframe::egui;
 
 /// Look-profile defaults provide modest edge padding only. Navigation controls
 /// are foreground overlays and do not reserve space in the image viewport.
-pub(crate) fn default_look_padding(profile: &str, _placement: &str) -> [f32; 4] {
-    // Order: top, right, bottom, left.
-    if !matches!(profile, "cosmic" | "gnome" | "win98") {
-        return [0.0; 4];
+pub(crate) fn default_look_padding(profile: &str, placement: &str) -> [f32; 4] {
+    // Order: top, right, bottom, left. Platform Looks place their navigation
+    // controls over the image surface; reserve a clear top lane so the image
+    // never renders underneath those controls. The desktop menu/tab rows are
+    // already excluded by the central layout and are not counted here.
+    match (profile, placement) {
+        ("win98", _) => [76.0, 12.0, 12.0, 12.0],
+        ("cosmic", _) | ("gnome", _) => [64.0, 12.0, 12.0, 12.0],
+        _ => [0.0; 4],
     }
-    [12.0, 12.0, 12.0, 12.0]
 }
 
 pub(crate) fn effective_padding(settings: &AppSettings, profile: &str, placement: &str) -> [f32; 4] {
@@ -28,10 +32,26 @@ pub(crate) fn effective_padding(settings: &AppSettings, profile: &str, placement
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.collapsing(egui::RichText::new("▧ Viewing").strong(), |ui| {
         ui.add_space(4.0);
+        render_zoom_step(app, ui);
+        ui.separator();
         ui.collapsing("Padding", |ui| render_padding(app, ui, ctx));
         ui.separator();
         ui.collapsing("Window sizing", |ui| render_window_sizing(app, ui, ctx));
     });
+}
+
+
+fn render_zoom_step(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut step = app.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+    ui.label(egui::RichText::new("Zoom step").strong());
+    let step_label = format!("Change per step (+{:.0}%)", (step - 1.0) * 100.0);
+    ui.add(egui::Slider::new(&mut step, 1.05..=2.0)
+        .step_by(0.05)
+        .text(step_label));
+    if (step - app.settings_manager.get().zoom_step).abs() > f32::EPSILON {
+        let _ = app.settings_manager.update(|settings| settings.zoom_step = step);
+    }
+    ui.label(egui::RichText::new("Used by keyboard zoom, mouse-wheel zoom, and right-button drag sensitivity.").small().weak());
 }
 
 fn render_padding(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {

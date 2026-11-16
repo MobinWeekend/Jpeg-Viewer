@@ -30,6 +30,72 @@ pub(crate) fn draw_masonry_icon(
     }
 }
 
+
+/// Draw the application's Home mark: a compact roof and doorway glyph that
+/// remains crisp at small menu and title-bar sizes.
+pub(crate) fn draw_home_icon(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    color: egui::Color32,
+) {
+    let scale = (rect.width().min(rect.height()) / 24.0).max(0.1);
+    let center = rect.center();
+    let stroke = egui::Stroke::new((1.8 * scale).max(1.0), color);
+    let roof = [
+        center + egui::vec2(-9.0 * scale, -1.0 * scale),
+        center + egui::vec2(0.0, -9.0 * scale),
+        center + egui::vec2(9.0 * scale, -1.0 * scale),
+    ];
+    painter.add(egui::Shape::line(roof.to_vec(), stroke));
+
+    let body = egui::Rect::from_min_max(
+        center + egui::vec2(-7.0 * scale, -1.0 * scale),
+        center + egui::vec2(7.0 * scale, 8.0 * scale),
+    );
+    painter.rect_filled(body, egui::CornerRadius::same((1.2 * scale) as u8), color);
+    let door = egui::Rect::from_min_max(
+        center + egui::vec2(-2.0 * scale, 2.5 * scale),
+        center + egui::vec2(2.0 * scale, 8.0 * scale),
+    );
+    painter.rect_filled(door, egui::CornerRadius::same((0.6 * scale) as u8),
+        color.gamma_multiply(0.28));
+    let window = egui::Rect::from_min_size(
+        center + egui::vec2(3.0 * scale, 1.5 * scale),
+        egui::vec2(2.0 * scale, 2.0 * scale),
+    );
+    painter.rect_filled(window, egui::CornerRadius::same((0.3 * scale) as u8),
+        color.gamma_multiply(0.28));
+}
+
+/// Standard menu-row Home action with the custom Home glyph.
+pub(crate) fn home_menu_button(ui: &mut egui::Ui, label: &str, width: f32) -> egui::Response {
+    let height = 30.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width.max(80.0), height), egui::Sense::click());
+    let visuals = if response.is_pointer_button_down_on() {
+        &ui.visuals().widgets.active
+    } else if response.hovered() {
+        &ui.visuals().widgets.hovered
+    } else {
+        &ui.visuals().widgets.inactive
+    };
+    if response.hovered() || response.is_pointer_button_down_on() {
+        ui.painter().rect_filled(rect, 4.0, visuals.bg_fill);
+    }
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 17.0, rect.center().y),
+        egui::vec2(18.0, 18.0),
+    );
+    draw_home_icon(ui.painter(), icon_rect, visuals.fg_stroke.color);
+    ui.painter().text(
+        egui::pos2(icon_rect.right() + 8.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::TextStyle::Button.resolve(ui.style()),
+        visuals.fg_stroke.color,
+    );
+    response
+}
+
 /// Render a compact button that carries the shared Masonry icon.
 /// `flat` is used for menu rows and title-bar chrome; ordinary buttons retain
 /// the current Look profile's standard widget surface.
@@ -122,7 +188,7 @@ pub(crate) fn masonry_toggle_button(
     enabled: bool,
     size: f32,
 ) -> egui::Response {
-    let size = size.max(28.0);
+    let size = size.max(24.0);
     let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), sense);
     let visuals = ui.visuals();

@@ -92,18 +92,8 @@ impl ViewerApp {
                 ui.separator();
 
                 self.hamburger_open_file_button(ctx, ui);
-                if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new("⌂  Home").size(scaled_text_size(ui.ctx(), 14.0)),
-                        )
-                        .min_size(egui::vec2(180.0, 30.0))
-                        .fill(egui::Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::NONE),
-                    )
-                    .on_hover_text("Show Home in the primary Viewer")
-                    .clicked()
-                {
+                if crate::app::ui::home_menu_button(ui, "Home", 180.0)
+                    .on_hover_text("Show Home in the primary Viewer").clicked() {
                     self.open_home_page();
                     self.hamburger_menu_open = false;
                 }
@@ -196,27 +186,13 @@ impl ViewerApp {
     }
 
     fn hamburger_masonry_buttons(&mut self, ui: &mut egui::Ui) {
-        if crate::app::ui::masonry_button(
-            ui,
-            "Masonry · Current entries",
-            !self.image_entries.is_empty(),
-            180.0,
-            true,
-        )
-        .clicked()
-        {
+        let entries_enabled = !self.image_entries.is_empty();
+        if crate::app::ui::masonry_button(ui, "Current entries", entries_enabled, 180.0, true).clicked() {
             self.open_local_masonry();
             self.hamburger_menu_open = false;
         }
-        if crate::app::ui::masonry_button(
-            ui,
-            "Masonry · Current folder",
-            self.current_directory.is_some(),
-            180.0,
-            true,
-        )
-        .clicked()
-        {
+        let folder_enabled = self.current_directory.is_some();
+        if crate::app::ui::masonry_button(ui, "Current folder", folder_enabled, 180.0, true).clicked() {
             self.open_folder_masonry();
             self.hamburger_menu_open = false;
         }
@@ -231,15 +207,9 @@ impl ViewerApp {
             .is_some_and(|entry| {
                 let name = match entry {
                     crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
-                    crate::imaging::entry::ImageEntry::Zip(item) => {
-                        std::path::Path::new(&item.name)
-                    }
-                    crate::imaging::entry::ImageEntry::S7z(item) => {
-                        std::path::Path::new(&item.name)
-                    }
-                    crate::imaging::entry::ImageEntry::Rar(item) => {
-                        std::path::Path::new(&item.name)
-                    }
+                    crate::imaging::entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
+                    crate::imaging::entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
+                    crate::imaging::entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
                 };
                 name.extension()
                     .and_then(|extension| extension.to_str())
@@ -279,8 +249,8 @@ impl ViewerApp {
     /// file. Archive entries are skipped (no persistent standalone path).
     fn hamburger_open_with_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         let path = self.current_image_path.clone();
-        let enabled =
-            !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
+        let enabled = !self.is_home_surface_active()
+            && path.as_ref().is_some_and(|path| path.is_file());
         if ui
             .add_enabled(
                 enabled,
@@ -296,8 +266,7 @@ impl ViewerApp {
         {
             if let Some(path) = path {
                 if let Err(error) = super::super::external_open::open_with(&path) {
-                    self.queue_status =
-                        Some(format!("Could not open external application: {error}"));
+                    self.queue_status = Some(format!("Could not open external application: {error}"));
                 }
             }
             self.hamburger_menu_open = false;
@@ -307,8 +276,8 @@ impl ViewerApp {
     /// "📂 Locate in File Manager" — reveals the current file in the OS file manager.
     fn hamburger_locate_in_file_manager_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         let path = self.current_image_path.clone();
-        let enabled =
-            !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
+        let enabled = !self.is_home_surface_active()
+            && path.as_ref().is_some_and(|path| path.is_file());
         if ui
             .add_enabled(
                 enabled,
@@ -428,12 +397,10 @@ impl ViewerApp {
         if ui
             .add_enabled(
                 can_edit,
-                egui::Button::new(
-                    egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)),
-                )
-                .min_size(egui::vec2(180.0, 30.0))
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
+                egui::Button::new(egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)))
+                    .min_size(egui::vec2(180.0, 30.0))
+                    .fill(egui::Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::NONE),
             )
             .on_hover_text("Editing is unavailable on Home. Open an image first.")
             .clicked()
@@ -446,11 +413,10 @@ impl ViewerApp {
     /// "🗑 Delete Image…" — moves the selected filesystem image to the
     /// system Trash/Recycle Bin. Disabled for archive entries.
     fn hamburger_delete_image_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        let can_delete_current = !self.is_home_surface_active()
-            && matches!(
-                self.image_entries.get(self.current_index),
-                Some(crate::imaging::entry::ImageEntry::File(_))
-            );
+        let can_delete_current = !self.is_home_surface_active() && matches!(
+            self.image_entries.get(self.current_index),
+            Some(crate::imaging::entry::ImageEntry::File(_))
+        );
         if ui
             .add_enabled(
                 can_delete_current,

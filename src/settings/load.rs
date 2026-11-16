@@ -43,6 +43,13 @@ impl SettingsManager {
                     if let Some(value) = section.get("b_ctrl_invert") {
                         settings.b_ctrl_invert = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("zoom_step") {
+                        if let Ok(step) = value.parse::<f32>() {
+                            if step.is_finite() && (1.05..=2.0).contains(&step) {
+                                settings.zoom_step = step;
+                            }
+                        }
+                    }
                     // Read window position
                     if let Some(value) = section.get("window_pos") {
                         if let Some((x, y)) = Self::parse_f32_pair(value) {

@@ -47,6 +47,7 @@ impl ViewerApp {
                 let center = response.rect.center();
                 let offset = center - response.rect.center();
                 let image_point = offset / self.zoom - self.pan;
+                self.zoom_animation = None;
                 self.zoom = (self.zoom * zoom_delta).clamp(0.005, 50.0);
                 self.pan = offset / self.zoom - image_point;
                 self.b_zoom_used = true;
@@ -149,10 +150,13 @@ impl ViewerApp {
 
             let start_zoom = self.zoom_drag_start_zoom;
             let vertical_delta = current_pos.y - start_pos.y;
-            let new_zoom = (start_zoom * (-vertical_delta * 0.005).exp()).clamp(0.005, 50.0);
+            let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+            let sensitivity = step.ln() / 40.0;
+            let new_zoom = (start_zoom * (-vertical_delta * sensitivity).exp()).clamp(0.005, 50.0);
             let start_center = self.zoom_drag_start_center;
             let mouse_offset = start_pos - start_center;
             let image_point = mouse_offset / start_zoom - self.zoom_drag_start_pan;
+            self.zoom_animation = None;
             self.zoom = new_zoom;
             self.pan = mouse_offset / new_zoom - image_point;
             self.b_zoom_used = true;
@@ -171,7 +175,8 @@ impl ViewerApp {
         }
 
         // Show the grab cursor over the actual image area, not the surrounding margins.
-        if response.hovered()
+        if self.overlay_visible
+            && response.hovered()
             && !left_down
             && !right_down
             && hover_pos.is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)))
@@ -232,7 +237,17 @@ impl ViewerApp {
             }
 
             // Standard keyboard shortcuts
+            let compare_active = self.workspace.tabs.get(self.workspace.active_index)
+                .is_some_and(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Compare);
             for command in handle_keyboard(ctx, &self.input_bindings) {
+                if compare_active && matches!(command,
+                    crate::input::shortcuts::ViewerCommand::ZoomIn
+                    | crate::input::shortcuts::ViewerCommand::ZoomOut
+                    | crate::input::shortcuts::ViewerCommand::ResetZoom
+                    | crate::input::shortcuts::ViewerCommand::MakeFit
+                ) {
+                    continue;
+                }
                 self.handle_command(ctx, command);
             }
 

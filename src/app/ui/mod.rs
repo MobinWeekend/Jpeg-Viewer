@@ -21,7 +21,7 @@ pub use overlay::{
     custom_titlebar_height, render_overlay_ui, reserve_custom_titlebar_space, toolbar_frame,
     update_overlay_visibility,
 };
-pub(crate) use masonry_icon::{draw_masonry_icon, masonry_button, masonry_toggle_button};
+pub(crate) use masonry_icon::{draw_home_icon, draw_masonry_icon, home_menu_button, masonry_button, masonry_toggle_button};
 pub(crate) use crate::app::settings_menu::{render_settings_menu, toggle_settings_menu};
 
 /// Return a viewport-local rectangle for effects that must stay attached to the

@@ -112,7 +112,7 @@ impl ViewerApp {
                             "• Browse, Queue, Favorites, and Info sidebar tabs",
                             "• Firefox-style workspace tabs with drag-and-drop and keyboard reordering",
                             "• Local and Folder Masonry galleries with size-adaptive thumbnails, sorting, and recursive folder sections",
-                            "• Multi-selection file actions and independent comparison workspaces with per-pane removal, normalized pan/zoom synchronization, and alignment anchors",
+                            "• Multi-selection file actions and independent comparison workspaces with per-pane removal, Viewer-compatible zoom shortcuts, synchronized pan/zoom, and anchor-based rotation/alignment",
                             "• Save and load .jvq queues; reorder queue and favorite entries",
                             "• Edit supported raster files: crop, rotate, flip, adjust color, undo/redo, and export",
                             "• GIF playback controls and configurable slideshow transitions and motion",

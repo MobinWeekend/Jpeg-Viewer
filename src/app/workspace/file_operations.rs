@@ -260,6 +260,7 @@ impl crate::app::types::ViewerApp {
                         let old_anchors_second = std::mem::take(&mut tab.anchors_second);
                         let old_offsets = std::mem::take(&mut tab.offsets);
                         let old_zoom = std::mem::take(&mut tab.pane_zoom);
+                        let old_rotation = std::mem::take(&mut tab.pane_rotation);
                         let old_sync = std::mem::take(&mut tab.pane_sync);
                         let old_size = std::mem::take(&mut tab.pane_size);
                         for (index, entry) in old_entries.into_iter().enumerate() {
@@ -269,6 +270,7 @@ impl crate::app::types::ViewerApp {
                             tab.anchors_second.push(old_anchors_second.get(index).copied().flatten());
                             tab.offsets.push(old_offsets.get(index).copied().unwrap_or([0.0, 0.0]));
                             tab.pane_zoom.push(old_zoom.get(index).copied().unwrap_or(1.0));
+                            tab.pane_rotation.push(old_rotation.get(index).copied().unwrap_or(0.0));
                             tab.pane_sync.push(old_sync.get(index).copied().unwrap_or(true));
                             tab.pane_size.push(old_size.get(index).copied().unwrap_or([1.0, 1.0]));
                         }

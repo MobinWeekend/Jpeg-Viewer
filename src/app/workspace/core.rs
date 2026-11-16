@@ -256,6 +256,19 @@ impl crate::app::types::ViewerApp {
         true
     }
 
+    /// Main navigation action for the Masonry glyph. The primary Viewer owns
+    /// the current collection, so opening Masonry from it should reflect that
+    /// collection rather than a stale previous Masonry snapshot. Image tabs keep
+    /// the singleton Masonry/return-tab behavior.
+    pub(crate) fn activate_masonry_from_navigation_button(&mut self) {
+        match self.workspace.active_kind() {
+            WorkspaceTabKind::Masonry => self.toggle_masonry_workspace(),
+            WorkspaceTabKind::Viewer => self.open_local_masonry(),
+            WorkspaceTabKind::Image => self.toggle_masonry_workspace(),
+            _ => {}
+        }
+    }
+
     /// Toggle between the current non-Masonry workspace and the singleton
     /// Masonry workspace. Reuse the last Masonry collection when returning from
     /// an Image tab instead of replacing it with that tab's one-image collection.

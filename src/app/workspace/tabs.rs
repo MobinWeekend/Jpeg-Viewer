@@ -28,6 +28,7 @@ impl crate::app::types::ViewerApp {
     }
 
     pub(crate) fn activate_workspace_tab(&mut self, id: u64) {
+        self.zoom_animation = None;
         let Some(target_index) = self.workspace.tabs.iter().position(|tab| tab.id == id) else {
             return;
         };
@@ -224,6 +225,7 @@ impl crate::app::types::ViewerApp {
         tab.anchors_second = vec![None; entries.len()];
         tab.offsets = vec![[0.0, 0.0]; entries.len()];
         tab.pane_zoom = vec![1.0; entries.len()];
+        tab.pane_rotation = vec![0.0; entries.len()];
         tab.pane_sync = vec![true; entries.len()];
         tab.pane_size = vec![[1.0, 1.0]; entries.len()];
         tab.entries = entries;
@@ -629,7 +631,8 @@ impl crate::app::types::ViewerApp {
         } else {
             egui::CornerRadius::same(7)
         };
-        let strip_height = 48.0;
+        let native_titlebar = self.settings_manager.get().show_titlebar;
+        let strip_height = if native_titlebar { 40.0 } else { 48.0 };
         ui.allocate_ui_with_layout(
             egui::vec2(strip_width, strip_height),
             egui::Layout::top_down(egui::Align::Min),
@@ -640,8 +643,8 @@ impl crate::app::types::ViewerApp {
                     .inner_margin(egui::Margin {
                         left: 6,
                         right: 6,
-                        top: 1,
-                        bottom: 1,
+                        top: if native_titlebar { 0 } else { 1 },
+                        bottom: if native_titlebar { 0 } else { 1 },
                     })
                     .show(slot, |body| {
                         let body_width = (strip_width - 12.0).max(0.0);
@@ -679,7 +682,7 @@ impl crate::app::types::ViewerApp {
                                     30.0,
                                 ).on_hover_text(if masonry_active { "Return to Viewer" } else { "Open current entries in Masonry" });
                                 if toggle.clicked() {
-                                    self.toggle_masonry_workspace();
+                                    self.activate_masonry_from_navigation_button();
                                 }
                             }
                             let tab_viewport_width = (body_width - hamburger_width - masonry_toggle_width).max(0.0);

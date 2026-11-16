@@ -205,6 +205,9 @@ impl crate::app::types::ViewerApp {
             for (index, zoom) in tab.pane_zoom.iter().enumerate() {
                 output.push_str(&format!("Z|{}|{}|{}\n", tab.id, index, zoom));
             }
+            for (index, rotation) in tab.pane_rotation.iter().enumerate() {
+                output.push_str(&format!("R|{}|{}|{}\n", tab.id, index, rotation));
+            }
             for (index, participates) in tab.pane_sync.iter().enumerate() {
                 output.push_str(&format!("P|{}|{}|{}\n", tab.id, index, participates));
             }
@@ -358,6 +361,15 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
                     if tab.pane_zoom.len() <= index { tab.pane_zoom.resize(index + 1, 1.0); }
                     tab.pane_zoom[index] = fields[3].parse::<f32>().unwrap_or(1.0).clamp(0.01, 100.0);
+                }
+            }
+            "R" if fields.len() >= 4 => {
+                let tab_id = fields[1].parse::<u64>().ok()?;
+                let index = fields[2].parse::<usize>().unwrap_or(0);
+                if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                    if tab.pane_rotation.len() <= index { tab.pane_rotation.resize(index + 1, 0.0); }
+                    tab.pane_rotation[index] = fields[3].parse::<f32>().unwrap_or(0.0)
+                        .clamp(-std::f32::consts::PI, std::f32::consts::PI);
                 }
             }
             "P" if fields.len() >= 4 => {

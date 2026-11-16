@@ -295,7 +295,7 @@ fn render_main_surface_navigation_controls(
                     let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
                         .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
                     if toggle.clicked() {
-                        app.toggle_masonry_workspace();
+                        app.activate_masonry_from_navigation_button();
                     }
                 }
             });

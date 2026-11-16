@@ -12,7 +12,7 @@
 | `masonry_group.rs` | Folder groups, thumbnail cards, context menus, and entry pointer interaction |
 | `masonry_actions.rs` | Open entries and dispatch actions emitted by Masonry |
 | `file_operations.rs` | Copy, move, delete, conflict handling, and confirmation dialogs |
-| `compare.rs` | Compare image loading, pane rendering, synchronized navigation, and anchor alignment |
+| `compare.rs` | Compare image loading, Viewer-compatible per-pane zoom input, synchronized navigation, anchor alignment, and anchor-driven image rotation |
 | `helpers.rs` | Shared entry labels/paths, archive reads, staging, and filesystem helpers |
 
 Keep shared workspace state and types in `mod.rs`; place new behavior in the narrowest matching module. Methods shared across sibling workspace modules use `pub(super)`, while methods called by the rest of the application retain `pub(crate)` visibility.

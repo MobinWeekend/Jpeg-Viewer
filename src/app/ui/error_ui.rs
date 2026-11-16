@@ -20,7 +20,13 @@ impl ViewerApp {
             egui::Frame::NONE
                 .fill(ui.visuals().window_fill())
                 .stroke(ui.visuals().window_stroke())
-                .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(16) })
+                .corner_radius(
+                    if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {
+                        egui::CornerRadius::ZERO
+                    } else {
+                        egui::CornerRadius::same(16)
+                    },
+                )
                 .inner_margin(egui::Margin::same(32))
                 .show(ui, |ui| {
                     ui.style_mut().visuals.override_text_color = None;
@@ -30,20 +36,26 @@ impl ViewerApp {
                     ui.add_space(4.0);
                     ui.vertical_centered(|ui| {
                         ui.label(
-                                egui::RichText::new(if empty_folder {
-                                    "No Supported Formats Found"
-                                } else {
-                                    "Failed to Load Image!"
-                                })
-                                .size(32.0)
-                                .strong(),
+                            egui::RichText::new(if empty_folder {
+                                "No Supported Formats Found"
+                            } else {
+                                "Failed to Load Image!"
+                            })
+                            .size(32.0)
+                            .strong(),
                         );
                         ui.add_space(16.0);
 
                         egui::Frame::NONE
                             .fill(ui.visuals().window_fill())
                             .stroke(ui.visuals().window_stroke())
-                            .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) })
+                            .corner_radius(
+                                if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {
+                                    egui::CornerRadius::ZERO
+                                } else {
+                                    egui::CornerRadius::same(10)
+                                },
+                            )
                             .inner_margin(egui::Margin::symmetric(12, 12))
                             .show(ui, |ui| {
                                 ui.label(egui::RichText::new(error).size(14.0).monospace());
@@ -53,11 +65,20 @@ impl ViewerApp {
 
                         if empty_folder {
                             ui.horizontal(|ui| {
-                                if ui.add_sized([180.0, 44.0], egui::Button::new("Open another folder…")).clicked() {
+                                if ui
+                                    .add_sized(
+                                        [180.0, 44.0],
+                                        egui::Button::new("Open another folder…"),
+                                    )
+                                    .clicked()
+                                {
                                     self.image_error = None;
                                     self.open_folder_dialog();
                                 }
-                                if ui.add_sized([100.0, 44.0], egui::Button::new("Dismiss")).clicked() {
+                                if ui
+                                    .add_sized([100.0, 44.0], egui::Button::new("Dismiss"))
+                                    .clicked()
+                                {
                                     self.image_error = None;
                                 }
                             });
@@ -68,7 +89,15 @@ impl ViewerApp {
                                 let retry_button =
                                     egui::Button::new(egui::RichText::new("↻  Retry").size(15.0))
                                         .min_size(egui::vec2(120.0, 44.0))
-                                        .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) });
+                                        .corner_radius(
+                                            if crate::ui_theme::current_look_profile(ui.ctx())
+                                                == "win98"
+                                            {
+                                                egui::CornerRadius::ZERO
+                                            } else {
+                                                egui::CornerRadius::same(10)
+                                            },
+                                        );
 
                                 if ui.add(retry_button).clicked() {
                                     self.image_error = None;
@@ -80,7 +109,15 @@ impl ViewerApp {
                                 let skip_button =
                                     egui::Button::new(egui::RichText::new("Skip").size(15.0))
                                         .min_size(egui::vec2(120.0, 44.0))
-                                        .corner_radius(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(10) });
+                                        .corner_radius(
+                                            if crate::ui_theme::current_look_profile(ui.ctx())
+                                                == "win98"
+                                            {
+                                                egui::CornerRadius::ZERO
+                                            } else {
+                                                egui::CornerRadius::same(10)
+                                            },
+                                        );
 
                                 if ui.add(skip_button).clicked() {
                                     self.navigate_images(ui.ctx(), 1);

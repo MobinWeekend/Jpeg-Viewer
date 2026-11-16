@@ -375,6 +375,106 @@ impl VirtualTexture {
         }
     }
 
+    /// Render a virtual texture rotated around `center`. Only tiles whose rotated
+    /// bounds intersect the viewport are requested and uploaded. This is used by
+    /// Compare's anchor-based rotation without allocating a second full image.
+    pub fn render_rotated(
+        &mut self,
+        ctx: &egui::Context,
+        painter: &egui::Painter,
+        zoom: f32,
+        center: egui::Pos2,
+        viewport: egui::Rect,
+        rotation: f32,
+        options: egui::TextureOptions,
+    ) {
+        if !self.is_ready() || !zoom.is_finite() || zoom <= 0.0 {
+            return;
+        }
+        self.frame_index = self.frame_index.wrapping_add(1).max(1);
+        let current_frame = self.frame_index;
+        let (sin, cos) = rotation.sin_cos();
+        let image_width = self.width as f32;
+        let image_height = self.height as f32;
+        let source = Arc::clone(&self.data);
+        let source_width = self.width;
+        let tile_size = self.tile_size;
+        let texture_id = self.id;
+        for tile in &mut self.tiles {
+            let left = tile.grid_x as f32 * tile_size as f32 - image_width * 0.5;
+            let top = tile.grid_y as f32 * tile_size as f32 - image_height * 0.5;
+            let right = left + tile.width as f32;
+            let bottom = top + tile.height as f32;
+            let rotate_point = |x: f32, y: f32| {
+                center + egui::vec2(x * cos - y * sin, x * sin + y * cos) * zoom
+            };
+            let points = [
+                rotate_point(left, top),
+                rotate_point(right, top),
+                rotate_point(right, bottom),
+                rotate_point(left, bottom),
+            ];
+            let bounds = egui::Rect::from_min_max(
+                egui::pos2(
+                    points.iter().map(|point| point.x).fold(f32::INFINITY, f32::min),
+                    points.iter().map(|point| point.y).fold(f32::INFINITY, f32::min),
+                ),
+                egui::pos2(
+                    points.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max),
+                    points.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max),
+                ),
+            );
+            if !bounds.intersects(viewport) {
+                continue;
+            }
+            tile.last_used_frame = current_frame;
+            Self::collect_tile(tile, ctx, options, texture_id);
+            if tile.texture.is_none() && !tile.failed {
+                Self::request_tile(tile, Arc::clone(&source), source_width, tile_size, ctx);
+            }
+            if let Some(texture) = &tile.texture {
+                let mut mesh = egui::Mesh::with_texture(texture.id());
+                let uvs = [
+                    egui::pos2(0.0, 0.0),
+                    egui::pos2(1.0, 0.0),
+                    egui::pos2(1.0, 1.0),
+                    egui::pos2(0.0, 1.0),
+                ];
+                for vertex in 0..4 {
+                    mesh.vertices.push(egui::epaint::Vertex {
+                        pos: points[vertex],
+                        uv: uvs[vertex],
+                        color: egui::Color32::WHITE,
+                    });
+                }
+                mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+                painter.add(egui::Shape::mesh(mesh));
+            }
+        }
+
+        const GPU_TILE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+        const MAX_RESIDENT_TILES: usize = 128;
+        let tile_bytes = (self.tile_size as usize)
+            .saturating_mul(self.tile_size as usize)
+            .saturating_mul(4)
+            .max(1);
+        let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes).clamp(1, MAX_RESIDENT_TILES);
+        let resident_count = self.tiles.iter().filter(|tile| tile.texture.is_some()).count();
+        if resident_count > resident_limit {
+            let mut candidates = self.tiles.iter().enumerate()
+                .filter(|(_, tile)| tile.texture.is_some() && tile.last_used_frame != current_frame)
+                .map(|(index, tile)| (index, tile.last_used_frame))
+                .collect::<Vec<_>>();
+            candidates.sort_unstable_by_key(|(_, last_used)| *last_used);
+            let mut remaining = resident_count.saturating_sub(resident_limit);
+            for (index, _) in candidates {
+                if remaining == 0 { break; }
+                self.tiles[index].texture = None;
+                remaining -= 1;
+            }
+        }
+    }
+
     /// Get the dimensions of the image.
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)

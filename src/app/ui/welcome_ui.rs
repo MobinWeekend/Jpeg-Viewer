@@ -155,7 +155,21 @@ impl ViewerApp {
                                             hero.add_space(22.0);
                                             hero.vertical(|content| {
                                                 content.set_min_width((content.available_width()).max(1.0));
-                                                content.heading(egui::RichText::new("Jpeg Viewer").size(29.0).strong());
+                                                content.horizontal(|heading| {
+                                                    let (icon_rect, _) = heading.allocate_exact_size(
+                                                        egui::vec2(30.0, 30.0), egui::Sense::hover(),
+                                                    );
+                                                    crate::app::ui::draw_home_icon(
+                                                        heading.painter(), icon_rect,
+                                                        heading.visuals().text_color(),
+                                                    );
+                                                    heading.label(egui::RichText::new("Jpeg Viewer").size(29.0).strong());
+                                                    heading.label(
+                                                        egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                                                            .size(11.0)
+                                                            .color(heading.visuals().weak_text_color()),
+                                                    );
+                                                });
                                                 content.label(
                                                     egui::RichText::new("Pick up where you left off, or open something new.")
                                                         .color(content.visuals().weak_text_color()),

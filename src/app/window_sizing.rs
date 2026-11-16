@@ -60,7 +60,17 @@ impl ViewerApp {
             0.0
         };
         let right_panel = self.right_sidebar_actual_width.max(0.0);
-        let padding = self.effective_view_padding(ctx);
+        let padding = if settings.fit_window_to_image {
+            let profile = crate::ui_theme::current_look_profile(ctx);
+            if matches!(profile, "win98" | "cosmic" | "gnome") {
+                let safe_top = self.effective_view_padding(ctx)[0];
+                [safe_top, 0.0, 0.0, 0.0]
+            } else {
+                [0.0; 4]
+            }
+        } else {
+            self.effective_view_padding(ctx)
+        };
         let horizontal_padding = padding[1] + padding[3];
         let vertical_padding = padding[0] + padding[2];
         let top_chrome = (if !settings.show_titlebar {

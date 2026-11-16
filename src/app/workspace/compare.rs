@@ -185,6 +185,7 @@ impl crate::app::types::ViewerApp {
         let mut close = false;
         let mut remove_pane: Option<usize> = None;
         let mut align_anchors_requested = false;
+        let mut rotate_anchors_requested = false;
         let mut open_masonry_from_compare = false;
         {
             let tab = &mut self.workspace.tabs[tab_index];
@@ -203,9 +204,14 @@ impl crate::app::types::ViewerApp {
                 ui.selectable_value(&mut tab.compare_rows, false, "Columns");
                 ui.selectable_value(&mut tab.compare_rows, true, "Rows");
                 if ui.button("Align anchors").on_hover_text(
-                    "Use the two corresponding points in each pane to calculate matching zoom and pan. Images should have the same orientation.",
+                    "Use the two corresponding points in each pane to calculate matching zoom and pan.",
                 ).clicked() {
                     align_anchors_requested = true;
+                }
+                if ui.button("Rotate to align anchors").on_hover_text(
+                    "Rotate each image so the line between its two anchors has the same angle as the reference image.",
+                ).clicked() {
+                    rotate_anchors_requested = true;
                 }
                 if ui.button("Clear all anchors").clicked() {
                     tab.anchors.fill(None);
@@ -213,10 +219,12 @@ impl crate::app::types::ViewerApp {
                     tab.offsets.fill([0.0, 0.0]);
                     tab.anchor_editing = None;
                     tab.anchor_editing_point = 0;
+                    tab.pane_rotation.fill(0.0);
                 }
                 if ui.button("Reset view").clicked() {
                     tab.offsets.fill([0.0, 0.0]);
                     tab.pane_zoom.fill(1.0);
+                    tab.pane_rotation.fill(0.0);
                     tab.anchors.fill(None);
                     tab.anchors_second.fill(None);
                     tab.anchor_editing = None;
@@ -226,6 +234,43 @@ impl crate::app::types::ViewerApp {
                     close = true;
                 }
             });
+        }
+
+        if rotate_anchors_requested {
+            let pane_count = self.workspace.tabs[tab_index].entries.len();
+            let mut angles = vec![None; pane_count];
+            for index in 0..pane_count {
+                if !self.workspace.tabs[tab_index].pane_sync.get(index).copied().unwrap_or(true) {
+                    continue;
+                }
+                let first = self.workspace.tabs[tab_index].anchors.get(index).copied().flatten();
+                let second = self.workspace.tabs[tab_index].anchors_second.get(index).copied().flatten();
+                let Some((first, second)) = first.zip(second) else { continue; };
+                let key = self.workspace.tabs[tab_index].entries[index].get_id();
+                let Some((width, height)) = self.workspace.compare_images.get(&key).map(VirtualTexture::dimensions) else { continue; };
+                let dx = (second[0] - first[0]) * width as f32;
+                let dy = (second[1] - first[1]) * height as f32;
+                if dx.hypot(dy) > 0.01 {
+                    angles[index] = Some(dy.atan2(dx));
+                }
+            }
+            if angles.iter().flatten().count() >= 2 {
+                let reference_angle = angles.iter().flatten().next().copied().unwrap_or(0.0);
+                let tab = &mut self.workspace.tabs[tab_index];
+                tab.pane_rotation.resize(pane_count, 0.0);
+                tab.pane_rotation.fill(0.0);
+                for index in 0..pane_count {
+                    if !tab.pane_sync.get(index).copied().unwrap_or(true) {
+                        continue;
+                    }
+                    if let Some(angle) = angles[index] {
+                        let delta = reference_angle - angle;
+                        tab.pane_rotation[index] = delta.sin().atan2(delta.cos());
+                    }
+                }
+            } else {
+                self.queue_status = Some("Set both anchors on at least two loaded images before rotating to align.".into());
+            }
         }
 
         let entries = self.workspace.tabs[tab_index].entries.clone();
@@ -254,6 +299,9 @@ impl crate::app::types::ViewerApp {
                 self.workspace.tabs[tab_index]
                     .pane_zoom
                     .resize(pane_count, 1.0);
+            }
+            if self.workspace.tabs[tab_index].pane_rotation.len() != pane_count {
+                self.workspace.tabs[tab_index].pane_rotation.resize(pane_count, 0.0);
             }
             if self.workspace.tabs[tab_index].pane_sync.len() != pane_count {
                 self.workspace.tabs[tab_index]
@@ -287,6 +335,7 @@ impl crate::app::types::ViewerApp {
             // normalized alignment offsets when anchor points are placed.
             let mut anchor_metrics: Vec<Option<[f32; 2]>> = vec![None; pane_count];
             let mut anchor_image_sizes: Vec<Option<[f32; 2]>> = vec![None; pane_count];
+            let mut anchor_source_sizes: Vec<Option<[f32; 2]>> = vec![None; pane_count];
             let mut pan_metrics: Vec<Option<[f32; 2]>> = vec![None; pane_count];
 
             // Measure the central view's clipped width. `available_width()` can
@@ -420,6 +469,87 @@ impl crate::app::types::ViewerApp {
                                         egui::vec2(pane_width, pane_height),
                                         egui::Sense::click_and_drag(),
                                     );
+                                    // Compare panes use the same configurable zoom keys and
+                                    // mouse-wheel modifier as the primary Viewer. Only the pane
+                                    // under the pointer receives the input.
+                                    if response.drag_stopped_by(egui::PointerButton::Secondary) {
+                                        self.zoom_drag_start_pos = None;
+                                    }
+                                    if response.drag_started_by(egui::PointerButton::Secondary) {
+                                        self.zoom_drag_start_pos = response.interact_pointer_pos();
+                                        self.zoom_drag_start_zoom = self.workspace.tabs[tab_index].pane_zoom[index];
+                                    }
+                                    let right_drag_zoom = if response.dragged_by(egui::PointerButton::Secondary) {
+                                        self.zoom_drag_start_pos
+                                            .zip(response.interact_pointer_pos())
+                                            .map(|(start, current)| {
+                                                ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
+                                                let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                                                let sensitivity = step.ln() / 40.0;
+                                                (self.zoom_drag_start_zoom * (-(current.y - start.y) * sensitivity).exp())
+                                                    .clamp(0.01, 100.0)
+                                            })
+                                    } else {
+                                        None
+                                    };
+                                    let pinch_zoom = ctx.input(|input| {
+                                        let delta = input.zoom_delta();
+                                        (delta.is_finite() && (delta - 1.0).abs() > 0.001)
+                                            .then_some(delta)
+                                    });
+                                    if (response.hovered() || right_drag_zoom.is_some()) && !ctx.wants_keyboard_input() {
+                                        let zoom_command = ctx.input(|input| {
+                                            [
+                                                crate::input::shortcuts::ViewerCommand::ZoomIn,
+                                                crate::input::shortcuts::ViewerCommand::ZoomOut,
+                                                crate::input::shortcuts::ViewerCommand::ResetZoom,
+                                                crate::input::shortcuts::ViewerCommand::MakeFit,
+                                            ]
+                                            .into_iter()
+                                            .find(|command| self.input_bindings.keyboard
+                                                .get(command)
+                                                .is_some_and(|bindings| bindings.iter().any(|binding| binding.matches(input))))
+                                        });
+                                        let wheel_zoom = ctx.input(|input| {
+                                            let delta = input.raw_scroll_delta.y;
+                                            let zooming = (!self.b_ctrl_invert && input.modifiers.ctrl)
+                                                || (self.b_ctrl_invert && !input.modifiers.ctrl);
+                                            let step = self.settings_manager.get().zoom_step.clamp(1.05, 2.0);
+                                            (zooming && delta.abs() > 0.0).then_some(if delta > 0.0 { step } else { 1.0 / step })
+                                        });
+                                        let custom_mouse_zoom = ctx.input(|input| {
+                                            [crate::input::shortcuts::ViewerCommand::ZoomIn,
+                                             crate::input::shortcuts::ViewerCommand::ZoomOut]
+                                                .into_iter()
+                                                .find(|command| self.input_bindings.mouse
+                                                    .get(command)
+                                                    .is_some_and(|bindings| bindings.iter().any(|binding| binding.matches(input))))
+                                        });
+                                        let previous = self.workspace.tabs[tab_index].pane_zoom[index].max(0.01);
+                                        let target = right_drag_zoom
+                                            .or_else(|| pinch_zoom.map(|factor| (previous * factor).clamp(0.01, 100.0)))
+                                            .or_else(|| wheel_zoom.map(|factor| (previous * factor).clamp(0.01, 100.0)))
+                                            .or_else(|| match zoom_command.or(custom_mouse_zoom) {
+                                                Some(crate::input::shortcuts::ViewerCommand::ZoomIn) => Some((previous * self.settings_manager.get().zoom_step.clamp(1.05, 2.0)).clamp(0.01, 100.0)),
+                                                Some(crate::input::shortcuts::ViewerCommand::ZoomOut) => Some((previous / self.settings_manager.get().zoom_step.clamp(1.05, 2.0)).clamp(0.01, 100.0)),
+                                                Some(crate::input::shortcuts::ViewerCommand::ResetZoom)
+                                                | Some(crate::input::shortcuts::ViewerCommand::MakeFit) => Some(1.0),
+                                                _ => None,
+                                            });
+                                        if let Some(next) = target {
+                                            let ratio = next / previous;
+                                            let tab = &mut self.workspace.tabs[tab_index];
+                                            tab.pane_zoom[index] = next;
+                                            if tab.sync_zoom && tab.pane_sync.get(index).copied().unwrap_or(true) {
+                                                let sync_targets = tab.pane_sync.clone();
+                                                for (pane_index, zoom) in tab.pane_zoom.iter_mut().enumerate() {
+                                                    if pane_index != index && sync_targets.get(pane_index).copied().unwrap_or(true) {
+                                                        *zoom = (*zoom * ratio).clamp(0.01, 100.0);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     let pane_clip = rect.intersect(ui.clip_rect());
                                     let pane_painter = ui.painter().with_clip_rect(pane_clip);
                                     pane_painter.rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
@@ -434,40 +564,37 @@ impl crate::app::types::ViewerApp {
                                             .map(VirtualTexture::dimensions)
                                             .unwrap_or((1, 1));
                                         let size = egui::vec2(image_width as f32, image_height as f32);
-                                        let fit_scale = (pane_width / size.x.max(1.0))
-                                            .min(pane_height / size.y.max(1.0));
+                                        let rotation = self.workspace.tabs[tab_index].pane_rotation.get(index).copied().unwrap_or(0.0);
+                                        let (sin, cos) = rotation.sin_cos();
+                                        let rotated_size = egui::vec2(
+                                            size.x * cos.abs() + size.y * sin.abs(),
+                                            size.x * sin.abs() + size.y * cos.abs(),
+                                        );
+                                        let fit_scale = (pane_width / rotated_size.x.max(1.0))
+                                            .min(pane_height / rotated_size.y.max(1.0));
                                         let zoom = self.workspace.tabs[tab_index].pane_zoom[index].clamp(0.01, 100.0);
                                         let image_zoom = fit_scale * zoom;
-                                        let image_size = size * image_zoom;
                                         let offset = self.workspace.tabs[tab_index].offsets
                                             .get(index).copied().unwrap_or([0.0, 0.0]);
-                                        // Offsets are normalized image coordinates. Convert them
-                                        // back to source-image pixels before passing them to the
-                                        // same VirtualTexture renderer used by the main viewer.
-                                        let image_pan = egui::vec2(
-                                            offset[0] * size.x,
-                                            offset[1] * size.y,
-                                        );
-                                        let image_rect = egui::Rect::from_center_size(
-                                            rect.center() + image_pan * image_zoom,
-                                            image_size,
-                                        );
+                                        // Offsets are normalized in the rotated image bounds so
+                                        // synchronized panning remains screen-aligned after rotation.
+                                        let image_pan = egui::vec2(offset[0] * rotated_size.x, offset[1] * rotated_size.y);
+                                        let image_center = rect.center() + image_pan * image_zoom;
+                                        let image_rect = egui::Rect::from_center_size(image_center, rotated_size * image_zoom);
                                         let scale_x = image_rect.width() / rect.width().max(1.0);
                                         let scale_y = image_rect.height() / rect.height().max(1.0);
                                         anchor_metrics[index] = Some([scale_x, scale_y]);
                                         anchor_image_sizes[index] = Some([image_rect.width().max(1.0), image_rect.height().max(1.0)]);
+                                        anchor_source_sizes[index] = Some([size.x.max(1.0), size.y.max(1.0)]);
                                         pan_metrics[index] = anchor_image_sizes[index];
                                         let painter = pane_painter.clone();
                                         let texture_options = self.get_texture_options();
                                         if let Some(image) = self.workspace.compare_images.get_mut(&key) {
-                                            image.render(
-                                                ctx,
-                                                &painter,
-                                                image_zoom,
-                                                image_pan,
-                                                rect,
-                                                texture_options,
-                                            );
+                                            if rotation.abs() < 0.0001 {
+                                                image.render(ctx, &painter, image_zoom, image_pan, rect, texture_options);
+                                            } else {
+                                                image.render_rotated(ctx, &painter, image_zoom, image_center, rect, rotation, texture_options);
+                                            }
                                         }
 
                                         let (show_anchors, anchor_pair, editing, editing_point) = {
@@ -485,10 +612,15 @@ impl crate::app::types::ViewerApp {
                                         if show_anchors {
                                             for (anchor_index, anchor) in anchor_pair.into_iter().enumerate() {
                                                 if let Some(anchor) = anchor {
-                                                    let point = egui::pos2(
-                                                        image_rect.left() + image_rect.width() * anchor[0],
-                                                        image_rect.top() + image_rect.height() * anchor[1],
+                                                    let source_point = egui::vec2(
+                                                        (anchor[0] - 0.5) * size.x,
+                                                        (anchor[1] - 0.5) * size.y,
                                                     );
+                                                    let rotated_point = egui::vec2(
+                                                        source_point.x * cos - source_point.y * sin,
+                                                        source_point.x * sin + source_point.y * cos,
+                                                    );
+                                                    let point = image_center + rotated_point * image_zoom;
                                                     let color = if anchor_index == 0 {
                                                         egui::Color32::YELLOW
                                                     } else {
@@ -563,11 +695,16 @@ impl crate::app::types::ViewerApp {
 
                                         if editing && response.clicked() && !resize_response.hovered() {
                                             let point = response.interact_pointer_pos().unwrap_or(rect.center());
-                                            if image_rect.contains(point) {
-                                                placed_anchor = Some((index, editing_point, [
-                                                    ((point.x - image_rect.left()) / image_rect.width()).clamp(0.0, 1.0),
-                                                    ((point.y - image_rect.top()) / image_rect.height()).clamp(0.0, 1.0),
-                                                ]));
+                                            if rect.contains(point) {
+                                                let displayed = (point - image_center) / image_zoom.max(0.0001);
+                                                let source = egui::vec2(
+                                                    displayed.x * cos + displayed.y * sin,
+                                                    -displayed.x * sin + displayed.y * cos,
+                                                );
+                                                let normalized = [source.x / size.x + 0.5, source.y / size.y + 0.5];
+                                                if (0.0..=1.0).contains(&normalized[0]) && (0.0..=1.0).contains(&normalized[1]) {
+                                                    placed_anchor = Some((index, editing_point, normalized));
+                                                }
                                             }
                                         } else if response.dragged() && !resize_response.hovered() {
                                             let delta = ctx.input(|input| input.pointer.delta());
@@ -741,6 +878,9 @@ impl crate::app::types::ViewerApp {
                         if index < tab.pane_zoom.len() {
                             tab.pane_zoom.remove(index);
                         }
+                        if index < tab.pane_rotation.len() {
+                            tab.pane_rotation.remove(index);
+                        }
                         if index < tab.pane_sync.len() {
                             tab.pane_sync.remove(index);
                         }
@@ -809,11 +949,11 @@ impl crate::app::types::ViewerApp {
                         tab.anchors_second[index] = Some(anchor);
                     }
                     tab.anchor_editing = None;
-                    align_compare_anchor_pairs(tab, &anchor_metrics, &anchor_image_sizes);
+                    align_compare_anchor_pairs(tab, &anchor_metrics, &anchor_image_sizes, &anchor_source_sizes);
                 }
             } else if align_anchors_requested {
                 let tab = &mut self.workspace.tabs[tab_index];
-                align_compare_anchor_pairs(tab, &anchor_metrics, &anchor_image_sizes);
+                align_compare_anchor_pairs(tab, &anchor_metrics, &anchor_image_sizes, &anchor_source_sizes);
             }
         }
         if close {
@@ -824,15 +964,30 @@ impl crate::app::types::ViewerApp {
     }
 }
 
+fn compare_anchor_in_rotated_bounds(anchor: [f32; 2], size: [f32; 2], rotation: f32) -> [f32; 2] {
+    let (sin, cos) = rotation.sin_cos();
+    let width = size[0].max(1.0);
+    let height = size[1].max(1.0);
+    let rotated_width = width * cos.abs() + height * sin.abs();
+    let rotated_height = width * sin.abs() + height * cos.abs();
+    let x = (anchor[0] - 0.5) * width;
+    let y = (anchor[1] - 0.5) * height;
+    [
+        0.5 + (x * cos - y * sin) / rotated_width.max(1.0),
+        0.5 + (x * sin + y * cos) / rotated_height.max(1.0),
+    ]
+}
+
 /// Align panes from two corresponding image points. The first point establishes
 /// translation; the displayed distance between both points establishes relative zoom.
 /// `image_sizes` contains the rendered image rectangle dimensions, not source pixels,
-/// so the distance includes each pane's current fit scale and zoom. Images are assumed
-/// to have the same orientation (rotation is not changed here).
+/// so the distance includes each pane's current fit scale and zoom. Anchor coordinates
+/// are transformed into each pane's rotated bounding box before alignment.
 fn align_compare_anchor_pairs(
     tab: &mut WorkspaceTab,
     metrics: &[Option<[f32; 2]>],
     image_sizes: &[Option<[f32; 2]>],
+    source_sizes: &[Option<[f32; 2]>],
 ) {
     let reference_eligible = |index: usize| {
         tab.pane_sync.get(index).copied().unwrap_or(true)
@@ -851,9 +1006,12 @@ fn align_compare_anchor_pairs(
     let Some(reference_index) = reference_index else {
         return;
     };
-    let Some(reference_first) = tab.anchors[reference_index] else {
+    let Some(reference_first_raw) = tab.anchors[reference_index] else {
         return;
     };
+    let reference_rotation = tab.pane_rotation.get(reference_index).copied().unwrap_or(0.0);
+    let reference_source_size = source_sizes.get(reference_index).copied().flatten().unwrap_or([1.0, 1.0]);
+    let reference_first = compare_anchor_in_rotated_bounds(reference_first_raw, reference_source_size, reference_rotation);
     let Some(reference_metrics) = metrics.get(reference_index).copied().flatten() else {
         return;
     };
@@ -874,6 +1032,8 @@ fn align_compare_anchor_pairs(
         .flatten()
         .zip(image_sizes.get(reference_index).copied().flatten())
         .map(|(second, size)| {
+            let source_size = source_sizes.get(reference_index).copied().flatten().unwrap_or(size);
+            let second = compare_anchor_in_rotated_bounds(second, source_size, reference_rotation);
             let dx = (second[0] - reference_first[0]) * size[0];
             let dy = (second[1] - reference_first[1]) * size[1];
             dx.hypot(dy)
@@ -892,9 +1052,12 @@ fn align_compare_anchor_pairs(
         if !tab.pane_sync.get(pane_index).copied().unwrap_or(true) {
             continue;
         }
-        let Some(first) = tab.anchors.get(pane_index).copied().flatten() else {
+        let Some(first_raw) = tab.anchors.get(pane_index).copied().flatten() else {
             continue;
         };
+        let pane_rotation = tab.pane_rotation.get(pane_index).copied().unwrap_or(0.0);
+        let source_size = source_sizes.get(pane_index).copied().flatten().unwrap_or([1.0, 1.0]);
+        let first = compare_anchor_in_rotated_bounds(first_raw, source_size, pane_rotation);
         let Some(mut pane_metrics) = metrics.get(pane_index).copied().flatten() else {
             continue;
         };
@@ -907,6 +1070,7 @@ fn align_compare_anchor_pairs(
             tab.anchors_second.get(pane_index).copied().flatten(),
             image_sizes.get(pane_index).copied().flatten(),
         ) {
+            let second = compare_anchor_in_rotated_bounds(second, source_size, pane_rotation);
             let dx = (second[0] - first[0]) * size[0];
             let dy = (second[1] - first[1]) * size[1];
             let current_distance = dx.hypot(dy);
@@ -927,5 +1091,30 @@ fn align_compare_anchor_pairs(
             (target_first[0] - 0.5) / safe_x - (first[0] - 0.5),
             (target_first[1] - 0.5) / safe_y - (first[1] - 0.5),
         ];
+    }
+}
+
+
+#[cfg(test)]
+mod compare_rotation_tests {
+    use super::compare_anchor_in_rotated_bounds;
+
+    #[test]
+    fn zero_rotation_preserves_anchor_coordinates() {
+        let anchor = [0.23, 0.71];
+        let transformed = compare_anchor_in_rotated_bounds(anchor, [1600.0, 900.0], 0.0);
+        assert!((transformed[0] - anchor[0]).abs() < 0.0001);
+        assert!((transformed[1] - anchor[1]).abs() < 0.0001);
+    }
+
+    #[test]
+    fn quarter_turn_moves_right_edge_anchor_to_bottom_edge() {
+        let transformed = compare_anchor_in_rotated_bounds(
+            [1.0, 0.5],
+            [100.0, 50.0],
+            std::f32::consts::FRAC_PI_2,
+        );
+        assert!((transformed[0] - 0.5).abs() < 0.0001);
+        assert!((transformed[1] - 1.0).abs() < 0.0001);
     }
 }
