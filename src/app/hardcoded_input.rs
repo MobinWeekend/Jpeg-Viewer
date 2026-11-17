@@ -65,6 +65,8 @@ impl ViewerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(
                 egui::viewport::ResizeDirection::SouthEast,
             ));
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
             ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
             return;
         }
@@ -74,6 +76,8 @@ impl ViewerApp {
             self.main_view_pan_drag_active = false;
             self.main_view_window_drag_active = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
             return;
         }
@@ -94,6 +98,8 @@ impl ViewerApp {
                 self.main_view_pan_drag_active = false;
                 self.main_view_window_drag_active = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                #[cfg(target_os = "linux")]
+                crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                 return;
             }

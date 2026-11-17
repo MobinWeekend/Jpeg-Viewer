@@ -2460,6 +2460,7 @@ dependencies = [
  "unrar",
  "wayland-client",
  "wayland-protocols",
+ "wayland-protocols-plasma",
  "windows 0.62.2",
  "winresource",
  "zenavif",

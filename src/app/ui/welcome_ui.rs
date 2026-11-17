@@ -49,6 +49,8 @@ impl ViewerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
         } else if background_drag.drag_started_by(egui::PointerButton::Primary) {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
         }
 
         // Complete asynchronous thumbnail jobs even when the user is not viewing

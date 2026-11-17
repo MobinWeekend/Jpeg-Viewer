@@ -103,9 +103,13 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_fonts(initial_font_definitions);
+            let raw_display_handle = cc.display_handle().ok().map(|display| display.as_raw());
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::initialize(raw_display_handle.clone());
+
             crate::ui_theme::platform_backdrop::initialize(
                 cc.window_handle().ok().map(|window| window.as_raw()),
-                cc.display_handle().ok().map(|display| display.as_raw()),
+                raw_display_handle,
             );
 
             crate::ui_theme::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);

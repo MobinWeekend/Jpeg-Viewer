@@ -385,6 +385,10 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             app.begin_rename_current();
                         } else if title_response.drag_started() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                            #[cfg(target_os = "linux")]
+                            crate::platform::wayland_pointer_recovery::after_native_window_operation(
+                                ctx,
+                            );
                         }
                         title_response.context_menu(|menu| {
                             let maximized =

@@ -166,6 +166,8 @@ fn render_handle(
             }
             if response.drag_started_by(egui::PointerButton::Primary) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+                #[cfg(target_os = "linux")]
+                crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
             }
         });
 }
