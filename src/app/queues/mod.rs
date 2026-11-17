@@ -19,6 +19,6 @@ fn entry_path(entry: &ImageEntry) -> Option<&PathBuf> {
 
 pub(crate) use actions::collect_folder_images;
 
-pub(crate) use thumbnails::source_thumbnail_key;
+pub(crate) use thumbnails::{source_thumbnail_key, thumbnail_fit_rect, thumbnail_request_size};
 
 pub(crate) use storage::read_queue;

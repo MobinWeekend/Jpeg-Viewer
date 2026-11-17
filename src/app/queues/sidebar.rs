@@ -333,20 +333,26 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         }
                                                     });
 
-                                                    let thumbnail_has_sufficient_resolution = app.has_shared_thumbnail_at_least(&key, 128);
+                                                    let target_thumbnail_size = crate::app::queues::thumbnail_request_size(rect, ctx);
+                                                    let thumbnail_has_sufficient_resolution = app.has_shared_thumbnail_at_least(
+                                                        &key,
+                                                        target_thumbnail_size,
+                                                    );
                                                     if !thumbnail_has_sufficient_resolution && ui.is_rect_visible(rect) {
-                                                        app.request_sidebar_archive_thumbnail(entry.clone(), key.clone(), ctx);
+                                                        app.request_sidebar_archive_thumbnail(
+                                                            entry.clone(),
+                                                            key.clone(),
+                                                            target_thumbnail_size,
+                                                            ctx,
+                                                        );
                                                     }
-                                                    if let Some(texture) = app.get_shared_thumbnail(&key, 128) {
+                                                    if let Some(texture) = app.get_shared_thumbnail(&key, target_thumbnail_size) {
                                                         let size = texture.size_vec2();
                                                         if size.x > 0.0 && size.y > 0.0 {
-                                                            let scale = (rect.width() / size.x)
-                                                                .min(rect.height() / size.y);
-                                                            let draw =
-                                                                egui::Rect::from_center_size(
-                                                                    rect.center(),
-                                                                    size * scale,
-                                                                );
+                                                            let draw = crate::app::queues::thumbnail_fit_rect(
+                                                                rect,
+                                                                size.x / size.y,
+                                                            );
                                                             ui.painter().image(
                                                                 texture.id(),
                                                                 draw,
@@ -369,7 +375,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         ui.painter().text(
                                                             rect.center(),
                                                             egui::Align2::CENTER_CENTER,
-                                                            if app.shared_thumbnail_failed(&key, 128)
+                                                            if app.shared_thumbnail_failed(&key, target_thumbnail_size)
                                                             {
                                                                 "No preview"
                                                             } else {

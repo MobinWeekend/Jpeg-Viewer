@@ -141,11 +141,15 @@ fn executable_available(executable: &str) -> bool {
 }
 
 fn requested_flavor_size(max_side: u32) -> u32 {
+    // The Freedesktop cache has four standardized flavors. For requests beyond
+    // xx-large, pass the exact requested bound to compatible .thumbnailer
+    // programs instead of silently capping the request at 1024px.
     match max_side {
         0..=128 => 128,
         129..=256 => 256,
         257..=512 => 512,
-        _ => 1024,
+        513..=1024 => 1024,
+        _ => max_side.max(1),
     }
 }
 
@@ -303,7 +307,7 @@ pub(super) fn generate(
         // Thumbnailers should return small previews. Refuse unexpectedly large
         // outputs rather than allowing a plugin to turn a thumbnail request into
         // an unbounded image decode.
-        if metadata.len() == 0 || metadata.len() > 64 * 1024 * 1024 {
+        if metadata.len() == 0 || metadata.len() > 256 * 1024 * 1024 {
             continue;
         }
         let Ok(reader) = image::ImageReader::open(&output.file) else {
@@ -318,7 +322,10 @@ pub(super) fn generate(
         let Some(pixel_count) = (width as u64).checked_mul(height as u64) else {
             continue;
         };
-        if width == 0 || height == 0 || width.max(height) > 4096 || pixel_count > 16_777_216 {
+        // Third-party thumbnailers are not trusted to return bounded data.
+        // Keep a generous allocation guard while allowing large Masonry tiles
+        // and requests above the old 512/1024px application ceilings.
+        if width == 0 || height == 0 || pixel_count > 67_108_864 {
             continue;
         }
         let Ok(decoded) = image::open(&output.file) else {
@@ -376,5 +383,8 @@ mod tests {
         assert_eq!(requested_flavor_size(220), 256);
         assert_eq!(requested_flavor_size(512), 512);
         assert_eq!(requested_flavor_size(900), 1024);
+        assert_eq!(requested_flavor_size(1024), 1024);
+        assert_eq!(requested_flavor_size(1200), 1200);
+        assert_eq!(requested_flavor_size(2048), 2048);
     }
 }

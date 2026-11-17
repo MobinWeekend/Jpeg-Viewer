@@ -66,9 +66,22 @@ impl ViewerApp {
             Vec::new()
         };
         let pinned_paths = self.welcome_pinned_paths();
-        let recent =
-            self.build_new_tab_cards(&recent_paths[..recent_paths.len().min(recent_limit)], ctx);
-        let pinned = self.build_new_tab_cards(&pinned_paths, ctx);
+        // Match the target to the actual new-tab preview viewport (six-column
+        // card width and the 82pt preview height), converted to physical pixels.
+        let page_width = ui.available_width().min(900.0).max(1.0);
+        let card_gap = 10.0_f32.min((page_width / 12.0).max(0.0));
+        let card_width = ((page_width - card_gap * 5.0) / 6.0).clamp(1.0, 174.0);
+        let preview_side = (card_width - 8.0).max(1.0).max(82.0);
+        let target_thumbnail_size = (preview_side * ctx.pixels_per_point())
+            .ceil()
+            .max(1.0)
+            .min(u32::MAX as f32) as u32;
+        let recent = self.build_new_tab_cards(
+            &recent_paths[..recent_paths.len().min(recent_limit)],
+            ctx,
+            target_thumbnail_size,
+        );
+        let pinned = self.build_new_tab_cards(&pinned_paths, ctx, target_thumbnail_size);
         self.ensure_favorites_loaded();
         let favorites_count = self.favorite_paths.len();
         let mut action: Option<WelcomeAction> = None;
@@ -285,13 +298,12 @@ impl ViewerApp {
         }
     }
 
-    fn build_new_tab_cards(&mut self, paths: &[PathBuf], ctx: &egui::Context) -> Vec<NewTabCard> {
-        // Use the same physical-pixel target selection as Masonry tiles.
-        let physical_preview_width = 166.0 * ctx.pixels_per_point();
-        let target_thumbnail_size = [64_u32, 128, 256, 512]
-            .into_iter()
-            .find(|size| *size as f32 >= physical_preview_width)
-            .unwrap_or(512);
+    fn build_new_tab_cards(
+        &mut self,
+        paths: &[PathBuf],
+        ctx: &egui::Context,
+        target_thumbnail_size: u32,
+    ) -> Vec<NewTabCard> {
         paths
             .iter()
             .map(|path| {
@@ -538,16 +550,18 @@ fn render_new_tab_card(
     );
     if let Some(texture) = &card.thumbnail {
         let size = texture.size_vec2();
-        let scale =
-            (preview_rect.width() / size.x.max(1.0)).min(preview_rect.height() / size.y.max(1.0));
-        let image_size = size * scale;
-        let image_rect = egui::Rect::from_center_size(preview_rect.center(), image_size);
-        painter.image(
-            texture.id(),
-            image_rect,
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
+        if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
+            let image_rect = crate::app::queues::thumbnail_fit_rect(
+                preview_rect,
+                size.x / size.y,
+            );
+            painter.image(
+                texture.id(),
+                image_rect,
+                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                egui::Color32::WHITE,
+            );
+        }
     } else {
         let glyph = if card.kind.contains("Folder") {
             "📁"

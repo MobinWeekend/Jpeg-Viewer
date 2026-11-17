@@ -25,6 +25,23 @@ pub enum LoadedImage {
     VirtualPending(Vec<u8>, u32, u32),
 }
 
+/// Result of a background thumbnail job. When original dimensions are known,
+/// preview pixels are normalized to the source image's aspect ratio before they
+/// enter the shared texture cache, so every consumer (Masonry, Browse, Queue,
+/// Favorites, and New Tab) can use the texture dimensions for contain rendering.
+/// `source_aspect_ratio` remains separate because Masonry's tile layout must
+/// stay stable even when a texture is evicted or replaced.
+pub(crate) struct GeneratedThumbnail {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
+    /// Effective fitted resolution before source-ratio correction expands the
+    /// long side. Used for cache selection so synthetic pixels do not count as
+    /// a higher-resolution source preview.
+    pub resolution: u32,
+    pub source_aspect_ratio: Option<f32>,
+}
+
 // ====== CACHE ======
 
 #[derive(Clone)]
@@ -332,15 +349,15 @@ pub struct ViewerApp {
     /// Browse-sidebar drag source index, used to reorder image entries.
     pub sidebar_drag_index: Option<usize>,
     pub sidebar_drag_collection: u8,
-    /// LRU cache shared by sidebar and Masonry thumbnails. Masonry entries may
-    /// be 64–512px; collection enforces both a 256-entry cap and a 96 MiB
-    /// approximate texture budget so high-DPI galleries stay bounded.
+    /// LRU cache shared by sidebar and Masonry thumbnails. Entries use their
+    /// returned physical resolution; collection enforces both a 256-entry cap
+    /// and a 96 MiB approximate texture budget for high-DPI galleries.
     pub sidebar_thumbnails: LruCache<String, egui::TextureHandle>,
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
     pub sidebar_thumbnail_receivers:
-        Vec<Receiver<(String, Result<(usize, usize, Vec<u8>), String>)>>,
+        Vec<Receiver<(String, Result<GeneratedThumbnail, String>)>>,
 }
 
 impl Default for ViewerApp {

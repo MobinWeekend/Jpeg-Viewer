@@ -100,47 +100,24 @@ impl crate::app::types::ViewerApp {
 
             let key = entry.get_id();
             let thumbnail_source_key = crate::app::queues::source_thumbnail_key(entry);
-            let physical_image_width = (tile_width - TILE_MARGIN * 2.0).max(1.0)
-                * ctx.pixels_per_point();
-            let target_thumbnail_size = [64_u32, 128, 256, 512]
-                .into_iter()
-                .find(|size| *size as f32 >= physical_image_width)
-                .unwrap_or(512);
-
-            let mut texture: Option<egui::TextureHandle> = None;
-            let mut has_sufficient_resolution = false;
-            // Prefer the smallest cached size that satisfies the current view.
-            // If none does, keep the best lower-resolution preview visible while
-            // the requested upgrade is generated asynchronously.
-            for candidate_size in [64_u32, 128, 256, 512] {
-                let candidate_key = format!("thumb:{candidate_size}:{thumbnail_source_key}");
-                if let Some(candidate) = self.sidebar_thumbnails.get(&candidate_key).cloned() {
-                    if candidate_size >= target_thumbnail_size {
-                        texture = Some(candidate);
-                        has_sufficient_resolution = true;
-                        break;
-                    }
-                    texture = Some(candidate);
-                }
-            }
-
             let image_rect = tile_rect.shrink(TILE_MARGIN);
-            if let Some(texture) = texture.as_ref() {
-                let source_size = texture.size_vec2();
-                if source_size.x.is_finite()
-                    && source_size.y.is_finite()
-                    && source_size.x > 0.0
-                    && source_size.y > 0.0
-                {
-                    // Save the real aspect ratio once. It survives GPU thumbnail
-                    // LRU eviction, so the same file never collapses to a square
-                    // placeholder and then reflows the column when reloaded.
-                    self.workspace.tabs[tab_index]
-                        .masonry_aspect_ratios
-                        .entry(key.clone())
-                        .or_insert(source_size.x / source_size.y);
-                }
-            }
+            // Request exactly the largest physical dimension needed by this
+            // entry's image viewport. This is not restricted to fixed 64/128/
+            // 256/512px buckets; native providers decide which sizes they can
+            // actually produce.
+            let target_thumbnail_size = crate::app::queues::thumbnail_request_size(
+                image_rect,
+                ctx,
+            );
+
+            let has_sufficient_resolution = self.has_shared_thumbnail_at_least(
+                &thumbnail_source_key,
+                target_thumbnail_size,
+            );
+            // Prefer the smallest cached preview that satisfies this entry's
+            // current display size. If none does, show the best smaller preview
+            // while the requested upgrade is generated asynchronously.
+            let texture = self.get_shared_thumbnail(&thumbnail_source_key, target_thumbnail_size);
 
             if !has_sufficient_resolution {
                 // The shared scheduler deduplicates jobs and promotes a matching
@@ -153,11 +130,25 @@ impl crate::app::types::ViewerApp {
             }
 
             if let Some(texture) = texture {
-                let source_size = texture.size_vec2();
-                let scale = (image_rect.width() / source_size.x.max(1.0))
-                    .min(image_rect.height() / source_size.y.max(1.0));
-                let drawn_size = source_size * scale;
-                let drawn_rect = egui::Rect::from_center_size(image_rect.center(), drawn_size);
+                let preview_size = texture.size_vec2();
+                // The source image remains authoritative for Masonry's layout.
+                // The shared thumbnail pipeline also normalizes preview pixels
+                // to this ratio so the same cached texture looks correct in
+                // Masonry, sidebar cards, and New Tab previews. Keeping the
+                // layout ratio separately makes it stable across texture eviction.
+                let source_aspect_ratio = self.workspace.tabs[tab_index]
+                    .masonry_aspect_ratios
+                    .get(&key)
+                    .copied()
+                    .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+                    .unwrap_or_else(|| {
+                        if preview_size.y > 0.0 {
+                            preview_size.x / preview_size.y
+                        } else {
+                            1.0
+                        }
+                    });
+                let drawn_rect = crate::app::queues::thumbnail_fit_rect(image_rect, source_aspect_ratio);
                 painter.image(
                     texture.id(),
                     drawn_rect,
@@ -371,3 +362,4 @@ impl crate::app::types::ViewerApp {
         }
     }
 }
+

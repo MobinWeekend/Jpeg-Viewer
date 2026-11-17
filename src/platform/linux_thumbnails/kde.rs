@@ -1,14 +1,9 @@
 //! KDE Plasma thumbnail integration.
 //!
-//! Prefer KDE's own KIO thumbnail worker when its `kioclient` utility is
-//! installed. `kioclient cat thumbnail:///absolute/path` asks the thumbnail:
-//! KIO worker to generate a PNG using KDE's configured thumbnail plugins.
-//! The worker's direct mode defaults to 128x128, so this path is used for the
-//! normal XDG flavor only. Larger requests use installed XDG `.thumbnailer`
-//! plugins where available, then fall back to JPEG Viewer's own decoder.
-//!
-//! We deliberately avoid linking to Qt or KDE Frameworks: KIO is an optional
-//! runtime integration, not a mandatory build dependency.
+//! Use KDE's `kioclient` thumbnail protocol for the standard 128px preview.
+//! Larger previews are obtained from the shared Freedesktop cache or installed
+//! XDG `.thumbnailer` plugins. This keeps the integration Rust-only and avoids
+//! a build-time or runtime dependency on Qt/KDE development libraries.
 
 use std::fs::{self, OpenOptions};
 use std::os::unix::fs::OpenOptionsExt;
@@ -21,9 +16,8 @@ use super::{thumbnailer, xdg_cache};
 
 static NEXT_OUTPUT_ID: AtomicU64 = AtomicU64::new(0);
 const KIO_TIMEOUT: Duration = Duration::from_secs(3);
-const MAX_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_OUTPUT_DIMENSION: u32 = 4096;
-const MAX_OUTPUT_PIXELS: u64 = 16_777_216;
+const MAX_OUTPUT_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_OUTPUT_PIXELS: u64 = 67_108_864;
 
 struct TemporaryOutput(PathBuf);
 
@@ -48,6 +42,20 @@ impl Drop for TemporaryOutput {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
     }
+}
+
+fn decode_output(path: &Path) -> Option<image::RgbaImage> {
+    let metadata = fs::metadata(path).ok()?;
+    if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
+        return None;
+    }
+    let reader = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+    let (width, height) = reader.into_dimensions().ok()?;
+    let pixel_count = (width as u64).checked_mul(height as u64)?;
+    if width == 0 || height == 0 || pixel_count > MAX_OUTPUT_PIXELS {
+        return None;
+    }
+    image::open(path).ok().map(|decoded| decoded.to_rgba8())
 }
 
 fn executable_available(executable: &str) -> bool {
@@ -123,23 +131,7 @@ fn request_with_kioclient(
         return None;
     }
 
-    let metadata = fs::metadata(&temporary.0).ok()?;
-    if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
-        return None;
-    }
-
-    let reader = image::ImageReader::open(&temporary.0).ok()?.with_guessed_format().ok()?;
-    let (width, height) = reader.into_dimensions().ok()?;
-    let pixel_count = (width as u64).checked_mul(height as u64)?;
-    if width == 0
-        || height == 0
-        || width.max(height) > MAX_OUTPUT_DIMENSION
-        || pixel_count > MAX_OUTPUT_PIXELS
-    {
-        return None;
-    }
-
-    let rgba = image::open(&temporary.0).ok()?.to_rgba8();
+    let rgba = decode_output(&temporary.0)?;
     if xdg_cache::source_stamp(path) != Some((source_mtime, source_size)) {
         return None;
     }
@@ -147,7 +139,7 @@ fn request_with_kioclient(
     // Cache writes include source URI/mtime metadata and use an atomic rename.
     xdg_cache::store_generated(path, uri, 128, source_mtime, source_size, &rgba);
 
-    (rgba.width().max(rgba.height()) >= max_side).then_some(rgba)
+    Some(rgba)
 }
 
 pub(super) fn generate(

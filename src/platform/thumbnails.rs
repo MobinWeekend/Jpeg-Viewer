@@ -46,7 +46,7 @@ mod quick_look {
             "jpeg-viewer-quicklook-{}-{id}", std::process::id()
         ));
         std::fs::create_dir_all(&directory).ok()?;
-        let thumbnail_size = max_side.clamp(64, 1024).to_string();
+        let thumbnail_size = max_side.max(1).to_string();
         let status = Command::new("qlmanage")
             .args(["-t", "-s", thumbnail_size.as_str(), "-o"])
             .arg(&directory)
@@ -63,7 +63,6 @@ mod quick_look {
                     fallback.as_deref().and_then(|fallback| image::open(fallback).ok())
                 }))
                 .map(|image| image.to_rgba8())
-                .filter(|image| image.width().max(image.height()) >= max_side)
         } else {
             None
         };
@@ -175,7 +174,10 @@ mod windows_shell {
         }
         let bitmap = unsafe {
             factory.GetImage(
-                SIZE { cx: max_side.clamp(64, 1024) as i32, cy: max_side.clamp(64, 1024) as i32 },
+                SIZE {
+                    cx: max_side.max(1).min(i32::MAX as u32) as i32,
+                    cy: max_side.max(1).min(i32::MAX as u32) as i32,
+                },
                 flags,
             )
         }.ok()?;
@@ -188,11 +190,12 @@ mod windows_shell {
         // Shell thumbnail extraction uses COM. These workers are dedicated to
         // thumbnail tasks, so an STA is appropriate for Shell extension calls.
         let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();
-        let meets_requested_size = |image: &image::RgbaImage| {
-            image.width().max(image.height()) >= max_side
-        };
-        let cached = request_bitmap(path, max_side, true).filter(|image| meets_requested_size(image));
-        let result = cached.or_else(|| request_bitmap(path, max_side, false).filter(|image| meets_requested_size(image)));
+        // Return the shell's best result even when it is smaller than the
+        // requested box. The shared request pipeline knows the source's true
+        // dimensions and decides whether that result is full-resolution or
+        // whether Jpeg-Viewer must decode the source itself.
+        let cached = request_bitmap(path, max_side, true);
+        let result = cached.or_else(|| request_bitmap(path, max_side, false));
         if initialized {
             unsafe { CoUninitialize(); }
         }

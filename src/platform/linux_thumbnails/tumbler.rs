@@ -24,6 +24,12 @@ pub(super) fn request(
     max_side: u32,
     overall_deadline: Instant,
 ) -> Option<image::RgbaImage> {
+    // Thumbnailer1 exposes only the four standardized Freedesktop flavors.
+    // Larger arbitrary requests are delegated to the desktop's .thumbnailer
+    // entries rather than waiting for an insufficient xx-large result.
+    if max_side > 1024 {
+        return None;
+    }
     let mime_type = infer::get_from_path(path).ok().flatten()?.mime_type().to_owned();
     let uri_argument = gvariant_string_array(uri);
     let mime_argument = gvariant_string_array(&mime_type);

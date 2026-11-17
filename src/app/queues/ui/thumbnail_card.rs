@@ -45,8 +45,6 @@ impl ViewerApp {
             0.14,
         );
         let painter = ui.painter();
-        let cached_thumbnail = self.get_shared_thumbnail(key, 128);
-        let needs_thumbnail_upgrade = !path.is_dir() && !self.has_shared_thumbnail_at_least(key, 128);
         let inner = cell_rect.shrink(3.0);
         let image_rect = if compact {
             let number_width = if context_index.is_some() { 20.0 } else { 0.0 };
@@ -70,6 +68,13 @@ impl ViewerApp {
                 ),
             )
         };
+        // Request enough pixels for the actual thumbnail viewport, including
+        // compact rows and HiDPI displays, instead of assuming every preview
+        // has the same resolution regardless of its rendered size.
+        let target_thumbnail_size = crate::app::queues::thumbnail_request_size(image_rect, ctx);
+        let cached_thumbnail = self.get_shared_thumbnail(key, target_thumbnail_size);
+        let needs_thumbnail_upgrade = !path.is_dir()
+            && !self.has_shared_thumbnail_at_least(key, target_thumbnail_size);
 
         if hover_t > 0.01 || selected {
             let shadow_alpha = (hover_t * 34.0).round() as u8;
@@ -100,7 +105,12 @@ impl ViewerApp {
         };
 
         if needs_thumbnail_upgrade && ui.is_rect_visible(image_rect) {
-            self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string(), ctx);
+            self.request_sidebar_thumbnail(
+                path.to_path_buf(),
+                key.to_string(),
+                target_thumbnail_size,
+                ctx,
+            );
         }
 
         if path.is_dir() {
@@ -117,22 +127,21 @@ impl ViewerApp {
         } else if let Some(texture) = cached_thumbnail.as_ref() {
             let size = texture.size_vec2();
             if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
-                let scale = (image_rect.width() / size.x).min(image_rect.height() / size.y);
-                if scale.is_finite() && scale > 0.0 {
-                    let draw_size = size * scale;
-                    let draw_rect = egui::Rect::from_center_size(image_rect.center(), draw_size);
-                    painter.image(
-                        texture.id(),
-                        draw_rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
-                    );
-                }
+                let draw_rect = crate::app::queues::thumbnail_fit_rect(
+                    image_rect,
+                    size.x / size.y,
+                );
+                painter.image(
+                    texture.id(),
+                    draw_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
             }
         } else {
             let message = if !path.exists() {
                 "Missing"
-            } else if self.shared_thumbnail_failed(key, 128) {
+            } else if self.shared_thumbnail_failed(key, target_thumbnail_size) {
                 "No preview"
             } else {
                 "Loading…"

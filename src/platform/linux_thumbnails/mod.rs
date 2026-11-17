@@ -19,7 +19,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 /// Load an existing desktop-generated thumbnail or request one from the active
-/// desktop's available thumbnail infrastructure.
+/// desktop's available thumbnail infrastructure. `max_side` is the exact
+/// physical-pixel bound requested by the UI; individual desktop APIs may map it
+/// to their own supported cache flavor or accept it as an arbitrary size.
 ///
 /// This function is called from the application's thumbnail worker pool, never
 /// from egui's UI thread. Failures are intentionally silent and fall back to the

@@ -92,6 +92,11 @@ fn valid_thumbnail_metadata(bytes: &[u8], uri: &str, mtime: u64, source_size: u6
         && found_size.is_none_or(|value| value.parse::<u64>().ok() == Some(source_size))
 }
 
+
+fn standard_cache_flavors() -> [&'static str; 4] {
+    ["normal", "large", "x-large", "xx-large"]
+}
+
 fn cached_paths(uri: &str, source_stamp: (u64, u64)) -> Vec<PathBuf> {
     let Some(root) = cache_root() else {
         return Vec::new();
@@ -99,8 +104,9 @@ fn cached_paths(uri: &str, source_stamp: (u64, u64)) -> Vec<PathBuf> {
     let (mtime, source_size) = source_stamp;
     let digest = format!("{:x}", md5::compute(uri.as_bytes()));
 
-    // Larger flavors can be downscaled, so check the largest one first.
-    ["xx-large", "x-large", "large", "normal"]
+    // Prefer the smallest standard flavor first. It avoids decoding a 512px or
+    // 1024px cache entry when a 128px preview already satisfies the widget.
+    standard_cache_flavors()
         .into_iter()
         .filter_map(|size| {
             let candidate = root.join(size).join(format!("{digest}.png"));
@@ -134,7 +140,6 @@ pub(super) fn read_cached(path: &Path, uri: &str, requested_side: u32) -> Option
         };
         if width == 0
             || height == 0
-            || width.max(height) > 4096
             || pixel_count > 16_777_216
             || width.max(height) < requested_side
         {
@@ -309,5 +314,19 @@ mod tests {
         assert!(!valid_thumbnail_metadata(&bytes, uri, mtime + 1, source_size));
         assert!(!valid_thumbnail_metadata(&bytes, uri, mtime, source_size + 1));
         assert!(!valid_thumbnail_metadata(&bytes, "file:///different.jpg", mtime, source_size));
+    }
+}
+
+
+#[cfg(test)]
+mod cache_flavor_tests {
+    use super::standard_cache_flavors;
+
+    #[test]
+    fn cache_flavors_are_checked_from_smallest_to_largest() {
+        assert_eq!(
+            standard_cache_flavors(),
+            ["normal", "large", "x-large", "xx-large"],
+        );
     }
 }
