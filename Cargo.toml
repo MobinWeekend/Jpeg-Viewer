@@ -59,6 +59,10 @@ natord = "1.0"
 [target.'cfg(target_os = "linux")'.dependencies]
 # Freedesktop thumbnail cache names are MD5 hashes of file URIs.
 md5 = "0.8.1"
+# PNG cache metadata, safe thumbnailer Exec parsing, and canonical file URIs.
+png = "0.18.1"
+shlex = "2.0.1"
+url = "2.5.8"
 # Request compositor-managed blur on Wayland desktops that implement
 # ext-background-effect-v1 (including COSMIC).
 wayland-client = { version = "0.31.15", features = ["system"] }
