@@ -120,7 +120,7 @@ impl ViewerApp {
             .add_profile_button(
                 egui::Button::new(
                     egui::RichText::new(slideshow_icon)
-                        .size(scaled_text_size(ui.ctx(), BTN_HEIGHT + 2.0)),
+                        .size(scaled_text_size(ui.ctx(), BTN_HEIGHT - 2.0)),
                 )
                 .min_size(self.btn_size())
                 .fill(toolbar_button_fill(ui))
@@ -322,14 +322,16 @@ impl ViewerApp {
         let tooltip = if self.b_zoom_used {
             "Click to Fit"
         } else {
-            "Click for 100%"
+            "Click for 1:1"
         };
 
         // Keep the layout slot fixed-width even for very large percentages. The
         // percentage is painted independently so its text may visually overflow the
         // slot instead of forcing neighboring toolbar controls to shift.
-        let (zoom_rect, response) =
-            ui.allocate_exact_size(egui::vec2(BTN_HEIGHT, BTN_HEIGHT), egui::Sense::click());
+        let (zoom_rect, response) = ui.allocate_exact_size(
+            egui::vec2(BTN_HEIGHT + 6.0, BTN_HEIGHT),
+            egui::Sense::click(),
+        );
         let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), BTN_HEIGHT - 4.0));
         ui.painter().text(
             zoom_rect.center(),
@@ -574,27 +576,27 @@ impl ViewerApp {
     /// Standard toolbar button size.
     fn btn_size(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(BTN_HEIGHT - 2.0, BTN_HEIGHT - 4.0) // compact
+            egui::vec2(BTN_HEIGHT - 6.0, BTN_HEIGHT - 4.0) // compact
         } else {
-            egui::vec2(BTN_HEIGHT + 4.0, BTN_HEIGHT) // normal
-        }
-    }
-
-    /// Small toolbar button size (used for +/−, 1:1, fit, pin, etc.)
-    fn btn_size_small(&self) -> egui::Vec2 {
-        if self.compactui {
-            egui::vec2(BTN_HEIGHT - 6.0, BTN_HEIGHT - 4.0)
-        } else {
-            egui::vec2(BTN_HEIGHT - 4.0, BTN_HEIGHT)
+            egui::vec2(BTN_HEIGHT - 2.0, BTN_HEIGHT) // normal
         }
     }
 
     /// Medium button size (slower/faster, zoom text)
     fn btn_size_medium(&self) -> egui::Vec2 {
         if self.compactui {
-            egui::vec2(BTN_HEIGHT - 4.0, BTN_HEIGHT - 4.0)
+            egui::vec2(BTN_HEIGHT - 8.0, BTN_HEIGHT - 4.0)
         } else {
-            egui::vec2(BTN_HEIGHT + 4.0, BTN_HEIGHT)
+            egui::vec2(BTN_HEIGHT - 4.0, BTN_HEIGHT)
+        }
+    }
+
+    /// Small toolbar button size (used for +/−, 1:1, fit, pin, etc.)
+    fn btn_size_small(&self) -> egui::Vec2 {
+        if self.compactui {
+            egui::vec2(BTN_HEIGHT - 10.0, BTN_HEIGHT - 4.0)
+        } else {
+            egui::vec2(BTN_HEIGHT - 8.0, BTN_HEIGHT)
         }
     }
 }

@@ -129,7 +129,7 @@ impl ViewerApp {
                                     page.visuals().widgets.noninteractive.bg_stroke
                                 };
 
-                                page.add_space(32.0);
+                                page.add_space(42.0);
                                 egui::Frame::new()
                                     .fill(hero_surface)
                                     .stroke(frame_stroke)
