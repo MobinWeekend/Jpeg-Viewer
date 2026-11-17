@@ -873,6 +873,7 @@ impl crate::app::types::ViewerApp {
                                                     true,
                                                     126.0,
                                                     false,
+                                                    true,
                                                 ).clicked();
                                             },
                                         );

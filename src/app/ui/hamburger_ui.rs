@@ -92,13 +92,7 @@ impl ViewerApp {
                 ui.separator();
 
                 self.hamburger_open_file_button(ctx, ui);
-                if crate::app::ui::home_menu_button(ui, "Home", 180.0)
-                    .on_hover_text("Show Home in the primary Viewer")
-                    .clicked()
-                {
-                    self.open_home_page();
-                    self.hamburger_menu_open = false;
-                }
+                self.hamburger_home_button(ui);
                 self.hamburger_open_folder_button(ctx, ui);
                 self.hamburger_open_folder_recursive_button(ctx, ui);
                 self.hamburger_open_with_button(ctx, ui);
@@ -187,16 +181,41 @@ impl ViewerApp {
         }
     }
 
+    /// Home button for humburger
+    fn hamburger_home_button(&mut self, ui: &mut egui::Ui) {
+        let home_resp = ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("🏠 Home").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(180.0, 30.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Show Home in the primary Viewer");
+        if home_resp.clicked() {
+            self.open_home_page();
+            self.hamburger_menu_open = false;
+        }
+    }
+
     fn hamburger_masonry_buttons(&mut self, ui: &mut egui::Ui) {
         let entries_enabled = !self.image_entries.is_empty();
-        if crate::app::ui::masonry_button(ui, "Current entries", entries_enabled, 180.0, true)
-            .clicked()
+        if crate::app::ui::masonry_button(
+            ui,
+            "Current entries",
+            entries_enabled,
+            180.0,
+            true,
+            false,
+        )
+        .clicked()
         {
             self.open_local_masonry();
             self.hamburger_menu_open = false;
         }
         let folder_enabled = self.current_directory.is_some();
-        if crate::app::ui::masonry_button(ui, "Current folder", folder_enabled, 180.0, true)
+        if crate::app::ui::masonry_button(ui, "Current folder", folder_enabled, 180.0, true, false)
             .clicked()
         {
             self.open_folder_masonry();

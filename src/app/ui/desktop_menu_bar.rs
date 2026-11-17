@@ -430,7 +430,7 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             app.handle_command(ctx, ViewerCommand::OpenFolder);
             ui.close();
         }
-        if crate::app::ui::home_menu_button(ui, "Home", 180.0).clicked() {
+        if ui.button("⌂  Home").clicked() {
             app.open_home_page();
             ui.close();
         }

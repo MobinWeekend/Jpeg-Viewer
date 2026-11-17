@@ -226,33 +226,58 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             );
                         }
 
-                        // When integrated navigation is enabled, the hamburger has
-                        // absolute priority and remains visible even at minimal width.
-                        // Otherwise the title bar returns to its standard title-only layout.
-                        if integrate_navigation && !crate::app::ui::uses_desktop_menu_bar(ctx) {
-                            ui.add_space(3.0);
-                            app.render_hamburger_ui(ui);
-                        }
-
-                        // A dedicated shortcut opens the current Viewer
-                        // collection in Masonry. Use the shared custom mark so
-                        // every Masonry entry point has the same visual identity.
+                        // Home's navigation controls form one compact, themed group:
+                        // the hamburger sits beside the Masonry switch on the same surface.
+                        // The desktop menu bar already provides these entry points, so
+                        // neither control is duplicated when it is enabled.
+                        let has_desktop_menu = crate::app::ui::uses_desktop_menu_bar(ctx);
                         let masonry_active = app.workspace.active_kind()
                             == crate::app::workspace::WorkspaceTabKind::Masonry;
-                        let can_toggle_masonry = !crate::app::ui::uses_desktop_menu_bar(ctx)
-                            && app.masonry_toggle_available();
-                        if can_toggle_masonry {
+                        let can_toggle_masonry = !has_desktop_menu && app.masonry_toggle_available();
+                        if integrate_navigation && !has_desktop_menu && app.is_home_surface_active() {
                             ui.add_space(3.0);
-                            let tip = if masonry_active {
-                                "Return to Viewer"
-                            } else {
-                                "Open current entries in Masonry"
-                            };
-                            if crate::app::ui::masonry_toggle_button(ui, masonry_active, true, 30.0)
+                            super::toolbar::toolbar_frame_mode(ctx, true).show(ui, |group| {
+                                group.horizontal(|group| {
+                                    app.render_hamburger_ui(group);
+                                    if can_toggle_masonry {
+                                        let tip = if masonry_active {
+                                            "Return to Viewer"
+                                        } else {
+                                            "Open current entries in Masonry"
+                                        };
+                                        if crate::app::ui::masonry_toggle_button(
+                                            group, masonry_active, true, 30.0,
+                                        )
+                                        .on_hover_text(tip)
+                                        .clicked()
+                                        {
+                                            app.activate_masonry_from_navigation_button();
+                                        }
+                                    }
+                                });
+                            });
+                        } else {
+                            // When integrated navigation is enabled, the hamburger
+                            // has absolute priority and remains visible at minimal width.
+                            if integrate_navigation && !has_desktop_menu {
+                                ui.add_space(3.0);
+                                app.render_hamburger_ui(ui);
+                            }
+                            if can_toggle_masonry {
+                                ui.add_space(3.0);
+                                let tip = if masonry_active {
+                                    "Return to Viewer"
+                                } else {
+                                    "Open current entries in Masonry"
+                                };
+                                if crate::app::ui::masonry_toggle_button(
+                                    ui, masonry_active, true, 30.0,
+                                )
                                 .on_hover_text(tip)
                                 .clicked()
-                            {
-                                app.activate_masonry_from_navigation_button();
+                                {
+                                    app.activate_masonry_from_navigation_button();
+                                }
                             }
                         }
 

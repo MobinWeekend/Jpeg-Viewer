@@ -106,7 +106,16 @@ impl ViewerApp {
             if ui.button("Open queue").clicked() {
                 self.open_queue_in_viewer(ctx);
             }
-            if crate::app::ui::masonry_button(ui, "Open in Masonry", !self.queue_paths.is_empty(), 0.0, false).clicked() {
+            if crate::app::ui::masonry_button(
+                ui,
+                "Open in Masonry",
+                !self.queue_paths.is_empty(),
+                0.0,
+                false,
+                true,
+            )
+            .clicked()
+            {
                 let paths = self.queue_paths.clone();
                 self.open_masonry_from_paths(&paths, "Masonry · Queue");
             }
@@ -390,7 +399,16 @@ impl ViewerApp {
                     self.add_favorite_path(path);
                 }
             }
-            if crate::app::ui::masonry_button(ui, "Open in Masonry", !self.favorite_paths.is_empty(), 0.0, false).clicked() {
+            if crate::app::ui::masonry_button(
+                ui,
+                "Open in Masonry",
+                !self.favorite_paths.is_empty(),
+                0.0,
+                false,
+                true,
+            )
+            .clicked()
+            {
                 let paths = self.favorite_paths.clone();
                 self.open_masonry_from_paths(&paths, "Masonry · Favorites");
             }
@@ -461,7 +479,9 @@ impl ViewerApp {
                                                 favorite_entries.extend(
                                                     actions::collect_folder_images(favorite)
                                                         .into_iter()
-                                                        .map(crate::imaging::entry::ImageEntry::File),
+                                                        .map(
+                                                            crate::imaging::entry::ImageEntry::File,
+                                                        ),
                                                 );
                                             } else {
                                                 favorite_entries.push(

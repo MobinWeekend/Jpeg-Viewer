@@ -29,7 +29,7 @@ pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
         })
 }
 
-fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
+pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
     let profile = crate::ui_theme::current_look_profile(ctx);
     let panel_color = ctx.style().visuals.panel_fill;
 

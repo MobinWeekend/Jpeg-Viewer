@@ -56,36 +56,6 @@ pub(crate) fn draw_home_icon(painter: &egui::Painter, rect: egui::Rect, color: e
     );
 }
 
-/// Standard menu-row Home action with the custom Home glyph.
-pub(crate) fn home_menu_button(ui: &mut egui::Ui, label: &str, width: f32) -> egui::Response {
-    let height = 30.0;
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(width.max(80.0), height), egui::Sense::click());
-    let visuals = if response.is_pointer_button_down_on() {
-        &ui.visuals().widgets.active
-    } else if response.hovered() {
-        &ui.visuals().widgets.hovered
-    } else {
-        &ui.visuals().widgets.inactive
-    };
-    if response.hovered() || response.is_pointer_button_down_on() {
-        ui.painter().rect_filled(rect, 4.0, visuals.bg_fill);
-    }
-    let icon_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 17.0, rect.center().y),
-        egui::vec2(18.0, 18.0),
-    );
-    draw_home_icon(ui.painter(), icon_rect, visuals.fg_stroke.color);
-    ui.painter().text(
-        egui::pos2(icon_rect.right() + 8.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::TextStyle::Button.resolve(ui.style()),
-        visuals.fg_stroke.color,
-    );
-    response
-}
-
 /// Render a compact button that carries the shared Masonry icon.
 /// `flat` is used for menu rows and title-bar chrome; ordinary buttons retain
 /// the current Look profile's standard widget surface.
@@ -95,8 +65,9 @@ pub(crate) fn masonry_button(
     enabled: bool,
     min_width: f32,
     flat: bool,
+    hover_highlight: bool,
 ) -> egui::Response {
-    masonry_button_impl(ui, label, enabled, min_width, flat, true)
+    masonry_button_impl(ui, label, enabled, min_width, flat, hover_highlight)
 }
 
 fn masonry_button_impl(

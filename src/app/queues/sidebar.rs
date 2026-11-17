@@ -185,7 +185,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                     // Sorting and Masonry both operate on the current Browse collection.
                     crate::app::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
-                    if crate::app::ui::masonry_button(ui, "Open in Masonry", !app.image_entries.is_empty(), 0.0, false).clicked() {
+                    if crate::app::ui::masonry_button(ui, "Open in Masonry", !app.image_entries.is_empty(), 0.0, false, true).clicked() {
                         app.open_local_masonry();
                     }
                 });

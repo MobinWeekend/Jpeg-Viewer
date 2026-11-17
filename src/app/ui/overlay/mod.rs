@@ -29,7 +29,9 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // With native decorations, Home keeps its landing-page navigation available;
     // in other workspaces the floating controls follow the navigation auto-hide state.
     let native_window_titlebar = app.settings_manager.get().show_titlebar;
-    if desktop_menu_bar && !fullscreen && !native_window_titlebar {
+    if desktop_menu_bar
+        && ((!fullscreen && !native_window_titlebar) || app.is_home_surface_active())
+    {
         app.hamburger_menu_open = false;
     }
     // Sidebar drawer handle is separate from the navigation toolbar and follows
@@ -44,7 +46,11 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     if !app.overlay_visible {
         // Native-titlebar navigation auto-hides with the rest of the toolbar. Home
         // is the exception: its navigation entry points remain available.
-        if native_window_titlebar && !fullscreen && app.is_home_surface_active() {
+        if native_window_titlebar
+            && !fullscreen
+            && app.is_home_surface_active()
+            && !desktop_menu_bar
+        {
             // Home remains a navigable landing surface even when image overlays are
             // hidden; other workspaces do not leave floating navigation buttons behind.
             let central_rect = app.main_view_rect(ctx);
@@ -117,7 +123,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     if hide_image_navigation {
         // Masonry, Compare and Home own the central view and do not show
         // image-navigation overlays. Native-titlebar navigation is rendered separately.
-        if app.settings_manager.get().show_titlebar && !is_fullscreen {
+        if app.settings_manager.get().show_titlebar && !is_fullscreen && !desktop_menu_bar {
             render_main_surface_navigation_controls(
                 app,
                 ctx,
@@ -128,11 +134,12 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             && !desktop_menu_bar
             && !app.workspace_tab_strip_hosts_hamburger(ctx)
         {
-            render_hamburger_button_at(
-                app,
-                ctx,
-                egui::pos2(central_left + MENU_OFFSET, menu_offset_y),
-            );
+            let position = egui::pos2(central_left + MENU_OFFSET, menu_offset_y);
+            if app.is_home_surface_active() {
+                render_main_surface_navigation_controls(app, ctx, position);
+            } else {
+                render_hamburger_button_at(app, ctx, position);
+            }
         }
     } else {
         if custom_titlebar {
@@ -283,21 +290,31 @@ fn render_main_surface_navigation_controls(
     ctx: &egui::Context,
     position: egui::Pos2,
 ) {
+    if crate::app::ui::uses_desktop_menu_bar(ctx) {
+        return;
+    }
+
     egui::Area::new(egui::Id::new("main_surface_navigation_controls"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                app.render_hamburger_ui(ui);
-                if !crate::app::ui::uses_desktop_menu_bar(ctx) && app.masonry_toggle_available() {
-                    let active = app.workspace.active_kind()
-                        == crate::app::workspace::WorkspaceTabKind::Masonry;
-                    let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
-                        .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
-                    if toggle.clicked() {
-                        app.activate_masonry_from_navigation_button();
+            toolbar::toolbar_frame_mode(ctx, true).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    app.render_hamburger_ui(ui);
+                    if app.masonry_toggle_available() {
+                        let active = app.workspace.active_kind()
+                            == crate::app::workspace::WorkspaceTabKind::Masonry;
+                        let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
+                            .on_hover_text(if active {
+                                "Return to Viewer"
+                            } else {
+                                "Open current entries in Masonry"
+                            });
+                        if toggle.clicked() {
+                            app.activate_masonry_from_navigation_button();
+                        }
                     }
-                }
+                });
             });
         });
 }
