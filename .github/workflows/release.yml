@@ -948,37 +948,30 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            # JPEG Viewer ${{ github.ref_name }}
-
+            ###JPEG Viewer
             **Version:** `${{ steps.version.outputs.version }}`
-
-            ## Downloads
-
             Assets below are attached to this release. Select the package matching your operating system and CPU architecture.
 
-            ### Windows
-            - [Windows x64 (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Windows-x64.exe)
-            - [Windows ARM64 (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Windows-ARM64.exe)
+            ### Downloads
 
-            ### macOS
-            - [Intel Mac (.zip app bundle)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-macOS-Intel-x64.zip)
-            - [Apple Silicon M-series (.zip app bundle)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip)
-
-            ### Linux — portable
-            - [Linux x64 (.tar.gz)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.tar.gz)
-            - [Linux ARM64 (.tar.gz)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.tar.gz)
-            - [AppImage x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.AppImage)
-            - [AppImage ARM64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.AppImage)
-            - [Flatpak x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.flatpak)
-            - [Flatpak ARM64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.flatpak)
-
-            ### Linux — distribution packages
-            - [Debian / Ubuntu x64 (.deb)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.deb)
-            - [Debian / Ubuntu ARM64 (.deb)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.deb)
-            - [Fedora x64 (.rpm)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Fedora-x64.rpm)
-            - [Fedora ARM64 (.rpm)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Fedora-ARM64.rpm)
-            - [Arch Linux x64 (.pkg.tar.zst)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Arch-x64.pkg.tar.zst)
-            - [Arch Linux ARM64 (.pkg.tar.zst)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst)
+            | Platform | Download |
+            |----------|:--------:|
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/microsoft-windows/default.svg" width="16"> **Windows x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Windows-x64.exe) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/microsoft-windows/default.svg" width="16"> **Windows ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Windows-ARM64.exe) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/apple/default.svg" width="16"> **macOS Intel (x64)** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-macOS-Intel-x64.zip) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/apple/default.svg" width="16"> **macOS Apple Silicon (ARM64)** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/linux/default.svg" width="16"> **Linux x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.tar.gz) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/linux/default.svg" width="16"> **Linux ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.tar.gz) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/appimage/default.svg" width="16"> **AppImage x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.AppImage) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/appimage/default.svg" width="16"> **AppImage ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.AppImage) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/flatpak/default.svg" width="16"> **Flatpak x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.flatpak) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/flatpak/default.svg" width="16"> **Flatpak ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.flatpak) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/debian/default.svg" width="16"> **Debian / Ubuntu x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.deb) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/debian/default.svg" width="16"> **Debian / Ubuntu ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.deb) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/fedora/default.svg" width="16"> **Fedora x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Fedora-x64.rpm) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/fedora/default.svg" width="16"> **Fedora ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Fedora-ARM64.rpm) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/archlinux/default.svg" width="16"> **Arch Linux x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Arch-x64.pkg.tar.zst) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/archlinux/default.svg" width="16"> **Arch Linux ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst) |
 
             ## What's Changed
 
