@@ -64,6 +64,14 @@ impl MipmapUploadState {
     }
 }
 
+/// Whether a mipmap task still has CPU preparation or GPU upload work pending.
+pub(crate) fn is_mipmap_state_pending(state: &SharedMipmapState) -> bool {
+    state
+        .lock()
+        .map(|state| !state.is_ready())
+        .unwrap_or(false)
+}
+
 /// Start preparing mip levels from pixels that are already decoded.
 pub(crate) fn start_mipmap_upload(
     width: u32,
@@ -83,8 +91,8 @@ pub(crate) fn start_mipmap_upload(
 }
 
 /// A preloaded texture intentionally does not retain a second full decoded
-/// image in the GPU cache. If it later becomes the current image with Mipmap
-/// selected, decode it again off-thread and stream only its mip levels.
+/// image in the GPU cache. When an idle cached-neighbour slot is available,
+/// reopen and decode the source off-thread, then stream only its mip levels.
 pub(crate) fn start_mipmap_upload_from_entry(
     entry: ImageEntry,
     virtual_texture_threshold: u32,
@@ -342,6 +350,7 @@ fn upload_next_mipmap_chunk(
                     gl.bind_texture(glow::TEXTURE_2D, None);
                 }
                 state.ready = true;
+                ctx.request_repaint();
                 return;
             }
         }
@@ -368,6 +377,7 @@ fn upload_next_mipmap_chunk(
         // A malformed worker result should not crash the renderer or leave a
         // permanently scheduled callback in the UI.
         state.ready = true;
+        ctx.request_repaint();
         return;
     };
 

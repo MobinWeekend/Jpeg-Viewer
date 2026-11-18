@@ -165,9 +165,6 @@ pub struct ViewerApp {
 
     pub should_stop_caching: bool,
 
-    pub navigation_timer: Option<Instant>,
-    pub navigation_pause_duration: Duration,
-
     // ====== FRAME LIMITER ======
     pub last_repaint_time: Instant,
     pub last_interaction_time: Instant,
@@ -488,9 +485,6 @@ impl Default for ViewerApp {
             last_preload_start: None,
 
             should_stop_caching: false,
-
-            navigation_timer: None,
-            navigation_pause_duration: Duration::from_millis(settings.navigation_pause_ms),
 
             // ====== FRAME LIMITER ======
             last_repaint_time: now,

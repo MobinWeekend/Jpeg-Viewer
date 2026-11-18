@@ -179,6 +179,17 @@ fn reload_current_image_for_filter(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
+    if app.settings_manager.get().texture_filter != "mipmap" {
+        // The old filtering configuration is no longer usable. Drop pending
+        // mip receivers so their workers stop at the next streamed level instead
+        // of remaining blocked while no mip upload callbacks are scheduled.
+        app.current_mipmap_state = None;
+        app.inspect_mipmap_state = None;
+        for (_, cached) in app.image_cache.iter_mut() {
+            cached.mipmap_state = None;
+        }
+    }
+
     app.virtual_texture = None;
     app.vt_progress = None;
     app.vt_total_tiles = 0;

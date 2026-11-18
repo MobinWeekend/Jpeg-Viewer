@@ -109,14 +109,6 @@ impl SettingsManager {
                             }
                         }
                     }
-                    // Read navigation pause in ms
-                    if let Some(value) = section.get("navigation_pause_ms") {
-                        if let Ok(pausetime) = value.parse::<u64>() {
-                            if pausetime > 100 {
-                                settings.navigation_pause_ms = pausetime;
-                            }
-                        }
-                    }
                     // Read max_cache_task
                     if let Some(value) = section.get("max_cache_task") {
                         if let Ok(tasks) = value.parse::<u8>() {

@@ -32,7 +32,7 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
     assert!((loaded.zoom_step_mouse_right_button - 1.2).abs() < f32::EPSILON);
     assert!((loaded.zoom_step_mouse_wheel - 1.2).abs() < f32::EPSILON);
     assert!((loaded.zoom_step_keyboard - 1.2).abs() < f32::EPSILON);
-    assert_eq!(loaded.cache_radius, 3);
+    assert_eq!(loaded.cache_radius, 12);
     assert_eq!(loaded.tile_size, AppSettings::default().tile_size);
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
@@ -282,9 +282,8 @@ fn test_default_settings() {
     assert!(settings.window_pos.is_none());
     assert!(settings.window_size.is_none());
     assert!(!settings.window_maximized);
-    assert_eq!(settings.cache_radius, 5);
+    assert_eq!(settings.cache_radius, 6);
     assert_eq!(settings.cache_delta_factor, 0.6);
-    assert_eq!(settings.navigation_pause_ms, 1200);
     assert_eq!(settings.max_cache_task, 4);
     assert_eq!(settings.texture_filter, "linear");
     assert_eq!(settings.preload_throttle_ms, 100);

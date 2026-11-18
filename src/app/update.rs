@@ -621,6 +621,10 @@ impl eframe::App for ViewerApp {
             self.preload_adjacent_images();
         }
 
+        // Prepare mipmaps for one cached neighbour at a time after navigation
+        // settles. Current-image mip work is prioritized by this scheduler.
+        self.prepare_next_cached_mipmap(ctx);
+
         // ========== UI RENDERING ==========
         // The menu bar is a top panel and must be registered before sidebars and
         // the central canvas so it reserves layout space instead of covering them.
@@ -642,6 +646,29 @@ impl eframe::App for ViewerApp {
         self.render_central_panel(ctx);
         self.render_workspace_session_prompt(ctx);
         crate::app::ui::render_overlay_ui(self, ctx);
+
+        // Cached-neighbour mip uploads run after visible image/tile callbacks so
+        // current-image rendering always gets first claim on the shared budget.
+        // A tooltip-order layer ensures these callbacks are still submitted when
+        // the central panel is showing a loading/error/virtual-texture branch.
+        let background_mipmap_rect = self.main_view_rect(ctx);
+        if background_mipmap_rect.is_positive() {
+            let background_mipmap_painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Tooltip,
+                egui::Id::new("jpeg_viewer_background_mipmap_uploads"),
+            ));
+            for (texture_id, state) in self.cached_mipmap_uploads_for_frame() {
+                super::texture_mipmap::append_mipmap_upload_callback(
+                    &background_mipmap_painter,
+                    background_mipmap_rect,
+                    texture_id,
+                    state,
+                    std::sync::Arc::clone(&self.mipmap_upload_budget),
+                    ctx.clone(),
+                );
+            }
+        }
+
         // Workspace activation and tab creation happen during UI rendering;
         // update the native title after those interactions in the same frame.
         self.update_window_title(ctx);

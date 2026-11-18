@@ -53,7 +53,6 @@ impl ViewerApp {
         self.update_current_image_path();
         self.detect_current_file_type();
         self.sidebar_last_current_index = None;
-        self.reset_navigation_timer();
         self.file_metadata = Some(self.build_file_metadata());
         self.load_frame_limiter_settings();
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
@@ -134,9 +133,6 @@ impl ViewerApp {
 
         // Reset loading state
         self.set_loading_state(LoadingState::Idle);
-
-        // Reset navigation timer
-        self.reset_navigation_timer();
 
         // Load the new image while keeping the old texture visible.
         // This prevents flashing when navigating quickly.

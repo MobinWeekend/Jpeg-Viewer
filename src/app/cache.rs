@@ -1,5 +1,5 @@
 use super::texture_mipmap::{
-    SharedMipmapState, start_mipmap_upload, start_mipmap_upload_from_entry,
+    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload,
 };
 use super::types::{CachedImage, LoadedImage, ViewerApp};
 use crate::app::constants::MAX_TILE_SIZE;
@@ -42,11 +42,13 @@ impl ViewerApp {
             return;
         };
         let texture_filter = self.settings_manager.get().texture_filter.clone();
-        let mipmap_state = ready_mipmap_state(&self.current_mipmap_state);
+        // Keep in-progress work attached to the cache entry. When navigation
+        // moves away, the worker can continue preparing this neighbour in the
+        // background instead of being discarded with `current_mipmap_state`.
+        let mipmap_state = self.current_mipmap_state.clone();
 
-        // Once a ready texture/state pair is in the cache, don't put the same
-        // resource back into the LRU every frame just because the mip callback
-        // has completed.
+        // Don't put the same texture/state pair back into the LRU every frame
+        // just because the mip callback has progressed or completed.
         if self.image_cache.peek(&image_id).is_some_and(|cached| {
             cached.texture.id() == texture.id()
                 && cached.texture_filter == texture_filter
@@ -69,10 +71,9 @@ impl ViewerApp {
         );
     }
 
-    /// Promote a completed mipmap state into the GPU texture cache. Incomplete
-    /// workers are intentionally kept only by the currently displayed image;
-    /// navigation drops them rather than pinning large pending mip buffers in
-    /// every cached neighbour.
+    /// Ensure a completed current mipmap state is represented in the cache.
+    /// In-progress states are cached too, allowing neighbouring images to finish
+    /// preparing while they are not currently displayed.
     pub(crate) fn cache_ready_current_mipmap(&mut self) {
         let ready = self.current_mipmap_state.as_ref().is_some_and(|state| {
             state.lock().map(|state| state.is_ready()).unwrap_or(false)
@@ -105,28 +106,18 @@ impl ViewerApp {
                 }
             }
 
-            // Preload workers intentionally cache only the base texture to keep
-            // CPU memory bounded. If this entry becomes current with Mipmap
-            // selected, decode it again on a worker while its cached base texture
-            // is displayed immediately.
-            let mut current_mipmap_state = cached.mipmap_state.clone();
-            if active_filter == "mipmap" && current_mipmap_state.is_none() {
-                let entry = self.image_entries.get(index).cloned();
-                if let Some(entry) = entry {
-                    current_mipmap_state = Some(start_mipmap_upload_from_entry(
-                        entry,
-                        self.settings_manager.get().virtual_texture_threshold,
-                    ));
-                }
-            }
+            // Background preparation is scheduled centrally so there is only one
+            // speculative mip job at a time. Reuse any state already attached to
+            // this cached texture; if it has none, the scheduler will prioritize
+            // it once the current background job has finished.
+            let current_mipmap_state = cached.mipmap_state.clone();
 
             self.texture = Some(cached.texture.clone());
             self.texture_image_id = Some(image_id.clone());
             self.current_mipmap_state = current_mipmap_state.clone();
-            // Keep incomplete mip workers attached only to the displayed image.
-            // A pending decode can hold a large RGBA buffer; if the user navigates
-            // away, dropping the current state should stop the worker promptly.
-            cached.mipmap_state = ready_mipmap_state(&current_mipmap_state);
+            // Preserve incomplete work when the texture becomes current. The main
+            // viewer callback will continue uploading it with foreground priority.
+            cached.mipmap_state = current_mipmap_state.clone();
             self.mark_win98_dialup_texture_ready(true);
             self.is_gif = cached.is_gif;
             self.is_preview = cached.is_preview;
@@ -209,7 +200,18 @@ impl ViewerApp {
             existing
                 .as_ref()
                 .and_then(|cached| cached.mipmap_state.clone())
-                .or_else(|| Some(start_mipmap_upload(width, height, Arc::clone(&rgba))))
+                .or_else(|| {
+                    // Do not launch another expensive mip worker while a cached
+                    // neighbour is already being prepared. The background
+                    // scheduler will prioritize this current image as soon as
+                    // that worker completes. Non-cacheable images still start
+                    // immediately because they have no cache entry to schedule.
+                    if !should_cache || !self.has_pending_mipmap_work() {
+                        Some(start_mipmap_upload(width, height, Arc::clone(&rgba)))
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         };
@@ -219,7 +221,7 @@ impl ViewerApp {
                 let cached = CachedImage {
                     texture: texture.clone(),
                     texture_filter,
-                    mipmap_state: ready_mipmap_state(&mipmap_state),
+                    mipmap_state: mipmap_state.clone(),
                     is_gif: false,
                     is_preview: false,
                     index,
@@ -238,9 +240,10 @@ impl ViewerApp {
         }
     }
 
-    /// Add a background-preloaded image to the GPU cache. Mipmap preparation is
-    /// deliberately deferred until this entry is selected, avoiding retention
-    /// of a full decoded RGBA buffer for every neighbour in the preload radius.
+    /// Add a background-preloaded image to the GPU cache. Its base texture is
+    /// uploaded immediately; mip preparation is scheduled later, one cached
+    /// neighbour at a time, by re-decoding the source on a worker. This avoids
+    /// retaining a full decoded RGBA buffer for every neighbour in the radius.
     pub fn add_to_cache(
         &mut self,
         ctx: &egui::Context,
@@ -311,14 +314,26 @@ impl ViewerApp {
 }
 
 
-fn ready_mipmap_state(state: &Option<SharedMipmapState>) -> Option<SharedMipmapState> {
-    state.as_ref().and_then(|state| {
-        state
-            .lock()
-            .map(|guard| guard.is_ready())
-            .unwrap_or(false)
-            .then(|| Arc::clone(state))
-    })
+impl ViewerApp {
+    /// True while any current, inspect, or cached texture still has mip levels
+    /// waiting to be generated or uploaded. This bounds speculative work to one
+    /// texture at a time and prevents cache-radius preloading from spawning a
+    /// burst of full-image mip workers.
+    pub(crate) fn has_pending_mipmap_work(&self) -> bool {
+        self.current_mipmap_state
+            .as_ref()
+            .is_some_and(is_mipmap_state_pending)
+            || self
+                .inspect_mipmap_state
+                .as_ref()
+                .is_some_and(is_mipmap_state_pending)
+            || self.image_cache.iter().any(|(_, cached)| {
+                cached
+                    .mipmap_state
+                    .as_ref()
+                    .is_some_and(is_mipmap_state_pending)
+            })
+    }
 }
 
 fn same_mipmap_state(

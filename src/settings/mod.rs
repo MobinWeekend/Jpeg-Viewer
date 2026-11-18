@@ -26,7 +26,6 @@ pub struct AppSettings {
     pub window_maximized: bool,
     pub cache_radius: usize,
     pub cache_delta_factor: f32,
-    pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
     /// Thumbnail worker multiplier (1-8): 3x dimensions, 2x native OS/DE, and 1x Jpeg-Viewer decoder workers.
     pub thumbnail_workers: usize,
@@ -182,9 +181,8 @@ impl Default for AppSettings {
             window_pos: None,
             window_size: None,
             window_maximized: false,
-            cache_radius: 5,
+            cache_radius: 6,
             cache_delta_factor: 0.6,
-            navigation_pause_ms: 1200,
             max_cache_task: 4,
             thumbnail_workers: 3,
             texture_filter: "linear".to_string(),

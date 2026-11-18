@@ -70,10 +70,6 @@ impl SettingsManager {
             "cache_delta_factor",
             settings.cache_delta_factor.to_string(),
         );
-        section.set(
-            "navigation_pause_ms",
-            settings.navigation_pause_ms.to_string(),
-        );
         section.set("max_cache_task", settings.max_cache_task.to_string());
         section.set("thumbnail_workers", settings.thumbnail_workers.to_string());
         section.set("texture_filter", &settings.texture_filter);
