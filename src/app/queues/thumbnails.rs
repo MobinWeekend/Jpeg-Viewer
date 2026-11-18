@@ -6,7 +6,7 @@ use std::fs::{self, File};
 use std::path::PathBuf;
 use std::io::BufReader;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::time::{Duration, Instant};
 
 type ThumbnailJob = Box<dyn FnOnce() + Send + 'static>;
@@ -56,6 +56,9 @@ struct QueuedThumbnailJob {
     sequence: u64,
     masonry_source_key: Option<String>,
     cancellation: Option<Arc<AtomicBool>>,
+    /// Only Masonry's up-front layout-dimension pass blocks native thumbnail
+    /// work. Just-in-time sidebar probes are non-blocking for other items.
+    blocks_lower_stages: bool,
     run: ThumbnailJob,
 }
 
@@ -67,6 +70,7 @@ struct ThumbnailSchedulerState {
     // Cancelled/timed-out calls no longer hold the priority barrier even if
     // an uninterruptible platform API has not returned yet.
     active_cancellations: [Vec<Arc<AtomicBool>>; 3],
+    active_dimension_barriers: Vec<Arc<AtomicBool>>,
 }
 
 impl ThumbnailSchedulerState {
@@ -95,16 +99,18 @@ impl ThumbnailSchedulerState {
         self.active[index].saturating_sub(cancelled)
     }
 
+    fn has_blocking_dimension_work(&self) -> bool {
+        self.dimension_queue.iter().any(|queued| queued.blocks_lower_stages)
+            || self.active_dimension_barriers.iter()
+                .any(|token| !token.load(Ordering::Acquire))
+    }
+
     fn can_start(&self, pool: ThumbnailPool) -> bool {
         match pool {
             ThumbnailPool::Dimensions => true,
-            ThumbnailPool::Native => {
-                self.dimension_queue.is_empty()
-                    && self.active_uncancelled(ThumbnailPool::Dimensions) == 0
-            }
+            ThumbnailPool::Native => !self.has_blocking_dimension_work(),
             ThumbnailPool::Decoder => {
-                self.dimension_queue.is_empty()
-                    && self.active_uncancelled(ThumbnailPool::Dimensions) == 0
+                !self.has_blocking_dimension_work()
                     && self.native_queue.is_empty()
                     && self.active_uncancelled(ThumbnailPool::Native) == 0
             }
@@ -149,6 +155,7 @@ impl ThumbnailScheduler {
             priority,
             Some(source_key),
             Some(Arc::clone(&cancelled)),
+            pool == ThumbnailPool::Dimensions,
             job,
         ).is_ok();
         if !submitted {
@@ -164,6 +171,7 @@ impl ThumbnailScheduler {
         priority: u8,
         masonry_source_key: Option<String>,
         cancellation: Option<Arc<AtomicBool>>,
+        blocks_lower_stages: bool,
         job: ThumbnailJob,
     ) -> Result<(), ThumbnailJob> {
         let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
@@ -180,6 +188,7 @@ impl ThumbnailScheduler {
             sequence,
             masonry_source_key,
             cancellation,
+            blocks_lower_stages,
             run: job,
         });
         self.ready.notify_all();
@@ -228,7 +237,15 @@ impl ThumbnailScheduler {
         let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
         for pool in [ThumbnailPool::Dimensions, ThumbnailPool::Native, ThumbnailPool::Decoder] {
             if let Some(queued) = state.queue_mut(pool).iter_mut().find(|queued| queued.key == key) {
-                queued.priority = queued.priority.max(priority);
+                // `priority` is the user-facing thumbnail priority. Dimension
+                // tasks use a separate scale so even a selected sidebar item
+                // cannot jump above Masonry's full-layout dimension barrier.
+                let stage_priority = if pool == ThumbnailPool::Dimensions {
+                    sidebar_dimension_priority(priority)
+                } else {
+                    priority
+                };
+                queued.priority = queued.priority.max(stage_priority);
                 self.ready.notify_all();
                 return;
             }
@@ -251,6 +268,9 @@ impl ThumbnailScheduler {
                 state.active[pool.index()] += 1;
                 if let Some(cancellation) = job.cancellation.as_ref() {
                     state.active_cancellations[pool.index()].push(Arc::clone(cancellation));
+                    if pool == ThumbnailPool::Dimensions && job.blocks_lower_stages {
+                        state.active_dimension_barriers.push(Arc::clone(cancellation));
+                    }
                 }
                 return job;
             }
@@ -302,7 +322,12 @@ impl ThumbnailScheduler {
         self.ready.notify_all();
     }
 
-    fn worker_finished(&self, pool: ThumbnailPool, cancellation: Option<&Arc<AtomicBool>>) {
+    fn worker_finished(
+        &self,
+        pool: ThumbnailPool,
+        cancellation: Option<&Arc<AtomicBool>>,
+        blocks_lower_stages: bool,
+    ) {
         let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
         state.active[pool.index()] = state.active[pool.index()].saturating_sub(1);
         if let Some(cancellation) = cancellation {
@@ -311,6 +336,14 @@ impl ThumbnailScheduler {
                 .position(|token| Arc::ptr_eq(token, cancellation))
             {
                 state.active_cancellations[pool.index()].swap_remove(index);
+            }
+            if pool == ThumbnailPool::Dimensions && blocks_lower_stages {
+                if let Some(index) = state.active_dimension_barriers
+                    .iter()
+                    .position(|token| Arc::ptr_eq(token, cancellation))
+                {
+                    state.active_dimension_barriers.swap_remove(index);
+                }
             }
         }
         self.ready.notify_all();
@@ -337,6 +370,7 @@ fn thumbnail_scheduler(base_worker_count: usize) -> &'static Arc<ThumbnailSchedu
                 decoder_queue: Vec::new(),
                 active: [0; 3],
                 active_cancellations: [Vec::new(), Vec::new(), Vec::new()],
+                active_dimension_barriers: Vec::new(),
             }),
             ready: Condvar::new(),
             next_sequence: AtomicU64::new(0),
@@ -364,6 +398,7 @@ fn thumbnail_scheduler(base_worker_count: usize) -> &'static Arc<ThumbnailSchedu
                             let queued = worker_scheduler.take_next(pool);
                             let job_key = queued.key.clone();
                             let cancellation = queued.cancellation.clone();
+                            let blocks_lower_stages = queued.blocks_lower_stages;
                             let is_cancelled = cancellation.as_ref()
                                 .is_some_and(|token| token.load(Ordering::Acquire));
                             if is_cancelled {
@@ -386,7 +421,11 @@ fn thumbnail_scheduler(base_worker_count: usize) -> &'static Arc<ThumbnailSchedu
                                     worker_scheduler.finish_masonry(&job_key, cancellation);
                                 }
                             }
-                            worker_scheduler.worker_finished(pool, cancellation.as_ref());
+                            worker_scheduler.worker_finished(
+                                pool,
+                                cancellation.as_ref(),
+                                blocks_lower_stages,
+                            );
                             if pool != ThumbnailPool::Decoder {
                                 crate::platform::thumbnails::pump_worker_messages();
                             }
@@ -417,6 +456,7 @@ mod thumbnail_scheduler_tests {
             decoder_queue: Vec::new(),
             active: [0; 3],
             active_cancellations: [Vec::new(), Vec::new(), Vec::new()],
+            active_dimension_barriers: Vec::new(),
         }
     }
 
@@ -440,21 +480,51 @@ mod thumbnail_scheduler_tests {
     }
 
     #[test]
+    fn sidebar_dimension_priority_stays_below_masonry_and_prefetch() {
+        assert!(super::sidebar_dimension_priority(super::SIDEBAR_CURRENT_PRIORITY)
+            < super::MASONRY_DIMENSION_PRIORITY);
+        assert!(super::sidebar_dimension_priority(super::SIDEBAR_HOVER_PRIORITY)
+            > super::sidebar_dimension_priority(super::SIDEBAR_VISIBLE_PRIORITY));
+        assert!(super::sidebar_dimension_priority(super::SIDEBAR_VISIBLE_PRIORITY)
+            > super::sidebar_dimension_priority(super::SIDEBAR_PREFETCH_PRIORITY));
+    }
+
+    #[test]
     fn native_workers_wait_for_all_dimension_work() {
         let mut state = empty_state();
         state.active[ThumbnailPool::Dimensions.index()] = 1;
+        state.active_dimension_barriers.push(Arc::new(AtomicBool::new(false)));
         assert!(!state.can_start(ThumbnailPool::Native));
         state.active[ThumbnailPool::Dimensions.index()] = 0;
+        state.active_dimension_barriers.clear();
         state.dimension_queue.push(QueuedThumbnailJob {
             key: "dimension-test".into(),
             priority: 20,
             sequence: 0,
             masonry_source_key: None,
             cancellation: None,
+            blocks_lower_stages: true,
             run: Box::new(|| {}),
         });
         assert!(!state.can_start(ThumbnailPool::Native));
         assert!(state.can_start(ThumbnailPool::Dimensions));
+    }
+
+    #[test]
+    fn sidebar_dimension_jobs_do_not_block_native_or_decoder_work_for_other_items() {
+        let mut state = empty_state();
+        state.dimension_queue.push(QueuedThumbnailJob {
+            key: "sidebar-dimension-test".into(),
+            priority: 6,
+            sequence: 0,
+            masonry_source_key: None,
+            cancellation: None,
+            blocks_lower_stages: false,
+            run: Box::new(|| {}),
+        });
+        assert!(state.can_start(ThumbnailPool::Native));
+        state.active[ThumbnailPool::Native.index()] = 0;
+        assert!(state.can_start(ThumbnailPool::Decoder));
     }
 
     #[test]
@@ -464,6 +534,7 @@ mod thumbnail_scheduler_tests {
         state.active[ThumbnailPool::Dimensions.index()] = 1;
         state.active_cancellations[ThumbnailPool::Dimensions.index()]
             .push(Arc::clone(&cancellation));
+        state.active_dimension_barriers.push(Arc::clone(&cancellation));
         assert!(state.can_start(ThumbnailPool::Native));
     }
 
@@ -479,13 +550,16 @@ mod thumbnail_scheduler_tests {
             sequence: 0,
             masonry_source_key: None,
             cancellation: None,
+            blocks_lower_stages: false,
             run: Box::new(|| {}),
         });
         assert!(!state.can_start(ThumbnailPool::Decoder));
         state.native_queue.clear();
         state.active[ThumbnailPool::Dimensions.index()] = 1;
+        state.active_dimension_barriers.push(Arc::new(AtomicBool::new(false)));
         assert!(!state.can_start(ThumbnailPool::Decoder));
         state.active = [0; 3];
+        state.active_dimension_barriers.clear();
         assert!(state.can_start(ThumbnailPool::Decoder));
     }
 }
@@ -504,6 +578,28 @@ const THUMBNAIL_QUEUE_TIMEOUT: Duration = Duration::from_secs(120);
 const MASONRY_PLACEHOLDER_PRIORITY: u8 = 12;
 const MASONRY_THUMBNAIL_PRIORITY: u8 = 10;
 const SIDEBAR_THUMBNAIL_PRIORITY: u8 = 0;
+const SIDEBAR_DIMENSION_PRIORITY: u8 = 6;
+const SIDEBAR_PREFETCH_PRIORITY: u8 = 20;
+pub(crate) const SIDEBAR_VISIBLE_PRIORITY: u8 = 60;
+pub(crate) const SIDEBAR_HOVER_PRIORITY: u8 = 85;
+pub(crate) const SIDEBAR_CURRENT_PRIORITY: u8 = 110;
+pub(crate) const SIDEBAR_PLACEHOLDER_SIZE: u32 = 128;
+
+/// Keep sidebar metadata probes below Masonry's layout barrier, while still
+/// ordering the currently visible/hovered/current item ahead of lookahead work.
+fn sidebar_dimension_priority(thumbnail_priority: u8) -> u8 {
+    if thumbnail_priority >= SIDEBAR_CURRENT_PRIORITY {
+        MASONRY_DIMENSION_PRIORITY.saturating_sub(1)
+    } else if thumbnail_priority >= SIDEBAR_HOVER_PRIORITY {
+        MASONRY_DIMENSION_PRIORITY.saturating_sub(2)
+    } else if thumbnail_priority >= SIDEBAR_VISIBLE_PRIORITY {
+        MASONRY_DIMENSION_PRIORITY.saturating_sub(3)
+    } else if thumbnail_priority >= SIDEBAR_PREFETCH_PRIORITY {
+        SIDEBAR_DIMENSION_PRIORITY.saturating_add(1)
+    } else {
+        SIDEBAR_DIMENSION_PRIORITY
+    }
+}
 const MASONRY_PLACEHOLDER_SIZE: u32 = 128;
 
 fn shared_thumbnail_key(key: &str, size: u32) -> String {
@@ -779,6 +875,7 @@ fn submit_pipeline_stage(
     masonry_source_key: Option<&str>,
     cancellation: &Arc<AtomicBool>,
     first_stage: bool,
+    blocks_lower_stages: bool,
     job: ThumbnailJob,
 ) -> bool {
     if first_stage {
@@ -800,6 +897,7 @@ fn submit_pipeline_stage(
         priority,
         masonry_source_key.map(str::to_owned),
         Some(Arc::clone(cancellation)),
+        blocks_lower_stages,
         job,
     ).is_ok()
 }
@@ -833,7 +931,7 @@ fn decode_file_thumbnail_fallback(
                         candidate.image.width(),
                         candidate.image.height(),
                     );
-                    return finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio);
+                    return finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio, source_dimensions);
                 }
                 return Err(format!(
                     "Source file is too large for the thumbnail fallback read ({} bytes): {}",
@@ -857,7 +955,7 @@ fn decode_file_thumbnail_fallback(
                         candidate.image.height(),
                     );
                     let output_limit = thumbnail_output_limit(target_size, source_dimensions);
-                    return finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio);
+                    return finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio, source_dimensions);
                 }
                 return Err(format!("Failed to read {}: {error}", path.display()));
             }
@@ -893,6 +991,7 @@ fn decode_file_thumbnail_fallback(
                         best_candidate.expect("embedded candidate exists"),
                         output_limit,
                         source_aspect_ratio,
+                        source_dimensions,
                     );
                 }
             }
@@ -933,7 +1032,7 @@ fn decode_file_thumbnail_fallback(
         format!("No usable native, embedded, or decoded thumbnail: {}", path.display())
     })?;
     let output_limit = candidate_output_limit(&candidate, output_limit);
-    finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio)
+    finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio, source_dimensions)
 }
 
 fn schedule_file_native_stage(
@@ -942,7 +1041,7 @@ fn schedule_file_native_stage(
     key: String,
     target_size: u32,
     source_dimensions: Option<(u32, u32)>,
-    priority: u8,
+    priority_token: Arc<AtomicU8>,
     masonry_placeholder: bool,
     masonry_only: bool,
     masonry_source_key: Option<String>,
@@ -958,6 +1057,7 @@ fn schedule_file_native_stage(
     let stage_key = key.clone();
     let stage_path = path.clone();
     let stage_started_at = Arc::clone(&started_at);
+    let stage_priority_token = Arc::clone(&priority_token);
     let native_job = Box::new(move || {
         if stage_cancellation.load(Ordering::Acquire) {
             if masonry_only {
@@ -988,7 +1088,7 @@ fn schedule_file_native_stage(
             let sufficient = native_resolution >= quality_floor;
             if masonry_placeholder && native_resolution > 0 {
                 ready_result = best_candidate.take().map(|candidate| {
-                    finish_thumbnail_candidate(candidate, native_request_size, source_aspect_ratio)
+                    finish_thumbnail_candidate(candidate, native_request_size, source_aspect_ratio, source_dimensions)
                 });
             } else if sufficient {
                 if native_resolution < native_request_size
@@ -1001,7 +1101,7 @@ fn schedule_file_native_stage(
                     );
                 }
                 ready_result = best_candidate.take().map(|candidate| {
-                    finish_thumbnail_candidate(candidate, native_request_size, source_aspect_ratio)
+                    finish_thumbnail_candidate(candidate, native_request_size, source_aspect_ratio, source_dimensions)
                 });
             } else if crate::platform::thumbnails::diagnostics_enabled() {
                 eprintln!(
@@ -1042,6 +1142,7 @@ fn schedule_file_native_stage(
         let decoder_submit_key = decoder_key.clone();
         let decoder_job_scheduler = Arc::clone(&decoder_scheduler);
         let decoder_job_cancellation = Arc::clone(&decoder_cancellation);
+        let decoder_priority_token = Arc::clone(&stage_priority_token);
         let decoder_job = Box::new(move || {
             let result = decode_file_thumbnail_fallback(
                 &decoder_path,
@@ -1064,9 +1165,10 @@ fn schedule_file_native_stage(
         let submitted = decoder_scheduler.submit_stage(
             ThumbnailPool::Decoder,
             decoder_submit_key,
-            priority,
+            decoder_priority_token.load(Ordering::Acquire),
             decoder_source_key,
             Some(decoder_cancellation.clone()),
+            false,
             decoder_job,
         ).is_ok();
         if !submitted {
@@ -1086,10 +1188,11 @@ fn schedule_file_native_stage(
         &scheduler,
         ThumbnailPool::Native,
         &key,
-        priority,
+        priority_token.load(Ordering::Acquire),
         masonry_source_key.as_deref(),
         &cancellation,
         first_stage,
+        false,
         native_job,
     );
     if !submitted && masonry_only {
@@ -1102,6 +1205,7 @@ fn finish_thumbnail_candidate(
     candidate: ThumbnailCandidate,
     output_limit: u32,
     source_aspect_ratio: Option<f32>,
+    source_dimensions: Option<(u32, u32)>,
 ) -> Result<GeneratedThumbnail, String> {
     let ratio = source_aspect_ratio_or_preview(
         source_aspect_ratio,
@@ -1116,6 +1220,7 @@ fn finish_thumbnail_candidate(
         pixels,
         resolution,
         source_aspect_ratio: ratio,
+        source_dimensions,
     })
 }
 
@@ -1422,6 +1527,7 @@ impl ViewerApp {
                 MASONRY_DIMENSION_PRIORITY,
                 None,
                 Some(Arc::clone(&cancellation)),
+                true,
                 job,
             ) {
                 Ok(()) => {
@@ -1429,6 +1535,7 @@ impl ViewerApp {
                     self.masonry_dimension_pending.insert(source_key.clone());
                     self.masonry_dimension_receivers.push((
                         source_key,
+                        false,
                         Instant::now(),
                         started_at,
                         cancellation,
@@ -1464,26 +1571,43 @@ impl ViewerApp {
     pub(crate) fn collect_masonry_dimensions(&mut self) {
         let mut remaining = Vec::with_capacity(self.masonry_dimension_receivers.len());
         let mut completed = Vec::new();
-        for (source_key, queued_at, started_at, cancellation, receiver) in self.masonry_dimension_receivers.drain(..) {
-            if cancellation.load(Ordering::Acquire) {
-                completed.push((source_key, None));
-                continue;
-            }
+        let mut visibility_cancelled = Vec::new();
+        for (source_key, retry_on_visibility_cancel, queued_at, started_at, cancellation, receiver) in self.masonry_dimension_receivers.drain(..) {
+            // A completed dimensions result is useful even if the sidebar
+            // scrolled away in the same frame. Only discard a probe when it
+            // was cancelled before producing a result.
             match receiver.try_recv() {
                 Ok(dimensions) => {
                     completed.push((source_key, dimensions));
                     continue;
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    // A worker panic or unexpected task exit is a completed
-                    // failure, not a reason to enqueue the same broken probe
-                    // again on every UI frame. The neutral Masonry ratio is
-                    // used for this item instead.
-                    completed.push((source_key, None));
+                    if cancellation.load(Ordering::Acquire) && retry_on_visibility_cancel {
+                        visibility_cancelled.push(source_key);
+                    } else {
+                        // A worker panic or unexpected task exit is a completed
+                        // failure, not a reason to enqueue the same broken probe
+                        // again on every UI frame.
+                        completed.push((source_key, None));
+                    }
                     continue;
                 }
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
+
+            if cancellation.load(Ordering::Acquire) {
+                if retry_on_visibility_cancel {
+                    // Sidebar entries can leave the viewport while their probe
+                    // is queued/running. Do not cache that cancellation as a
+                    // permanent dimensions failure; the next visible request
+                    // is allowed to try again.
+                    visibility_cancelled.push(source_key);
+                } else {
+                    completed.push((source_key, None));
+                }
+                continue;
+            }
+
             let timed_out = thumbnail_started_elapsed(&started_at)
                 .map(|elapsed| elapsed >= DIMENSION_JOB_TIMEOUT)
                 .unwrap_or_else(|| queued_at.elapsed() >= DIMENSION_QUEUE_TIMEOUT);
@@ -1497,9 +1621,14 @@ impl ViewerApp {
                 completed.push((source_key, None));
                 continue;
             }
-            remaining.push((source_key, queued_at, started_at, cancellation, receiver));
+            remaining.push((source_key, retry_on_visibility_cancel, queued_at, started_at, cancellation, receiver));
         }
         self.masonry_dimension_receivers = remaining;
+
+        for source_key in visibility_cancelled {
+            self.masonry_dimension_pending.remove(&source_key);
+            self.masonry_dimension_attempted.remove(&source_key);
+        }
 
         for (source_key, dimensions) in completed {
             self.masonry_dimension_pending.remove(&source_key);
@@ -1530,14 +1659,128 @@ impl ViewerApp {
     ) {
         let target_size = target_size.max(1);
         let cache_key = shared_thumbnail_key(&key, target_size);
+        let source_dimensions = self.cached_source_dimensions(&key);
         self.request_sized_sidebar_thumbnail(
             path,
             cache_key,
             target_size,
-            None,
+            source_dimensions,
             SIDEBAR_THUMBNAIL_PRIORITY,
             ctx,
+            false,
+            false,
+            false,
         );
+    }
+
+    /// Larger visible sidebar entries use a quick OS placeholder first, then
+    /// request a higher-resolution replacement after the preview reaches cache.
+    /// Small cards request their final size directly so the normal quality floor
+    /// can reject an unhelpfully tiny native preview.
+    pub(crate) fn request_visible_sidebar_thumbnail(
+        &mut self,
+        path: PathBuf,
+        key: String,
+        target_size: u32,
+        priority: u8,
+        ctx: &egui::Context,
+    ) {
+        let target_size = target_size.max(1);
+        let cached_resolution = self.best_shared_thumbnail_resolution(&key).unwrap_or(0);
+        let source_dimensions = self.cached_source_dimensions(&key);
+
+        // A small card has no meaningful second stage. Ask the native provider
+        // for its actual display size and keep the normal quality threshold so
+        // an extremely small cached OS preview cannot become the final result.
+        if target_size <= SIDEBAR_PLACEHOLDER_SIZE {
+            if cached_resolution < target_size {
+                self.request_sized_sidebar_thumbnail(
+                    path,
+                    shared_thumbnail_key(&key, target_size),
+                    target_size,
+                    source_dimensions,
+                    priority,
+                    ctx,
+                    false,
+                    false,
+                    true,
+                );
+            }
+            return;
+        }
+
+        let placeholder_size = SIDEBAR_PLACEHOLDER_SIZE;
+        let placeholder_key = shared_thumbnail_key(&key, placeholder_size);
+        let placeholder_failed = self.shared_thumbnail_failed(&key, placeholder_size);
+        let placeholder_pending = self.sidebar_thumbnail_pending.contains(&placeholder_key);
+        let placeholder_completed_with_preview = self.sidebar_thumbnail_attempted.contains(&placeholder_key)
+            && !placeholder_failed
+            && !placeholder_pending
+            && cached_resolution > 0;
+        if cached_resolution < placeholder_size
+            && !placeholder_completed_with_preview
+            && !placeholder_failed
+        {
+            self.request_sized_sidebar_thumbnail(
+                path,
+                shared_thumbnail_key(&key, placeholder_size),
+                placeholder_size,
+                source_dimensions,
+                priority,
+                ctx,
+                false,
+                true,
+                true,
+            );
+        } else if cached_resolution < target_size {
+            self.request_sized_sidebar_thumbnail(
+                path,
+                shared_thumbnail_key(&key, target_size),
+                target_size,
+                source_dimensions,
+                priority.saturating_sub(2),
+                ctx,
+                false,
+                false,
+                true,
+            );
+        }
+    }
+
+    /// Start low-priority work one row outside the viewport. It is tracked just
+    /// like visible work and is cancelled as soon as it leaves the prefetch set.
+    pub(crate) fn prefetch_sidebar_entry_thumbnail(
+        &mut self,
+        entry: crate::imaging::entry::ImageEntry,
+        target_size: u32,
+        ctx: &egui::Context,
+    ) {
+        let key = source_thumbnail_key(&entry);
+        self.sidebar_prefetch_sources.insert(key.clone());
+        match entry {
+            crate::imaging::entry::ImageEntry::File(path) => {
+                self.request_visible_sidebar_thumbnail(
+                    path,
+                    key,
+                    target_size.min(SIDEBAR_PLACEHOLDER_SIZE),
+                    SIDEBAR_PREFETCH_PRIORITY,
+                    ctx,
+                );
+            }
+            archive_entry => {
+                self.request_visible_sidebar_archive_thumbnail(
+                    archive_entry,
+                    key,
+                    target_size.min(SIDEBAR_PLACEHOLDER_SIZE),
+                    SIDEBAR_PREFETCH_PRIORITY,
+                    ctx,
+                );
+            }
+        }
+    }
+
+    fn cached_source_dimensions(&self, source_key: &str) -> Option<(u32, u32)> {
+        self.masonry_dimension_results.get(source_key).copied().flatten()
     }
 
     /// Resolve the best cached resolution for a shared key. Prefer the smallest
@@ -1615,6 +1858,9 @@ impl ViewerApp {
                     source_dimensions,
                     priority,
                     ctx,
+                    true,
+                    priority == MASONRY_PLACEHOLDER_PRIORITY,
+                    false,
                 );
             }
             archive_entry => {
@@ -1625,6 +1871,7 @@ impl ViewerApp {
                     priority,
                     ctx,
                     Some(cache_source_key),
+                    false,
                 );
             }
         }
@@ -1638,12 +1885,22 @@ impl ViewerApp {
         precomputed_source_dimensions: Option<(u32, u32)>,
         priority: u8,
         ctx: &egui::Context,
+        masonry_only: bool,
+        placeholder_request: bool,
+        sidebar_managed: bool,
     ) {
         if !path.is_file() {
             return;
         }
         if self.sidebar_thumbnail_pending.contains(&key) {
             if priority > SIDEBAR_THUMBNAIL_PRIORITY {
+                if let Some((_, _, _, queued_priority, _, _, _, _)) = self
+                    .sidebar_thumbnail_receivers
+                    .iter()
+                    .find(|(pending_key, ..)| pending_key == &key)
+                {
+                    queued_priority.fetch_max(priority, Ordering::AcqRel);
+                }
                 thumbnail_scheduler(self.settings_manager.get().thumbnail_workers)
                     .promote(&key, priority);
             }
@@ -1658,8 +1915,7 @@ impl ViewerApp {
         self.sidebar_thumbnail_pending.insert(key.clone());
 
         let (tx, rx) = std::sync::mpsc::channel();
-        let masonry_only = priority >= MASONRY_THUMBNAIL_PRIORITY;
-        let masonry_placeholder = priority == MASONRY_PLACEHOLDER_PRIORITY;
+        let masonry_placeholder = placeholder_request;
         let masonry_source_key = if masonry_only {
             thumbnail_source_key_from_cache_key(&key).map(str::to_owned)
         } else {
@@ -1668,9 +1924,12 @@ impl ViewerApp {
         let receiver_masonry_source = masonry_source_key.clone();
         let started_at = Arc::new(Mutex::new(None));
         let cancellation = Arc::new(AtomicBool::new(false));
+        let priority_token = Arc::new(AtomicU8::new(priority));
         self.sidebar_thumbnail_receivers.push((
             key.clone(),
             receiver_masonry_source,
+            sidebar_managed,
+            Arc::clone(&priority_token),
             Instant::now(),
             Arc::clone(&started_at),
             Arc::clone(&cancellation),
@@ -1683,11 +1942,19 @@ impl ViewerApp {
         let scheduler_key = key.clone();
         let source_key_for_job = masonry_source_key.clone();
 
-        // Non-Masonry consumers have not necessarily run the layout metadata
-        // prepass. Queue a fast dimensions probe first, then hand its result to
-        // the native OS/DE pool. Masonry already completed that pass before it
-        // requests any visible tile previews.
-        let first_stage = if precomputed_source_dimensions.is_none() && !masonry_only {
+        // Reuse Masonry/previous-sidebar metadata before submitting another
+        // probe. Sidebar probes are just-in-time and non-blocking for native
+        // requests belonging to other visible files.
+        let cache_source_key = thumbnail_source_key_from_cache_key(&key).map(str::to_owned);
+        let dimensions_already_attempted = cache_source_key.as_ref()
+            .is_some_and(|source_key| self.masonry_dimension_attempted.contains(source_key));
+        let precomputed_source_dimensions = precomputed_source_dimensions
+            .or_else(|| cache_source_key.as_deref()
+                .and_then(|source_key| self.cached_source_dimensions(source_key)));
+        let first_stage = if precomputed_source_dimensions.is_none()
+            && !dimensions_already_attempted
+            && !masonry_only
+        {
             let dimension_scheduler = Arc::clone(&scheduler);
             let dimension_cancellation = Arc::clone(&cancellation);
             // Keep a separate handle for queue submission; the job closure owns
@@ -1704,6 +1971,9 @@ impl ViewerApp {
             let native_tx = tx.clone();
             let native_repaint = repaint_ctx.clone();
             let dimension_started_at = Arc::clone(&started_at);
+            let dimension_priority_token = Arc::clone(&priority_token);
+            let (dimension_tx, dimension_rx) = std::sync::mpsc::channel();
+            let dimension_repaint = repaint_ctx.clone();
             let dimension_job = Box::new(move || {
                 if dimension_cancellation.load(Ordering::Acquire) {
                     return;
@@ -1713,13 +1983,15 @@ impl ViewerApp {
                 if dimension_cancellation.load(Ordering::Acquire) {
                     return;
                 }
+                let _ = dimension_tx.send(dimensions);
+                dimension_repaint.request_repaint();
                 let submitted = schedule_file_native_stage(
                     Arc::clone(&native_scheduler),
                     native_path,
                     native_key.clone(),
                     target_size,
                     dimensions,
-                    priority,
+                    Arc::clone(&dimension_priority_token),
                     masonry_placeholder,
                     masonry_only,
                     native_source_key,
@@ -1741,16 +2013,32 @@ impl ViewerApp {
                     );
                 }
             }) as ThumbnailJob;
-            submit_pipeline_stage(
+            let submitted = submit_pipeline_stage(
                 &dimension_scheduler,
                 ThumbnailPool::Dimensions,
                 &dimension_key,
-                MASONRY_DIMENSION_PRIORITY,
+                sidebar_dimension_priority(priority),
                 dimension_source_key.as_deref(),
                 &dimension_submit_cancellation,
                 true,
+                false,
                 dimension_job,
-            )
+            );
+            if submitted {
+                if let Some(source_key) = cache_source_key.clone() {
+                    self.masonry_dimension_attempted.insert(source_key.clone());
+                    self.masonry_dimension_pending.insert(source_key.clone());
+                    self.masonry_dimension_receivers.push((
+                        source_key,
+                        true,
+                        Instant::now(),
+                        Arc::clone(&started_at),
+                        Arc::clone(&cancellation),
+                        dimension_rx,
+                    ));
+                }
+            }
+            submitted
         } else {
             schedule_file_native_stage(
                 Arc::clone(&scheduler),
@@ -1758,7 +2046,7 @@ impl ViewerApp {
                 scheduler_key,
                 target_size,
                 precomputed_source_dimensions,
-                priority,
+                priority_token,
                 masonry_placeholder,
                 masonry_only,
                 source_key_for_job,
@@ -1797,7 +2085,52 @@ impl ViewerApp {
             SIDEBAR_THUMBNAIL_PRIORITY,
             ctx,
             None,
+            false,
         );
+    }
+
+    pub(crate) fn request_visible_sidebar_archive_thumbnail(
+        &mut self,
+        entry: crate::imaging::entry::ImageEntry,
+        key: String,
+        target_size: u32,
+        priority: u8,
+        ctx: &egui::Context,
+    ) {
+        let target_size = target_size.max(1);
+        let placeholder_size = target_size.min(SIDEBAR_PLACEHOLDER_SIZE).max(1);
+        let cached_resolution = self.best_shared_thumbnail_resolution(&key).unwrap_or(0);
+        let placeholder_key = shared_thumbnail_key(&key, placeholder_size);
+        let placeholder_failed = self.shared_thumbnail_failed(&key, placeholder_size);
+        let placeholder_pending = self.sidebar_thumbnail_pending.contains(&placeholder_key);
+        let placeholder_completed_with_preview = self.sidebar_thumbnail_attempted.contains(&placeholder_key)
+            && !placeholder_failed
+            && !placeholder_pending
+            && cached_resolution > 0;
+        if cached_resolution < placeholder_size
+            && !placeholder_completed_with_preview
+            && !placeholder_failed
+        {
+            self.request_sized_archive_thumbnail(
+                entry,
+                shared_thumbnail_key(&key, placeholder_size),
+                placeholder_size,
+                priority,
+                ctx,
+                None,
+                true,
+            );
+        } else if cached_resolution < target_size {
+            self.request_sized_archive_thumbnail(
+                entry,
+                shared_thumbnail_key(&key, target_size),
+                target_size,
+                priority.saturating_sub(2),
+                ctx,
+                None,
+                true,
+            );
+        }
     }
 
     fn request_sized_archive_thumbnail(
@@ -1808,9 +2141,17 @@ impl ViewerApp {
         priority: u8,
         ctx: &egui::Context,
         masonry_source_key: Option<String>,
+        sidebar_managed: bool,
     ) {
         if self.sidebar_thumbnail_pending.contains(&key) {
             if priority > SIDEBAR_THUMBNAIL_PRIORITY {
+                if let Some((_, _, _, queued_priority, _, _, _, _)) = self
+                    .sidebar_thumbnail_receivers
+                    .iter()
+                    .find(|(pending_key, ..)| pending_key == &key)
+                {
+                    queued_priority.fetch_max(priority, Ordering::AcqRel);
+                }
                 thumbnail_scheduler(self.settings_manager.get().thumbnail_workers)
                     .promote(&key, priority);
             }
@@ -1827,9 +2168,12 @@ impl ViewerApp {
         let masonry_only = masonry_source_key.is_some();
         let started_at = Arc::new(Mutex::new(None));
         let cancellation = Arc::new(AtomicBool::new(false));
+        let priority_token = Arc::new(AtomicU8::new(priority));
         self.sidebar_thumbnail_receivers.push((
             key.clone(),
             masonry_source_key.clone(),
+            sidebar_managed,
+            Arc::clone(&priority_token),
             Instant::now(),
             Arc::clone(&started_at),
             Arc::clone(&cancellation),
@@ -1843,6 +2187,9 @@ impl ViewerApp {
         let scheduler_key = key.clone();
         let repaint_ctx = ctx.clone();
         let dimension_started_at = Arc::clone(&started_at);
+        let dimension_priority_token = Arc::clone(&priority_token);
+        let (dimension_tx, dimension_rx) = std::sync::mpsc::channel();
+        let dimension_repaint = repaint_ctx.clone();
         let dimension_job = Box::new(move || {
             if worker_cancellation.load(Ordering::Acquire) {
                 return;
@@ -1851,6 +2198,8 @@ impl ViewerApp {
             let bytes = read_archive_entry_bytes(&entry);
             let source_dimensions = bytes.as_ref().ok()
                 .and_then(|bytes| source_dimensions_from_bytes(bytes));
+            let _ = dimension_tx.send(source_dimensions);
+            dimension_repaint.request_repaint();
             if worker_cancellation.load(Ordering::Acquire) {
                 return;
             }
@@ -1864,6 +2213,7 @@ impl ViewerApp {
             let decoder_key = scheduler_key.clone();
             let decoder_repaint = repaint_ctx.clone();
             let decoder_tx = tx.clone();
+            let decoder_priority_token = Arc::clone(&dimension_priority_token);
             let decoder_job = Box::new(move || {
                 let result = (|| -> Result<GeneratedThumbnail, String> {
                     if decoder_cancellation.load(Ordering::Acquire) {
@@ -1910,6 +2260,7 @@ impl ViewerApp {
                         pixels,
                         resolution,
                         source_aspect_ratio,
+                        source_dimensions,
                     })
                 })();
                 complete_thumbnail_request(
@@ -1926,9 +2277,10 @@ impl ViewerApp {
             let submitted = worker_scheduler.submit_stage(
                 ThumbnailPool::Decoder,
                 scheduler_key.clone(),
-                priority,
+                decoder_priority_token.load(Ordering::Acquire),
                 decoder_source_key,
                 Some(decoder_submit_cancellation),
+                false,
                 decoder_job,
             ).is_ok();
             if !submitted {
@@ -1948,12 +2300,33 @@ impl ViewerApp {
             &scheduler,
             ThumbnailPool::Dimensions,
             &key,
-            MASONRY_DIMENSION_PRIORITY,
+            if masonry_only {
+                MASONRY_DIMENSION_PRIORITY
+            } else {
+                sidebar_dimension_priority(priority)
+            },
             masonry_source_key.as_deref(),
             &cancellation,
             true,
+            masonry_only,
             dimension_job,
         );
+        if submitted {
+            if sidebar_managed {
+                if let Some(source_key) = thumbnail_source_key_from_cache_key(&key).map(str::to_owned) {
+                    self.masonry_dimension_attempted.insert(source_key.clone());
+                    self.masonry_dimension_pending.insert(source_key.clone());
+                    self.masonry_dimension_receivers.push((
+                        source_key,
+                        true,
+                        Instant::now(),
+                        Arc::clone(&started_at),
+                        Arc::clone(&cancellation),
+                        dimension_rx,
+                    ));
+                }
+            }
+        }
         if !submitted {
             if masonry_only {
                 scheduler.finish_masonry(&key, &cancellation);
@@ -1963,6 +2336,37 @@ impl ViewerApp {
             self.sidebar_thumbnail_receivers.pop();
         }
     }
+    /// Cancel sidebar thumbnail requests that have fallen outside both the
+    /// rendered viewport and the small directional prefetch window. Results
+    /// already present in the shared cache are deliberately retained.
+    pub(crate) fn finish_sidebar_thumbnail_frame(&mut self) {
+        let mut relevant = self.sidebar_visible_sources.clone();
+        relevant.extend(self.sidebar_prefetch_sources.iter().cloned());
+        let Some(scheduler) = THUMBNAIL_SCHEDULER.get().cloned() else {
+            for (_, _, sidebar_managed, _, _, _, cancellation, _) in
+                &self.sidebar_thumbnail_receivers
+            {
+                if *sidebar_managed {
+                    cancellation.store(true, Ordering::Release);
+                }
+            }
+            return;
+        };
+
+        for (job_key, _, sidebar_managed, _, _, _, cancellation, _) in
+            &self.sidebar_thumbnail_receivers
+        {
+            if !sidebar_managed {
+                continue;
+            }
+            let still_relevant = thumbnail_source_key_from_cache_key(job_key)
+                .is_some_and(|source_key| relevant.contains(source_key));
+            if !still_relevant && !cancellation.load(Ordering::Acquire) {
+                scheduler.cancel_job(cancellation);
+            }
+        }
+    }
+
     pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
         self.collect_masonry_dimensions();
         let mut completed = Vec::new();
@@ -1970,14 +2374,14 @@ impl ViewerApp {
         let mut disconnected = Vec::new();
         let mut timed_out = Vec::new();
         self.sidebar_thumbnail_receivers
-            .retain(|(job_key, masonry_source, queued_at, started_at, cancellation, receiver)| {
+            .retain(|(job_key, masonry_source, sidebar_managed, _priority_token, queued_at, started_at, cancellation, receiver)| {
                 if cancellation.load(Ordering::Acquire) {
                     cancelled.push(job_key.clone());
                     return false;
                 }
                 match receiver.try_recv() {
                     Ok((_result_key, result)) => {
-                        completed.push((job_key.clone(), masonry_source.clone(), result));
+                        completed.push((job_key.clone(), masonry_source.clone(), *sidebar_managed, result));
                         return false;
                     }
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -2019,9 +2423,23 @@ impl ViewerApp {
             self.sidebar_thumbnail_attempted.insert(key.clone());
             self.sidebar_thumbnail_failed.insert(key);
         }
-        for (key, masonry_source, result) in completed {
+        for (key, masonry_source, sidebar_managed, result) in completed {
             self.sidebar_thumbnail_pending.remove(&key);
-            if masonry_source.as_ref().is_some_and(|source| {
+            if let Ok(thumbnail) = &result {
+                if let Some(source_key) = thumbnail_source_key_from_cache_key(&key) {
+                    self.masonry_dimension_results.insert(
+                        source_key.to_owned(),
+                        thumbnail.source_dimensions,
+                    );
+                    self.masonry_dimension_attempted.insert(source_key.to_owned());
+                }
+            }
+            let sidebar_source_visible = !sidebar_managed
+                || thumbnail_source_key_from_cache_key(&key).is_some_and(|source_key| {
+                    self.sidebar_visible_sources.contains(source_key)
+                        || self.sidebar_prefetch_sources.contains(source_key)
+                });
+            if !sidebar_source_visible || masonry_source.as_ref().is_some_and(|source| {
                 !self.masonry_visible_sources.contains(source)
             }) {
                 // This preview finished just as the user scrolled away or

@@ -13,7 +13,7 @@ use lru::LruCache;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU8};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -42,6 +42,9 @@ pub(crate) struct GeneratedThumbnail {
     /// a higher-resolution source preview.
     pub resolution: u32,
     pub source_aspect_ratio: Option<f32>,
+    /// Original EXIF-oriented dimensions discovered by the metadata pool.
+    /// Shared with Masonry and later sidebar requests to avoid repeat probes.
+    pub source_dimensions: Option<(u32, u32)>,
 }
 
 // ====== CACHE ======
@@ -361,20 +364,32 @@ pub struct ViewerApp {
     pub sidebar_thumbnail_receivers: Vec<(
         String,
         Option<String>,
+        bool,
+        Arc<AtomicU8>,
         Instant,
         Arc<Mutex<Option<Instant>>>,
         Arc<AtomicBool>,
         Receiver<(String, Result<GeneratedThumbnail, String>)>,
     )>,
+    /// Files currently visible in the active sidebar collection. Masonry has
+    /// its own independent visibility set and cancellation policy.
+    pub sidebar_visible_sources: HashSet<String>,
+    /// One-row directional lookahead for sidebar thumbnails.
+    pub sidebar_prefetch_sources: HashSet<String>,
+    /// Previous Browse-sidebar scroll offset, used to prefetch in the actual
+    /// scroll direction rather than reacting to wheel input elsewhere.
+    pub sidebar_last_scroll_offset: Option<f32>,
     /// Source keys currently intersecting the active Masonry viewport. Completed
     /// Masonry-only results outside this set are discarded instead of cached.
     pub masonry_visible_sources: HashSet<String>,
-    /// File-dimension metadata jobs are a separate, higher-priority Masonry phase.
+    /// Shared source-dimension cache, populated by Masonry and completed
+    /// sidebar thumbnail pipelines. The attempted set also remembers failures.
     pub masonry_dimension_attempted: HashSet<String>,
     pub masonry_dimension_pending: HashSet<String>,
+    /// Shared, EXIF-oriented source dimensions keyed by stable source identity.
     pub masonry_dimension_results: HashMap<String, Option<(u32, u32)>>,
     pub masonry_dimension_receivers:
-        Vec<(String, Instant, Arc<Mutex<Option<Instant>>>, Arc<AtomicBool>, Receiver<Option<(u32, u32)>>)>,
+        Vec<(String, bool, Instant, Arc<Mutex<Option<Instant>>>, Arc<AtomicBool>, Receiver<Option<(u32, u32)>>)>,
 }
 
 impl Default for ViewerApp {
@@ -622,6 +637,9 @@ impl Default for ViewerApp {
             sidebar_thumbnail_failed: HashSet::new(),
             sidebar_thumbnail_pending: HashSet::new(),
             sidebar_thumbnail_receivers: Vec::new(),
+            sidebar_visible_sources: HashSet::new(),
+            sidebar_prefetch_sources: HashSet::new(),
+            sidebar_last_scroll_offset: None,
             masonry_visible_sources: HashSet::new(),
             masonry_dimension_attempted: HashSet::new(),
             masonry_dimension_pending: HashSet::new(),

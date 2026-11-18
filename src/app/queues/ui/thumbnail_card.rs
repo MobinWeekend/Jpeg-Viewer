@@ -1,6 +1,7 @@
 //! Custom-painted thumbnail cards used by Browse, Queue, and Favorites.
 use super::layout::wrap_label;
 use crate::app::types::ViewerApp;
+use crate::app::queues::{SIDEBAR_CURRENT_PRIORITY, SIDEBAR_HOVER_PRIORITY, SIDEBAR_VISIBLE_PRIORITY};
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 use std::path::Path;
@@ -104,13 +105,27 @@ impl ViewerApp {
             egui::Color32::from_rgb(78, 82, 88)
         };
 
-        if needs_thumbnail_upgrade && ui.is_rect_visible(image_rect) {
-            self.request_sidebar_thumbnail(
-                path.to_path_buf(),
-                key.to_string(),
-                target_thumbnail_size,
-                ctx,
-            );
+        let image_visible = ui.is_rect_visible(image_rect);
+        if image_visible && !path.is_dir() {
+            self.sidebar_visible_sources.insert(key.to_owned());
+            if needs_thumbnail_upgrade {
+                let current_image = selected
+                    || self.current_image_path.as_ref().is_some_and(|current| current == path);
+                let priority = if current_image {
+                    SIDEBAR_CURRENT_PRIORITY
+                } else if response.hovered() {
+                    SIDEBAR_HOVER_PRIORITY
+                } else {
+                    SIDEBAR_VISIBLE_PRIORITY
+                };
+                self.request_visible_sidebar_thumbnail(
+                    path.to_path_buf(),
+                    key.to_string(),
+                    target_thumbnail_size,
+                    priority,
+                    ctx,
+                );
+            }
         }
 
         if path.is_dir() {
