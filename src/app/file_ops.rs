@@ -59,6 +59,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.set_file_type_detection(None); // Clear file extension detection
@@ -262,6 +264,8 @@ impl ViewerApp {
                 self.load_current_image();
             } else {
                 self.texture = None;
+                self.texture_image_id = None;
+                self.current_mipmap_state = None;
             }
             return;
         }
@@ -272,6 +276,8 @@ impl ViewerApp {
                 self.image_entries.remove(self.current_index);
                 if self.image_entries.is_empty() {
                     self.texture = None;
+                    self.texture_image_id = None;
+                    self.current_mipmap_state = None;
                     self.current_index = 0;
                 } else if self.current_index >= self.image_entries.len() {
                     self.current_index = self.image_entries.len() - 1;
@@ -332,6 +338,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.set_loading_state(LoadingState::Idle);
@@ -385,6 +393,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         // Cache already cleared above; no need to clear again.
 
         println!("Loaded {} dropped image(s)", self.image_entries.len());

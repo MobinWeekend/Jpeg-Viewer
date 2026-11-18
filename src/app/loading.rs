@@ -146,6 +146,8 @@ impl ViewerApp {
     fn clear_current_image_state_with_cache(&mut self, clear_cache: bool) {
         self.image_error = None;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.gif_animation = None;
         self.is_gif = false;
         self.is_preview = false;
@@ -248,6 +250,10 @@ impl ViewerApp {
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.receiver = None;
+        // The previous base texture remains visible as a loading placeholder,
+        // but its mipmap worker belongs to the outgoing entry. Drop that state
+        // so it cannot be promoted into the incoming entry's cache slot.
+        self.current_mipmap_state = None;
         self.virtual_texture = None;
         self.vt_progress = None;
         self.vt_total_tiles = 0;
@@ -312,6 +318,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.image_error = None;
         self.receiver = None;
         self.full_image_receiver = None;

@@ -2,6 +2,9 @@
 //! Virtual texture manager – uses `DecodedImage` (plain RGBA8) and generates tiles on demand.
 
 use crate::app::constants::MAX_TILE_SIZE;
+use crate::app::texture_mipmap::{
+    SharedMipmapState, append_mipmap_upload_callback, start_mipmap_upload,
+};
 use crate::imaging::core::DecodedImage;
 use eframe::egui;
 use rayon::spawn;
@@ -43,6 +46,7 @@ struct Tile {
     width: u32,
     height: u32,
     texture: Option<egui::TextureHandle>,
+    mipmap_state: Option<SharedMipmapState>,
     pending: Option<Receiver<Result<Vec<u8>, String>>>,
     failed: bool,
     last_used_frame: u64,
@@ -126,6 +130,7 @@ impl VirtualTexture {
                     width: tile_width,
                     height: tile_height,
                     texture: None,
+                    mipmap_state: None,
                     pending: None,
                     failed: false,
                     last_used_frame: 0,
@@ -230,15 +235,28 @@ impl VirtualTexture {
         let Some(receiver) = tile.pending.take() else { return; };
         match receiver.try_recv() {
             Ok(Ok(pixels)) => {
+                let pixels = Arc::new(pixels);
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(
                     [tile.width as usize, tile.height as usize],
-                    &pixels,
+                    pixels.as_slice(),
                 );
+                let wants_mipmaps = options.mipmap_mode.is_some();
+                let mut base_options = options;
+                base_options.mipmap_mode = None;
                 tile.texture = Some(ctx.load_texture(
                     format!("vt_{}_tile_{}_{}", id, tile.grid_x, tile.grid_y),
                     color_image,
-                    options,
+                    base_options,
                 ));
+                tile.mipmap_state = if wants_mipmaps {
+                    Some(start_mipmap_upload(
+                        tile.width,
+                        tile.height,
+                        Arc::clone(&pixels),
+                    ))
+                } else {
+                    None
+                };
             }
             Ok(Err(_error)) => tile.failed = true,
             Err(TryRecvError::Empty) => tile.pending = Some(receiver),
@@ -257,6 +275,7 @@ impl VirtualTexture {
         pan: egui::Vec2,
         rect: egui::Rect,
         options: egui::TextureOptions,
+        mipmap_upload_budget: Arc<AtomicUsize>,
     ) {
         if !self.is_ready() {
             return;
@@ -340,6 +359,16 @@ impl VirtualTexture {
                             egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
                             egui::Color32::WHITE,
                         );
+                        if let Some(state) = tile.mipmap_state.clone() {
+                            append_mipmap_upload_callback(
+                                painter,
+                                screen_rect.intersect(painter.clip_rect()),
+                                texture.id(),
+                                state,
+                                Arc::clone(&mipmap_upload_budget),
+                                ctx.clone(),
+                            );
+                        }
                     }
                 }
             }
@@ -351,10 +380,18 @@ impl VirtualTexture {
         // tile from a very large source in GPU memory.
         const GPU_TILE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
         const MAX_RESIDENT_TILES: usize = 128;
-        let tile_bytes = (self.tile_size as usize)
+        let base_tile_bytes = (self.tile_size as usize)
             .saturating_mul(self.tile_size as usize)
             .saturating_mul(4)
             .max(1);
+        // A complete RGBA mip chain adds approximately one third to the base
+        // level's GPU storage. Include that overhead so the resident budget
+        // remains meaningful when Mipmap filtering is enabled.
+        let tile_bytes = if options.mipmap_mode.is_some() {
+            base_tile_bytes.saturating_add(base_tile_bytes / 3)
+        } else {
+            base_tile_bytes
+        };
         let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes)
             .clamp(1, MAX_RESIDENT_TILES);
         let resident_count = self.tiles.iter().filter(|tile| tile.texture.is_some()).count();
@@ -370,6 +407,7 @@ impl VirtualTexture {
                     break;
                 }
                 self.tiles[index].texture = None;
+                self.tiles[index].mipmap_state = None;
                 to_evict -= 1;
             }
         }
@@ -387,6 +425,7 @@ impl VirtualTexture {
         viewport: egui::Rect,
         rotation: f32,
         options: egui::TextureOptions,
+        mipmap_upload_budget: Arc<AtomicUsize>,
     ) {
         if !self.is_ready() || !zoom.is_finite() || zoom <= 0.0 {
             return;
@@ -449,15 +488,33 @@ impl VirtualTexture {
                 }
                 mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
                 painter.add(egui::Shape::mesh(mesh));
+                if let Some(state) = tile.mipmap_state.clone() {
+                    append_mipmap_upload_callback(
+                        painter,
+                        bounds.intersect(painter.clip_rect()),
+                        texture.id(),
+                        state,
+                        Arc::clone(&mipmap_upload_budget),
+                        ctx.clone(),
+                    );
+                }
             }
         }
 
         const GPU_TILE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
         const MAX_RESIDENT_TILES: usize = 128;
-        let tile_bytes = (self.tile_size as usize)
+        let base_tile_bytes = (self.tile_size as usize)
             .saturating_mul(self.tile_size as usize)
             .saturating_mul(4)
             .max(1);
+        // A complete RGBA mip chain adds approximately one third to the base
+        // level's GPU storage. Include that overhead so the resident budget
+        // remains meaningful when Mipmap filtering is enabled.
+        let tile_bytes = if options.mipmap_mode.is_some() {
+            base_tile_bytes.saturating_add(base_tile_bytes / 3)
+        } else {
+            base_tile_bytes
+        };
         let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes).clamp(1, MAX_RESIDENT_TILES);
         let resident_count = self.tiles.iter().filter(|tile| tile.texture.is_some()).count();
         if resident_count > resident_limit {
@@ -470,6 +527,7 @@ impl VirtualTexture {
             for (index, _) in candidates {
                 if remaining == 0 { break; }
                 self.tiles[index].texture = None;
+                self.tiles[index].mipmap_state = None;
                 remaining -= 1;
             }
         }

@@ -585,7 +585,7 @@ impl ViewerApp {
             Ok(loaded_image) => {
                 self.preload_skipped.remove(&idx);
 
-                self.add_to_cache(ctx, idx, loaded_image);
+                self.add_to_cache(ctx, idx, &loaded_image);
             }
 
             // Failed preload

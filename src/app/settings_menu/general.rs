@@ -10,7 +10,7 @@ use crate::input::shortcuts::ViewerCommand;
 use crate::imaging::sort::SortMethod;
 use eframe::egui;
 
-pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
+pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.collapsing(egui::RichText::new("⚙ General").strong(), |ui| {
         ui.add_space(4.0);
 
@@ -39,7 +39,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
         ui.add_space(6.0);
         ui.separator();
         ui.label(egui::RichText::new("Image rendering").strong());
-        render_texture_filter(app, ui);
+        render_texture_filter(app, ui, ctx);
 
         ui.add_space(6.0);
         ui.separator();
@@ -146,7 +146,7 @@ fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
 }
 
 // Texture Filter
-fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui) {
+fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     let current_filter = app.settings_manager.get().texture_filter.clone();
     let mut filter = current_filter.clone();
     ui.horizontal(|ui| {
@@ -161,7 +161,7 @@ fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui) {
     });
     if filter != current_filter {
         let _ = app.settings_manager.update(|settings| settings.texture_filter = filter);
-        reload_current_image_for_filter(app);
+        reload_current_image_for_filter(app, ctx);
     }
 }
 
@@ -174,7 +174,7 @@ fn texture_filter_label(filter: &str) -> &'static str {
     }
 }
 
-fn reload_current_image_for_filter(app: &mut ViewerApp) {
+fn reload_current_image_for_filter(app: &mut ViewerApp, ctx: &egui::Context) {
     if app.image_entries.is_empty() {
         return;
     }
@@ -183,8 +183,20 @@ fn reload_current_image_for_filter(app: &mut ViewerApp) {
     app.vt_progress = None;
     app.vt_total_tiles = 0;
     app.virtual_texture_thread = None;
+    app.invalidate_compare_textures();
+    if app.inspect_mode {
+        app.refresh_inspect_texture(ctx);
+    }
 
-    app.load_current_image_with_cache();
+    if app.load_from_cache(app.current_index) {
+        app.set_loading_state(crate::app::types::LoadingState::Idle);
+        app.image_error = None;
+    } else {
+        // Preserve other LRU entries. Their texture_filter tag makes them
+        // ineligible under the new setting and they will be lazily discarded
+        // when encountered, without flushing the entire image cache here.
+        app.load_current_image_preserving_cache();
+    }
 }
 
 // Theme

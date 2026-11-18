@@ -1,6 +1,7 @@
 use super::editing::EditOutputFormat;
 use super::image_metadata::FileMetadata;
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
+use super::texture_mipmap::SharedMipmapState;
 use crate::decoder::gif::animation::GifAnimation;
 use crate::imaging::core::DecodedImage;
 use crate::imaging::core::ImageFormat;
@@ -13,7 +14,7 @@ use lru::LruCache;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU8};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -52,6 +53,10 @@ pub(crate) struct GeneratedThumbnail {
 #[derive(Clone)]
 pub struct CachedImage {
     pub texture: egui::TextureHandle,
+    /// Texture filtering is part of the GPU resource configuration. A cached
+    /// texture created with another filter must be rebuilt before it is shown.
+    pub texture_filter: String,
+    pub(crate) mipmap_state: Option<SharedMipmapState>,
     pub is_gif: bool,
     pub is_preview: bool,
     pub index: usize,
@@ -93,6 +98,10 @@ pub enum LoadingState {
 pub struct ViewerApp {
     // ====== IMAGE ======
     pub texture: Option<egui::TextureHandle>,
+    /// Stable entry identity for `texture`. During navigation the previous
+    /// texture may remain visible while a new entry loads, so `current_index`
+    /// alone cannot safely identify the texture being displayed or cached.
+    pub(crate) texture_image_id: Option<String>,
     pub gif_animation: Option<GifAnimation>,
     pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
     pub full_image_receiver: Option<Receiver<DecodedImage>>,
@@ -131,6 +140,10 @@ pub struct ViewerApp {
 
     // ====== CACHE ======
     pub image_cache: LruCache<String, CachedImage>,
+    /// Progressive mip uploads share a single GPU upload allowance per frame.
+    pub(crate) mipmap_upload_budget: Arc<AtomicUsize>,
+    /// Mipmap preparation associated with the currently displayed texture.
+    pub(crate) current_mipmap_state: Option<SharedMipmapState>,
     pub max_cache_size: usize,
 
     // ====== PRELOAD ======
@@ -320,6 +333,7 @@ pub struct ViewerApp {
     pub inspect_channels: [bool; 4],
     pub inspect_colorized: bool,
     pub inspect_texture: Option<egui::TextureHandle>,
+    pub(crate) inspect_mipmap_state: Option<SharedMipmapState>,
     pub inspect_source: Option<image::RgbaImage>,
     pub inspect_source_path: Option<PathBuf>,
     pub confirm_overwrite_path: Option<PathBuf>,
@@ -410,6 +424,7 @@ impl Default for ViewerApp {
         Self {
             // ====== IMAGE ======
             texture: None,
+            texture_image_id: None,
             gif_animation: None,
             receiver: None,
             full_image_receiver: None,
@@ -446,6 +461,10 @@ impl Default for ViewerApp {
                 NonZeroUsize::new(cache_capacity)
                     .expect("cache capacity must be greater than zero"),
             ),
+            mipmap_upload_budget: Arc::new(AtomicUsize::new(
+                super::texture_mipmap::MAX_MIP_UPLOAD_BYTES_PER_FRAME,
+            )),
+            current_mipmap_state: None,
             max_cache_size: cache_capacity,
 
             // ====== PRELOAD ======
@@ -487,7 +506,7 @@ impl Default for ViewerApp {
 
             is_animating: false,
 
-            // ====== SLIDESHOW ======
+    // ====== SLIDESHOW ======
             slideshow_enabled: false,
             power_inhibitor: crate::platform::power::PowerInhibitor::default(),
             slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
@@ -606,6 +625,7 @@ impl Default for ViewerApp {
             inspect_channels: [true, true, true, true],
             inspect_colorized: false,
             inspect_texture: None,
+            inspect_mipmap_state: None,
             inspect_source: None,
             inspect_source_path: None,
             confirm_overwrite_path: None,
@@ -773,6 +793,14 @@ impl ViewerApp {
 
             _ => egui::TextureOptions::LINEAR,
         }
+    }
+
+    /// Texture options for the base upload. Mipmap levels are added later by
+    /// the progressive Glow callback, never by egui's synchronous generate_mipmap.
+    pub fn get_texture_base_options(&self) -> egui::TextureOptions {
+        let mut options = self.get_texture_options();
+        options.mipmap_mode = None;
+        options
     }
 
     // ====== SLIDESHOW ======

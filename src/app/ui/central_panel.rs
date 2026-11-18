@@ -54,6 +54,7 @@ impl ViewerApp {
         if self.inspect_mode && self.inspect_source_path != self.current_image_path {
             self.inspect_source = None;
             self.inspect_texture = None;
+            self.inspect_mipmap_state = None;
             self.prepare_inspect_source(ctx);
         }
         let style = ctx.style();
@@ -273,8 +274,10 @@ impl ViewerApp {
                 let virtual_image_rect = self.get_image_rect(texture_size, image_viewport_rect.center());
                 self.image_rect = Some(virtual_image_rect);
 
-                // Create the painter and immediately use it in a limited scope
+                // Create the painter and immediately use it in a limited scope.
+                // Virtual tiles use the shared frame budget just like the main image.
                 let texture_options = self.get_texture_options();
+                let mipmap_upload_budget = std::sync::Arc::clone(&self.mipmap_upload_budget);
 
                 if let Some(vt) = &mut self.virtual_texture {
                     let painter = ui.painter().with_clip_rect(image_clip_rect);
@@ -286,6 +289,7 @@ impl ViewerApp {
                         self.pan,
                         image_viewport_rect,
                         texture_options,
+                        mipmap_upload_budget,
                     );
                 }
                 if settings.tricks_snow_above_image {
@@ -572,6 +576,26 @@ impl ViewerApp {
                     image_rect,
                     egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ONE),
                     image_tint,
+                );
+            }
+
+            // The base image is already drawable. Prepare and upload its mip
+            // levels after the image command, sharing a strict per-frame budget
+            // with any visible virtual tiles. Inspect textures are separate
+            // derived resources and do not use this source-image mip state.
+            let mipmap_state = if self.inspect_mode {
+                self.inspect_mipmap_state.clone()
+            } else {
+                self.current_mipmap_state.clone()
+            };
+            if let Some(mipmap_state) = mipmap_state {
+                super::super::texture_mipmap::append_mipmap_upload_callback(
+                    &painter,
+                    image_rect.intersect(painter.clip_rect()),
+                    texture_id,
+                    mipmap_state,
+                    std::sync::Arc::clone(&self.mipmap_upload_budget),
+                    ctx.clone(),
                 );
             }
 

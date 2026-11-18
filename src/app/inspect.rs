@@ -9,6 +9,7 @@ impl ViewerApp {
         if self.inspect_mode {
             self.inspect_mode = false;
             self.inspect_texture = None;
+            self.inspect_mipmap_state = None;
             self.inspect_source = None;
             self.inspect_source_path = None;
         } else {
@@ -23,6 +24,7 @@ impl ViewerApp {
         if self.is_home_surface_active() {
             self.inspect_mode = false;
             self.inspect_texture = None;
+            self.inspect_mipmap_state = None;
             self.inspect_source = None;
             self.inspect_source_path = None;
             return;
@@ -81,14 +83,26 @@ impl ViewerApp {
                 pixel[3] = if channels[3] { original[3] } else { 255 };
             }
         }
-        let size = [output.width() as usize, output.height() as usize];
-        let color = egui::ColorImage::from_rgba_unmultiplied(size, output.as_raw());
-        let texture_options = self.get_texture_options();
+        let width = output.width();
+        let height = output.height();
+        let rgba = std::sync::Arc::new(output.into_raw());
+        let size = [width as usize, height as usize];
+        let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
+        let texture_options = self.get_texture_base_options();
         if let Some(texture) = self.inspect_texture.as_mut() {
             texture.set(color, texture_options);
         } else {
             self.inspect_texture =
                 Some(ctx.load_texture("inspect_channels", color, texture_options));
         }
+        self.inspect_mipmap_state = if self.settings_manager.get().texture_filter == "mipmap" {
+            Some(super::texture_mipmap::start_mipmap_upload(
+                width,
+                height,
+                rgba,
+            ))
+        } else {
+            None
+        };
     }
 }

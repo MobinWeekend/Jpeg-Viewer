@@ -6,6 +6,14 @@ use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // Reset a shared upload allowance once per UI frame. Every current-image
+        // and virtual-tile callback spends from this same budget.
+        self.mipmap_upload_budget.store(
+            super::texture_mipmap::MAX_MIP_UPLOAD_BYTES_PER_FRAME,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        self.cache_ready_current_mipmap();
+
         // Keep context-only layout helpers synchronized with the persisted setting.
         crate::app::ui::set_desktop_menu_bar_preference(
             ctx,
@@ -263,22 +271,25 @@ impl eframe::App for ViewerApp {
                 match result {
                     Ok(loaded_image) => {
                         self.detect_current_file_type();
-                        self.add_to_cache(ctx, self.current_index, loaded_image.clone());
                         let mut should_spawn_full_gif = false;
                         match loaded_image {
                             super::types::LoadedImage::Static(img) => {
-                                let width = img.width;
-                                let height = img.height;
-                                let size = [width as usize, height as usize];
-                                let color =
-                                    egui::ColorImage::from_rgba_unmultiplied(size, img.data());
-                                let options = self.get_texture_options();
-                                self.texture = Some(ctx.load_texture("image", color, options));
+                                // Reuse a preloaded base texture when available. Otherwise
+                                // create it once, without egui's synchronous generate_mipmap.
+                                // The decoded RGBA allocation is shared with the background
+                                // mip and backdrop workers instead of being cloned.
+                                let prepared = self.prepare_current_static_image(
+                                    ctx,
+                                    self.current_index,
+                                    img,
+                                );
+                                self.texture = Some(prepared.texture);
+                                self.texture_image_id = self.get_image_id(self.current_index);
                                 self.cache_tricks_backdrop_from_decoded(
                                     self.current_image_path.clone(),
-                                    width,
-                                    height,
-                                    img.data,
+                                    prepared.width,
+                                    prepared.height,
+                                    prepared.rgba,
                                 );
                                 self.mark_win98_dialup_texture_ready(false);
                                 if self.slideshow_previous_texture.is_some()
@@ -307,6 +318,7 @@ impl eframe::App for ViewerApp {
                                 self.detect_current_file_type();
                             }
                             super::types::LoadedImage::Animated(gif, is_preview) => {
+                                self.current_mipmap_state = None;
                                 self.gif_animation = Some(gif);
                                 let backdrop_frame = self.gif_animation.as_ref().and_then(|gif| {
                                     gif.get_current_frame_ref().map(|frame| {
@@ -320,7 +332,7 @@ impl eframe::App for ViewerApp {
                                         Some(path),
                                         width,
                                         height,
-                                        pixels,
+                                        std::sync::Arc::new(pixels),
                                     );
                                 }
                                 self.is_gif = true;
@@ -349,6 +361,7 @@ impl eframe::App for ViewerApp {
                                 }
                             }
                             super::types::LoadedImage::VirtualPending(bytes, width, height) => {
+                                self.current_mipmap_state = None;
                                 // Large image – start virtual texture loading
                                 println!(
                                     "VirtualPending: {}x{} ({} MP)",
@@ -361,6 +374,8 @@ impl eframe::App for ViewerApp {
 
                                 // Clear old state
                                 self.texture = None;
+                                self.texture_image_id = None;
+                                self.current_mipmap_state = None;
                                 self.gif_animation = None;
                                 self.is_gif = false;
                                 self.is_preview = false;
@@ -400,7 +415,9 @@ impl eframe::App for ViewerApp {
                     }
                     Err(error) => {
                         self.detect_current_file_type();
+                        self.current_mipmap_state = None;
                         self.texture = None;
+                        self.texture_image_id = None;
                         self.image_error = Some(error);
                         self.gif_animation = None;
                         self.is_gif = false;
@@ -473,15 +490,31 @@ impl eframe::App for ViewerApp {
                     // the full-resolution decoded buffer without reopening the file.
                     let width = full_image.width;
                     let height = full_image.height;
+                    let rgba = std::sync::Arc::new(full_image.data);
                     let size = [width as usize, height as usize];
-                    let color = egui::ColorImage::from_rgba_unmultiplied(size, full_image.data());
-                    let options = self.get_texture_options();
-                    self.texture = Some(ctx.load_texture("image_full", color, options));
+                    let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
+                    self.texture = Some(ctx.load_texture(
+                        "image_full",
+                        color,
+                        self.get_texture_base_options(),
+                    ));
+                    self.texture_image_id = self.get_image_id(self.current_index);
+                    self.current_mipmap_state = if self.settings_manager.get().texture_filter
+                        == "mipmap"
+                    {
+                        Some(super::texture_mipmap::start_mipmap_upload(
+                            width,
+                            height,
+                            std::sync::Arc::clone(&rgba),
+                        ))
+                    } else {
+                        None
+                    };
                     self.cache_tricks_backdrop_from_decoded(
                         self.current_image_path.clone(),
                         width,
                         height,
-                        full_image.data,
+                        rgba,
                     );
                     self.is_preview = false;
                     self.b_fit_to_window = true;
@@ -681,7 +714,10 @@ impl Drop for ViewerApp {
 
 impl ViewerApp {
     pub fn update_gif_texture(&mut self, ctx: &egui::Context) {
-        let options = self.get_texture_options();
+        self.current_mipmap_state = None;
+        let options = self.get_texture_base_options();
+        // Resolve the identity before borrowing `gif_animation` mutably.
+        let current_image_id = self.get_image_id(self.current_index);
         let mut texture_updated = false;
 
         // Keep the mutable borrow of the GIF animation scoped to frame extraction and
@@ -693,6 +729,7 @@ impl ViewerApp {
                 let color_image = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
 
                 self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
+                self.texture_image_id = current_image_id;
                 texture_updated = true;
 
                 if gif.is_playing && gif.is_animated() {

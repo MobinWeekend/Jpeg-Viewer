@@ -3,6 +3,18 @@
 use super::*;
 
 impl crate::app::types::ViewerApp {
+    /// Drop comparison tile textures when the global filtering configuration
+    /// changes. VirtualTexture keeps sampler state inside each resident tile,
+    /// so changing the primary viewer's filter alone cannot update those tiles.
+    pub(crate) fn invalidate_compare_textures(&mut self) {
+        self.workspace.compare_images.clear();
+        self.workspace.compare_pending.clear();
+        self.workspace.compare_failed.clear();
+        // Dropping receivers makes in-flight workers abandon their result when
+        // they finish instead of reintroducing textures built with the old filter.
+        self.workspace.compare_receivers.clear();
+    }
+
     pub(super) fn collect_compare_images(&mut self) {
         let mut waiting = Vec::new();
         let mut completed = Vec::new();
@@ -616,11 +628,30 @@ impl crate::app::types::ViewerApp {
                                         pan_metrics[index] = anchor_image_sizes[index];
                                         let painter = pane_painter.clone();
                                         let texture_options = self.get_texture_options();
+                                        let mipmap_upload_budget =
+                                            std::sync::Arc::clone(&self.mipmap_upload_budget);
                                         if let Some(image) = self.workspace.compare_images.get_mut(&key) {
                                             if rotation.abs() < 0.0001 {
-                                                image.render(ctx, &painter, image_zoom, image_pan, rect, texture_options);
+                                                image.render(
+                                                    ctx,
+                                                    &painter,
+                                                    image_zoom,
+                                                    image_pan,
+                                                    rect,
+                                                    texture_options,
+                                                    mipmap_upload_budget,
+                                                );
                                             } else {
-                                                image.render_rotated(ctx, &painter, image_zoom, image_center, rect, rotation, texture_options);
+                                                image.render_rotated(
+                                                    ctx,
+                                                    &painter,
+                                                    image_zoom,
+                                                    image_center,
+                                                    rect,
+                                                    rotation,
+                                                    texture_options,
+                                                    mipmap_upload_budget,
+                                                );
                                             }
                                         }
 
