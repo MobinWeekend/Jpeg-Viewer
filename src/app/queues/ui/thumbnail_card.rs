@@ -1,6 +1,7 @@
 //! Custom-painted thumbnail cards used by Browse, Queue, and Favorites.
 use super::layout::wrap_label;
 use crate::app::types::ViewerApp;
+use crate::app::queues::{SIDEBAR_CURRENT_PRIORITY, SIDEBAR_HOVER_PRIORITY, SIDEBAR_VISIBLE_PRIORITY};
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 use std::path::Path;
@@ -68,6 +69,13 @@ impl ViewerApp {
                 ),
             )
         };
+        // Request enough pixels for the actual thumbnail viewport, including
+        // compact rows and HiDPI displays, instead of assuming every preview
+        // has the same resolution regardless of its rendered size.
+        let target_thumbnail_size = crate::app::queues::thumbnail_request_size(image_rect, ctx);
+        let cached_thumbnail = self.get_shared_thumbnail(key, target_thumbnail_size);
+        let needs_thumbnail_upgrade = !path.is_dir()
+            && !self.has_shared_thumbnail_at_least(key, target_thumbnail_size);
 
         if hover_t > 0.01 || selected {
             let shadow_alpha = (hover_t * 34.0).round() as u8;
@@ -97,6 +105,29 @@ impl ViewerApp {
             egui::Color32::from_rgb(78, 82, 88)
         };
 
+        let image_visible = ui.is_rect_visible(image_rect);
+        if image_visible && !path.is_dir() {
+            self.sidebar_visible_sources.insert(key.to_owned());
+            if needs_thumbnail_upgrade {
+                let current_image = selected
+                    || self.current_image_path.as_ref().is_some_and(|current| current == path);
+                let priority = if current_image {
+                    SIDEBAR_CURRENT_PRIORITY
+                } else if response.hovered() {
+                    SIDEBAR_HOVER_PRIORITY
+                } else {
+                    SIDEBAR_VISIBLE_PRIORITY
+                };
+                self.request_visible_sidebar_thumbnail(
+                    path.to_path_buf(),
+                    key.to_string(),
+                    target_thumbnail_size,
+                    priority,
+                    ctx,
+                );
+            }
+        }
+
         if path.is_dir() {
             painter.text(
                 image_rect.center(),
@@ -108,25 +139,24 @@ impl ViewerApp {
                 )),
                 card_text_color,
             );
-        } else if let Some(texture) = self.sidebar_thumbnails.get(key) {
+        } else if let Some(texture) = cached_thumbnail.as_ref() {
             let size = texture.size_vec2();
             if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
-                let scale = (image_rect.width() / size.x).min(image_rect.height() / size.y);
-                if scale.is_finite() && scale > 0.0 {
-                    let draw_size = size * scale;
-                    let draw_rect = egui::Rect::from_center_size(image_rect.center(), draw_size);
-                    painter.image(
-                        texture.id(),
-                        draw_rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
-                    );
-                }
+                let draw_rect = crate::app::queues::thumbnail_fit_rect(
+                    image_rect,
+                    size.x / size.y,
+                );
+                painter.image(
+                    texture.id(),
+                    draw_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
             }
         } else {
             let message = if !path.exists() {
                 "Missing"
-            } else if self.sidebar_thumbnail_failed.contains(key) {
+            } else if self.shared_thumbnail_failed(key, target_thumbnail_size) {
                 "No preview"
             } else {
                 "Loading…"
@@ -138,9 +168,6 @@ impl ViewerApp {
                 egui::FontId::proportional(scaled_text_size(ui.ctx(), 11.0)),
                 card_weak_text_color,
             );
-            if !path.is_dir() && ui.is_rect_visible(image_rect) {
-                self.request_sidebar_thumbnail(path.to_path_buf(), key.to_string(), ctx);
-            }
         }
 
         if compact {
@@ -261,6 +288,13 @@ impl ViewerApp {
                     }
                     ui.separator();
                 }
+                if path.is_file() && ui.button("Open in New Tab").clicked() {
+                    self.open_entry_in_image_tab(
+                        crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                        true,
+                    );
+                    ui.close();
+                }
                 if ui.button("Open With…").clicked() {
                     if let Err(error) = crate::app::external_open::open_with(path) {
                         self.queue_status =
@@ -375,7 +409,7 @@ impl ViewerApp {
 
         let clicked = response.clicked();
         if let Some(index) = context_index {
-            if response.drag_started() {
+            if response.drag_started() && !self.window_mouse_operation_active {
                 self.sidebar_drag_index = Some(index);
                 self.sidebar_drag_collection = context_mode;
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -487,6 +521,13 @@ impl ViewerApp {
                     }
                     if ui.button("Open image").clicked() {
                         self.navigate_to_index(ctx, index);
+                        ui.close();
+                    }
+                    if path.is_file() && ui.button("Open in New Tab").clicked() {
+                        self.open_entry_in_image_tab(
+                            crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                            true,
+                        );
                         ui.close();
                     }
                     if path.is_file() && ui.button("Rename… (F2)").clicked() {

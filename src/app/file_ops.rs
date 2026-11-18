@@ -1,9 +1,9 @@
 use super::types::{LoadingState, ViewerApp};
-use crate::imaging::archive::{scan_7z, scan_rar, scan_zip};
 use crate::app::constants::ARCHIVE_EXT;
-use crate::imaging::helpers::{get_extension, is_supported_image};
+use crate::imaging::archive::{scan_7z, scan_rar, scan_zip};
 use crate::imaging::core::ImageFormat;
 use crate::imaging::entry::ImageEntry;
+use crate::imaging::helpers::{get_extension, is_supported_image};
 use arboard::Clipboard;
 use eframe::egui;
 use std::path::PathBuf;
@@ -17,6 +17,17 @@ const OPEN_REQUEST_GROUP_WINDOW: Duration = Duration::from_millis(1_500);
 
 impl ViewerApp {
     pub fn open_path(&mut self, path: PathBuf) {
+        let is_archive = matches!(
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .as_str(),
+            "zip" | "7z" | "rar"
+        );
+        if path.is_dir() || is_archive {
+            self.record_welcome_recent_path(path.clone());
+        }
         if self
             .edit_session
             .as_ref()
@@ -29,6 +40,9 @@ impl ViewerApp {
             self.show_settings_menu = false;
             return;
         }
+        // File-open actions always target the primary collection Viewer, not a
+        // background Image/Masonry/Compare workspace left active from the session.
+        self.activate_primary_viewer_tab();
         self.queue_mode = false;
         self.queue_previous_entries = None;
         if self.edit_session.is_some() {
@@ -45,6 +59,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.set_file_type_detection(None); // Clear file extension detection
@@ -127,9 +143,9 @@ impl ViewerApp {
         self.dialog_open = false;
 
         let Some(folder) = folder else { return };
-        if !self.prepare_for_image_change(
-            "Save or discard unsaved edits before opening this folder.",
-        ) {
+        if !self
+            .prepare_for_image_change("Save or discard unsaved edits before opening this folder.")
+        {
             return;
         }
         let paths = crate::app::queues::collect_folder_images(&folder);
@@ -149,6 +165,7 @@ impl ViewerApp {
         let count = paths.len();
         self.load_dropped_files(paths);
         self.current_directory = Some(folder.clone());
+        self.record_welcome_recent_path(folder.clone());
         self.queue_status = Some(format!(
             "Opened {count} image(s) from {} and its subfolders.",
             folder.display()
@@ -182,7 +199,10 @@ impl ViewerApp {
         // Preserve the last normal geometry. Maximized/fullscreen dimensions should
         // never replace the user's normal client size.
         let (is_fullscreen, is_maximized) = ctx.input(|i| {
-            (i.viewport().fullscreen.unwrap_or(false), i.viewport().maximized.unwrap_or(false))
+            (
+                i.viewport().fullscreen.unwrap_or(false),
+                i.viewport().maximized.unwrap_or(false),
+            )
         });
         let mut geometry_was_saved = false;
         if !is_fullscreen {
@@ -194,7 +214,8 @@ impl ViewerApp {
                     if size.x > 100.0 && size.y > 100.0 {
                         let pos_arr = [pos.x, pos.y];
                         let size_arr = [size.x, size.y];
-                        if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr) {
+                        if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr)
+                        {
                             eprintln!("Failed to save window state: {}", e);
                         } else {
                             geometry_was_saved = true;
@@ -213,6 +234,9 @@ impl ViewerApp {
     }
 
     pub fn delete_current_image(&mut self) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.image_entries.is_empty() {
             return;
         }
@@ -240,6 +264,8 @@ impl ViewerApp {
                 self.load_current_image();
             } else {
                 self.texture = None;
+                self.texture_image_id = None;
+                self.current_mipmap_state = None;
             }
             return;
         }
@@ -250,6 +276,8 @@ impl ViewerApp {
                 self.image_entries.remove(self.current_index);
                 if self.image_entries.is_empty() {
                     self.texture = None;
+                    self.texture_image_id = None;
+                    self.current_mipmap_state = None;
                     self.current_index = 0;
                 } else if self.current_index >= self.image_entries.len() {
                     self.current_index = self.image_entries.len() - 1;
@@ -300,6 +328,9 @@ impl ViewerApp {
             return;
         }
 
+        // Dropped multi-selections and explicit file lists belong to the normal
+        // collection Viewer even when a Masonry or Compare workspace was active.
+        self.activate_primary_viewer_tab();
         self.b_zoom_used = false;
         self.b_fit_to_window = true;
         self.image_rect = None;
@@ -307,6 +338,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.set_loading_state(LoadingState::Idle);
@@ -360,11 +393,12 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         // Cache already cleared above; no need to clear again.
 
         println!("Loaded {} dropped image(s)", self.image_entries.len());
     }
-
 
     /// Open the first image from a process launch immediately, then keep collecting
     /// closely timed launches so file managers that spawn one process per selected
@@ -393,8 +427,7 @@ impl ViewerApp {
         // only the late-arriving tail of that selection.
         if incoming_paths.len() == 1 && self.pending_open_paths.is_empty() {
             if let Some((recent_paths, expires_at)) = self.recent_external_open_batch.take() {
-                let same_directory = recent_paths.first()
-                    .and_then(|path| path.parent())
+                let same_directory = recent_paths.first().and_then(|path| path.parent())
                     == incoming_paths.first().and_then(|path| path.parent());
                 if now <= expires_at && same_directory {
                     for path in recent_paths {
@@ -415,7 +448,8 @@ impl ViewerApp {
         // below and can replace it with the complete multi-file selection.
         if !had_pending_batch {
             if let Some(path) = first_incoming_path.as_ref() {
-                let is_queue_file = path.extension()
+                let is_queue_file = path
+                    .extension()
                     .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
                 if !is_queue_file {
                     self.open_path(path.clone());
@@ -453,8 +487,13 @@ impl ViewerApp {
         }
 
         let is_queue_file = paths.len() == 1
-            && paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
-        let can_replace_current_view = !self.edit_session.as_ref().is_some_and(|session| session.dirty);
+            && paths[0]
+                .extension()
+                .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
+        let can_replace_current_view = !self
+            .edit_session
+            .as_ref()
+            .is_some_and(|session| session.dirty);
 
         if is_queue_file {
             self.open_queue_file(&paths[0], ctx, false);
@@ -466,10 +505,8 @@ impl ViewerApp {
                 self.open_path(paths[0].clone());
             }
             if can_replace_current_view && paths[0].is_file() && is_supported_image(&paths[0]) {
-                self.recent_external_open_batch = Some((
-                    paths.clone(),
-                    Instant::now() + OPEN_REQUEST_GROUP_WINDOW,
-                ));
+                self.recent_external_open_batch =
+                    Some((paths.clone(), Instant::now() + OPEN_REQUEST_GROUP_WINDOW));
             } else {
                 self.recent_external_open_batch = None;
             }
@@ -478,20 +515,20 @@ impl ViewerApp {
             // never index the directory containing those files.
             self.load_dropped_files(paths.clone());
 
-            let only_same_folder_images = paths.first()
-                .and_then(|path| path.parent())
-                .is_some_and(|parent| {
-                    paths.iter().all(|path| {
-                        path.parent() == Some(parent)
-                            && path.is_file()
-                            && is_supported_image(path)
-                    })
-                });
+            let only_same_folder_images =
+                paths
+                    .first()
+                    .and_then(|path| path.parent())
+                    .is_some_and(|parent| {
+                        paths.iter().all(|path| {
+                            path.parent() == Some(parent)
+                                && path.is_file()
+                                && is_supported_image(path)
+                        })
+                    });
             if can_replace_current_view && only_same_folder_images {
-                self.recent_external_open_batch = Some((
-                    paths,
-                    Instant::now() + OPEN_REQUEST_GROUP_WINDOW,
-                ));
+                self.recent_external_open_batch =
+                    Some((paths, Instant::now() + OPEN_REQUEST_GROUP_WINDOW));
             } else {
                 self.recent_external_open_batch = None;
             }
@@ -560,7 +597,8 @@ impl ViewerApp {
                         .filter_map(|entry| {
                             let entry = entry.ok()?;
                             let path = entry.path();
-                            if path.is_file() && crate::imaging::helpers::is_supported_image(&path) {
+                            if path.is_file() && crate::imaging::helpers::is_supported_image(&path)
+                            {
                                 Some(path)
                             } else {
                                 None

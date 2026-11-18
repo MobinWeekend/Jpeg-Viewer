@@ -32,6 +32,7 @@ impl ViewerApp {
     ) {
         self.indexing_receiver = None;
         self.current_directory = Some(directory.clone());
+        self.record_welcome_recent_path(directory.clone());
         self.clear_current_image_state();
 
         // When a specific image was opened, begin loading it immediately instead
@@ -45,6 +46,18 @@ impl ViewerApp {
             self.current_image_path = Some(path.clone());
             self.load_current_image();
         } else {
+            // Do not leave the previous folder's entries behind while a new
+            // directory is being indexed. In particular, an empty directory
+            // must be able to reach the empty-folder fallback instead of
+            // inheriting stale entries and remaining in the Indexing state.
+            self.image_entries.clear();
+            self.current_index = 0;
+            self.preload_origin = 0;
+            if let Some(tab) = self.workspace.active_tab_mut() {
+                tab.entries.clear();
+                tab.current_index = 0;
+                tab.directory = Some(directory.clone());
+            }
             self.set_loading_state(LoadingState::Indexing);
         }
 
@@ -68,12 +81,24 @@ impl ViewerApp {
         self.indexing_receiver = None;
 
         if paths.is_empty() {
-            println!("No images found in directory");
-            // If a specific image was opened, keep that image available even if
-            // the directory scan failed or returned no other entries.
-            if self.image_entries.is_empty() {
+            // An explicitly selected image is already loading independently of
+            // the containing-folder scan. Preserve it if the scan has no other
+            // supported entries; a direct folder open instead becomes a clear,
+            // non-loading empty state with an actionable error message.
+            if selected_path.is_none() {
                 self.current_index = 0;
                 self.set_loading_state(LoadingState::Idle);
+                self.image_error = Some(format!(
+                    "This folder has no supported image formats:\n{}",
+                    self.current_directory
+                        .as_deref()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|| "Unknown folder".to_owned()),
+                ));
+                if let Some(tab) = self.workspace.active_tab_mut() {
+                    tab.entries.clear();
+                    tab.current_index = 0;
+                }
             }
             return;
         }
@@ -115,8 +140,14 @@ impl ViewerApp {
 
     /// Clear state belonging to the currently displayed image.
     fn clear_current_image_state(&mut self) {
+        self.clear_current_image_state_with_cache(true);
+    }
+
+    fn clear_current_image_state_with_cache(&mut self, clear_cache: bool) {
         self.image_error = None;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.gif_animation = None;
         self.is_gif = false;
         self.is_preview = false;
@@ -130,7 +161,9 @@ impl ViewerApp {
         self.virtual_texture_thread = None;
         self.file_type_detection = None;
         self.file_metadata_open = false;
-        self.image_cache.clear();
+        if clear_cache {
+            self.image_cache.clear();
+        }
         self.preloading_indices.clear();
         self.preload_tasks.clear();
         self.preload_workers = 0;
@@ -151,9 +184,19 @@ impl ViewerApp {
     }
 
     fn load_current_image_mode(&mut self, develop_raw: bool) {
+        self.load_current_image_mode_with_cache_policy(develop_raw, true);
+    }
+
+    /// Reload the current entry while preserving textures for other entries in
+    /// the active Viewer collection. Used when returning from Masonry/Compare.
+    pub(crate) fn load_current_image_preserving_cache(&mut self) {
+        self.load_current_image_mode_with_cache_policy(false, false);
+    }
+
+    fn load_current_image_mode_with_cache_policy(&mut self, develop_raw: bool, clear_cache: bool) {
         self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.showing_raw_developed = develop_raw;
-        self.clear_current_image_state();
+        self.clear_current_image_state_with_cache(clear_cache);
 
         let entry = match self.image_entries.get(self.current_index).cloned() {
             Some(e) => e,
@@ -207,6 +250,10 @@ impl ViewerApp {
         self.full_image_receiver = None;
         self.full_gif_receiver = None;
         self.receiver = None;
+        // The previous base texture remains visible as a loading placeholder,
+        // but its mipmap worker belongs to the outgoing entry. Drop that state
+        // so it cannot be promoted into the incoming entry's cache slot.
+        self.current_mipmap_state = None;
         self.virtual_texture = None;
         self.vt_progress = None;
         self.vt_total_tiles = 0;
@@ -239,10 +286,31 @@ impl ViewerApp {
     // ====== IMAGE ENTRY SETUP ======
 
     pub fn set_image_entries(&mut self, entries: Vec<ImageEntry>, current_index: usize) {
+        self.set_image_entries_internal(entries, current_index, false);
+    }
+
+    /// Switch the shared Viewer renderer to another workspace snapshot without
+    /// discarding textures cached by stable image identity. This is used for
+    /// workspace navigation; explicit collection replacement still clears the
+    /// cache through `set_image_entries`.
+    pub(crate) fn set_image_entries_preserving_cache(
+        &mut self,
+        entries: Vec<ImageEntry>,
+        current_index: usize,
+    ) {
+        self.set_image_entries_internal(entries, current_index, true);
+    }
+
+    fn set_image_entries_internal(
+        &mut self,
+        entries: Vec<ImageEntry>,
+        current_index: usize,
+        preserve_cache: bool,
+    ) {
         self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.image_entries = entries;
-        self.current_index = current_index;
-        self.preload_origin = current_index;
+        self.current_index = current_index.min(self.image_entries.len().saturating_sub(1));
+        self.preload_origin = self.current_index;
         self.delta_threshold =
             ((self.cache_radius as f32 * self.cache_delta_factor).round() as usize).max(1);
         self.b_fit_to_window = true;
@@ -250,6 +318,8 @@ impl ViewerApp {
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
+        self.texture_image_id = None;
+        self.current_mipmap_state = None;
         self.image_error = None;
         self.receiver = None;
         self.full_image_receiver = None;
@@ -259,7 +329,9 @@ impl ViewerApp {
         self.vt_total_tiles = 0;
         self.virtual_texture_thread = None;
 
-        self.image_cache.clear();
+        if !preserve_cache {
+            self.image_cache.clear();
+        }
         self.preloading_indices.clear();
         self.preload_tasks.clear();
         self.preload_workers = 0;
@@ -268,8 +340,17 @@ impl ViewerApp {
         self.file_type_detection = None;
         self.file_metadata_open = false;
 
+        self.update_current_image_path();
         self.detect_current_file_type();
-        self.load_current_image();
+        if preserve_cache && self.load_from_cache(self.current_index) {
+            self.set_loading_state(LoadingState::Idle);
+            self.image_error = None;
+            self.file_metadata = Some(self.build_file_metadata());
+        } else if preserve_cache {
+            self.load_current_image_preserving_cache();
+        } else {
+            self.load_current_image();
+        }
     }
 
     /// Updates `current_image_path` based on the current index.
@@ -285,6 +366,7 @@ impl ViewerApp {
         };
         if let ImageEntry::File(path) = &entry {
             self.current_image_path = Some(path.clone());
+            self.record_welcome_recent_path(path.clone());
         } else {
             self.current_image_path = None;
         }
@@ -317,7 +399,7 @@ impl ViewerApp {
 /// Load an entry through the shared format-detection and decoding pipeline.
 ///
 /// This function runs on a background worker and must not touch UI state.
-fn load_entry_content(entry: ImageEntry, threshold: u32, develop_raw: bool) -> Result<LoadedImage, String> {
+pub(crate) fn load_entry_content(entry: ImageEntry, threshold: u32, develop_raw: bool) -> Result<LoadedImage, String> {
     // Helper to read bytes from any entry.
     let bytes = match &entry {
         ImageEntry::File(path) => {

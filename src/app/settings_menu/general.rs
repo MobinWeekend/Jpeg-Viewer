@@ -10,7 +10,7 @@ use crate::input::shortcuts::ViewerCommand;
 use crate::imaging::sort::SortMethod;
 use eframe::egui;
 
-pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
+pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.collapsing(egui::RichText::new("⚙ General").strong(), |ui| {
         ui.add_space(4.0);
 
@@ -24,20 +24,75 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
         ui.separator();
         ui.label(egui::RichText::new("Input").strong());
         render_invert_scroll_zoom(app, ui);
+        render_window_mouse_shortcuts(app, ui);
         render_recursive_folder_drop(app, ui);
 
         ui.add_space(6.0);
         ui.separator();
+        ui.label(egui::RichText::new("Masonry browsing").strong());
+        render_masonry_folder_headers(app, ui);
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.label(egui::RichText::new("Home").strong());
+        render_new_tab_recent_options(app, ui);
+
+        ui.add_space(6.0);
+        ui.separator();
         ui.label(egui::RichText::new("Image rendering").strong());
-        render_texture_filter(app, ui);
+        render_texture_filter(app, ui, ctx);
 
         ui.add_space(6.0);
         ui.separator();
         ui.label(egui::RichText::new("Startup").strong());
         render_startup_fullscreen(app, ui);
         render_start_centered(app, ui);
+        render_session_restore(app, ui);
         render_single_instance(app, ui);
     });
+}
+
+
+fn render_masonry_folder_headers(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut show_headers = app.settings_manager.get().masonry_show_folder_headers;
+    if crate::ui_theme::switch(ui, &mut show_headers, "Show folder headers") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.masonry_show_folder_headers = show_headers;
+        });
+    }
+    ui.label(
+        egui::RichText::new("When entries come from multiple folders, or Folder Masonry includes subfolders, start each folder group with a heading.")
+            .small()
+            .weak(),
+    );
+}
+
+fn render_new_tab_recent_options(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut rows = app.settings_manager.get().new_tab_recent_rows.clamp(0, 2);
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Recently opened");
+        egui::ComboBox::from_id_salt("home_recent_rows")
+            .selected_text(match rows {
+                0 => "Disable",
+                1 => "1 row",
+                _ => "2 rows",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut rows, 0, "Disable");
+                ui.selectable_value(&mut rows, 1, "1 row");
+                ui.selectable_value(&mut rows, 2, "2 rows");
+            });
+    });
+    if rows != app.settings_manager.get().new_tab_recent_rows {
+        let _ = app.settings_manager.update(|settings| {
+            settings.new_tab_recent_rows = rows;
+        });
+    }
+    ui.label(
+        egui::RichText::new("Home keeps up to 8 recently opened folders, saved queues, and archives.")
+            .small()
+            .weak(),
+    );
 }
 
 fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
@@ -51,7 +106,7 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let current = app.settings_manager.get().thumbnail_workers;
     let mut workers = current as u32;
     ui.horizontal(|ui| {
-        ui.label("Thumbnail workers");
+        ui.label("Thumbnail worker multiplier");
         ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut workers, 1..=8).show_value(true)));
     });
     if workers as usize != current {
@@ -59,7 +114,7 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
             .settings_manager
             .update(|settings| settings.thumbnail_workers = workers as usize);
     }
-    ui.label("Default: 3. Restart the app to apply worker-count changes.");
+    ui.label("Default: 3. Each multiplier adds 3 dimension workers, 2 OS/DE thumbnail workers, and 1 Jpeg-Viewer decoder worker (18 total at the default). Dimensions run first, native thumbnails second, and Jpeg-Viewer decoding last. Idle workers sleep and wake when needed; timed-out or cancelled work is skipped. Restart to apply changes.");
 }
 
 // Invert Scroll Zoom
@@ -81,6 +136,27 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
     });
 }
 
+fn render_window_mouse_shortcuts(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut move_enabled = app.settings_manager.get().window_move_mouse_shortcut_enabled;
+    if crate::ui_theme::switch(ui, &mut move_enabled, "Alt + left-drag moves window") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.window_move_mouse_shortcut_enabled = move_enabled;
+        });
+    }
+
+    let mut resize_enabled = app.settings_manager.get().window_resize_mouse_shortcut_enabled;
+    if crate::ui_theme::switch(ui, &mut resize_enabled, "Shift + left-drag resizes window") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.window_resize_mouse_shortcut_enabled = resize_enabled;
+        });
+    }
+    ui.label(
+        egui::RichText::new("Both shortcuts work across the application. Shift-drag resizes toward the nearest window corner.")
+            .small()
+            .weak(),
+    );
+}
+
 fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         if crate::ui_theme::switch(ui, &mut app.compactui, "Compact mode") {
@@ -92,7 +168,7 @@ fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
 }
 
 // Texture Filter
-fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui) {
+fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     let current_filter = app.settings_manager.get().texture_filter.clone();
     let mut filter = current_filter.clone();
     ui.horizontal(|ui| {
@@ -107,7 +183,7 @@ fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui) {
     });
     if filter != current_filter {
         let _ = app.settings_manager.update(|settings| settings.texture_filter = filter);
-        reload_current_image_for_filter(app);
+        reload_current_image_for_filter(app, ctx);
     }
 }
 
@@ -120,17 +196,40 @@ fn texture_filter_label(filter: &str) -> &'static str {
     }
 }
 
-fn reload_current_image_for_filter(app: &mut ViewerApp) {
+fn reload_current_image_for_filter(app: &mut ViewerApp, ctx: &egui::Context) {
     if app.image_entries.is_empty() {
         return;
+    }
+
+    if app.settings_manager.get().texture_filter != "mipmap" {
+        // The old filtering configuration is no longer usable. Drop pending
+        // mip receivers so their workers stop at the next streamed level instead
+        // of remaining blocked while no mip upload callbacks are scheduled.
+        app.current_mipmap_state = None;
+        app.inspect_mipmap_state = None;
+        for (_, cached) in app.image_cache.iter_mut() {
+            cached.mipmap_state = None;
+        }
     }
 
     app.virtual_texture = None;
     app.vt_progress = None;
     app.vt_total_tiles = 0;
     app.virtual_texture_thread = None;
+    app.invalidate_compare_textures();
+    if app.inspect_mode {
+        app.refresh_inspect_texture(ctx);
+    }
 
-    app.load_current_image_with_cache();
+    if app.load_from_cache(app.current_index) {
+        app.set_loading_state(crate::app::types::LoadingState::Idle);
+        app.image_error = None;
+    } else {
+        // Preserve other LRU entries. Their texture_filter tag makes them
+        // ineligible under the new setting and they will be lazily discarded
+        // when encountered, without flushing the entire image cache here.
+        app.load_current_image_preserving_cache();
+    }
 }
 
 // Theme
@@ -386,6 +485,31 @@ fn theme_label_str(theme: &str) -> &'static str {
 }
 
 // Startup Fullscreen
+
+fn render_session_restore(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let current = app.settings_manager.get().session_restore_preference.clone();
+    let mut selected = current.clone();
+    ui.horizontal(|ui| {
+        ui.label("Restore workspace session");
+        egui::ComboBox::from_id_salt("session_restore_preference")
+            .selected_text(match selected.as_str() {
+                "automatic" => "Restore automatically",
+                "ask" => "Ask every startup",
+                "never" => "Never restore",
+                _ => "Restore automatically",
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut selected, "automatic".to_owned(), "Restore automatically");
+                ui.selectable_value(&mut selected, "ask".to_owned(), "Ask every startup");
+                ui.selectable_value(&mut selected, "never".to_owned(), "Never restore");
+            });
+    });
+    if selected != current {
+        let _ = app.settings_manager.update(|settings| settings.session_restore_preference = selected);
+    }
+    ui.label(egui::RichText::new("Controls whether open Viewer, Masonry, Image, and Compare tabs are restored when JPEG Viewer starts.").small().weak());
+}
+
 fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut start_fs = app.settings_manager.get().start_fullscreen;
     if crate::ui_theme::switch(ui, &mut start_fs, "Start in fullscreen mode") {

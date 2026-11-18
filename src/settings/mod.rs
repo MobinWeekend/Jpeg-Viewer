@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 6;
+const SETTINGS_SCHEMA_VERSION: u32 = 9;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -16,15 +16,22 @@ mod tests;
 #[derive(Debug, Clone)]
 pub struct AppSettings {
     pub b_ctrl_invert: bool,
+    /// Enable Alt + left-drag anywhere in the app to move the window.
+    pub window_move_mouse_shortcut_enabled: bool,
+    /// Enable Shift + left-drag anywhere in the app to resize the nearest corner.
+    pub window_resize_mouse_shortcut_enabled: bool,
+    /// Multiplicative zoom factor applied by keyboard and wheel zoom commands.
+    pub zoom_step_mouse_right_button: f32,
+    pub zoom_step_mouse_wheel: f32,
+    pub zoom_step_keyboard: f32,
     pub window_pos: Option<[f32; 2]>,
     pub window_size: Option<[f32; 2]>,
     /// Restore the window maximized when it was maximized on the last normal exit.
     pub window_maximized: bool,
     pub cache_radius: usize,
     pub cache_delta_factor: f32,
-    pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
-    /// Number of background workers used for sidebar thumbnail generation (1-8).
+    /// Thumbnail worker multiplier (1-8): 3x dimensions, 2x native OS/DE, and 1x Jpeg-Viewer decoder workers.
     pub thumbnail_workers: usize,
     pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches
@@ -115,6 +122,8 @@ pub struct AppSettings {
     pub show_titlebar: bool,
     /// Integrate primary navigation controls into the custom title bar when enabled.
     pub custom_titlebar_navigation: bool,
+    /// Render workspace tabs inline in the custom title-bar row.
+    pub workspace_tabs_in_titlebar: bool,
     /// Internal marker recording that the title-bar navigation default was selected once.
     pub custom_titlebar_navigation_preference_configured: bool,
     /// Title-bar color source: system, main_view, or main_color.
@@ -140,6 +149,14 @@ pub struct AppSettings {
     pub single_instance_enabled: bool,
     /// Recursively include images from subfolders when a folder is dropped onto the viewer.
     pub drag_drop_folders_recursive: bool,
+    /// Restore workspace tabs at startup: automatic, ask, or never.
+    pub session_restore_preference: String,
+    /// Preferred Masonry tile width in logical points; columns fill available width automatically.
+    pub masonry_thumbnail_size: f32,
+    /// Show a full-width folder heading before each recursive Folder Masonry group.
+    pub masonry_show_folder_headers: bool,
+    /// Number of Recently opened rows on the Home page (0 = disabled, 1-2 rows).
+    pub new_tab_recent_rows: usize,
     // Viewing padding mode: look, fine_tune, or custom.
     pub view_padding_mode: String,
     /// Per-look adjustments in [top, right, bottom, left] order.
@@ -162,15 +179,19 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             b_ctrl_invert: false,
+            window_move_mouse_shortcut_enabled: true,
+            window_resize_mouse_shortcut_enabled: true,
+            zoom_step_mouse_right_button: 1.2,
+            zoom_step_mouse_wheel: 1.2,
+            zoom_step_keyboard: 1.2,
             window_pos: None,
             window_size: None,
             window_maximized: false,
-            cache_radius: 5,
+            cache_radius: 6,
             cache_delta_factor: 0.6,
-            navigation_pause_ms: 1200,
             max_cache_task: 4,
             thumbnail_workers: 3,
-            texture_filter: "linear".to_string(),
+            texture_filter: "mipmap".to_string(),
             preload_throttle_ms: 100,
             max_fps: 30.0,
             idle_fps_limit: 0.0,
@@ -230,6 +251,7 @@ impl Default for AppSettings {
             tile_size: 1024,
             show_titlebar: false,
             custom_titlebar_navigation: true,
+            workspace_tabs_in_titlebar: true,
             custom_titlebar_navigation_preference_configured: false,
             title_bar_color_mode: "main_view".to_string(),
             custom_window_frame_thickness: 2.0,
@@ -245,6 +267,10 @@ impl Default for AppSettings {
             favorites_entry_size: 176.0,
             single_instance_enabled: false,
             drag_drop_folders_recursive: false,
+            session_restore_preference: "automatic".to_string(),
+            masonry_thumbnail_size: 220.0,
+            masonry_show_folder_headers: true,
+            new_tab_recent_rows: 2,
             view_padding_mode: "look".to_string(),
             view_padding_fine_tune: HashMap::from([
                 ("native".to_string(), [0.0; 4]),

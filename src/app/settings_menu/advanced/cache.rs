@@ -1,6 +1,5 @@
 use crate::app::types::ViewerApp;
 use eframe::egui;
-use std::time::Duration;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.label(egui::RichText::new("🛠️ Cache Settings").size(13.0).strong());
@@ -116,32 +115,6 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
     });
     ui.add_space(4.0);
 
-    // Navigation Pause
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        ui.label("Navigation Pause:");
-        ui.add_space(8.0);
-        let mut pause = app.settings_manager.get().navigation_pause_ms;
-        if ui
-            .add(
-                egui::DragValue::new(&mut pause)
-                    .range(100..=5000)
-                    .speed(100)
-                    .clamp_existing_to_range(true),
-            )
-            .changed()
-        {
-            if pause != app.settings_manager.get().navigation_pause_ms {
-                let _ = app.settings_manager.update(|settings| {
-                    settings.navigation_pause_ms = pause;
-                    app.navigation_pause_duration = Duration::from_millis(pause);
-                });
-            }
-        }
-        ui.add_space(4.0);
-        ui.label(format!("({} ms)", pause));
-    });
-    ui.add_space(8.0);
     ui.separator();
     ui.add_space(8.0);
 

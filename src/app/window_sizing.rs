@@ -6,8 +6,16 @@ impl ViewerApp {
     /// Resize the window once the active image dimensions are available.
     /// The passed size is the decoded image size in pixels (treated as logical
     /// points for a 1:1 fit, then constrained by the selected limits).
-    pub fn wrap_window_around_image(&mut self, ctx: &egui::Context, image_size: egui::Vec2) -> bool {
-        if !image_size.x.is_finite() || !image_size.y.is_finite() || image_size.x <= 0.0 || image_size.y <= 0.0 {
+    pub fn wrap_window_around_image(
+        &mut self,
+        ctx: &egui::Context,
+        image_size: egui::Vec2,
+    ) -> bool {
+        if !image_size.x.is_finite()
+            || !image_size.y.is_finite()
+            || image_size.x <= 0.0
+            || image_size.y <= 0.0
+        {
             self.window_fit_pending = false;
             return false;
         }
@@ -34,16 +42,17 @@ impl ViewerApp {
             ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()))
                 .unwrap_or(egui::vec2(1920.0, 1080.0))
         });
-        let (min_width, max_width, min_height, max_height) = if settings.fit_window_limit == "custom" {
-            (
-                settings.fit_window_min_width,
-                settings.fit_window_max_width,
-                settings.fit_window_min_height,
-                settings.fit_window_max_height,
-            )
-        } else {
-            (512.0, monitor.x.max(512.0), 512.0, monitor.y.max(512.0))
-        };
+        let (min_width, max_width, min_height, max_height) =
+            if settings.fit_window_limit == "custom" {
+                (
+                    settings.fit_window_min_width,
+                    settings.fit_window_max_width,
+                    settings.fit_window_min_height,
+                    settings.fit_window_max_height,
+                )
+            } else {
+                (512.0, monitor.x.max(512.0), 512.0, monitor.y.max(512.0))
+            };
 
         let left_panel = if settings.show_file_sidebar {
             self.sidebar_actual_width.max(0.0)
@@ -51,7 +60,17 @@ impl ViewerApp {
             0.0
         };
         let right_panel = self.right_sidebar_actual_width.max(0.0);
-        let padding = self.effective_view_padding(ctx);
+        let padding = if settings.fit_window_to_image {
+            let profile = crate::ui_theme::current_look_profile(ctx);
+            if matches!(profile, "win98" | "cosmic" | "gnome") {
+                let safe_top = self.effective_view_padding(ctx)[0];
+                [safe_top, 0.0, 0.0, 0.0]
+            } else {
+                [0.0; 4]
+            }
+        } else {
+            self.effective_view_padding(ctx)
+        };
         let horizontal_padding = padding[1] + padding[3];
         let vertical_padding = padding[0] + padding[2];
         let top_chrome = (if !settings.show_titlebar {
@@ -142,15 +161,19 @@ impl ViewerApp {
     pub fn effective_view_padding(&self, ctx: &egui::Context) -> [f32; 4] {
         let settings = self.settings_manager.get();
         let profile = crate::ui_theme::current_look_profile(ctx);
-        let placement = crate::ui_theme::resolve_main_ui_placement(
-            &settings.main_ui_placement_preference,
-            ctx,
-        );
+        let placement =
+            crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
         let base = crate::app::settings_menu::viewing::default_look_padding(profile, placement);
         match settings.view_padding_mode.as_str() {
-            "custom" => settings.view_padding_custom.map(|value| value.clamp(0.0, 400.0)),
+            "custom" => settings
+                .view_padding_custom
+                .map(|value| value.clamp(0.0, 400.0)),
             "fine_tune" => {
-                let delta = settings.view_padding_fine_tune.get(profile).copied().unwrap_or([0.0; 4]);
+                let delta = settings
+                    .view_padding_fine_tune
+                    .get(profile)
+                    .copied()
+                    .unwrap_or([0.0; 4]);
                 std::array::from_fn(|index| (base[index] + delta[index]).clamp(0.0, 400.0))
             }
             _ => base,

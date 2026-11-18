@@ -34,7 +34,6 @@ rayon = "1.12.0"
 # Prefer the runtime-selected XDG Desktop Portal on Linux when available. This avoids a
 # hard GTK link; Windows and macOS retain their native file dialogs.
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
-pollster = "1.0.1"
 rust-ini = "0.21.3"
 trash = "5.2.6"
 gif = "0.14.2"
@@ -58,13 +57,21 @@ enough = "0.4.3"
 natord = "1.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Freedesktop thumbnail cache names are MD5 hashes of file URIs.
+md5 = "0.8.1"
+# PNG cache metadata, safe thumbnailer Exec parsing, and canonical file URIs.
+png = "0.18.1"
+shlex = "2.0.1"
+url = "2.5.8"
 # Request compositor-managed blur on Wayland desktops that implement
 # ext-background-effect-v1 (including COSMIC).
 wayland-client = { version = "0.31.15", features = ["system"] }
 wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+# Legacy KWin blur protocol for Plasma releases before 6.7.
+wayland-protocols-plasma = { version = "0.3.12", features = ["client"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_UI_Shell", "Win32_System_Power"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_Storage_EnhancedStorage", "Win32_System_Power", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

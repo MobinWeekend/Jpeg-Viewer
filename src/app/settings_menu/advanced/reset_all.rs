@@ -1,6 +1,5 @@
 use crate::app::types::ViewerApp;
 use eframe::egui;
-use std::time::Duration;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.horizontal(|ui| {
@@ -24,9 +23,6 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             app.cache_radius = app.settings_manager.get().cache_radius;
             app.cache_delta_factor = app.settings_manager.get().cache_delta_factor;
             app.max_cache_task = app.settings_manager.get().max_cache_task;
-            app.navigation_pause_duration = Duration::from_millis(
-                app.settings_manager.get().navigation_pause_ms,
-            );
             app.image_cache.clear();
             app.preloading_indices.clear();
             app.preload_tasks.clear();

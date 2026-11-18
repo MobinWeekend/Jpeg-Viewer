@@ -18,7 +18,7 @@ A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse im
 - **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98. Main-view padding can follow the active Look, be fine-tuned per Look, or use custom values.
 - **Window sizing:** optionally fit the window to each viewed image, use monitor or custom size limits, preserve the image aspect ratio when constrained, and center the resized window.
 - **Single-instance mode:** optionally forward later file-open requests to the existing window, including multi-file selections.
-- **Performance:** background decoding and preloading, configurable cache, virtual texturing for very large images, and an adjustable frame limiter.
+- **Performance:** background decoding and preloading, configurable cache, virtual texturing for very large images, and an adjustable frame limiter. Native desktop thumbnails are reused where available, with the built-in thumbnail pipeline as a fallback.
 - **File actions:** drag and drop, Open With, locate in file manager, rename supported filesystem images, copy image/path, and trash integration where supported.
 
 ## Downloads
@@ -101,6 +101,10 @@ Very large images can be split into tiles and loaded as needed, rather than requ
 ### Caching and preloading
 
 The viewer caches nearby images and preloads adjacent items in background tasks. Cache radius, task concurrency, and preload timing can be tuned in Advanced settings to balance navigation speed, background activity, and memory consumption.
+
+### Platform-native thumbnails
+
+For filesystem images, the thumbnail worker first reuses valid operating-system or desktop thumbnails before falling back to JPEG Viewer's own embedded-preview and decoder pipeline. On Linux it checks the shared Freedesktop thumbnail cache, then uses the available desktop integration: Tumbler on Xfce, KDE's KIO worker for 128-pixel previews on Plasma, or installed XDG `.thumbnailer` plugins on GNOME, COSMIC, and compatible desktops such as Cinnamon, MATE, and Budgie. Larger KDE previews are reused from the shared cache when Dolphin or another KIO client has already generated them; otherwise JPEG Viewer falls back to an installed standard thumbnailer or its own decoder. Generated Linux previews are written to the shared cache with source URI, modification-time, and file-size metadata. These integrations are optional; missing services, plugins, or undersized previews simply fall back to the built-in path. No GTK or Qt development libraries are required to build JPEG Viewer.
 
 ## Queue files and limitations
 

@@ -53,6 +53,9 @@ jobs:
       - name: Update Cargo.lock
         run: cargo check
 
+      - name: Run regression tests
+        run: cargo test
+
       - name: Verify version
         shell: pwsh
         run: |
@@ -81,13 +84,13 @@ jobs:
         run: |
           Copy-Item `
             "target\release\jpeg_viewer.exe" `
-            "JPEG-View-Windows-x64.exe"
+            "JPEG-Viewer-Windows-x64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Windows-x64
-          path: JPEG-View-Windows-x64.exe
+          name: JPEG-Viewer-Windows-x64
+          path: JPEG-Viewer-Windows-x64.exe
 
 
   # ============================================================
@@ -129,6 +132,9 @@ jobs:
       - name: Update Cargo.lock
         run: cargo check
 
+      - name: Run regression tests
+        run: cargo test
+
       - name: Verify version
         shell: pwsh
         run: |
@@ -157,13 +163,13 @@ jobs:
         run: |
           Copy-Item `
             "target\release\jpeg_viewer.exe" `
-            "JPEG-View-Windows-ARM64.exe"
+            "JPEG-Viewer-Windows-ARM64.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Windows-ARM64
-          path: JPEG-View-Windows-ARM64.exe
+          name: JPEG-Viewer-Windows-ARM64
+          path: JPEG-Viewer-Windows-ARM64.exe
 
 
   # ============================================================
@@ -251,37 +257,37 @@ jobs:
 
       - name: Package
         run: |
-          mkdir -p package/JPEG-View
+          mkdir -p package/JPEG-Viewer
 
           cp target/release/jpeg_viewer \
-            package/JPEG-View/jpeg_viewer
+            package/JPEG-Viewer/jpeg_viewer
 
           cp README.md \
-            package/JPEG-View/README.md
+            package/JPEG-Viewer/README.md
 
           cp QUICK_START.md \
-            package/JPEG-View/GETTING_STARTED.md
+            package/JPEG-Viewer/GETTING_STARTED.md
 
           cp assets/icons/icon.png \
-            package/JPEG-View/icon.png
+            package/JPEG-Viewer/icon.png
 
           cp packaging/linux/com.jpegviewer.JpegViewer.desktop \
-            package/JPEG-View/com.jpegviewer.JpegViewer.desktop
+            package/JPEG-Viewer/com.jpegviewer.JpegViewer.desktop
 
           cp packaging/linux/install-portable.sh \
-            package/JPEG-View/install.sh
+            package/JPEG-Viewer/install.sh
 
-          chmod +x package/JPEG-View/jpeg_viewer package/JPEG-View/install.sh
+          chmod +x package/JPEG-Viewer/jpeg_viewer package/JPEG-Viewer/install.sh
 
           tar -C package \
-            -czf JPEG-View-Linux-x64.tar.gz \
-            JPEG-View
+            -czf JPEG-Viewer-Linux-x64.tar.gz \
+            JPEG-Viewer
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Linux-x64
-          path: JPEG-View-Linux-x64.tar.gz
+          name: JPEG-Viewer-Linux-x64
+          path: JPEG-Viewer-Linux-x64.tar.gz
 
 
   # ============================================================
@@ -369,37 +375,37 @@ jobs:
 
       - name: Package
         run: |
-          mkdir -p package/JPEG-View
+          mkdir -p package/JPEG-Viewer
 
           cp target/release/jpeg_viewer \
-            package/JPEG-View/jpeg_viewer
+            package/JPEG-Viewer/jpeg_viewer
 
           cp README.md \
-            package/JPEG-View/README.md
+            package/JPEG-Viewer/README.md
 
           cp QUICK_START.md \
-            package/JPEG-View/GETTING_STARTED.md
+            package/JPEG-Viewer/GETTING_STARTED.md
 
           cp assets/icons/icon.png \
-            package/JPEG-View/icon.png
+            package/JPEG-Viewer/icon.png
 
           cp packaging/linux/com.jpegviewer.JpegViewer.desktop \
-            package/JPEG-View/com.jpegviewer.JpegViewer.desktop
+            package/JPEG-Viewer/com.jpegviewer.JpegViewer.desktop
 
           cp packaging/linux/install-portable.sh \
-            package/JPEG-View/install.sh
+            package/JPEG-Viewer/install.sh
 
-          chmod +x package/JPEG-View/jpeg_viewer package/JPEG-View/install.sh
+          chmod +x package/JPEG-Viewer/jpeg_viewer package/JPEG-Viewer/install.sh
 
           tar -C package \
-            -czf JPEG-View-Linux-ARM64.tar.gz \
-            JPEG-View
+            -czf JPEG-Viewer-Linux-ARM64.tar.gz \
+            JPEG-Viewer
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Linux-ARM64
-          path: JPEG-View-Linux-ARM64.tar.gz
+          name: JPEG-Viewer-Linux-ARM64
+          path: JPEG-Viewer-Linux-ARM64.tar.gz
 
 
   # ============================================================
@@ -475,13 +481,13 @@ jobs:
             exit 1
           fi
 
-          cp "$DEB" JPEG-View-Linux-x64.deb
+          cp "$DEB" JPEG-Viewer-Linux-x64.deb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Linux-x64-deb
-          path: JPEG-View-Linux-x64.deb
+          name: JPEG-Viewer-Linux-x64-deb
+          path: JPEG-Viewer-Linux-x64.deb
 
 
   # ============================================================
@@ -557,13 +563,13 @@ jobs:
             exit 1
           fi
 
-          cp "$DEB" JPEG-View-Linux-ARM64.deb
+          cp "$DEB" JPEG-Viewer-Linux-ARM64.deb
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Linux-ARM64-deb
-          path: JPEG-View-Linux-ARM64.deb
+          name: JPEG-Viewer-Linux-ARM64-deb
+          path: JPEG-Viewer-Linux-ARM64.deb
 
 
 
@@ -605,11 +611,11 @@ jobs:
           iconutil -c icns icon.iconset -o "$APP/Contents/Resources/jpeg_viewer.icns"
           sed -e "s/0.0.0/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
           chmod +x "$APP/Contents/MacOS/jpeg_viewer"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" "JPEG-View-macOS-${{ matrix.arch }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "JPEG-Viewer-macOS-${{ matrix.arch }}.zip"
       - uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-macOS-${{ matrix.arch }}
-          path: JPEG-View-macOS-${{ matrix.arch }}.zip
+          name: JPEG-Viewer-macOS-${{ matrix.arch }}
+          path: JPEG-Viewer-macOS-${{ matrix.arch }}.zip
 
   # ============================================================
   # Linux AppImage x64 and ARM64
@@ -661,11 +667,11 @@ jobs:
             find . -maxdepth 2 -type f -print
             exit 1
           fi
-          mv "$APPIMAGE_FILE" "JPEG-View-Linux-${{ matrix.arch }}.AppImage"
+          mv "$APPIMAGE_FILE" "JPEG-Viewer-Linux-${{ matrix.arch }}.AppImage"
       - uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Linux-${{ matrix.arch }}-AppImage
-          path: JPEG-View-Linux-${{ matrix.arch }}.AppImage
+          name: JPEG-Viewer-Linux-${{ matrix.arch }}-AppImage
+          path: JPEG-Viewer-Linux-${{ matrix.arch }}.AppImage
 
   # ============================================================
   # Linux RPM packages (Fedora-compatible)
@@ -720,11 +726,11 @@ jobs:
         run: |
           sudo gem install --no-document fpm
           fpm -s dir -t rpm -n jpeg-viewer -v "${GITHUB_REF_NAME#v}" --license 'GPL-3.0-only' --description 'GPU-accelerated image viewer' --architecture "$( [ '${{ matrix.arch }}' = 'x64' ] && echo x86_64 || echo aarch64 )" -C stage .
-          mv jpeg-viewer-*.rpm "JPEG-View-Fedora-${{ matrix.arch }}.rpm"
+          mv jpeg-viewer-*.rpm "JPEG-Viewer-Fedora-${{ matrix.arch }}.rpm"
       - uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Fedora-${{ matrix.arch }}-RPM
-          path: JPEG-View-Fedora-${{ matrix.arch }}.rpm
+          name: JPEG-Viewer-Fedora-${{ matrix.arch }}-RPM
+          path: JPEG-Viewer-Fedora-${{ matrix.arch }}.rpm
 
   # ============================================================
   # Arch Linux package
@@ -801,11 +807,11 @@ jobs:
             exit 1
           fi
           PACKAGE_SUFFIX="${PACKAGE_FILE##*.pkg.tar}"
-          cp "$PACKAGE_FILE" "JPEG-View-Arch-${{ matrix.arch }}.pkg.tar${PACKAGE_SUFFIX}"
+          cp "$PACKAGE_FILE" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar${PACKAGE_SUFFIX}"
       - uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Arch-${{ matrix.arch }}
-          path: JPEG-View-Arch-${{ matrix.arch }}.pkg.tar.*
+          name: JPEG-Viewer-Arch-${{ matrix.arch }}
+          path: JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.*
 
   # ============================================================
   # Flatpak bundles
@@ -843,11 +849,11 @@ jobs:
       - name: Build Flatpak bundle
         run: |
           flatpak-builder --force-clean --install-deps-from=flathub --repo=repo build-dir packaging/flatpak/com.jpegviewer.JpegViewer.yml
-          flatpak build-bundle repo "JPEG-View-Linux-${{ matrix.arch }}.flatpak" com.jpegviewer.JpegViewer
+          flatpak build-bundle repo "JPEG-Viewer-Linux-${{ matrix.arch }}.flatpak" com.jpegviewer.JpegViewer
       - uses: actions/upload-artifact@v6
         with:
-          name: JPEG-View-Linux-${{ matrix.arch }}-Flatpak
-          path: JPEG-View-Linux-${{ matrix.arch }}.flatpak
+          name: JPEG-Viewer-Linux-${{ matrix.arch }}-Flatpak
+          path: JPEG-Viewer-Linux-${{ matrix.arch }}.flatpak
 
 
   # ============================================================
@@ -948,37 +954,30 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           body: |
-            # JPEG Viewer ${{ github.ref_name }}
-
+            ###JPEG Viewer
             **Version:** `${{ steps.version.outputs.version }}`
-
-            ## Downloads
-
             Assets below are attached to this release. Select the package matching your operating system and CPU architecture.
 
-            ### Windows
-            - [Windows x64 (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Windows-x64.exe)
-            - [Windows ARM64 (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Windows-ARM64.exe)
+            ### Downloads
 
-            ### macOS
-            - [Intel Mac (.zip app bundle)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-macOS-Intel-x64.zip)
-            - [Apple Silicon M-series (.zip app bundle)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-macOS-Apple-Silicon-ARM64.zip)
-
-            ### Linux — portable
-            - [Linux x64 (.tar.gz)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.tar.gz)
-            - [Linux ARM64 (.tar.gz)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.tar.gz)
-            - [AppImage x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.AppImage)
-            - [AppImage ARM64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.AppImage)
-            - [Flatpak x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.flatpak)
-            - [Flatpak ARM64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.flatpak)
-
-            ### Linux — distribution packages
-            - [Debian / Ubuntu x64 (.deb)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-x64.deb)
-            - [Debian / Ubuntu ARM64 (.deb)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Linux-ARM64.deb)
-            - [Fedora x64 (.rpm)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Fedora-x64.rpm)
-            - [Fedora ARM64 (.rpm)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Fedora-ARM64.rpm)
-            - [Arch Linux x64 (.pkg.tar.zst)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Arch-x64.pkg.tar.zst)
-            - [Arch Linux ARM64 (.pkg.tar.zst)](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-View-Arch-ARM64.pkg.tar.zst)
+            | Platform | Download |
+            |----------|:--------:|
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/microsoft-windows/default.svg" width="16"> **Windows x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Windows-x64.exe) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/microsoft-windows/default.svg" width="16"> **Windows ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Windows-ARM64.exe) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/apple/default.svg" width="16"> **macOS Intel (x64)** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-macOS-Intel-x64.zip) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/apple/default.svg" width="16"> **macOS Apple Silicon (ARM64)** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/linux/default.svg" width="16"> **Linux x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.tar.gz) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/linux/default.svg" width="16"> **Linux ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.tar.gz) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/appimage/default.svg" width="16"> **AppImage x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.AppImage) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/appimage/default.svg" width="16"> **AppImage ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.AppImage) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/flatpak/default.svg" width="16"> **Flatpak x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.flatpak) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/flatpak/default.svg" width="16"> **Flatpak ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.flatpak) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/debian/default.svg" width="16"> **Debian / Ubuntu x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-x64.deb) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/debian/default.svg" width="16"> **Debian / Ubuntu ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Linux-ARM64.deb) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/fedora/default.svg" width="16"> **Fedora x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Fedora-x64.rpm) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/fedora/default.svg" width="16"> **Fedora ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Fedora-ARM64.rpm) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/archlinux/default.svg" width="16"> **Arch Linux x64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Arch-x64.pkg.tar.zst) |
+            | <img src="https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons/archlinux/default.svg" width="16"> **Arch Linux ARM64** | [Download](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst) |
 
             ## What's Changed
 
@@ -989,8 +988,8 @@ jobs:
             Extract:
 
             ```bash
-            tar -xzf JPEG-View-Linux-x64.tar.gz
-            cd JPEG-View
+            tar -xzf JPEG-Viewer-Linux-x64.tar.gz
+            cd JPEG-Viewer
             ./jpeg_viewer
             ```
 

@@ -6,6 +6,11 @@ use eframe::egui;
 
 pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     if !app.settings_manager.get().show_file_sidebar {
+        app.sidebar_visible_sources.clear();
+        app.sidebar_prefetch_sources.clear();
+        app.sidebar_last_scroll_offset = None;
+        app.finish_sidebar_thumbnail_frame();
+        app.collect_sidebar_thumbnails(ctx);
         app.queue_drop_rect = None;
         app.sidebar_last_current_index = None;
         app.sidebar_actual_width = 0.0;
@@ -14,6 +19,8 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     }
 
     app.collect_sidebar_thumbnails(ctx);
+    app.sidebar_visible_sources.clear();
+    app.sidebar_prefetch_sources.clear();
     app.ensure_favorites_loaded();
 
     let window_width = ctx.input(|input| {
@@ -80,22 +87,25 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             ui.set_max_width(sidebar_content_width);
 
             ui.horizontal_wrapped(|ui| {
-                // Drawer toggle belongs to the sidebar edge, not the navigation
-                // toolbar. Use a panel-and-arrow glyph to show the action clearly.
-                let hide_sidebar = ui.add(
-                    egui::Button::new("")
-                        .frame(false)
-                        .min_size(egui::vec2(30.0, 28.0)),
-                );
-                crate::app::ui::helpers::paint_sidebar_drawer_icon(
-                    ui,
-                    hide_sidebar.rect,
-                    false,
-                );
-                if hide_sidebar.on_hover_text("Hide sidebar").clicked() {
-                    let _ = app.settings_manager.update(|settings| {
-                        settings.show_file_sidebar = false;
-                    });
+                // With the custom title bar enabled, the sidebar drawer control
+                // already lives in the title bar. Keep this in-sidebar duplicate
+                // only when Windows/native decorations own the title bar.
+                if sidebar_settings.show_titlebar {
+                    let hide_sidebar = ui.add(
+                        egui::Button::new("")
+                            .frame(false)
+                            .min_size(egui::vec2(30.0, 28.0)),
+                    );
+                    crate::app::ui::helpers::paint_sidebar_drawer_icon(
+                        ui,
+                        hide_sidebar.rect,
+                        false,
+                    );
+                    if hide_sidebar.on_hover_text("Hide sidebar").clicked() {
+                        let _ = app.settings_manager.update(|settings| {
+                            settings.show_file_sidebar = false;
+                        });
+                    }
                 }
                 ui.heading("JPEG Viewer");
             });
@@ -156,11 +166,14 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
             if app.sidebar_queue_tab {
                 app.sidebar_last_current_index = None;
+                app.sidebar_last_scroll_offset = None;
                 app.render_queue_sidebar(ui, ctx);
             } else if app.sidebar_favorites_tab {
                 app.sidebar_last_current_index = None;
+                app.sidebar_last_scroll_offset = None;
                 app.render_favorites_sidebar(ui, ctx);
             } else if app.sidebar_info_tab {
+                app.sidebar_last_scroll_offset = None;
                 app.queue_drop_rect = None;
                 ui.heading("Image information");
                 ui.separator();
@@ -180,8 +193,11 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(format!("{} images  |  ", app.image_entries.len()));
 
-                    //sorting
+                    // Sorting and Masonry both operate on the current Browse collection.
                     crate::app::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
+                    if crate::app::ui::masonry_button(ui, "Open in Masonry", !app.image_entries.is_empty(), 0.0, false, true).clicked() {
+                        app.open_local_masonry();
+                    }
                 });
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
                 ui.horizontal_wrapped(|ui| {
@@ -200,8 +216,9 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     app.sidebar_last_current_index != Some(app.current_index);
 
                 let mut selected = None;
+                let mut visible_indices = Vec::new();
 
-                egui::ScrollArea::both()
+                let scroll_output = egui::ScrollArea::both()
                     .id_salt("file_sidebar_list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -245,6 +262,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                         ui.allocate_space(egui::vec2(card_size, estimated_height));
                                         false
                                     } else {
+                                        visible_indices.push(index);
                                         let name = entry_name(entry);
                                         match entry {
                                         ImageEntry::File(path) => {
@@ -306,6 +324,10 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             app.navigate_to_index(ctx, index);
                                                             ui.close();
                                                         }
+                                                        if ui.button("Open in New Tab").clicked() {
+                                                            app.open_entry_in_image_tab(entry.clone(), true);
+                                                            ui.close();
+                                                        }
                                                         if ui.button("Copy entry name").clicked() {
                                                             match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(name.clone())) {
                                                                 Ok(()) => app.queue_status = Some("Copied archive entry name.".into()),
@@ -327,18 +349,32 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         }
                                                     });
 
-                                                    if let Some(texture) =
-                                                        app.sidebar_thumbnails.get(&key)
-                                                    {
+                                                    let target_thumbnail_size = crate::app::queues::thumbnail_request_size(rect, ctx);
+                                                    if ui.is_rect_visible(rect) {
+                                                        app.sidebar_visible_sources.insert(key.clone());
+                                                        let current_item = index == app.current_index;
+                                                        let priority = if current_item {
+                                                            crate::app::queues::SIDEBAR_CURRENT_PRIORITY
+                                                        } else if response.hovered() {
+                                                            crate::app::queues::SIDEBAR_HOVER_PRIORITY
+                                                        } else {
+                                                            crate::app::queues::SIDEBAR_VISIBLE_PRIORITY
+                                                        };
+                                                        app.request_visible_sidebar_archive_thumbnail(
+                                                            entry.clone(),
+                                                            key.clone(),
+                                                            target_thumbnail_size,
+                                                            priority,
+                                                            ctx,
+                                                        );
+                                                    }
+                                                    if let Some(texture) = app.get_shared_thumbnail(&key, target_thumbnail_size) {
                                                         let size = texture.size_vec2();
                                                         if size.x > 0.0 && size.y > 0.0 {
-                                                            let scale = (rect.width() / size.x)
-                                                                .min(rect.height() / size.y);
-                                                            let draw =
-                                                                egui::Rect::from_center_size(
-                                                                    rect.center(),
-                                                                    size * scale,
-                                                                );
+                                                            let draw = crate::app::queues::thumbnail_fit_rect(
+                                                                rect,
+                                                                size.x / size.y,
+                                                            );
                                                             ui.painter().image(
                                                                 texture.id(),
                                                                 draw,
@@ -361,9 +397,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         ui.painter().text(
                                                             rect.center(),
                                                             egui::Align2::CENTER_CENTER,
-                                                            if app
-                                                                .sidebar_thumbnail_failed
-                                                                .contains(&key)
+                                                            if app.shared_thumbnail_failed(&key, target_thumbnail_size)
                                                             {
                                                                 "No preview"
                                                             } else {
@@ -372,13 +406,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             egui::FontId::proportional(crate::ui_theme::scaled_text_size(ui.ctx(), 11.0)),
                                                             ui.visuals().weak_text_color(),
                                                         );
-                                                        if ui.is_rect_visible(rect) {
-                                                            app.request_sidebar_archive_thumbnail(
-                                                                entry.clone(),
-                                                                key.clone(),
-                                                                ctx,
-                                                            );
-                                                        }
                                                     }
 
                                                     if index == app.current_index
@@ -449,6 +476,61 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                 }
                             });
                     });
+                let scroll_offset = scroll_output.state.offset.y;
+                let scroll_delta_y = app.sidebar_last_scroll_offset
+                    .map(|previous| scroll_offset - previous)
+                    .unwrap_or(0.0);
+                app.sidebar_last_scroll_offset = Some(scroll_offset);
+
+                // Prefetch one row in the direction of travel. When the user is
+                // stationary, keep a single row on either side warm so keyboard
+                // navigation and small scroll movements do not expose blank cards.
+                if let (Some(first_visible), Some(last_visible)) = (
+                    visible_indices.iter().copied().min(),
+                    visible_indices.iter().copied().max(),
+                ) {
+                    let first_row = first_visible / columns.max(1);
+                    let last_row = last_visible / columns.max(1);
+                    let mut prefetch_rows = Vec::with_capacity(2);
+                    if scroll_delta_y > 0.5 {
+                        prefetch_rows.push(last_row + 1);
+                    } else if scroll_delta_y < -0.5 {
+                        prefetch_rows.push(first_row.saturating_sub(1));
+                    } else {
+                        prefetch_rows.push(first_row.saturating_sub(1));
+                        prefetch_rows.push(last_row + 1);
+                    }
+                    prefetch_rows.sort_unstable();
+                    prefetch_rows.dedup();
+
+                    let compact_prefetch = entry_size < 112.0;
+                    let prefetch_side = if compact_prefetch {
+                        (card_size / 7.0 - 4.0).clamp(12.0, 58.0)
+                    } else {
+                        (card_size - 6.0).max(1.0)
+                    };
+                    let prefetch_rect = egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(prefetch_side, prefetch_side),
+                    );
+                    let prefetch_size = crate::app::queues::thumbnail_request_size(prefetch_rect, ctx)
+                        .min(crate::app::queues::SIDEBAR_PLACEHOLDER_SIZE);
+
+                    for row in prefetch_rows {
+                        if row >= first_row && row <= last_row {
+                            continue;
+                        }
+                        let row_start = row.saturating_mul(columns.max(1));
+                        let row_end = (row_start + columns).min(entries.len());
+                        for index in row_start..row_end {
+                            let entry = entries[index].clone();
+                            if matches!(&entry, ImageEntry::File(path) if path.is_dir()) {
+                                continue;
+                            }
+                            app.prefetch_sidebar_entry_thumbnail(entry, prefetch_size, ctx);
+                        }
+                    }
+                }
 
                 if let Some(index) = selected {
                     // Use the same navigation pipeline as keyboard/toolbar navigation.
@@ -600,6 +682,8 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
     }
+
+    app.finish_sidebar_thumbnail_frame();
 }
 
 fn entry_name(entry: &ImageEntry) -> String {

@@ -100,7 +100,7 @@ Other useful settings:
 
 ## Performance settings
 
-If browsing feels slow, reduce **Cache Radius** or **Max Tasks** under Advanced. Increase **Thumbnail workers** if thumbnails are slow to appear, then restart the app. For very large images, keep virtual texturing enabled and adjust **Tile Size** and **VT Threshold** only if needed. The frame limiter can reduce GPU use while idle or unfocused.
+If browsing feels slow, reduce **Cache Radius** or **Max Tasks** under Advanced. Increase **Thumbnail workers** if thumbnails are slow to appear, then restart the app. On Linux, JPEG Viewer also reuses valid thumbnails from the desktop's shared cache and available thumbnail services before using its own decoder. For very large images, keep virtual texturing enabled and adjust **Tile Size** and **VT Threshold** only if needed. The frame limiter can reduce GPU use while idle or unfocused.
 
 ## Linux portable install
 

@@ -7,6 +7,7 @@ use crate::settings::AppSettings;
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, TryRecvError};
+use std::sync::Arc;
 use std::time::Duration;
 
 impl ViewerApp {
@@ -17,7 +18,7 @@ impl ViewerApp {
         path: Option<PathBuf>,
         width: u32,
         height: u32,
-        rgba: Vec<u8>,
+        rgba: Arc<Vec<u8>>,
     ) {
         if !self.settings_manager.get().tricks_backdrop_enabled {
             return;
@@ -46,7 +47,7 @@ impl ViewerApp {
             // image, which could saturate a CPU core for very large photographs.
             // This nearest-neighbour reduction has a fixed upper bound of 65,536
             // destination pixels and runs entirely on this worker thread.
-            let result = downsample_rgba_nearest(width, height, rgba, 256);
+            let result = downsample_rgba_nearest(width, height, rgba.as_slice(), 256);
             let _ = tx.send((path, result));
         });
     }
@@ -110,7 +111,8 @@ impl ViewerApp {
                         let result = open_bounded_image(&path, 12_000_000).and_then(|image| {
                             let width = image.width();
                             let height = image.height();
-                            downsample_rgba_nearest(width, height, image.to_rgba8().into_raw(), 256)
+                            let rgba = image.to_rgba8().into_raw();
+                            downsample_rgba_nearest(width, height, &rgba, 256)
                         });
                         let _ = tx.send((path, result));
                     });
@@ -651,7 +653,7 @@ fn parse_hex_color(value: &str) -> Option<egui::Color32> {
 fn downsample_rgba_nearest(
     width: u32,
     height: u32,
-    rgba: Vec<u8>,
+    rgba: &[u8],
     max_dimension: u32,
 ) -> Result<(usize, usize, Vec<u8>), String> {
     if width == 0 || height == 0 || max_dimension == 0 {
@@ -888,13 +890,13 @@ mod backdrop_preview_tests {
         let height = 512;
         let pixels = vec![127_u8; width as usize * height as usize * 4];
         let (preview_width, preview_height, preview) =
-            downsample_rgba_nearest(width, height, pixels, 256).unwrap();
+            downsample_rgba_nearest(width, height, &pixels, 256).unwrap();
         assert_eq!((preview_width, preview_height), (256, 128));
         assert_eq!(preview.len(), 256 * 128 * 4);
     }
 
     #[test]
     fn backdrop_preview_rejects_invalid_source_length() {
-        assert!(downsample_rgba_nearest(2, 2, vec![0; 12], 256).is_err());
+        assert!(downsample_rgba_nearest(2, 2, &[0; 12], 256).is_err());
     }
 }

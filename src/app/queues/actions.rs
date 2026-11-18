@@ -52,6 +52,9 @@ impl ViewerApp {
     }
 
     pub fn begin_rename(&mut self, path: &Path) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if !path.is_file() {
             self.queue_status = Some("Only existing filesystem files can be renamed.".into());
             return;
@@ -61,6 +64,9 @@ impl ViewerApp {
     }
 
     pub fn begin_rename_current(&mut self) {
+        if self.is_home_surface_active() {
+            return;
+        }
         let path = self.image_entries.get(self.current_index).and_then(entry_path).cloned();
         if let Some(path) = path { self.begin_rename(&path); }
         else { self.queue_status = Some("The current entry cannot be renamed as a filesystem file.".into()); }
@@ -282,6 +288,7 @@ impl ViewerApp {
     pub fn open_queue_file(&mut self, path: &Path, ctx: &egui::Context, prompt: bool) {
         match read_queue(path) {
             Ok((paths, root)) => {
+                self.record_welcome_recent_path(path.to_path_buf());
                 if prompt {
                     self.queue_import_prompt = Some((paths, root));
                     self.queue_status = Some("Choose whether to add this saved queue or replace the current queue.".into());
@@ -306,6 +313,7 @@ impl ViewerApp {
         };
         match read_queue(&path) {
             Ok((paths, root)) => {
+                self.record_welcome_recent_path(path.clone());
                 self.queue_paths = paths;
                 self.queue_root = root;
                 let missing = self

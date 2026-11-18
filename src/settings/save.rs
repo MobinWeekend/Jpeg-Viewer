@@ -1,4 +1,4 @@
-use super::{AppSettings, SettingsManager, SETTINGS_SCHEMA_VERSION};
+use super::{AppSettings, SETTINGS_SCHEMA_VERSION, SettingsManager};
 use ini::Ini;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -32,6 +32,29 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set(
+            "window_move_mouse_shortcut_enabled",
+            if settings.window_move_mouse_shortcut_enabled { "true" } else { "false" },
+        );
+        section.set(
+            "window_resize_mouse_shortcut_enabled",
+            if settings.window_resize_mouse_shortcut_enabled { "true" } else { "false" },
+        );
+        section.set(
+            "zoom_step_mouse_right_button",
+            settings
+                .zoom_step_mouse_right_button
+                .clamp(1.05, 2.0)
+                .to_string(),
+        );
+        section.set(
+            "zoom_step_mouse_wheel",
+            settings.zoom_step_mouse_wheel.clamp(1.05, 2.0).to_string(),
+        );
+        section.set(
+            "zoom_step_keyboard",
+            settings.zoom_step_keyboard.clamp(1.05, 2.0).to_string(),
+        );
 
         if let Some([x, y]) = settings.window_pos {
             section.set("window_pos", format!("{},{}", x, y));
@@ -43,17 +66,17 @@ impl SettingsManager {
 
         section.set(
             "window_maximized",
-            if settings.window_maximized { "true" } else { "false" },
+            if settings.window_maximized {
+                "true"
+            } else {
+                "false"
+            },
         );
 
         section.set("cache_radius", settings.cache_radius.to_string());
         section.set(
             "cache_delta_factor",
             settings.cache_delta_factor.to_string(),
-        );
-        section.set(
-            "navigation_pause_ms",
-            settings.navigation_pause_ms.to_string(),
         );
         section.set("max_cache_task", settings.max_cache_task.to_string());
         section.set("thumbnail_workers", settings.thumbnail_workers.to_string());
@@ -165,20 +188,57 @@ impl SettingsManager {
         );
         section.set(
             "custom_titlebar_navigation",
-            if settings.custom_titlebar_navigation { "true" } else { "false" },
+            if settings.custom_titlebar_navigation {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "workspace_tabs_in_titlebar",
+            if settings.workspace_tabs_in_titlebar {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set(
             "custom_titlebar_navigation_preference_configured",
-            if settings.custom_titlebar_navigation_preference_configured { "true" } else { "false" },
+            if settings.custom_titlebar_navigation_preference_configured {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set("title_bar_color_mode", &settings.title_bar_color_mode);
         section.set(
             "custom_window_frame_thickness",
             settings.custom_window_frame_thickness.to_string(),
         );
-        section.set("center_custom_window_title", if settings.center_custom_window_title { "true" } else { "false" });
-        section.set("rename_file_from_titlebar", if settings.rename_file_from_titlebar { "true" } else { "false" });
-        section.set("native_window_rounding", if settings.native_window_rounding { "true" } else { "false" });
+        section.set(
+            "center_custom_window_title",
+            if settings.center_custom_window_title {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "rename_file_from_titlebar",
+            if settings.rename_file_from_titlebar {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "native_window_rounding",
+            if settings.native_window_rounding {
+                "true"
+            } else {
+                "false"
+            },
+        );
         section.set("theme_preference", &settings.theme_preference);
         section.set("look_preference", &settings.look_preference);
         section.set(
@@ -348,22 +408,105 @@ impl SettingsManager {
             "favorites_entry_size",
             settings.favorites_entry_size.to_string(),
         );
-        section.set("single_instance_enabled", if settings.single_instance_enabled { "true" } else { "false" });
-        section.set("drag_drop_folders_recursive", if settings.drag_drop_folders_recursive { "true" } else { "false" });
+        section.set(
+            "single_instance_enabled",
+            if settings.single_instance_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "drag_drop_folders_recursive",
+            if settings.drag_drop_folders_recursive {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "session_restore_preference",
+            &settings.session_restore_preference,
+        );
+        section.set(
+            "masonry_thumbnail_size",
+            settings.masonry_thumbnail_size.to_string(),
+        );
+        section.set(
+            "masonry_show_folder_headers",
+            if settings.masonry_show_folder_headers {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "new_tab_recent_rows",
+            settings.new_tab_recent_rows.clamp(0, 2).to_string(),
+        );
         section.set("view_padding_mode", &settings.view_padding_mode);
         for profile in ["native", "cosmic", "gnome", "win98"] {
-            let values = settings.view_padding_fine_tune.get(profile).copied().unwrap_or([0.0; 4]);
-            section.set(format!("view_padding_fine_tune_{profile}"), format!("{},{},{},{}", values[0], values[1], values[2], values[3]));
+            let values = settings
+                .view_padding_fine_tune
+                .get(profile)
+                .copied()
+                .unwrap_or([0.0; 4]);
+            section.set(
+                format!("view_padding_fine_tune_{profile}"),
+                format!("{},{},{},{}", values[0], values[1], values[2], values[3]),
+            );
         }
-        section.set("view_padding_custom", format!("{},{},{},{}", settings.view_padding_custom[0], settings.view_padding_custom[1], settings.view_padding_custom[2], settings.view_padding_custom[3]));
-        section.set("fit_window_to_image", if settings.fit_window_to_image { "true" } else { "false" });
+        section.set(
+            "view_padding_custom",
+            format!(
+                "{},{},{},{}",
+                settings.view_padding_custom[0],
+                settings.view_padding_custom[1],
+                settings.view_padding_custom[2],
+                settings.view_padding_custom[3]
+            ),
+        );
+        section.set(
+            "fit_window_to_image",
+            if settings.fit_window_to_image {
+                "true"
+            } else {
+                "false"
+            },
+        );
         section.set("fit_window_limit", &settings.fit_window_limit);
-        section.set("fit_window_min_width", settings.fit_window_min_width.to_string());
-        section.set("fit_window_max_width", settings.fit_window_max_width.to_string());
-        section.set("fit_window_min_height", settings.fit_window_min_height.to_string());
-        section.set("fit_window_max_height", settings.fit_window_max_height.to_string());
-        section.set("fit_window_preserve_aspect", if settings.fit_window_preserve_aspect { "true" } else { "false" });
-        section.set("fit_window_center", if settings.fit_window_center { "true" } else { "false" });
+        section.set(
+            "fit_window_min_width",
+            settings.fit_window_min_width.to_string(),
+        );
+        section.set(
+            "fit_window_max_width",
+            settings.fit_window_max_width.to_string(),
+        );
+        section.set(
+            "fit_window_min_height",
+            settings.fit_window_min_height.to_string(),
+        );
+        section.set(
+            "fit_window_max_height",
+            settings.fit_window_max_height.to_string(),
+        );
+        section.set(
+            "fit_window_preserve_aspect",
+            if settings.fit_window_preserve_aspect {
+                "true"
+            } else {
+                "false"
+            },
+        );
+        section.set(
+            "fit_window_center",
+            if settings.fit_window_center {
+                "true"
+            } else {
+                "false"
+            },
+        );
 
         Self::write_ini_safely(path, &conf)
     }

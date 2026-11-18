@@ -37,10 +37,22 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
 
     let profile = crate::ui_theme::current_look_profile(ctx);
     let win98 = profile == "win98";
-    let (margin, button_size) = if win98 {
-        (3, egui::vec2(24.0, 24.0))
+    // In the modern custom-titlebar profile, caption controls are flush with
+    // the top edge and the Close control is flush with the right edge, matching
+    // Windows 11's integrated caption-button treatment. Keep the classic Win98
+    // layout unchanged.
+    let (panel_margin, button_size) = if win98 {
+        (egui::Margin::same(3), egui::vec2(24.0, 24.0))
     } else {
-        (4, egui::vec2(36.0, 32.0))
+        (
+            egui::Margin {
+                left: 2,
+                right: 0,
+                top: -3,
+                bottom: -2,
+            },
+            egui::vec2(46.0, 37.0),
+        )
     };
     let panel_response = egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar")
         .show_separator_line(false)
@@ -61,10 +73,9 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
             }
 
             // Resize hit areas live on the outer edge and must not reserve layout
-            // width. The top-left hit target is kept to the thin frame strip (see
-            // resize_handles) so the first title-bar control can start at x=0.
-            // Keep a one-pixel inner right margin. The top-right resize target
-            // occupies only the two outermost pixels, not a full button gap.
+            // width. The left inset keeps the first title-bar control clear of the
+            // top-left resize strip; the caption controls themselves reach the
+            // top and right edges of the reserved panel.
             if !window_width.is_finite() || window_width <= 0.0 {
                 return;
             }
@@ -158,14 +169,10 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE)
                 .corner_radius(radius)
-                .inner_margin(egui::Margin {
-                    left: margin,
-                    right: margin,
-                    top: margin,
-                    bottom: margin,
-                })
+                .inner_margin(panel_margin)
                 .show(panel_ui, |ui| {
-                    let inner_width = (window_width - 16.0).max(button_size.x * 3.0);
+                    let horizontal_margin = if win98 { 6.0 } else { 4.0 };
+                    let inner_width = (window_width - horizontal_margin).max(button_size.x * 3.0);
                     let row_height = button_size.y;
                     ui.set_min_width(inner_width);
                     ui.set_max_width(inner_width);
@@ -174,7 +181,9 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
 
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
-                        let controls_width = button_size.x * 3.0;
+                        // Include the two gaps between the three caption buttons so
+                        // the draggable title region never overlaps their hitboxes.
+                        let controls_width = button_size.x * 3.0 + 4.0;
                         let integrate_navigation =
                             app.settings_manager.get().custom_titlebar_navigation;
                         let inner_available = ui.available_width().max(0.0);
@@ -217,15 +226,66 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             );
                         }
 
-                        // When integrated navigation is enabled, the hamburger has
-                        // absolute priority and remains visible even at minimal width.
-                        // Otherwise the title bar returns to its standard title-only layout.
-                        if integrate_navigation {
+                        // Home's navigation controls form one compact, themed group:
+                        // the hamburger sits beside the Masonry switch on the same surface.
+                        // The desktop menu bar already provides these entry points, so
+                        // neither control is duplicated when it is enabled.
+                        let has_desktop_menu = crate::app::ui::uses_desktop_menu_bar(ctx);
+                        let masonry_active = app.workspace.active_kind()
+                            == crate::app::workspace::WorkspaceTabKind::Masonry;
+                        let can_toggle_masonry = !has_desktop_menu && app.masonry_toggle_available();
+                        if integrate_navigation && !has_desktop_menu && app.is_home_surface_active() {
                             ui.add_space(3.0);
-                            app.render_hamburger_ui(ui);
+                            // Home is intentionally a clean landing page: keep the
+                            // hamburger and Masonry controls directly on the titlebar
+                            // without the floating toolbar's background surface.
+                            ui.horizontal(|group| {
+                                app.render_hamburger_ui(group);
+                                if can_toggle_masonry {
+                                    let tip = if masonry_active {
+                                        "Return to Viewer"
+                                    } else {
+                                        "Open current entries in Masonry"
+                                    };
+                                    if crate::app::ui::masonry_toggle_button(
+                                        group, masonry_active, true, 30.0,
+                                    )
+                                    .on_hover_text(tip)
+                                    .clicked()
+                                    {
+                                        app.activate_masonry_from_navigation_button();
+                                    }
+                                }
+                            });
+                        } else {
+                            // When integrated navigation is enabled, the hamburger
+                            // has absolute priority and remains visible at minimal width.
+                            if integrate_navigation && !has_desktop_menu {
+                                ui.add_space(3.0);
+                                app.render_hamburger_ui(ui);
+                            }
+                            if can_toggle_masonry {
+                                ui.add_space(3.0);
+                                let tip = if masonry_active {
+                                    "Return to Viewer"
+                                } else {
+                                    "Open current entries in Masonry"
+                                };
+                                if crate::app::ui::masonry_toggle_button(
+                                    ui, masonry_active, true, 30.0,
+                                )
+                                .on_hover_text(tip)
+                                .clicked()
+                                {
+                                    app.activate_masonry_from_navigation_button();
+                                }
+                            }
                         }
 
-                        if integrate_navigation && !app.image_entries.is_empty() {
+                        if integrate_navigation
+                            && !app.image_entries.is_empty()
+                            && !app.active_workspace_hides_image_navigation()
+                        {
                             ui.add_space(6.0);
                             app.navigation_previous_ui(ctx, ui);
                             app.slideshow_ui(ctx, ui);
@@ -241,32 +301,42 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             }
                         }
 
+                        // Workspace tabs occupy the same horizontal row as the title,
+                        // between navigation controls and the draggable title region.
+                        let _inline_tabs_width = app.render_workspace_tabs_inline(ui, ctx);
+
                         let actions_end = ui.next_widget_position().x;
                         let caption_start = ui.max_rect().right() - controls_width;
                         let drag_width = (caption_start - actions_end).max(0.0);
                         let title_click_rename =
-                            app.settings_manager.get().rename_file_from_titlebar;
+                            app.settings_manager.get().rename_file_from_titlebar
+                                && !app.is_home_surface_active();
                         let (drag_rect, _) = ui.allocate_exact_size(
                             egui::vec2(drag_width, row_height),
                             egui::Sense::hover(),
                         );
-                        let title_visible = drag_width >= 90.0;
+                        let title_font =
+                            egui::FontId::proportional(if win98 { 13.0 } else { 14.0 });
+                        let title_text = app.window_title();
+                        let title_width = ui
+                            .painter()
+                            .layout_no_wrap(title_text.clone(), title_font.clone(), foreground)
+                            .size()
+                            .x;
+                        let title_visible = drag_width >= (title_width + 16.0);
+                        // The tab strip consumes only the width its visible tabs need.
+                        // Use any remaining space for the centered window title; even
+                        // when the title is too wide, the full remainder stays draggable.
+                        let show_window_title = title_visible;
                         let title_response = ui.interact(
                             drag_rect,
                             egui::Id::new("custom_titlebar_title"),
                             egui::Sense::click_and_drag(),
                         );
-                        if title_visible {
-                            let title = app.window_title();
+                        if show_window_title {
+                            let title = title_text.clone();
                             let center_title =
                                 app.settings_manager.get().center_custom_window_title;
-                            let title_font =
-                                egui::FontId::proportional(if win98 { 13.0 } else { 14.0 });
-                            let title_width = ui
-                                .painter()
-                                .layout_no_wrap(title.clone(), title_font.clone(), foreground)
-                                .size()
-                                .x;
                             // Prefer the exact window midpoint. If the title would
                             // overlap the left-side actions or caption controls, center
                             // it in the remaining title area instead.
@@ -309,10 +379,19 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             let maximized =
                                 ctx.input(|input| input.viewport().maximized.unwrap_or(false));
                             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                        } else if title_visible && title_click_rename && title_response.clicked() {
+                        } else if show_window_title
+                            && title_click_rename
+                            && title_response.clicked()
+                        {
                             app.begin_rename_current();
-                        } else if title_response.drag_started() {
+                        } else if title_response.drag_started()
+                            && !app.window_mouse_operation_active
+                        {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                            #[cfg(target_os = "linux")]
+                            crate::platform::wayland_pointer_recovery::after_native_window_operation(
+                                ctx,
+                            );
                         }
                         title_response.context_menu(|menu| {
                             let maximized =
@@ -405,7 +484,9 @@ fn render_caption_button(
     let size = if win98 {
         egui::vec2(22.0, 22.0)
     } else {
-        egui::vec2(36.0, 28.0)
+        // Match the 40px titlebar reservation: buttons begin at its top edge,
+        // while the remaining 4px belongs to the lower titlebar surface.
+        egui::vec2(46.0, 36.0)
     };
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let pressed = response.is_pointer_button_down_on();
@@ -422,6 +503,15 @@ fn render_caption_button(
     };
     let radius = if win98 {
         egui::CornerRadius::ZERO
+    } else if is_close {
+        // Keep Close square against the window's top/right edges; only soften
+        // its lower-left inside corner so the control reads as part of the bar.
+        egui::CornerRadius {
+            nw: 0,
+            ne: 0,
+            sw: 5,
+            se: 0,
+        }
     } else {
         egui::CornerRadius::same(5)
     };

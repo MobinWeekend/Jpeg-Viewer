@@ -1,6 +1,7 @@
 use super::editing::EditOutputFormat;
 use super::image_metadata::FileMetadata;
 use super::virtual_texture::{PreparationProgress, VirtualTexture};
+use super::texture_mipmap::SharedMipmapState;
 use crate::decoder::gif::animation::GifAnimation;
 use crate::imaging::core::DecodedImage;
 use crate::imaging::core::ImageFormat;
@@ -10,10 +11,12 @@ use crate::input::shortcuts::InputBindings;
 use crate::imaging::sort::SortMethod;
 use eframe::egui;
 use lru::LruCache;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 // ====== LOADED IMAGE ======
@@ -25,11 +28,35 @@ pub enum LoadedImage {
     VirtualPending(Vec<u8>, u32, u32),
 }
 
+/// Result of a background thumbnail job. When original dimensions are known,
+/// preview pixels are normalized to the source image's aspect ratio before they
+/// enter the shared texture cache, so every consumer (Masonry, Browse, Queue,
+/// Favorites, and New Tab) can use the texture dimensions for contain rendering.
+/// `source_aspect_ratio` remains separate because Masonry's tile layout must
+/// stay stable even when a texture is evicted or replaced.
+pub(crate) struct GeneratedThumbnail {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u8>,
+    /// Effective fitted resolution before source-ratio correction expands the
+    /// long side. Used for cache selection so synthetic pixels do not count as
+    /// a higher-resolution source preview.
+    pub resolution: u32,
+    pub source_aspect_ratio: Option<f32>,
+    /// Original EXIF-oriented dimensions discovered by the metadata pool.
+    /// Shared with Masonry and later sidebar requests to avoid repeat probes.
+    pub source_dimensions: Option<(u32, u32)>,
+}
+
 // ====== CACHE ======
 
 #[derive(Clone)]
 pub struct CachedImage {
     pub texture: egui::TextureHandle,
+    /// Texture filtering is part of the GPU resource configuration. A cached
+    /// texture created with another filter must be rebuilt before it is shown.
+    pub texture_filter: String,
+    pub(crate) mipmap_state: Option<SharedMipmapState>,
     pub is_gif: bool,
     pub is_preview: bool,
     pub index: usize,
@@ -71,6 +98,10 @@ pub enum LoadingState {
 pub struct ViewerApp {
     // ====== IMAGE ======
     pub texture: Option<egui::TextureHandle>,
+    /// Stable entry identity for `texture`. During navigation the previous
+    /// texture may remain visible while a new entry loads, so `current_index`
+    /// alone cannot safely identify the texture being displayed or cached.
+    pub(crate) texture_image_id: Option<String>,
     pub gif_animation: Option<GifAnimation>,
     pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
     pub full_image_receiver: Option<Receiver<DecodedImage>>,
@@ -89,6 +120,8 @@ pub struct ViewerApp {
 
     // ====== IMAGE VIEW ======
     pub zoom: f32,
+    /// (start zoom, target zoom, animation start, zoom-in direction).
+    pub zoom_animation: Option<(f32, f32, Instant, bool)>,
     pub pan: egui::Vec2,
     pub b_fit_to_window: bool,
     pub b_zoom_used: bool,
@@ -104,9 +137,15 @@ pub struct ViewerApp {
     pub main_view_pan_drag_active: bool,
     /// True while a primary-button drag that began outside the image moves the window.
     pub main_view_window_drag_active: bool,
+    /// True while a global Alt/Shift mouse shortcut has handed control to the OS.
+    pub(crate) window_mouse_operation_active: bool,
 
     // ====== CACHE ======
     pub image_cache: LruCache<String, CachedImage>,
+    /// Progressive mip uploads share a single GPU upload allowance per frame.
+    pub(crate) mipmap_upload_budget: Arc<AtomicUsize>,
+    /// Mipmap preparation associated with the currently displayed texture.
+    pub(crate) current_mipmap_state: Option<SharedMipmapState>,
     pub max_cache_size: usize,
 
     // ====== PRELOAD ======
@@ -127,9 +166,6 @@ pub struct ViewerApp {
     pub last_preload_start: Option<Instant>,
 
     pub should_stop_caching: bool,
-
-    pub navigation_timer: Option<Instant>,
-    pub navigation_pause_duration: Duration,
 
     // ====== FRAME LIMITER ======
     pub last_repaint_time: Instant,
@@ -181,6 +217,8 @@ pub struct ViewerApp {
 
     // ====== SETTINGS ======
     pub settings_manager: SettingsManager,
+    /// Independent Viewer, Image, Masonry, and Compare workspace tabs.
+    pub(crate) workspace: super::workspace::WorkspaceManager,
     pub input_bindings: InputBindings,
 
     // ====== UI ======
@@ -210,6 +248,10 @@ pub struct ViewerApp {
     pub sidebar_actual_width: f32,
     /// Actual width allocated to the active right-side panel (Settings or Edit) this frame.
     pub right_sidebar_actual_width: f32,
+    /// Screen-space rectangle allocated to egui's CentralPanel after docked sidebars.
+    /// Overlay toolbars and fullscreen workspace tabs use this instead of estimating
+    /// width by subtracting preferred sidebar sizes from the outer window.
+    pub central_panel_rect: egui::Rect,
     /// True only when the user began dragging the sidebar resize handle.
     pub sidebar_resize_dragging: bool,
     pub window_always_on_top: bool,
@@ -290,6 +332,7 @@ pub struct ViewerApp {
     pub inspect_channels: [bool; 4],
     pub inspect_colorized: bool,
     pub inspect_texture: Option<egui::TextureHandle>,
+    pub(crate) inspect_mipmap_state: Option<SharedMipmapState>,
     pub inspect_source: Option<image::RgbaImage>,
     pub inspect_source_path: Option<PathBuf>,
     pub confirm_overwrite_path: Option<PathBuf>,
@@ -324,14 +367,42 @@ pub struct ViewerApp {
     /// Browse-sidebar drag source index, used to reorder image entries.
     pub sidebar_drag_index: Option<usize>,
     pub sidebar_drag_collection: u8,
-    /// LRU cache of thumbnail textures. At 128x128 RGBA and 256 entries, the
-    /// worst-case pixel payload is about 16 MiB; evicted handles release textures.
+    /// LRU cache shared by sidebar and Masonry thumbnails. Entries use their
+    /// returned physical resolution; collection enforces both a 256-entry cap
+    /// and a 96 MiB approximate texture budget for high-DPI galleries.
     pub sidebar_thumbnails: LruCache<String, egui::TextureHandle>,
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
-    pub sidebar_thumbnail_receivers:
-        Vec<Receiver<(String, Result<(usize, usize, Vec<u8>), String>)>>,
+    pub sidebar_thumbnail_receivers: Vec<(
+        String,
+        Option<String>,
+        bool,
+        Arc<AtomicU8>,
+        Instant,
+        Arc<Mutex<Option<Instant>>>,
+        Arc<AtomicBool>,
+        Receiver<(String, Result<GeneratedThumbnail, String>)>,
+    )>,
+    /// Files currently visible in the active sidebar collection. Masonry has
+    /// its own independent visibility set and cancellation policy.
+    pub sidebar_visible_sources: HashSet<String>,
+    /// One-row directional lookahead for sidebar thumbnails.
+    pub sidebar_prefetch_sources: HashSet<String>,
+    /// Previous Browse-sidebar scroll offset, used to prefetch in the actual
+    /// scroll direction rather than reacting to wheel input elsewhere.
+    pub sidebar_last_scroll_offset: Option<f32>,
+    /// Source keys currently intersecting the active Masonry viewport. Completed
+    /// Masonry-only results outside this set are discarded instead of cached.
+    pub masonry_visible_sources: HashSet<String>,
+    /// Shared source-dimension cache, populated by Masonry and completed
+    /// sidebar thumbnail pipelines. The attempted set also remembers failures.
+    pub masonry_dimension_attempted: HashSet<String>,
+    pub masonry_dimension_pending: HashSet<String>,
+    /// Shared, EXIF-oriented source dimensions keyed by stable source identity.
+    pub masonry_dimension_results: HashMap<String, Option<(u32, u32)>>,
+    pub masonry_dimension_receivers:
+        Vec<(String, bool, Instant, Arc<Mutex<Option<Instant>>>, Arc<AtomicBool>, Receiver<Option<(u32, u32)>>)>,
 }
 
 impl Default for ViewerApp {
@@ -352,6 +423,7 @@ impl Default for ViewerApp {
         Self {
             // ====== IMAGE ======
             texture: None,
+            texture_image_id: None,
             gif_animation: None,
             receiver: None,
             full_image_receiver: None,
@@ -369,6 +441,7 @@ impl Default for ViewerApp {
 
             // ====== IMAGE VIEW ======
             zoom: 1.0,
+            zoom_animation: None,
             pan: egui::Vec2::ZERO,
             b_fit_to_window: false,
             b_zoom_used: false,
@@ -381,12 +454,17 @@ impl Default for ViewerApp {
             zoom_drag_start_center: egui::Pos2::ZERO,
             main_view_pan_drag_active: false,
             main_view_window_drag_active: false,
+            window_mouse_operation_active: false,
 
             // ====== CACHE ======
             image_cache: LruCache::new(
                 NonZeroUsize::new(cache_capacity)
                     .expect("cache capacity must be greater than zero"),
             ),
+            mipmap_upload_budget: Arc::new(AtomicUsize::new(
+                super::texture_mipmap::MAX_MIP_UPLOAD_BYTES_PER_FRAME,
+            )),
+            current_mipmap_state: None,
             max_cache_size: cache_capacity,
 
             // ====== PRELOAD ======
@@ -411,9 +489,6 @@ impl Default for ViewerApp {
 
             should_stop_caching: false,
 
-            navigation_timer: None,
-            navigation_pause_duration: Duration::from_millis(settings.navigation_pause_ms),
-
             // ====== FRAME LIMITER ======
             last_repaint_time: now,
             last_interaction_time: now,
@@ -428,7 +503,7 @@ impl Default for ViewerApp {
 
             is_animating: false,
 
-            // ====== SLIDESHOW ======
+    // ====== SLIDESHOW ======
             slideshow_enabled: false,
             power_inhibitor: crate::platform::power::PowerInhibitor::default(),
             slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
@@ -459,6 +534,7 @@ impl Default for ViewerApp {
 
             // ====== SETTINGS ======
             settings_manager,
+            workspace: super::workspace::WorkspaceManager::default(),
             input_bindings: InputBindings::default(),
 
             // ====== UI ======
@@ -484,6 +560,7 @@ impl Default for ViewerApp {
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
             right_sidebar_actual_width: 0.0,
+            central_panel_rect: egui::Rect::NOTHING,
             sidebar_resize_dragging: false,
             window_always_on_top: false,
 
@@ -545,6 +622,7 @@ impl Default for ViewerApp {
             inspect_channels: [true, true, true, true],
             inspect_colorized: false,
             inspect_texture: None,
+            inspect_mipmap_state: None,
             inspect_source: None,
             inspect_source_path: None,
             confirm_overwrite_path: None,
@@ -576,6 +654,14 @@ impl Default for ViewerApp {
             sidebar_thumbnail_failed: HashSet::new(),
             sidebar_thumbnail_pending: HashSet::new(),
             sidebar_thumbnail_receivers: Vec::new(),
+            sidebar_visible_sources: HashSet::new(),
+            sidebar_prefetch_sources: HashSet::new(),
+            sidebar_last_scroll_offset: None,
+            masonry_visible_sources: HashSet::new(),
+            masonry_dimension_attempted: HashSet::new(),
+            masonry_dimension_pending: HashSet::new(),
+            masonry_dimension_results: HashMap::new(),
+            masonry_dimension_receivers: Vec::new(),
         }
     }
 }
@@ -632,16 +718,34 @@ impl ViewerApp {
         }
     }
 
+    pub(crate) fn is_home_surface_active(&self) -> bool {
+        self.workspace.home_page_visible
+            && self.workspace.tabs.get(self.workspace.active_index).is_some_and(|tab| {
+                tab.id == 1 && tab.kind == super::workspace::WorkspaceTabKind::Viewer
+            })
+    }
+
     pub fn window_title(&self) -> String {
+        if self.is_home_surface_active() {
+            return "Home — JPEG Viewer".to_owned();
+        }
+        match self.workspace.active_kind() {
+            super::workspace::WorkspaceTabKind::Masonry
+            | super::workspace::WorkspaceTabKind::Compare
+            | super::workspace::WorkspaceTabKind::Welcome => {
+                let workspace_name = self.workspace.active_tab_title().unwrap_or("Workspace");
+                return format!("{workspace_name} — JPEG Viewer");
+            }
+            super::workspace::WorkspaceTabKind::Viewer
+            | super::workspace::WorkspaceTabKind::Image => {}
+        }
+
         let filename = self.get_current_filename();
         let total = self.image_entries.len();
-
         let slideshow_indicator = if self.slideshow_enabled { " ▶" } else { "" };
-
         if total == 0 {
             return "JPEG Viewer".to_string();
         }
-
         format!(
             "({}/{}) {}{}",
             self.current_index + 1,
@@ -686,6 +790,14 @@ impl ViewerApp {
 
             _ => egui::TextureOptions::LINEAR,
         }
+    }
+
+    /// Texture options for the base upload. Mipmap levels are added later by
+    /// the progressive Glow callback, never by egui's synchronous generate_mipmap.
+    pub fn get_texture_base_options(&self) -> egui::TextureOptions {
+        let mut options = self.get_texture_options();
+        options.mipmap_mode = None;
+        options
     }
 
     // ====== SLIDESHOW ======

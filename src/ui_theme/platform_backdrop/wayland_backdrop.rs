@@ -1,7 +1,8 @@
-//! Wayland implementation of `ext-background-effect-v1`.
+//! Wayland compositor blur support.
 //!
-//! Borrow eframe/winit's existing Wayland display and surface. The compositor
-//! controls blur strength; the client marks the application surface as a blur region.
+//! Borrow eframe/winit's existing Wayland display and surface. Prefer the
+//! standardized `ext-background-effect-v1` protocol (COSMIC and Plasma 6.7+),
+//! then fall back to KWin's legacy protocol for older Plasma releases.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -14,6 +15,10 @@ use wayland_protocols::ext::background_effect::v1::client::{
     ext_background_effect_manager_v1::ExtBackgroundEffectManagerV1,
     ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1,
 };
+use wayland_protocols_plasma::blur::client::{
+    org_kde_kwin_blur::OrgKdeKwinBlur,
+    org_kde_kwin_blur_manager::OrgKdeKwinBlurManager,
+};
 
 static DISPLAY_PTR: AtomicUsize = AtomicUsize::new(0);
 static SURFACE_PTR: AtomicUsize = AtomicUsize::new(0);
@@ -25,11 +30,21 @@ struct WaylandState {
     blur_supported: bool,
 }
 
+enum BackdropEffect {
+    Standard(ExtBackgroundEffectSurfaceV1),
+    /// KWin's legacy protocol was used by Plasma before 6.7.
+    Kde {
+        effect: OrgKdeKwinBlur,
+        manager: OrgKdeKwinBlurManager,
+        surface: wl_surface::WlSurface,
+    },
+}
+
 struct WaylandBackdrop {
     connection: Connection,
     // Keep the foreign surface proxy alive for the lifetime of the backdrop.
     _surface: wl_surface::WlSurface,
-    effect: ExtBackgroundEffectSurfaceV1,
+    effect: BackdropEffect,
     region: wl_region::WlRegion,
 }
 
@@ -49,48 +64,105 @@ impl WaylandBackdrop {
         let mut state = WaylandState::default();
         queue.roundtrip(&mut state).ok()?;
 
-        let manager_name = state
-            .globals
-            .iter()
-            .find(|(_, interface, _)| interface == "ext_background_effect_manager_v1")
-            .map(|(name, _, _)| *name)?;
         let compositor_name = state
             .globals
             .iter()
             .find(|(_, interface, _)| interface == "wl_compositor")
             .map(|(name, _, _)| *name)?;
 
-        // wayland-client 0.31 uses the argument order:
-        // (global_name, version, queue_handle, user_data).
-        let manager =
-            registry.bind::<ExtBackgroundEffectManagerV1, _, _>(manager_name, 1, &queue_handle, ());
+        // Bind the standard protocol first. Plasma 6.7+ implements this protocol,
+        // as does COSMIC; prefer it whenever the compositor advertises blur.
+        let standard_manager_name = state
+            .globals
+            .iter()
+            .find(|(_, interface, _)| interface == "ext_background_effect_manager_v1")
+            .map(|(name, _, _)| *name);
+        let kde_manager_name = state
+            .globals
+            .iter()
+            .find(|(_, interface, _)| interface == "org_kde_kwin_blur_manager")
+            .map(|(name, _, _)| *name);
+
         let compositor = registry.bind::<wl_compositor::WlCompositor, _, _>(
             compositor_name,
             1,
             &queue_handle,
             (),
         );
-        queue.roundtrip(&mut state).ok()?;
-        if !state.blur_supported {
-            return None;
-        }
 
-        // SAFETY: this is the live wl_surface supplied by eframe/winit and it
-        // belongs to the same wl_display used to construct `connection`.
-        let surface_id = unsafe {
-            ObjectId::from_ptr(wl_surface::WlSurface::interface(), surface_ptr.cast()).ok()?
+        // wayland-client 0.31 uses the argument order:
+        // (global_name, version, queue_handle, user_data).
+        let standard_effect = if let Some(manager_name) = standard_manager_name {
+            let manager = registry.bind::<ExtBackgroundEffectManagerV1, _, _>(
+                manager_name,
+                1,
+                &queue_handle,
+                (),
+            );
+            queue.roundtrip(&mut state).ok()?;
+            let supported = state.blur_supported;
+            if supported {
+                // SAFETY: eframe supplied this live wl_surface from the same display.
+                let surface_id = unsafe {
+                    ObjectId::from_ptr(wl_surface::WlSurface::interface(), surface_ptr.cast()).ok()?
+                };
+                let surface = wl_surface::WlSurface::from_id(&connection, surface_id).ok()?;
+                let effect = manager.get_background_effect(&surface, &queue_handle, ());
+                manager.destroy();
+                Some((surface, BackdropEffect::Standard(effect)))
+            } else {
+                manager.destroy();
+                None
+            }
+        } else {
+            None
         };
-        let surface = wl_surface::WlSurface::from_id(&connection, surface_id).ok()?;
-        let effect = manager.get_background_effect(&surface, &queue_handle, ());
-        // Existing effect objects remain valid after their manager is destroyed.
-        manager.destroy();
+
+        let (surface, effect) = if let Some(result) = standard_effect {
+            result
+        } else {
+            // Plasma versions before 6.7 expose KWin's older private blur protocol.
+            // Keep this as a fallback only: Plasma 6.7 removed it in favour of
+            // ext-background-effect-v1.
+            let manager_name = kde_manager_name?;
+            let manager = registry.bind::<OrgKdeKwinBlurManager, _, _>(
+                manager_name,
+                1,
+                &queue_handle,
+                (),
+            );
+            // SAFETY: eframe supplied this live wl_surface from the same display.
+            let surface_id = unsafe {
+                ObjectId::from_ptr(
+                    wl_surface::WlSurface::interface(),
+                    surface_ptr.cast(),
+                )
+                .ok()?
+            };
+            let surface = wl_surface::WlSurface::from_id(&connection, surface_id).ok()?;
+            let effect = manager.create(&surface, &queue_handle, ());
+            (
+                surface.clone(),
+                BackdropEffect::Kde {
+                    effect,
+                    manager,
+                    surface,
+                },
+            )
+        };
+
         let region = compositor.create_region(&queue_handle, ());
         // The compositor clips this large surface-local region to the actual
         // window bounds, so no resize event integration is necessary.
         region.add(0, 0, 32_767, 32_767);
-        effect.set_blur_region(Some(&region));
-        // eframe will commit the next rendered buffer; the blur region is
-        // double-buffered with that surface commit. Flush the requests now.
+        match &effect {
+            BackdropEffect::Standard(effect) => effect.set_blur_region(Some(&region)),
+            BackdropEffect::Kde { effect, .. } => {
+                effect.set_region(Some(&region));
+                effect.commit();
+            }
+        }
+        // The region is applied with the next surface commit. Flush requests now.
         connection.flush().ok()?;
 
         Some(Self {
@@ -102,10 +174,19 @@ impl WaylandBackdrop {
     }
 
     fn set_blur(&self, enabled: bool) -> Option<()> {
-        if enabled {
-            self.effect.set_blur_region(Some(&self.region));
-        } else {
-            self.effect.set_blur_region(None);
+        match &self.effect {
+            BackdropEffect::Standard(effect) => {
+                effect.set_blur_region(enabled.then_some(&self.region));
+            }
+            BackdropEffect::Kde { effect, .. } => {
+                if enabled {
+                    effect.set_region(Some(&self.region));
+                    effect.commit();
+                } else {
+                    effect.set_region(None);
+                    effect.commit();
+                }
+            }
         }
         // Let winit's next buffer commit apply the pending blur-region change.
         self.connection.flush().ok()?;
@@ -236,9 +317,43 @@ impl Dispatch<ExtBackgroundEffectSurfaceV1, ()> for WaylandState {
     }
 }
 
+impl Dispatch<OrgKdeKwinBlurManager, ()> for WaylandState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &OrgKdeKwinBlurManager,
+        _event: wayland_protocols_plasma::blur::client::org_kde_kwin_blur_manager::Event,
+        _data: &(),
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<OrgKdeKwinBlur, ()> for WaylandState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &OrgKdeKwinBlur,
+        _event: wayland_protocols_plasma::blur::client::org_kde_kwin_blur::Event,
+        _data: &(),
+        _connection: &Connection,
+        _queue_handle: &QueueHandle<Self>,
+    ) {
+    }
+}
+
 impl Drop for WaylandBackdrop {
     fn drop(&mut self) {
-        self.effect.destroy();
+        match &self.effect {
+            BackdropEffect::Standard(effect) => effect.destroy(),
+            BackdropEffect::Kde {
+                effect,
+                manager,
+                surface,
+            } => {
+                manager.unset(surface);
+                effect.release();
+            }
+        }
         self.region.destroy();
         let _ = self.connection.flush();
     }

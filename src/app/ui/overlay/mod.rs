@@ -26,9 +26,12 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     let custom_titlebar = !app.settings_manager.get().show_titlebar
         && !fullscreen
         && app.settings_manager.get().custom_titlebar_navigation;
-    // Native desktop menu bars replace the floating hamburger, but the custom
-    // title bar has its own hamburger and must keep that popup functional.
-    if desktop_menu_bar && !custom_titlebar {
+    // With native decorations, Home keeps its landing-page navigation available;
+    // in other workspaces the floating controls follow the navigation auto-hide state.
+    let native_window_titlebar = app.settings_manager.get().show_titlebar;
+    if desktop_menu_bar
+        && ((!fullscreen && !native_window_titlebar) || app.is_home_surface_active())
+    {
         app.hamburger_menu_open = false;
     }
     // Sidebar drawer handle is separate from the navigation toolbar and follows
@@ -41,9 +44,27 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // when the user hides the viewer overlays or the file sidebar.
     crate::app::queues::render_rename_dialog(app, ctx);
     if !app.overlay_visible {
+        // Native-titlebar navigation auto-hides with the rest of the toolbar. Home
+        // is the exception: its navigation entry points remain available.
+        if native_window_titlebar
+            && !fullscreen
+            && app.is_home_surface_active()
+            && !desktop_menu_bar
+        {
+            // Home remains a navigable landing surface even when image overlays are
+            // hidden; other workspaces do not leave floating navigation buttons behind.
+            let central_rect = app.main_view_rect(ctx);
+            render_main_surface_navigation_controls(
+                app,
+                ctx,
+                egui::pos2(central_rect.left() + MENU_OFFSET, get_menu_offset_y(app, ctx)),
+            );
+        }
         // Desktop profile menu bars are always visible, even while the floating
         // viewer controls are hidden. Their application menu must remain usable.
-        if app.hamburger_menu_open && (!desktop_menu_bar || custom_titlebar) {
+        if app.hamburger_menu_open
+            && (!desktop_menu_bar || custom_titlebar || native_window_titlebar)
+        {
             render_hamburger_menu(app, ctx, placement);
         }
         render_custom_frame_resize_handles(app, ctx);
@@ -63,17 +84,21 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 
     let is_fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     let menu_offset_y = if placement == "win98" {
-        if is_fullscreen {
-            // Fullscreen hides both the desktop menu bar and the custom titlebar
-            // spacer. Keep the toolbar close to the top edge instead of leaving
-            // the reserved windowed-mode gap behind.
-            2.0
-        } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
-            crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
-        } else if !app.settings_manager.settings.show_titlebar {
-            crate::app::ui::custom_titlebar_height(ctx) + 2.0
+        if is_fullscreen && app.workspace_tab_strip_visible(ctx) {
+            // Fullscreen's tab row reserves the first 40px of the central view.
+            52.0
+        } else if is_fullscreen {
+            // With only the primary Viewer tab, the workspace strip is hidden.
+            MENU_OFFSET
         } else {
-            2.0
+            let base = if crate::app::ui::uses_desktop_menu_bar(ctx) {
+                crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
+            } else if !app.settings_manager.settings.show_titlebar {
+                crate::app::ui::custom_titlebar_height(ctx) + 2.0
+            } else {
+                2.0
+            };
+            base + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
         }
     } else {
         get_menu_offset_y(app, ctx)
@@ -86,91 +111,78 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     // before this module runs. Toolbar Areas use egui::Order::Foreground, keeping
     // navigation above the main view and both sidebars. Win98's menu-bar height is
     // included in `menu_offset_y`, so its toolbar sits below (never over) that bar.
-    // Floating controls are offset by the docked sidebars so they never sit
-    // underneath a panel.
-    // Use the actual panel allocation, not the saved preference: egui may
-    // clamp the panel on a narrow window, and overlay controls must begin past
-    // the rendered sidebar edge to avoid drawing over it.
-    let left_offset = if app.settings_manager.get().show_file_sidebar {
-        app.sidebar_actual_width
-    } else {
-        0.0
-    };
-    let right_offset = app.right_sidebar_actual_width.max(0.0);
+    // All overlay widths and offsets use the same authoritative rectangle as
+    // Masonry and Compare. CentralPanel has already removed docked sidebars.
+    let central_rect = app.main_view_rect(ctx);
+    let central_left = central_rect.left();
+    let central_width = app.main_view_width(ctx);
+    let toolbar_left = central_left + MENU_OFFSET;
+    let toolbar_width = (central_width - MENU_OFFSET * 2.0).max(0.0);
+    let hide_image_navigation = app.active_workspace_hides_image_navigation();
 
-    // The placement can be overridden independently of the visual profile.
-    // Automatic follows the resolved Look profile (desktop detection happens there).
-    let viewport_width = ctx.input(|input| {
-        input
-            .viewport()
-            .inner_rect
-            .map(|rect| rect.width())
-            .unwrap_or(1280.0)
-    });
-    let central_width = (viewport_width - left_offset - right_offset - 16.0).max(0.0);
-    if custom_titlebar {
-        // The custom title bar owns the primary navigation and zoom controls.
-        // Keep the remaining image actions in the bottom toolbar instead of
-        // duplicating controls in a floating top/platform toolbar.
-        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET, central_width);
-    } else if placement == "native" {
-        // Pass the true central viewport width to responsive metadata fitting. An
-        // auto-sized Area reports its previous content width, which creates a
-        // feedback loop: after shrinking once, its label cannot grow again.
-        toolbar::render_top_toolbar(
-            app,
-            ctx,
-            left_offset + MENU_OFFSET,
-            menu_offset_y,
-            central_width,
-        );
-        toolbar::render_bottom_toolbar(app, ctx, left_offset + MENU_OFFSET, central_width);
-    } else {
-        // Windows 98 uses a classic full-width toolbar strip below the menu bar,
-        // with the action group aligned to the upper-right. Other platform layouts
-        // remain centered inside the space between the sidebars.
-        if placement == "win98" {
-            // Preserve the classic full-width strip, but leave a small safety gap at
-            // the right edge so its bevel/stroke cannot visually overlap the settings
-            // or edit sidebar when that panel is open.
-            let right_clearance = if app.show_settings_menu || app.show_edit_menu {
-                MENU_OFFSET
+    if hide_image_navigation {
+        // Masonry, Compare and Home own the central view and do not show
+        // image-navigation overlays. Native-titlebar navigation is rendered separately.
+        if app.settings_manager.get().show_titlebar && !is_fullscreen && !desktop_menu_bar {
+            render_main_surface_navigation_controls(
+                app,
+                ctx,
+                egui::pos2(central_left + MENU_OFFSET, menu_offset_y),
+            );
+        } else if !custom_titlebar
+            && !is_fullscreen
+            && !desktop_menu_bar
+            && !app.workspace_tab_strip_hosts_hamburger(ctx)
+        {
+            let position = egui::pos2(central_left + MENU_OFFSET, menu_offset_y);
+            if app.is_home_surface_active() {
+                render_main_surface_navigation_controls(app, ctx, position);
             } else {
-                0.0
-            };
-            let central_width =
-                (viewport_width - left_offset - right_offset - right_clearance).max(0.0);
-            // The toolbar itself clips horizontally within the central strip if controls overflow.
-            if central_width >= 80.0 {
+                render_hamburger_button_at(app, ctx, position);
+            }
+        }
+    } else {
+        if custom_titlebar {
+            toolbar::render_bottom_toolbar(app, ctx, toolbar_left, toolbar_width);
+        } else if placement == "native" {
+            toolbar::render_top_toolbar(
+                app,
+                ctx,
+                toolbar_left,
+                menu_offset_y,
+                toolbar_width,
+            );
+            toolbar::render_bottom_toolbar(app, ctx, toolbar_left, toolbar_width);
+        } else if placement == "win98" {
+            if central_width >= 136.0 {
                 toolbar::render_platform_toolbar(
                     app,
                     ctx,
                     placement,
-                    left_offset,
-                    central_width,
+                    toolbar_left,
+                    toolbar_width,
                     menu_offset_y,
                 );
             }
         } else {
-            let center_offset_x = (left_offset - right_offset) / 2.0;
-            let central_width = viewport_width - left_offset - right_offset;
-            if central_width >= 96.0 {
-                let max_width = (central_width - 8.0).max(96.0);
+            let center_offset_x = app.main_view_center_offset_x(ctx);
+            if central_width >= 136.0 {
                 toolbar::render_platform_toolbar(
                     app,
                     ctx,
                     placement,
                     center_offset_x,
-                    max_width,
+                    toolbar_width,
                     menu_offset_y,
                 );
             }
         }
+        let right_gap = app.main_view_right_gap(ctx);
+        toolbar::render_bottom_right_toolbar(app, ctx, right_gap + MENU_OFFSET);
     }
-    toolbar::render_bottom_right_toolbar(app, ctx, right_offset + MENU_OFFSET);
 
-    // Inspect channel checklist sits as a secondary row in the navigation UI.
-    if app.inspect_mode {
+    // Inspect controls belong to normal image navigation, not the Masonry browser.
+    if app.inspect_mode && !hide_image_navigation {
         egui::Area::new(egui::Id::new("inspect_channel_navigation_row"))
             .order(egui::Order::Foreground)
             .anchor(
@@ -207,7 +219,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
     }
 
     // Render the popup after the toolbar so it can use the button's actual screen rect.
-    if !desktop_menu_bar || custom_titlebar {
+    if !desktop_menu_bar || is_fullscreen || native_window_titlebar {
         render_hamburger_menu(app, ctx, placement);
     }
 
@@ -221,7 +233,8 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 }
 
 fn render_custom_frame_resize_handles(app: &ViewerApp, ctx: &egui::Context) {
-    if app.settings_manager.get().show_titlebar
+    if app.window_mouse_operation_active
+        || app.settings_manager.get().show_titlebar
         || ctx.input(|input| input.viewport().maximized.unwrap_or(false) || input.viewport().fullscreen.unwrap_or(false))
     {
         return;
@@ -237,7 +250,12 @@ fn render_custom_frame_resize_handles(app: &ViewerApp, ctx: &egui::Context) {
     } else {
         ctx.style().visuals.window_stroke.color
     };
-    resize_handles::render_resize_handles(ctx, thickness, border);
+    resize_handles::render_resize_handles(
+        ctx,
+        thickness,
+        border,
+        !app.settings_manager.get().show_titlebar,
+    );
 }
 
 /*
@@ -250,6 +268,70 @@ pub fn render_hamburger_button(app: &mut ViewerApp, ctx: &egui::Context) {
     .show(ctx, |ui| app.render_hamburger_ui(ui));
 }
  */
+
+fn render_hamburger_button_at(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    position: egui::Pos2,
+) {
+    egui::Area::new(egui::Id::new("masonry_navigation_hamburger"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(position)
+        .show(ctx, |ui| {
+            app.render_hamburger_ui(ui);
+        });
+}
+
+/// Native-titlebar navigation actions for non-image surfaces. When overlays are
+/// hidden, this row is kept persistent on Home only; other workspaces hide these
+/// controls together with the navigation UI. With a desktop menu bar, Masonry is
+/// hosted immediately before File instead of being duplicated in this row.
+fn render_main_surface_navigation_controls(
+    app: &mut ViewerApp,
+    ctx: &egui::Context,
+    position: egui::Pos2,
+) {
+    if crate::app::ui::uses_desktop_menu_bar(ctx) {
+        return;
+    }
+
+    // Home should sit directly on the custom titlebar/canvas when native
+    // decorations are disabled. Keep the floating toolbar surface for native
+    // titlebar navigation and for other non-image workspaces.
+    let unframed_home = app.is_home_surface_active()
+        && !app.settings_manager.get().show_titlebar;
+
+    egui::Area::new(egui::Id::new("main_surface_navigation_controls"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(position)
+        .show(ctx, |ui| {
+            if unframed_home {
+                render_main_surface_navigation_row(app, ui);
+            } else {
+                toolbar::toolbar_frame_mode(ctx, true)
+                    .show(ui, |ui| render_main_surface_navigation_row(app, ui));
+            }
+        });
+}
+
+fn render_main_surface_navigation_row(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    ui.horizontal(|ui| {
+        app.render_hamburger_ui(ui);
+        if app.masonry_toggle_available() {
+            let active = app.workspace.active_kind()
+                == crate::app::workspace::WorkspaceTabKind::Masonry;
+            let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
+                .on_hover_text(if active {
+                    "Return to Viewer"
+                } else {
+                    "Open current entries in Masonry"
+                });
+            if toggle.clicked() {
+                app.activate_masonry_from_navigation_button();
+            }
+        }
+    });
+}
 
 fn render_sidebar_drawer_button(app: &mut ViewerApp, ctx: &egui::Context) {
     const DRAWER_WIDTH: f32 = 26.0;
@@ -348,19 +430,29 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
         .show(ctx, |ui| app.render_hamburger_menu_ui(ctx, ui));
 }
 
+
 fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
     const MENU_OFFSET: f32 = 8.0;
 
-    if ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
-        MENU_OFFSET
-    } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
-        // Use the sum of the actually rendered top rows; inline menu/titlebar
-        // mode is counted only once by desktop_menu_bar_height().
-        crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
-    } else if app.settings_manager.settings.show_titlebar {
-        MENU_OFFSET
+    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+    if fullscreen {
+        if app.workspace_tab_strip_visible(ctx) {
+            // The fullscreen workspace tab row reserves the first 40px of the central view.
+            MENU_OFFSET + 44.0
+        } else {
+            MENU_OFFSET
+        }
     } else {
-        crate::app::ui::custom_titlebar_height(ctx) + (MENU_OFFSET / 2.0)
+        let base = if crate::app::ui::uses_desktop_menu_bar(ctx) {
+            // Use the sum of the actually rendered top rows; inline menu/titlebar
+            // mode is counted only once by desktop_menu_bar_height().
+            crate::app::ui::desktop_menu_bar_height(ctx) + 2.0
+        } else if app.settings_manager.settings.show_titlebar {
+            MENU_OFFSET
+        } else {
+            crate::app::ui::custom_titlebar_height(ctx) + (MENU_OFFSET / 2.0)
+        };
+        base + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
     }
 }
 

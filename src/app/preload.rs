@@ -1,5 +1,8 @@
 // preloading governs the range and tasks and duration for preloading
 
+use super::texture_mipmap::{
+    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload_from_entry,
+};
 use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
 use crate::decoder::default_registry;
 use crate::decoder::format_detection::load_bytes_with_detection;
@@ -16,6 +19,7 @@ use rayon::spawn;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::sync::mpsc::channel;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const PRELOAD_TIMEOUT: Duration = Duration::from_secs(5);
@@ -150,9 +154,9 @@ impl ViewerApp {
     /// skipped entries to become eligible again.
     fn move_preload_origin(&mut self) {
         self.preload_origin = self.current_index;
-        self.navigation_timer = None;
 
-        // New preload cycle.
+        // New preload cycle. Mipmap lookahead is no longer delayed by a
+        // navigation-idle timer; it starts as soon as the current image is ready.
         self.preload_skipped.clear();
 
         // Invalidate results from the previous cycle.
@@ -424,9 +428,182 @@ impl ViewerApp {
         started
     }
 
+    /// Prepare mipmaps for the current image and then cached neighbours.
+    ///
+    /// When no mip job is active, the current image is checked first. As soon
+    /// as its mipmaps are ready, the next cached neighbour starts immediately;
+    /// there is no navigation-idle delay. Newly cached neighbours are picked up
+    /// on the next app update.
+    /// Only one speculative worker/upload stream runs at a time to avoid retaining
+    /// full-resolution RGBA buffers for every image in the cache radius.
+    pub(crate) fn prepare_next_cached_mipmap(&mut self, ctx: &egui::Context) {
+        if self.settings_manager.get().texture_filter != "mipmap"
+            || self.should_stop_caching
+            || !self.workspace.should_preload()
+            || self.is_loading()
+        {
+            return;
+        }
+
+        // Never start a second CPU/GPU mip job while another one is still
+        // streaming. The existing callback continues to make progress, even if
+        // navigation resumes before the current job is complete.
+        if self.has_pending_mipmap_work() {
+            return;
+        }
+
+        // First priority: the image currently on screen. This covers cache hits
+        // whose mip preparation was deferred while a previous neighbour finished.
+        if !self.inspect_mode && !self.is_gif && !self.is_preview {
+            if let Some(image_id) = self.get_image_id(self.current_index) {
+                let is_current_texture = self.texture_image_id.as_deref() == Some(image_id.as_str());
+                let needs_mipmaps = self
+                    .image_cache
+                    .peek(&image_id)
+                    .is_some_and(|cached| {
+                        cached.texture_filter == "mipmap"
+                            && !cached.is_gif
+                            && !cached.is_preview
+                            && cached.mipmap_state.is_none()
+                    });
+
+                if is_current_texture && needs_mipmaps {
+                    if let Some(entry) = self.image_entries.get(self.current_index).cloned() {
+                        let state = start_mipmap_upload_from_entry(
+                            entry,
+                            self.settings_manager.get().virtual_texture_threshold,
+                        );
+                        if let Some(cached) = self.image_cache.get_mut(&image_id) {
+                            cached.mipmap_state = Some(state.clone());
+                            self.current_mipmap_state = Some(state);
+                            ctx.request_repaint();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        let len = self.image_entries.len();
+        if len <= 1 {
+            return;
+        }
+
+        // Prefer the next image, then the previous image, then alternate outward.
+        for distance in 1..=self.cache_radius {
+            let forward = self.get_circular_index(self.current_index, distance as isize);
+            let backward = self.get_circular_index(self.current_index, -(distance as isize));
+
+            for index in [forward, backward] {
+                if index == self.current_index || self.is_gif_index(index) {
+                    continue;
+                }
+                let Some(image_id) = self.get_image_id(index) else {
+                    continue;
+                };
+                let needs_mipmaps = self
+                    .image_cache
+                    .peek(&image_id)
+                    .is_some_and(|cached| {
+                        cached.texture_filter == "mipmap"
+                            && !cached.is_gif
+                            && !cached.is_preview
+                            && cached.mipmap_state.is_none()
+                    });
+                if !needs_mipmaps {
+                    continue;
+                }
+
+                let Some(entry) = self.image_entries.get(index).cloned() else {
+                    continue;
+                };
+                let state = start_mipmap_upload_from_entry(
+                    entry,
+                    self.settings_manager.get().virtual_texture_threshold,
+                );
+                if let Some(cached) = self.image_cache.get_mut(&image_id) {
+                    cached.mipmap_state = Some(state);
+                    ctx.request_repaint();
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Cached mip states that need a Glow callback this frame. A state already
+    /// submitted by the main-view callback is skipped; cached neighbours and an
+    /// outgoing texture retained as a loading placeholder continue in the background.
+    pub(crate) fn cached_mipmap_uploads_for_frame(
+        &self,
+    ) -> Vec<(egui::TextureId, SharedMipmapState)> {
+        if self.settings_manager.get().texture_filter != "mipmap"
+            || self.should_stop_caching
+            || !self.workspace.should_preload()
+        {
+            return Vec::new();
+        }
+
+        let len = self.image_entries.len();
+        if len <= 1 {
+            return Vec::new();
+        }
+
+        let mut uploads = Vec::new();
+        let mut seen_image_ids = HashSet::new();
+        for distance in 1..=self.cache_radius {
+            let forward = self.get_circular_index(self.current_index, distance as isize);
+            let backward = self.get_circular_index(self.current_index, -(distance as isize));
+
+            for index in [forward, backward] {
+                if index == self.current_index {
+                    continue;
+                }
+                let Some(image_id) = self.get_image_id(index) else {
+                    continue;
+                };
+                if !seen_image_ids.insert(image_id.clone()) {
+                    continue;
+                }
+                let Some(cached) = self.image_cache.peek(&image_id) else {
+                    continue;
+                };
+                if cached.texture_filter != "mipmap" || cached.is_gif || cached.is_preview {
+                    continue;
+                }
+                if let Some(state) = cached
+                    .mipmap_state
+                    .as_ref()
+                    .filter(|state| is_mipmap_state_pending(state))
+                {
+                    // Skip only when the main viewer already submitted this exact
+                    // worker state. During navigation, `texture_image_id` can
+                    // still identify the outgoing loading-placeholder texture
+                    // even though its foreground state was deliberately cleared.
+                    let handled_by_main_view = self.texture_image_id.as_deref()
+                        == Some(image_id.as_str())
+                        && self
+                            .current_mipmap_state
+                            .as_ref()
+                            .is_some_and(|current| Arc::ptr_eq(current, state));
+                    if !handled_by_main_view {
+                        uploads.push((cached.texture.id(), Arc::clone(state)));
+                    }
+                }
+            }
+        }
+        uploads
+    }
+
     // ====== MAIN PRELOAD PIPELINE ======
 
     pub fn preload_adjacent_images(&mut self) {
+        // Guard at the pipeline entry point as well as at the UI call sites.
+        // Settings panels and other helpers can request preloading directly;
+        // Masonry/Compare must never start the normal adjacent-image pipeline.
+        if !self.workspace.should_preload() {
+            self.should_stop_caching = true;
+            return;
+        }
         if self.should_stop_caching {
             return;
         }
@@ -578,7 +755,7 @@ impl ViewerApp {
             Ok(loaded_image) => {
                 self.preload_skipped.remove(&idx);
 
-                self.add_to_cache(ctx, idx, loaded_image);
+                self.add_to_cache(ctx, idx, &loaded_image);
             }
 
             // Failed preload
@@ -637,10 +814,6 @@ impl ViewerApp {
     }
 
     // ====== NAVIGATION / SETTINGS ======
-
-    pub fn reset_navigation_timer(&mut self) {
-        self.navigation_timer = Some(Instant::now());
-    }
 
     pub fn update_cache_radius(&mut self, new_radius: usize) {
         let radius = new_radius.clamp(1, 100);

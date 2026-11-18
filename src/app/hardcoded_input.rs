@@ -7,6 +7,97 @@ use std::path::PathBuf;
 impl ViewerApp {
     // Handle all hardcoded input events (keyboard, mouse, drag & drop)
 
+    /// Start global window move/resize gestures after a real drag begins.
+    /// This runs before any widgets are built, so the shortcuts work over every
+    /// part of the application rather than only over the central image response.
+    fn handle_global_window_mouse_shortcuts(&mut self, ctx: &egui::Context) {
+        let settings = self.settings_manager.get();
+        let move_enabled = settings.window_move_mouse_shortcut_enabled;
+        let resize_enabled = settings.window_resize_mouse_shortcut_enabled;
+        let (
+            primary_down,
+            alt,
+            shift,
+            press_origin,
+            pointer_pos,
+            fullscreen,
+            maximized,
+            window_rect,
+        ) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                input.pointer.button_down(egui::PointerButton::Primary),
+                input.modifiers.alt,
+                input.modifiers.shift,
+                input.pointer.press_origin(),
+                input.pointer.interact_pos(),
+                viewport.fullscreen.unwrap_or(false),
+                viewport.maximized.unwrap_or(false),
+                viewport.inner_rect.unwrap_or_else(|| input.viewport_rect()),
+            )
+        });
+
+        if !primary_down {
+            self.window_mouse_operation_active = false;
+            return;
+        }
+        if self.window_mouse_operation_active {
+            return;
+        }
+
+        let (Some(origin), Some(pointer_pos)) = (press_origin, pointer_pos) else {
+            return;
+        };
+        // Do not turn a modified click into a window operation. Let ordinary
+        // widget clicks complete unless the pointer has actually started dragging.
+        if origin.distance(pointer_pos) < 5.0 {
+            return;
+        }
+
+        if shift && resize_enabled && !fullscreen && !maximized {
+            // The four half-window regions each select their nearest corner.
+            let left = origin.x < window_rect.center().x;
+            let top = origin.y < window_rect.center().y;
+            let (direction, cursor) = match (left, top) {
+                (true, true) => (
+                    egui::viewport::ResizeDirection::NorthWest,
+                    egui::CursorIcon::ResizeNorthWest,
+                ),
+                (false, true) => (
+                    egui::viewport::ResizeDirection::NorthEast,
+                    egui::CursorIcon::ResizeNorthEast,
+                ),
+                (true, false) => (
+                    egui::viewport::ResizeDirection::SouthWest,
+                    egui::CursorIcon::ResizeSouthWest,
+                ),
+                (false, false) => (
+                    egui::viewport::ResizeDirection::SouthEast,
+                    egui::CursorIcon::ResizeSouthEast,
+                ),
+            };
+            self.window_mouse_operation_active = true;
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+            self.workspace.cancel_tab_drag();
+            self.sidebar_drag_index = None;
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
+            ctx.set_cursor_icon(cursor);
+        } else if alt && move_enabled {
+            self.window_mouse_operation_active = true;
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+            self.workspace.cancel_tab_drag();
+            self.sidebar_drag_index = None;
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+    }
+
     // Handle mouse input on the image response.
     pub fn handle_image_mouse_input(
         &mut self,
@@ -14,13 +105,18 @@ impl ViewerApp {
         response: &egui::Response,
         image_rect: Option<egui::Rect>,
     ) {
-        let (fullscreen, maximized, alt, ctrl, left_down, right_down, delta, hover_pos) =
-            ctx.input(|input| {
+        if self.window_mouse_operation_active {
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+            return;
+        }
+
+        let (fullscreen, maximized, alt, left_down, right_down, delta, hover_pos) = ctx
+            .input(|input| {
                 (
                     input.viewport().fullscreen.unwrap_or(false),
                     input.viewport().maximized.unwrap_or(false),
                     input.modifiers.alt,
-                    input.modifiers.ctrl,
                     input.pointer.button_down(egui::PointerButton::Primary),
                     input.pointer.button_down(egui::PointerButton::Secondary),
                     input.pointer.delta(),
@@ -28,6 +124,10 @@ impl ViewerApp {
                 )
             });
         let windowed = !fullscreen && !maximized;
+        let move_shortcut_enabled = self
+            .settings_manager
+            .get()
+            .window_move_mouse_shortcut_enabled;
 
         // Select the gesture mode once at drag start. Do not recalculate it while
         // panning, because the image rectangle itself moves as pan is applied.
@@ -47,6 +147,7 @@ impl ViewerApp {
                 let center = response.rect.center();
                 let offset = center - response.rect.center();
                 let image_point = offset / self.zoom - self.pan;
+                self.zoom_animation = None;
                 self.zoom = (self.zoom * zoom_delta).clamp(0.005, 50.0);
                 self.pan = offset / self.zoom - image_point;
                 self.b_zoom_used = true;
@@ -56,43 +157,27 @@ impl ViewerApp {
             return;
         }
 
-        // CTRL + LEFT DRAG -> RESIZE WINDOW. Native resize is unavailable while
-        // maximized/fullscreen, so do not start a resize gesture in those states.
-        if ctrl && windowed && response.drag_started_by(egui::PointerButton::Primary) {
-            self.main_view_pan_drag_active = false;
-            self.main_view_window_drag_active = false;
-            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(
-                egui::viewport::ResizeDirection::SouthEast,
-            ));
-            ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
-            return;
-        }
-
-        // ALT + LEFT DRAG -> MOVE WINDOW, even when the drag starts on the image.
-        if alt && response.drag_started_by(egui::PointerButton::Primary) {
-            self.main_view_pan_drag_active = false;
-            self.main_view_window_drag_active = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-            return;
-        }
-
         // Plain left drag on the visible image pans it. A drag in the margins
         // around the image moves the window instead, but only when windowed.
         if response.drag_started_by(egui::PointerButton::Primary) {
-            let drag_origin = ctx.input(|input| input.pointer.press_origin())
+            let drag_origin = ctx
+                .input(|input| input.pointer.press_origin())
                 .or_else(|| response.interact_pointer_pos());
-            let started_on_image = drag_origin.is_some_and(|position| {
-                image_rect.is_some_and(|rect| rect.contains(position))
-            });
+            let started_on_image = drag_origin
+                .is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)));
 
-            if started_on_image && !self.image_entries.is_empty() {
+            if started_on_image
+                && (!alt || !move_shortcut_enabled)
+                && !self.image_entries.is_empty()
+            {
                 self.main_view_pan_drag_active = true;
                 self.main_view_window_drag_active = false;
-            } else if windowed {
+            } else if windowed && !alt {
                 self.main_view_pan_drag_active = false;
                 self.main_view_window_drag_active = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                #[cfg(target_os = "linux")]
+                crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
                 return;
             }
@@ -106,8 +191,8 @@ impl ViewerApp {
             return;
         }
 
-        // Alt/Ctrl are reserved for window operations; Ctrl + wheel remains valid.
-        if alt || ctrl {
+        // Alt is reserved for the window-move shortcut. Alt + wheel remains valid.
+        if alt && move_shortcut_enabled {
             let modified_wheel = ctx.input(|i| {
                 i.events
                     .iter()
@@ -149,10 +234,17 @@ impl ViewerApp {
 
             let start_zoom = self.zoom_drag_start_zoom;
             let vertical_delta = current_pos.y - start_pos.y;
-            let new_zoom = (start_zoom * (-vertical_delta * 0.005).exp()).clamp(0.005, 50.0);
+            let step = self
+                .settings_manager
+                .get()
+                .zoom_step_mouse_right_button
+                .clamp(1.05, 2.0);
+            let sensitivity = step.ln() / 40.0;
+            let new_zoom = (start_zoom * (-vertical_delta * sensitivity).exp()).clamp(0.005, 50.0);
             let start_center = self.zoom_drag_start_center;
             let mouse_offset = start_pos - start_center;
             let image_point = mouse_offset / start_zoom - self.zoom_drag_start_pan;
+            self.zoom_animation = None;
             self.zoom = new_zoom;
             self.pan = mouse_offset / new_zoom - image_point;
             self.b_zoom_used = true;
@@ -171,10 +263,12 @@ impl ViewerApp {
         }
 
         // Show the grab cursor over the actual image area, not the surrounding margins.
-        if response.hovered()
+        if self.overlay_visible
+            && response.hovered()
             && !left_down
             && !right_down
-            && hover_pos.is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)))
+            && hover_pos
+                .is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)))
             && !self.image_entries.is_empty()
         {
             ctx.set_cursor_icon(egui::CursorIcon::Grab);
@@ -182,6 +276,8 @@ impl ViewerApp {
     }
 
     pub fn handle_input(&mut self, ctx: &egui::Context) {
+        self.handle_global_window_mouse_shortcuts(ctx);
+
         // Mark interaction if any input occurs
         let has_input = ctx.input(|i| {
             i.pointer.any_down()
@@ -206,6 +302,14 @@ impl ViewerApp {
         if ctx.wants_keyboard_input() {
             self.delete_key_was_pressed = false;
         } else {
+            // Masonry owns selection shortcuts while it is active. Consume these
+            // before the viewer's Ctrl+A (jump to first) and Delete-current-image
+            // bindings can see them.
+            if self.handle_workspace_shortcuts(ctx) {
+                self.delete_key_was_pressed = false;
+                self.handle_drag_drop(ctx);
+                return;
+            }
             // Escape first stops playback and consumes the key; it must not also
             // toggle fullscreen or close the application on the same keypress.
             if self.handle_escape_key(ctx) {
@@ -219,12 +323,30 @@ impl ViewerApp {
             {
                 self.begin_rename_current();
                 if self.rename_dialog.is_some() {
-                    let _ = self.settings_manager.update(|settings| settings.show_file_sidebar = true);
+                    let _ = self
+                        .settings_manager
+                        .update(|settings| settings.show_file_sidebar = true);
                 }
             }
 
             // Standard keyboard shortcuts
+            let compare_active = self
+                .workspace
+                .tabs
+                .get(self.workspace.active_index)
+                .is_some_and(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Compare);
             for command in handle_keyboard(ctx, &self.input_bindings) {
+                if compare_active
+                    && matches!(
+                        command,
+                        crate::input::shortcuts::ViewerCommand::ZoomIn
+                            | crate::input::shortcuts::ViewerCommand::ZoomOut
+                            | crate::input::shortcuts::ViewerCommand::ResetZoom
+                            | crate::input::shortcuts::ViewerCommand::MakeFit
+                    )
+                {
+                    continue;
+                }
                 self.handle_command(ctx, command);
             }
 
@@ -314,8 +436,8 @@ impl ViewerApp {
         let recursive_folder_drop = self.settings_manager.get().drag_drop_folders_recursive
             && !dropped_on_queue
             && !dropped_on_favorites;
-        let expanded_folder_drop = recursive_folder_drop
-            && dropped_paths.iter().any(|path| path.is_dir());
+        let expanded_folder_drop =
+            recursive_folder_drop && dropped_paths.iter().any(|path| path.is_dir());
         let paths: Vec<PathBuf> = if recursive_folder_drop {
             dropped_paths
                 .into_iter()
@@ -331,12 +453,17 @@ impl ViewerApp {
             dropped_paths
         };
         if expanded_folder_drop && paths.is_empty() {
-            self.queue_status = Some("No supported images found in the dropped folder or its subfolders.".into());
+            self.queue_status =
+                Some("No supported images found in the dropped folder or its subfolders.".into());
             return;
         }
 
         // A single .jvq is a queue document, not an image or folder.
-        if paths.len() == 1 && paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq")) {
+        if paths.len() == 1
+            && paths[0]
+                .extension()
+                .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"))
+        {
             self.sidebar_queue_tab = dropped_on_queue || self.sidebar_queue_tab;
             self.open_queue_file(&paths[0], ctx, dropped_on_queue);
         } else if dropped_on_queue {
@@ -353,9 +480,13 @@ impl ViewerApp {
                     let before = self.favorite_paths.len();
                     self.add_favorite_path(path);
                     added += usize::from(self.favorite_paths.len() > before);
-                } else { ignored += 1; }
+                } else {
+                    ignored += 1;
+                }
             }
-            self.queue_status = Some(format!("Added {added} favorite(s); ignored {ignored} unsupported item(s)."));
+            self.queue_status = Some(format!(
+                "Added {added} favorite(s); ignored {ignored} unsupported item(s)."
+            ));
         } else if expanded_folder_drop {
             // A recursively expanded folder is an explicit selection, even if it
             // contains only one image; do not index neighboring files outside it.

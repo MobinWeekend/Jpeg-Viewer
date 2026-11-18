@@ -29,6 +29,13 @@ enum EditAction {
 
 impl ViewerApp {
     pub fn start_editing(&mut self, ctx: &egui::Context) {
+        if self.is_home_surface_active() {
+            self.show_edit_menu = false;
+            self.crop_tool_active = false;
+            self.crop_drag_start_image = None;
+            self.crop_selection = None;
+            return;
+        }
         if self.edit_session.is_some() {
             self.edit_output_format = self.last_export_format;
             self.show_edit_menu = !self.show_edit_menu;
@@ -111,6 +118,9 @@ impl ViewerApp {
     /// Enter image-edit mode and activate the interactive crop selection tool.
     /// This is shared by the Edit panel and the desktop menu bar.
     pub fn start_crop_tool(&mut self, ctx: &egui::Context) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.edit_session.is_none() {
             self.start_editing(ctx);
         } else {
@@ -142,6 +152,9 @@ impl ViewerApp {
     }
 
     fn rotate_current_image(&mut self, ctx: &egui::Context, clockwise: bool) {
+        if self.is_home_surface_active() {
+            return;
+        }
         if self.edit_session.is_none() {
             self.start_editing(ctx);
         }
@@ -168,14 +181,29 @@ impl ViewerApp {
             return;
         };
         let image = session.materialized_image();
-        let size = [image.width() as usize, image.height() as usize];
-        let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-        let texture_options = self.get_texture_options();
+        let width = image.width();
+        let height = image.height();
+        let rgba = std::sync::Arc::new(image.into_raw());
+        let size = [width as usize, height as usize];
+        let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
+        let texture_options = self.get_texture_base_options();
         if let Some(texture) = self.texture.as_mut() {
             texture.set(color, texture_options);
         } else {
             self.texture = Some(ctx.load_texture("edited_working_copy", color, texture_options));
         }
+        // An edited working copy is not the original file represented by the
+        // current entry, so it must not be inserted into the image cache.
+        self.texture_image_id = None;
+        self.current_mipmap_state = if self.settings_manager.get().texture_filter == "mipmap" {
+            Some(super::super::texture_mipmap::start_mipmap_upload(
+                width,
+                height,
+                rgba,
+            ))
+        } else {
+            None
+        };
         self.virtual_texture = None;
         self.gif_animation = None;
         self.is_gif = false;
@@ -198,14 +226,32 @@ impl ViewerApp {
             session.materialized_image()
         };
         let new_size = egui::vec2(image.width() as f32, image.height() as f32);
-        let size = [image.width() as usize, image.height() as usize];
-        let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-        let texture_options = self.get_texture_options();
+        let width = image.width();
+        let height = image.height();
+        let rgba = std::sync::Arc::new(image.into_raw());
+        let size = [width as usize, height as usize];
+        let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
+        let texture_options = self.get_texture_base_options();
         if let Some(texture) = self.texture.as_mut() {
             texture.set(color, texture_options);
         } else {
             self.texture = Some(ctx.load_texture("edited_working_copy", color, texture_options));
         }
+        // Slider-drag previews are deliberately downsampled already, so a
+        // second mip pyramid would be wasted work. Build it again on release,
+        // when the full-resolution working image is restored.
+        self.texture_image_id = None;
+        self.current_mipmap_state = if !downsample
+            && self.settings_manager.get().texture_filter == "mipmap"
+        {
+            Some(super::super::texture_mipmap::start_mipmap_upload(
+                width,
+                height,
+                rgba,
+            ))
+        } else {
+            None
+        };
         self.virtual_texture = None;
         self.gif_animation = None;
         self.is_gif = false;
@@ -224,13 +270,26 @@ impl ViewerApp {
 
     fn restore_original_preview(&mut self, ctx: &egui::Context) {
         if let Some(session) = self.edit_session.take() {
-            let size = [
-                session.original.width() as usize,
-                session.original.height() as usize,
-            ];
-            let color = egui::ColorImage::from_rgba_unmultiplied(size, session.original.as_raw());
-            self.texture =
-                Some(ctx.load_texture("edit_cancel_restore", color, self.get_texture_options()));
+            let width = session.original.width();
+            let height = session.original.height();
+            let rgba = std::sync::Arc::new(session.original.as_raw().clone());
+            let size = [width as usize, height as usize];
+            let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
+            self.texture = Some(ctx.load_texture(
+                "edit_cancel_restore",
+                color,
+                self.get_texture_base_options(),
+            ));
+            self.texture_image_id = self.get_image_id(self.current_index);
+            self.current_mipmap_state = if self.settings_manager.get().texture_filter == "mipmap" {
+                Some(super::super::texture_mipmap::start_mipmap_upload(
+                    width,
+                    height,
+                    rgba,
+                ))
+            } else {
+                None
+            };
             self.b_fit_to_window = true;
             self.image_rect = None;
             self.zoom = 1.0;
@@ -888,6 +947,9 @@ impl ViewerApp {
         response: &egui::Response,
         image_rect: egui::Rect,
     ) {
+        if self.window_mouse_operation_active {
+            return;
+        }
         let Some((image_width, image_height)) = self
             .edit_session
             .as_ref()

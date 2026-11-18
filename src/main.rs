@@ -66,17 +66,22 @@ fn main() -> eframe::Result<()> {
         .with_transparent(true)
         .with_resizable(true);
 
-    if !app_settings.start_centered {
-        if let Some(pos) = app_settings.window_pos {
-            viewport = viewport.with_position(pos);
+    // A maximized Win32 window must let the window manager calculate its
+    // monitor/work-area bounds. Combining a restored inner size (and position)
+    // with `with_maximized(true)` can leave a decorated window partially sized
+    // on Windows 10/11, with unused strips of the monitor exposed. Saved geometry
+    // is only applied when starting in the restored state.
+    let start_maximized = app_settings.window_maximized && !app_settings.start_fullscreen;
+    if !start_maximized {
+        if !app_settings.start_centered {
+            if let Some(pos) = app_settings.window_pos {
+                viewport = viewport.with_position(pos);
+            }
         }
-    }
-
-    if let Some(size) = app_settings.window_size {
-        viewport = viewport.with_inner_size(size);
-    }
-
-    if app_settings.window_maximized && !app_settings.start_fullscreen {
+        if let Some(size) = app_settings.window_size {
+            viewport = viewport.with_inner_size(size);
+        }
+    } else {
         viewport = viewport.with_maximized(true);
     }
 
@@ -98,9 +103,13 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_fonts(initial_font_definitions);
+            let raw_display_handle = cc.display_handle().ok().map(|display| display.as_raw());
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::initialize(raw_display_handle.clone());
+
             crate::ui_theme::platform_backdrop::initialize(
                 cc.window_handle().ok().map(|window| window.as_raw()),
-                cc.display_handle().ok().map(|display| display.as_raw()),
+                raw_display_handle,
             );
 
             crate::ui_theme::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);

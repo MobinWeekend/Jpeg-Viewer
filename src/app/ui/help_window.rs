@@ -110,6 +110,9 @@ impl ViewerApp {
                             "• Browse common raster, animated, vector, and camera RAW formats",
                             "• Open images inside ZIP, 7z, and RAR archives without extracting them",
                             "• Browse, Queue, Favorites, and Info sidebar tabs",
+                            "• Firefox-style workspace tabs with drag-and-drop and keyboard reordering",
+                            "• Local and Folder Masonry galleries with size-adaptive thumbnails, sorting, and recursive folder sections",
+                            "• Multi-selection file actions and independent comparison workspaces with per-pane removal, Viewer-compatible zoom shortcuts, synchronized pan/zoom, and anchor-based rotation/alignment",
                             "• Save and load .jvq queues; reorder queue and favorite entries",
                             "• Edit supported raster files: crop, rotate, flip, adjust color, undo/redo, and export",
                             "• GIF playback controls and configurable slideshow transitions and motion",
@@ -163,6 +166,18 @@ impl ViewerApp {
                         Self::render_shortcut_row(ui, "F5", "Open settings menu");
                         Self::render_shortcut_row(ui, "T / F3", "Toggle file sidebar");
                         Self::render_shortcut_row(ui, "F1", "Open this help window");
+
+                        ui.add_space(4.0);
+
+                        // Workspace Tabs
+                        ui.label(egui::RichText::new("Workspace Tabs").size(14.0).strong());
+                        ui.add_space(4.0);
+                        Self::render_shortcut_row(ui, "Ctrl+PageUp / PageDown", "Switch to previous / next workspace tab");
+                        Self::render_shortcut_row(ui, "Ctrl+Shift+PageUp / PageDown", "Move the active tab left / right");
+                        Self::render_shortcut_row(ui, "Ctrl+Shift+Left / Right", "Alternative tab-reordering shortcuts");
+                        Self::render_shortcut_row(ui, "Drag tab", "Reorder workspace tabs, as in Firefox");
+                        Self::render_shortcut_row(ui, "+", "Choose an image and open it in a separate workspace tab");
+                        ui.label(egui::RichText::new("Home is part of the primary Viewer workspace. The + button is in the navigation overlay. When enabled, workspace tabs share the custom title-bar row; in fullscreen they return to the main view.").small().weak());
 
                         ui.add_space(4.0);
 
@@ -228,8 +243,8 @@ impl ViewerApp {
                         Self::render_mouse_row(ui, "Double-click Left", "Open file dialog (on empty screen)");
                         Self::render_mouse_row(ui, "Middle Click", "Toggle fullscreen");
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
-                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window from anywhere in the main view");
-                        Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window in windowed mode");
+                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window from anywhere in the application (toggle in General settings)");
+                        Self::render_mouse_row(ui, "Shift + Left Drag", "Resize the nearest window corner from anywhere in the application (toggle in General settings)");
                         Self::render_mouse_row(ui, "Touchpad scroll", "Navigate images; Ctrl + scroll zooms unless inverted in Settings");
                         Self::render_mouse_row(ui, "Sidebar thumbnails", "Select to open; drag to reorder Queue/Favorites entries");
                         Self::render_mouse_row(ui, "Entry number", "Enter a position to move the item in supported lists");

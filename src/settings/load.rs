@@ -43,6 +43,37 @@ impl SettingsManager {
                     if let Some(value) = section.get("b_ctrl_invert") {
                         settings.b_ctrl_invert = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("window_move_mouse_shortcut_enabled") {
+                        settings.window_move_mouse_shortcut_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("window_resize_mouse_shortcut_enabled") {
+                        settings.window_resize_mouse_shortcut_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("zoom_step_mouse_right_button") {
+                        if let Ok(step_mouse_right_button) = value.parse::<f32>() {
+                            if step_mouse_right_button.is_finite()
+                                && (1.05..=2.0).contains(&step_mouse_right_button)
+                            {
+                                settings.zoom_step_mouse_right_button = step_mouse_right_button;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("zoom_step_mouse_wheel") {
+                        if let Ok(step_mouse_wheel) = value.parse::<f32>() {
+                            if step_mouse_wheel.is_finite()
+                                && (1.05..=2.0).contains(&step_mouse_wheel)
+                            {
+                                settings.zoom_step_mouse_wheel = step_mouse_wheel;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("zoom_step_keyboard") {
+                        if let Ok(step_keyboard) = value.parse::<f32>() {
+                            if step_keyboard.is_finite() && (1.05..=2.0).contains(&step_keyboard) {
+                                settings.zoom_step_keyboard = step_keyboard;
+                            }
+                        }
+                    }
                     // Read window position
                     if let Some(value) = section.get("window_pos") {
                         if let Some((x, y)) = Self::parse_f32_pair(value) {
@@ -81,14 +112,6 @@ impl SettingsManager {
                             if factor.is_finite() && (0.0..=10.0).contains(&factor) && factor > 0.0
                             {
                                 settings.cache_delta_factor = factor;
-                            }
-                        }
-                    }
-                    // Read navigation pause in ms
-                    if let Some(value) = section.get("navigation_pause_ms") {
-                        if let Ok(pausetime) = value.parse::<u64>() {
-                            if pausetime > 100 {
-                                settings.navigation_pause_ms = pausetime;
                             }
                         }
                     }
@@ -252,8 +275,14 @@ impl SettingsManager {
                     if let Some(value) = section.get("custom_titlebar_navigation") {
                         settings.custom_titlebar_navigation = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("custom_titlebar_navigation_preference_configured") {
-                        settings.custom_titlebar_navigation_preference_configured = Self::parse_bool(value);
+                    if let Some(value) = section.get("workspace_tabs_in_titlebar") {
+                        settings.workspace_tabs_in_titlebar = Self::parse_bool(value);
+                    }
+                    if let Some(value) =
+                        section.get("custom_titlebar_navigation_preference_configured")
+                    {
+                        settings.custom_titlebar_navigation_preference_configured =
+                            Self::parse_bool(value);
                     }
                     if let Some(value) = section.get("title_bar_color_mode") {
                         if matches!(value, "system" | "main_view" | "main_color") {
@@ -315,6 +344,44 @@ impl SettingsManager {
                     if let Some(value) = section.get("drag_drop_folders_recursive") {
                         settings.drag_drop_folders_recursive = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("session_restore_preference") {
+                        if matches!(value, "automatic" | "ask" | "never") {
+                            settings.session_restore_preference = value.to_string();
+                        }
+                    }
+                    if let Some(value) = section.get("masonry_thumbnail_size") {
+                        if let Ok(size) = value.parse::<f32>() {
+                            if size.is_finite() && (76.0..=512.0).contains(&size) {
+                                settings.masonry_thumbnail_size = size;
+                            }
+                        }
+                    }
+                    if let Some(value) = section.get("masonry_show_folder_headers") {
+                        settings.masonry_show_folder_headers = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("new_tab_recent_rows") {
+                        if let Ok(rows) = value.parse::<usize>() {
+                            settings.new_tab_recent_rows = rows.clamp(0, 2);
+                        }
+                    } else {
+                        // Migrate the previous toggle + item-count controls. The
+                        // New Tab grid now supports exactly six entries per row.
+                        let was_enabled = section
+                            .get("new_tab_show_recent")
+                            .map(Self::parse_bool)
+                            .unwrap_or(true);
+                        if !was_enabled {
+                            settings.new_tab_recent_rows = 0;
+                        } else {
+                            let old_count = section
+                                .get("new_tab_recent_count")
+                                .and_then(|value| value.parse::<usize>().ok())
+                                .unwrap_or(50)
+                                .clamp(1, 50);
+                            settings.new_tab_recent_rows = old_count.saturating_add(5) / 6;
+                            settings.new_tab_recent_rows = settings.new_tab_recent_rows.clamp(1, 2);
+                        }
+                    }
                     if let Some(value) = section.get("view_padding_mode") {
                         if matches!(value, "look" | "fine_tune" | "custom") {
                             settings.view_padding_mode = value.to_string();
@@ -324,15 +391,23 @@ impl SettingsManager {
                         let key = format!("view_padding_fine_tune_{profile}");
                         if let Some(value) = section.get(&key) {
                             if let Some(values) = Self::parse_f32_quad(value) {
-                                if values.iter().all(|v| v.is_finite() && (-300.0..=300.0).contains(v)) {
-                                    settings.view_padding_fine_tune.insert(profile.to_string(), values);
+                                if values
+                                    .iter()
+                                    .all(|v| v.is_finite() && (-300.0..=300.0).contains(v))
+                                {
+                                    settings
+                                        .view_padding_fine_tune
+                                        .insert(profile.to_string(), values);
                                 }
                             }
                         }
                     }
                     if let Some(value) = section.get("view_padding_custom") {
                         if let Some(values) = Self::parse_f32_quad(value) {
-                            if values.iter().all(|v| v.is_finite() && (0.0..=400.0).contains(v)) {
+                            if values
+                                .iter()
+                                .all(|v| v.is_finite() && (0.0..=400.0).contains(v))
+                            {
                                 settings.view_padding_custom = values;
                             }
                         }
@@ -346,10 +421,30 @@ impl SettingsManager {
                         }
                     }
                     for (key, target, min, max) in [
-                        ("fit_window_min_width", &mut settings.fit_window_min_width, 512.0, 8192.0),
-                        ("fit_window_max_width", &mut settings.fit_window_max_width, 512.0, 16384.0),
-                        ("fit_window_min_height", &mut settings.fit_window_min_height, 512.0, 8192.0),
-                        ("fit_window_max_height", &mut settings.fit_window_max_height, 512.0, 16384.0),
+                        (
+                            "fit_window_min_width",
+                            &mut settings.fit_window_min_width,
+                            512.0,
+                            8192.0,
+                        ),
+                        (
+                            "fit_window_max_width",
+                            &mut settings.fit_window_max_width,
+                            512.0,
+                            16384.0,
+                        ),
+                        (
+                            "fit_window_min_height",
+                            &mut settings.fit_window_min_height,
+                            512.0,
+                            8192.0,
+                        ),
+                        (
+                            "fit_window_max_height",
+                            &mut settings.fit_window_max_height,
+                            512.0,
+                            16384.0,
+                        ),
                     ] {
                         if let Some(value) = section.get(key) {
                             if let Ok(parsed) = value.parse::<f32>() {

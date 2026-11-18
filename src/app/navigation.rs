@@ -53,7 +53,6 @@ impl ViewerApp {
         self.update_current_image_path();
         self.detect_current_file_type();
         self.sidebar_last_current_index = None;
-        self.reset_navigation_timer();
         self.file_metadata = Some(self.build_file_metadata());
         self.load_frame_limiter_settings();
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
@@ -97,7 +96,9 @@ impl ViewerApp {
         // Change image
         self.current_index = new_index;
 
-        // Reset image view
+        // Reset image view and stop any in-flight keyboard zoom animation so
+        // it cannot continue changing the next image's initial fit.
+        self.zoom_animation = None;
         self.b_fit_to_window = true;
         self.window_fit_pending = self.settings_manager.get().fit_window_to_image;
         self.image_rect = None;
@@ -132,9 +133,6 @@ impl ViewerApp {
 
         // Reset loading state
         self.set_loading_state(LoadingState::Idle);
-
-        // Reset navigation timer
-        self.reset_navigation_timer();
 
         // Load the new image while keeping the old texture visible.
         // This prevents flashing when navigating quickly.

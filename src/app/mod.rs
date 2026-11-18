@@ -19,7 +19,9 @@ pub(crate) mod slideshow;
 pub mod types;
 pub(crate) mod ui;
 mod update;
+mod texture_mipmap;
 mod virtual_texture;
 mod window_sizing;
+pub(crate) mod workspace;
 
 pub use types::ViewerApp;
