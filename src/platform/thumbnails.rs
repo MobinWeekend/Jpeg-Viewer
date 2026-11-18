@@ -6,9 +6,9 @@
 
 use std::path::Path;
 
-/// Per-thread platform state for the shared thumbnail worker pool. On Windows,
-/// each worker owns a COM apartment for its entire lifetime instead of paying
-/// the initialization cost for every file.
+/// Per-thread platform state for workers that query Windows Shell metadata or
+/// request native previews. Each Windows worker owns a COM apartment for its
+/// lifetime instead of paying the initialization cost for every image.
 pub(crate) struct ThumbnailWorkerContext {
     #[cfg(target_os = "windows")]
     com_initialized: bool,
@@ -53,8 +53,8 @@ pub(crate) fn diagnostics_enabled() -> bool {
 }
 
 /// Load a native thumbnail if one is cached, otherwise ask the desktop shell to
-/// generate one. This function is called only from the shared thumbnail worker
-/// pool, never from egui's UI thread.
+/// generate one. This function is called only from the dedicated native-thumbnail
+/// worker pool, never from egui's UI thread.
 pub(crate) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaImage> {
     if !path.is_file() {
         return None;
@@ -129,8 +129,11 @@ pub(crate) fn source_dimensions(path: &Path) -> Option<(u32, u32)> {
 #[cfg(target_os = "macos")]
 mod quick_look {
     use super::*;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{Duration, Instant};
+
+    const QUICK_LOOK_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub(super) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaImage> {
         static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
@@ -140,13 +143,42 @@ mod quick_look {
         ));
         std::fs::create_dir_all(&directory).ok()?;
         let thumbnail_size = max_side.max(1).to_string();
-        let status = Command::new("qlmanage")
+        let mut child = match Command::new("qlmanage")
             .args(["-t", "-s", thumbnail_size.as_str(), "-o"])
             .arg(&directory)
             .arg(path)
-            .output()
-            .ok()
-            .is_some_and(|output| output.status.success());
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(_) => {
+                let _ = std::fs::remove_dir_all(&directory);
+                return None;
+            }
+        };
+        let deadline = Instant::now() + QUICK_LOOK_TIMEOUT;
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status.success(),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Ok(None) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_dir_all(&directory);
+                    return None;
+                }
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = std::fs::remove_dir_all(&directory);
+                    return None;
+                }
+            }
+        };
 
         let result = if status {
             let generated = path.file_name().map(|name| directory.join(format!("{}.png", name.to_string_lossy())));

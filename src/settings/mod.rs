@@ -28,7 +28,7 @@ pub struct AppSettings {
     pub cache_delta_factor: f32,
     pub navigation_pause_ms: u64,
     pub max_cache_task: u8,
-    /// One shared worker count for Browse, Queue, Favorites, and Masonry thumbnails (1-8). Masonry jobs receive priority.
+    /// Thumbnail worker multiplier (1-8): 3x dimensions, 2x native OS/DE, and 1x Jpeg-Viewer decoder workers.
     pub thumbnail_workers: usize,
     pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches

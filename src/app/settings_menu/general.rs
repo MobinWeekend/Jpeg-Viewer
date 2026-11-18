@@ -105,7 +105,7 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let current = app.settings_manager.get().thumbnail_workers;
     let mut workers = current as u32;
     ui.horizontal(|ui| {
-        ui.label("Shared thumbnail workers");
+        ui.label("Thumbnail worker multiplier");
         ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut workers, 1..=8).show_value(true)));
     });
     if workers as usize != current {
@@ -113,7 +113,7 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
             .settings_manager
             .update(|settings| settings.thumbnail_workers = workers as usize);
     }
-    ui.label("Default: 3. Shared by Browse, Queue, Favorites, and Masonry. Visible Masonry tiles have priority. Restart to apply changes.");
+    ui.label("Default: 3. Each multiplier adds 3 dimension workers, 2 OS/DE thumbnail workers, and 1 Jpeg-Viewer decoder worker (18 total at the default). Dimensions run first, native thumbnails second, and Jpeg-Viewer decoding last. Idle workers sleep and wake when needed; timed-out or cancelled work is skipped. Restart to apply changes.");
 }
 
 // Invert Scroll Zoom

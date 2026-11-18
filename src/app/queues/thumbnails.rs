@@ -7,101 +7,194 @@ use std::path::PathBuf;
 use std::io::BufReader;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-#[cfg(target_os = "windows")]
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 type ThumbnailJob = Box<dyn FnOnce() + Send + 'static>;
+type ThumbnailStartedAt = Arc<Mutex<Option<Instant>>>;
+
+fn mark_thumbnail_started(started_at: &ThumbnailStartedAt) {
+    let mut started_at = started_at.lock().expect("thumbnail start time poisoned");
+    started_at.get_or_insert_with(Instant::now);
+}
+
+fn thumbnail_started_elapsed(started_at: &ThumbnailStartedAt) -> Option<Duration> {
+    started_at
+        .lock()
+        .expect("thumbnail start time poisoned")
+        .as_ref()
+        .map(Instant::elapsed)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThumbnailPool {
+    Dimensions,
+    Native,
+    Decoder,
+}
+
+impl ThumbnailPool {
+    fn index(self) -> usize {
+        match self {
+            Self::Dimensions => 0,
+            Self::Native => 1,
+            Self::Decoder => 2,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Dimensions => "dimensions",
+            Self::Native => "native",
+            Self::Decoder => "decoder",
+        }
+    }
+}
 
 struct QueuedThumbnailJob {
     key: String,
     priority: u8,
     sequence: u64,
-    /// Only jobs created exclusively for the visible Masonry surface are
-    /// eligible for off-screen cancellation. Shared sidebar jobs stay alive.
     masonry_source_key: Option<String>,
+    cancellation: Option<Arc<AtomicBool>>,
     run: ThumbnailJob,
 }
 
-/// One bounded worker pool and one priority queue are shared by Browse, Queue,
-/// Favorites, and Masonry. Visible Masonry tiles are queued ahead of sidebar
-/// previews so the primary workspace gets the first available decode capacity.
+struct ThumbnailSchedulerState {
+    dimension_queue: Vec<QueuedThumbnailJob>,
+    native_queue: Vec<QueuedThumbnailJob>,
+    decoder_queue: Vec<QueuedThumbnailJob>,
+    active: [usize; 3],
+    // Cancelled/timed-out calls no longer hold the priority barrier even if
+    // an uninterruptible platform API has not returned yet.
+    active_cancellations: [Vec<Arc<AtomicBool>>; 3],
+}
+
+impl ThumbnailSchedulerState {
+    fn queue_mut(&mut self, pool: ThumbnailPool) -> &mut Vec<QueuedThumbnailJob> {
+        match pool {
+            ThumbnailPool::Dimensions => &mut self.dimension_queue,
+            ThumbnailPool::Native => &mut self.native_queue,
+            ThumbnailPool::Decoder => &mut self.decoder_queue,
+        }
+    }
+
+    fn queue(&self, pool: ThumbnailPool) -> &Vec<QueuedThumbnailJob> {
+        match pool {
+            ThumbnailPool::Dimensions => &self.dimension_queue,
+            ThumbnailPool::Native => &self.native_queue,
+            ThumbnailPool::Decoder => &self.decoder_queue,
+        }
+    }
+
+    fn active_uncancelled(&self, pool: ThumbnailPool) -> usize {
+        let index = pool.index();
+        let cancelled = self.active_cancellations[index]
+            .iter()
+            .filter(|token| token.load(Ordering::Acquire))
+            .count();
+        self.active[index].saturating_sub(cancelled)
+    }
+
+    fn can_start(&self, pool: ThumbnailPool) -> bool {
+        match pool {
+            ThumbnailPool::Dimensions => true,
+            ThumbnailPool::Native => {
+                self.dimension_queue.is_empty()
+                    && self.active_uncancelled(ThumbnailPool::Dimensions) == 0
+            }
+            ThumbnailPool::Decoder => {
+                self.dimension_queue.is_empty()
+                    && self.active_uncancelled(ThumbnailPool::Dimensions) == 0
+                    && self.native_queue.is_empty()
+                    && self.active_uncancelled(ThumbnailPool::Native) == 0
+            }
+        }
+    }
+}
+
+/// Three physically separate pools share a priority coordinator:
+///
+/// - dimensions: 3 workers per configured base worker
+/// - native OS/DE thumbnails: 2 workers per configured base worker
+/// - Jpeg-Viewer decoding: 1 worker per configured base worker
+///
+/// Lower stages only start when all queued and running work in higher-priority
+/// stages has drained. This keeps source metadata responsive and stops our own
+/// decoder from competing with native desktop thumbnail services.
 struct ThumbnailScheduler {
-    queue: Mutex<Vec<QueuedThumbnailJob>>,
+    state: Mutex<ThumbnailSchedulerState>,
     ready: Condvar,
     next_sequence: AtomicU64,
-    capacity: usize,
-    /// Tracks both queued and currently-running Masonry-only work so a scroll
-    /// can cancel it even after a worker has taken the job from the queue.
     masonry_jobs: Arc<Mutex<HashMap<String, (String, Arc<AtomicBool>)>>>,
 }
 
 impl ThumbnailScheduler {
-    fn submit(&self, key: String, priority: u8, job: ThumbnailJob) -> Result<(), ThumbnailJob> {
-        let mut queue = self.queue.lock().expect("thumbnail queue poisoned");
-        if queue.len() >= self.capacity {
-            return Err(job);
-        }
-        let sequence = self.next_sequence.fetch_add(1, Ordering::Relaxed);
-        queue.push(QueuedThumbnailJob {
-            key,
-            priority,
-            sequence,
-            masonry_source_key: None,
-            run: job,
-        });
-        self.ready.notify_one();
-        Ok(())
-    }
-
     fn submit_masonry(
         &self,
+        pool: ThumbnailPool,
         key: String,
         priority: u8,
         source_key: String,
         cancelled: Arc<AtomicBool>,
         job: ThumbnailJob,
     ) -> bool {
-        // Use the same lock order as cancellation (registry, then queue) to
-        // prevent a scroll/cancel racing with submission from deadlocking.
-        let mut registry_guard = self.masonry_jobs.lock()
-            .expect("Masonry thumbnail registry poisoned");
-        let mut queue = self.queue.lock().expect("thumbnail queue poisoned");
-        if queue.len() >= self.capacity {
-            return false;
+        {
+            let mut registry = self.masonry_jobs.lock()
+                .expect("Masonry thumbnail registry poisoned");
+            registry.insert(key.clone(), (source_key.clone(), Arc::clone(&cancelled)));
         }
+        let submitted = self.submit_stage(
+            pool,
+            key.clone(),
+            priority,
+            Some(source_key),
+            Some(Arc::clone(&cancelled)),
+            job,
+        ).is_ok();
+        if !submitted {
+            self.finish_masonry(&key, &cancelled);
+        }
+        submitted
+    }
+
+    fn submit_stage(
+        &self,
+        pool: ThumbnailPool,
+        key: String,
+        priority: u8,
+        masonry_source_key: Option<String>,
+        cancellation: Option<Arc<AtomicBool>>,
+        job: ThumbnailJob,
+    ) -> Result<(), ThumbnailJob> {
+        let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
+        if cancellation.as_ref()
+            .is_some_and(|token| token.load(Ordering::Acquire))
+        {
+            return Err(job);
+        }
+        let queue = state.queue_mut(pool);
         let sequence = self.next_sequence.fetch_add(1, Ordering::Relaxed);
-        registry_guard.insert(key.clone(), (source_key.clone(), cancelled.clone()));
-        drop(registry_guard);
-
-        let registry = Arc::clone(&self.masonry_jobs);
-        let cleanup_key = key.clone();
-        let cleanup_token = Arc::clone(&cancelled);
-        let run = Box::new(move || {
-            if !cancelled.load(Ordering::Acquire) {
-                job();
-            }
-            let mut registry = registry.lock().expect("Masonry thumbnail registry poisoned");
-            if registry.get(&cleanup_key)
-                .is_some_and(|(_, token)| Arc::ptr_eq(token, &cleanup_token))
-            {
-                registry.remove(&cleanup_key);
-            }
-        }) as ThumbnailJob;
-
         queue.push(QueuedThumbnailJob {
             key,
             priority,
             sequence,
-            masonry_source_key: Some(source_key),
-            run,
+            masonry_source_key,
+            cancellation,
+            run: job,
         });
-        self.ready.notify_one();
-        true
+        self.ready.notify_all();
+        Ok(())
+    }
+
+    fn finish_masonry(&self, key: &str, cancellation: &Arc<AtomicBool>) {
+        let mut registry = self.masonry_jobs.lock()
+            .expect("Masonry thumbnail registry poisoned");
+        if registry.get(key).is_some_and(|(_, token)| Arc::ptr_eq(token, cancellation)) {
+            registry.remove(key);
+        }
     }
 
     fn cancel_masonry_not_visible(&self, visible_sources: &HashSet<String>) {
-        // Mark queued and active work first. The registry lock is released
-        // before taking the queue lock to keep lock ordering consistent.
         {
             let mut registry = self.masonry_jobs.lock()
                 .expect("Masonry thumbnail registry poisoned");
@@ -115,86 +208,286 @@ impl ThumbnailScheduler {
             });
         }
 
-        let mut queue = self.queue.lock().expect("thumbnail queue poisoned");
-        queue.retain(|queued| {
+        let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
+        state.dimension_queue.retain(|queued| {
             queued.masonry_source_key.as_ref()
                 .is_none_or(|source_key| visible_sources.contains(source_key))
         });
+        state.native_queue.retain(|queued| {
+            queued.masonry_source_key.as_ref()
+                .is_none_or(|source_key| visible_sources.contains(source_key))
+        });
+        state.decoder_queue.retain(|queued| {
+            queued.masonry_source_key.as_ref()
+                .is_none_or(|source_key| visible_sources.contains(source_key))
+        });
+        self.ready.notify_all();
     }
 
     fn promote(&self, key: &str, priority: u8) {
-        let mut queue = self.queue.lock().expect("thumbnail queue poisoned");
-        if let Some(queued) = queue.iter_mut().find(|queued| queued.key == key) {
-            queued.priority = queued.priority.max(priority);
-            self.ready.notify_one();
+        let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
+        for pool in [ThumbnailPool::Dimensions, ThumbnailPool::Native, ThumbnailPool::Decoder] {
+            if let Some(queued) = state.queue_mut(pool).iter_mut().find(|queued| queued.key == key) {
+                queued.priority = queued.priority.max(priority);
+                self.ready.notify_all();
+                return;
+            }
         }
     }
 
-    fn take_next(&self) -> ThumbnailJob {
-        let mut queue = self.queue.lock().expect("thumbnail queue poisoned");
+    fn take_next(&self, pool: ThumbnailPool) -> QueuedThumbnailJob {
+        let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
         loop {
-            if !queue.is_empty() {
-                let next_index = queue
+            if state.can_start(pool) && !state.queue(pool).is_empty() {
+                let next_index = state.queue(pool)
                     .iter()
                     .enumerate()
-                    .min_by_key(|(_, queued)| (std::cmp::Reverse(queued.priority), queued.sequence))
+                    .min_by_key(|(_, queued)| {
+                        (std::cmp::Reverse(queued.priority), queued.sequence)
+                    })
                     .map(|(index, _)| index)
                     .unwrap_or(0);
-                return queue.swap_remove(next_index).run;
-            }
-            #[cfg(target_os = "windows")]
-            {
-                // STA COM threads need a message pump. A short timed wait lets
-                // idle thumbnail workers dispatch COM/window messages without
-                // busy-spinning or holding the scheduler lock while dispatching.
-                let (next_queue, _) = self
-                    .ready
-                    .wait_timeout(queue, Duration::from_millis(40))
-                    .expect("thumbnail queue poisoned");
-                queue = next_queue;
-                if queue.is_empty() {
-                    drop(queue);
-                    crate::platform::thumbnails::pump_worker_messages();
-                    queue = self.queue.lock().expect("thumbnail queue poisoned");
+                let job = state.queue_mut(pool).swap_remove(next_index);
+                state.active[pool.index()] += 1;
+                if let Some(cancellation) = job.cancellation.as_ref() {
+                    state.active_cancellations[pool.index()].push(Arc::clone(cancellation));
                 }
+                return job;
             }
+
+            #[cfg(target_os = "windows")]
+            if pool != ThumbnailPool::Decoder {
+                // Both dimensions (Shell property metadata) and native preview
+                // workers use STA COM. Timed wakeups dispatch messages while idle.
+                let (next_state, _) = self.ready
+                    .wait_timeout(state, Duration::from_millis(40))
+                    .expect("thumbnail scheduler poisoned");
+                state = next_state;
+                if !state.can_start(pool) || state.queue(pool).is_empty() {
+                    drop(state);
+                    crate::platform::thumbnails::pump_worker_messages();
+                    state = self.state.lock().expect("thumbnail scheduler poisoned");
+                }
+            } else {
+                state = self.ready.wait(state).expect("thumbnail scheduler poisoned");
+            }
+
             #[cfg(not(target_os = "windows"))]
             {
-                queue = self.ready.wait(queue).expect("thumbnail queue poisoned");
+                state = self.ready.wait(state).expect("thumbnail scheduler poisoned");
             }
         }
+    }
+
+    fn cancel_job(&self, cancellation: &Arc<AtomicBool>) {
+        cancellation.store(true, Ordering::Release);
+
+        // Remove a timed-out request if it has not started yet. Otherwise its
+        // stale queue entry could keep a lower-priority pool blocked forever.
+        self.masonry_jobs.lock()
+            .expect("Masonry thumbnail registry poisoned")
+            .retain(|_, (_, token)| !Arc::ptr_eq(token, cancellation));
+
+        let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
+        for pool in [ThumbnailPool::Dimensions, ThumbnailPool::Native, ThumbnailPool::Decoder] {
+            state.queue_mut(pool).retain(|queued| {
+                queued.cancellation.as_ref()
+                    .is_none_or(|token| !Arc::ptr_eq(token, cancellation))
+            });
+        }
+        drop(state);
+
+        // Wake lower-priority workers: the timed-out job no longer blocks
+        // their stage even if its underlying OS call cannot be interrupted.
+        self.ready.notify_all();
+    }
+
+    fn worker_finished(&self, pool: ThumbnailPool, cancellation: Option<&Arc<AtomicBool>>) {
+        let mut state = self.state.lock().expect("thumbnail scheduler poisoned");
+        state.active[pool.index()] = state.active[pool.index()].saturating_sub(1);
+        if let Some(cancellation) = cancellation {
+            if let Some(index) = state.active_cancellations[pool.index()]
+                .iter()
+                .position(|token| Arc::ptr_eq(token, cancellation))
+            {
+                state.active_cancellations[pool.index()].swap_remove(index);
+            }
+        }
+        self.ready.notify_all();
     }
 }
 
 static THUMBNAIL_SCHEDULER: OnceLock<Arc<ThumbnailScheduler>> = OnceLock::new();
 
-fn thumbnail_scheduler(worker_count: usize) -> &'static Arc<ThumbnailScheduler> {
+/// Convert the user-facing worker multiplier to isolated pool sizes.
+/// A setting of 3 therefore means 9 dimension, 6 native, and 3 decoder
+/// workers (18 threads total).
+fn thumbnail_pool_worker_counts(base_worker_count: usize) -> [usize; 3] {
+    let base = base_worker_count.clamp(1, 8);
+    [base * 3, base * 2, base]
+}
+
+fn thumbnail_scheduler(base_worker_count: usize) -> &'static Arc<ThumbnailScheduler> {
     THUMBNAIL_SCHEDULER.get_or_init(|| {
+        let base = base_worker_count.clamp(1, 8);
         let scheduler = Arc::new(ThumbnailScheduler {
-            queue: Mutex::new(Vec::new()),
+            state: Mutex::new(ThumbnailSchedulerState {
+                dimension_queue: Vec::new(),
+                native_queue: Vec::new(),
+                decoder_queue: Vec::new(),
+                active: [0; 3],
+                active_cancellations: [Vec::new(), Vec::new(), Vec::new()],
+            }),
             ready: Condvar::new(),
             next_sequence: AtomicU64::new(0),
-            capacity: 64,
             masonry_jobs: Arc::new(Mutex::new(HashMap::new())),
         });
-        for worker_index in 0..worker_count.clamp(1, 8) {
-            let worker_scheduler = Arc::clone(&scheduler);
-            let _ = std::thread::Builder::new()
-                .name(format!("thumbnail-worker-{worker_index}"))
-                .spawn(move || {
-                    // Keep platform state (notably the Windows COM apartment)
-                    // alive for the worker's lifetime, not once per thumbnail.
-                    let _platform_context =
-                        crate::platform::thumbnails::ThumbnailWorkerContext::initialize();
-                    loop {
-                        let job = worker_scheduler.take_next();
-                        job();
-                        crate::platform::thumbnails::pump_worker_messages();
-                    }
-                });
+
+        let worker_counts = thumbnail_pool_worker_counts(base);
+        for (pool, worker_count) in [
+            (ThumbnailPool::Dimensions, worker_counts[0]),
+            (ThumbnailPool::Native, worker_counts[1]),
+            (ThumbnailPool::Decoder, worker_counts[2]),
+        ] {
+            for worker_index in 0..worker_count {
+                let worker_scheduler = Arc::clone(&scheduler);
+                let thread_name = format!("thumbnail-{}-worker-{worker_index}", pool.label());
+                if let Err(error) = std::thread::Builder::new()
+                    .name(thread_name)
+                    .spawn(move || {
+                        // Windows Shell image properties and native previews both
+                        // require COM. Keep COM initialization on every worker that
+                        // can call into Shell, and isolate pixel decoding from COM.
+                        let _platform_context = (pool != ThumbnailPool::Decoder)
+                            .then(crate::platform::thumbnails::ThumbnailWorkerContext::initialize);
+                        loop {
+                            let queued = worker_scheduler.take_next(pool);
+                            let job_key = queued.key.clone();
+                            let cancellation = queued.cancellation.clone();
+                            let is_cancelled = cancellation.as_ref()
+                                .is_some_and(|token| token.load(Ordering::Acquire));
+                            if is_cancelled {
+                                if let Some(cancellation) = cancellation.as_ref() {
+                                    worker_scheduler.finish_masonry(&job_key, cancellation);
+                                }
+                            } else {
+                                let run_job = queued.run;
+                                let result = std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(|| run_job()),
+                                );
+                                if result.is_err() {
+                                    eprintln!("[thumbnail] {} worker panicked while processing {job_key}", pool.label());
+                                    if let Some(cancellation) = cancellation.as_ref() {
+                                        worker_scheduler.finish_masonry(&job_key, cancellation);
+                                    }
+                                } else if let Some(cancellation) = cancellation.as_ref()
+                                    .filter(|token| token.load(Ordering::Acquire))
+                                {
+                                    worker_scheduler.finish_masonry(&job_key, cancellation);
+                                }
+                            }
+                            worker_scheduler.worker_finished(pool, cancellation.as_ref());
+                            if pool != ThumbnailPool::Decoder {
+                                crate::platform::thumbnails::pump_worker_messages();
+                            }
+                        }
+                    })
+                {
+                    eprintln!("[thumbnail] failed to start {} worker {worker_index}: {error}", pool.label());
+                }
+            }
         }
         scheduler
     })
+}
+
+#[cfg(test)]
+mod thumbnail_scheduler_tests {
+    use super::{
+        thumbnail_pool_worker_counts, QueuedThumbnailJob, ThumbnailPool,
+        ThumbnailSchedulerState,
+    };
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    fn empty_state() -> ThumbnailSchedulerState {
+        ThumbnailSchedulerState {
+            dimension_queue: Vec::new(),
+            native_queue: Vec::new(),
+            decoder_queue: Vec::new(),
+            active: [0; 3],
+            active_cancellations: [Vec::new(), Vec::new(), Vec::new()],
+        }
+    }
+
+    #[test]
+    fn job_timeout_clock_is_unset_until_a_worker_starts_it() {
+        let started_at = Arc::new(Mutex::new(None));
+        assert!(super::thumbnail_started_elapsed(&started_at).is_none());
+        super::mark_thumbnail_started(&started_at);
+        assert!(super::thumbnail_started_elapsed(&started_at).is_some());
+    }
+
+    #[test]
+    fn worker_multiplier_three_creates_nine_six_and_three_workers() {
+        assert_eq!(thumbnail_pool_worker_counts(3), [9, 6, 3]);
+    }
+
+    #[test]
+    fn worker_multiplier_is_clamped_to_supported_range() {
+        assert_eq!(thumbnail_pool_worker_counts(0), [3, 2, 1]);
+        assert_eq!(thumbnail_pool_worker_counts(99), [24, 16, 8]);
+    }
+
+    #[test]
+    fn native_workers_wait_for_all_dimension_work() {
+        let mut state = empty_state();
+        state.active[ThumbnailPool::Dimensions.index()] = 1;
+        assert!(!state.can_start(ThumbnailPool::Native));
+        state.active[ThumbnailPool::Dimensions.index()] = 0;
+        state.dimension_queue.push(QueuedThumbnailJob {
+            key: "dimension-test".into(),
+            priority: 20,
+            sequence: 0,
+            masonry_source_key: None,
+            cancellation: None,
+            run: Box::new(|| {}),
+        });
+        assert!(!state.can_start(ThumbnailPool::Native));
+        assert!(state.can_start(ThumbnailPool::Dimensions));
+    }
+
+    #[test]
+    fn cancelled_active_dimension_request_does_not_block_native_pool() {
+        let mut state = empty_state();
+        let cancellation = Arc::new(AtomicBool::new(true));
+        state.active[ThumbnailPool::Dimensions.index()] = 1;
+        state.active_cancellations[ThumbnailPool::Dimensions.index()]
+            .push(Arc::clone(&cancellation));
+        assert!(state.can_start(ThumbnailPool::Native));
+    }
+
+    #[test]
+    fn decoder_workers_wait_for_all_native_and_dimension_work() {
+        let mut state = empty_state();
+        state.active[ThumbnailPool::Native.index()] = 1;
+        assert!(!state.can_start(ThumbnailPool::Decoder));
+        state.active[ThumbnailPool::Native.index()] = 0;
+        state.native_queue.push(QueuedThumbnailJob {
+            key: "native-test".into(),
+            priority: 10,
+            sequence: 0,
+            masonry_source_key: None,
+            cancellation: None,
+            run: Box::new(|| {}),
+        });
+        assert!(!state.can_start(ThumbnailPool::Decoder));
+        state.native_queue.clear();
+        state.active[ThumbnailPool::Dimensions.index()] = 1;
+        assert!(!state.can_start(ThumbnailPool::Decoder));
+        state.active = [0; 3];
+        assert!(state.can_start(ThumbnailPool::Decoder));
+    }
 }
 
 pub(crate) fn update_masonry_thumbnail_visibility(visible_sources: &HashSet<String>) {
@@ -204,6 +497,10 @@ pub(crate) fn update_masonry_thumbnail_visibility(visible_sources: &HashSet<Stri
 }
 
 const MASONRY_DIMENSION_PRIORITY: u8 = 20;
+const DIMENSION_JOB_TIMEOUT: Duration = Duration::from_secs(20);
+const THUMBNAIL_JOB_TIMEOUT: Duration = Duration::from_secs(30);
+const DIMENSION_QUEUE_TIMEOUT: Duration = Duration::from_secs(120);
+const THUMBNAIL_QUEUE_TIMEOUT: Duration = Duration::from_secs(120);
 const MASONRY_PLACEHOLDER_PRIORITY: u8 = 12;
 const MASONRY_THUMBNAIL_PRIORITY: u8 = 10;
 const SIDEBAR_THUMBNAIL_PRIORITY: u8 = 0;
@@ -320,6 +617,59 @@ fn source_dimensions_from_file(path: &std::path::Path) -> Option<(u32, u32)> {
     None
 }
 
+/// Read one image member from a supported archive. The caller chooses the
+/// worker pool; Masonry dimensions use the metadata pool, while pixel decoding
+/// remains isolated in the Jpeg-Viewer decoder pool.
+fn read_archive_entry_bytes(
+    entry: &crate::imaging::entry::ImageEntry,
+) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    match entry {
+        crate::imaging::entry::ImageEntry::File(path) => {
+            fs::read(path).map_err(|error| format!("Failed to read {}: {error}", path.display()))
+        }
+        crate::imaging::entry::ImageEntry::Zip(item) => {
+            let file = File::open(&item.archive_path).map_err(|error| error.to_string())?;
+            let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
+            let mut item_file = archive.by_index(item.entry_index).map_err(|error| error.to_string())?;
+            let mut bytes = Vec::new();
+            item_file.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+            Ok(bytes)
+        }
+        crate::imaging::entry::ImageEntry::S7z(item) => {
+            let mut archive = sevenz_rust2::ArchiveReader::open(
+                &item.archive_path,
+                sevenz_rust2::Password::empty(),
+            ).map_err(|error| error.to_string())?;
+            archive.read_file(&item.name).map_err(|error| error.to_string())
+        }
+        crate::imaging::entry::ImageEntry::Rar(item) => {
+            let mut archive = unrar::Archive::new(&item.archive_path)
+                .open_for_processing().map_err(|error| error.to_string())?;
+            loop {
+                let header = archive.read_header().map_err(|error| error.to_string())?
+                    .ok_or_else(|| format!("Entry not found: {}", item.name))?;
+                if header.entry().filename.to_string_lossy() == item.name {
+                    let (bytes, _next) = header.read().map_err(|error| error.to_string())?;
+                    break Ok(bytes);
+                }
+                archive = header.skip().map_err(|error| error.to_string())?;
+            }
+        }
+    }
+}
+
+fn source_dimensions_from_entry(
+    entry: &crate::imaging::entry::ImageEntry,
+) -> Option<(u32, u32)> {
+    match entry {
+        crate::imaging::entry::ImageEntry::File(path) => source_dimensions_from_file(path),
+        _ => read_archive_entry_bytes(entry)
+            .ok()
+            .and_then(|bytes| source_dimensions_from_bytes(&bytes)),
+    }
+}
+
 /// Avoid enlarging a thumbnail beyond the source image's own maximum
 /// dimension. The source dimensions are already EXIF-oriented.
 fn thumbnail_output_limit(
@@ -402,6 +752,352 @@ fn candidate_output_limit(candidate: &ThumbnailCandidate, requested: u32) -> u32
     }
 }
 
+
+fn complete_thumbnail_request(
+    key: String,
+    result: Result<GeneratedThumbnail, String>,
+    tx: std::sync::mpsc::Sender<(String, Result<GeneratedThumbnail, String>)>,
+    repaint_ctx: egui::Context,
+    scheduler: &ThumbnailScheduler,
+    cancellation: &Arc<AtomicBool>,
+    masonry_only: bool,
+) {
+    if !cancellation.load(Ordering::Acquire) {
+        let _ = tx.send((key.clone(), result));
+        repaint_ctx.request_repaint();
+    }
+    if masonry_only {
+        scheduler.finish_masonry(&key, cancellation);
+    }
+}
+
+fn submit_pipeline_stage(
+    scheduler: &ThumbnailScheduler,
+    pool: ThumbnailPool,
+    key: &str,
+    priority: u8,
+    masonry_source_key: Option<&str>,
+    cancellation: &Arc<AtomicBool>,
+    first_stage: bool,
+    job: ThumbnailJob,
+) -> bool {
+    if first_stage {
+        if let Some(source_key) = masonry_source_key {
+            return scheduler.submit_masonry(
+                pool,
+                key.to_owned(),
+                priority,
+                source_key.to_owned(),
+                Arc::clone(cancellation),
+                job,
+            );
+        }
+    }
+
+    scheduler.submit_stage(
+        pool,
+        key.to_owned(),
+        priority,
+        masonry_source_key.map(str::to_owned),
+        Some(Arc::clone(cancellation)),
+        job,
+    ).is_ok()
+}
+
+/// Jpeg-Viewer's own fallback is intentionally run only by the dedicated
+/// decoder pool. It retains a smaller native candidate when reading or decoding
+/// the original fails, and never repeats the native OS/DE request.
+fn decode_file_thumbnail_fallback(
+    path: &std::path::Path,
+    target_size: u32,
+    mut source_dimensions: Option<(u32, u32)>,
+    mut best_candidate: Option<ThumbnailCandidate>,
+    masonry_placeholder: bool,
+    cancellation: &AtomicBool,
+) -> Result<GeneratedThumbnail, String> {
+    if cancellation.load(Ordering::Acquire) {
+        return Err("__masonry_thumbnail_cancelled__".into());
+    }
+    let mut source_aspect_ratio = source_dimensions
+        .map(|(width, height)| width as f32 / height as f32);
+    let bytes = {
+        if let Ok(metadata) = fs::metadata(path) {
+            if metadata.len() > MAX_THUMB_SOURCE_READ_BYTES {
+                if let Some(candidate) = best_candidate.take() {
+                    let output_limit = thumbnail_output_limit(target_size, source_dimensions);
+                    eprintln!(
+                        "[thumbnail] {}: source file is {} bytes; skipping full-source fallback and using {} ({}x{})",
+                        path.display(),
+                        metadata.len(),
+                        candidate.source,
+                        candidate.image.width(),
+                        candidate.image.height(),
+                    );
+                    return finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio);
+                }
+                return Err(format!(
+                    "Source file is too large for the thumbnail fallback read ({} bytes): {}",
+                    metadata.len(),
+                    path.display(),
+                ));
+            }
+        }
+        if cancellation.load(Ordering::Acquire) {
+            return Err("__masonry_thumbnail_cancelled__".into());
+        }
+        match fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                if let Some(candidate) = best_candidate.take() {
+                    eprintln!(
+                        "[thumbnail] {}: source read failed ({error}); using {} ({}x{})",
+                        path.display(),
+                        candidate.source,
+                        candidate.image.width(),
+                        candidate.image.height(),
+                    );
+                    let output_limit = thumbnail_output_limit(target_size, source_dimensions);
+                    return finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio);
+                }
+                return Err(format!("Failed to read {}: {error}", path.display()));
+            }
+        }
+    };
+
+    // Dimensions should normally arrive from the higher-priority metadata
+    // pool. Retain this byte-based fallback for unsupported/unknown headers.
+    source_dimensions = source_dimensions.or_else(|| source_dimensions_from_bytes(&bytes));
+    source_aspect_ratio = source_aspect_ratio
+        .or_else(|| source_dimensions.map(|(width, height)| width as f32 / height as f32));
+
+    let is_raw = path.extension().and_then(|extension| extension.to_str())
+        .and_then(crate::imaging::core::ImageFormat::from_extension)
+        == Some(crate::imaging::core::ImageFormat::CameraRaw)
+        || zenraw::is_raw_file(&bytes);
+    let output_limit = thumbnail_output_limit(target_size, source_dimensions);
+
+    if !is_raw {
+        if let Some(embedded) = extract_embedded_metadata_thumbnail(&bytes) {
+            if let Ok(image) = image::load_from_memory(&embedded) {
+                let image = image.to_rgba8();
+                let embedded_resolution = image.width().max(image.height());
+                offer_thumbnail_candidate(&mut best_candidate, image, "EXIF embedded preview");
+
+                if (masonry_placeholder && embedded_resolution > 0)
+                    || (embedded_resolution >= output_limit
+                        && best_candidate.as_ref().is_some_and(|candidate| {
+                            candidate.resolution >= output_limit
+                        }))
+                {
+                    return finish_thumbnail_candidate(
+                        best_candidate.expect("embedded candidate exists"),
+                        output_limit,
+                        source_aspect_ratio,
+                    );
+                }
+            }
+        }
+    }
+
+    if cancellation.load(Ordering::Acquire) {
+        return Err("__masonry_thumbnail_cancelled__".into());
+    }
+    match decode_checked_sidebar_image(
+        &bytes,
+        &path.display().to_string(),
+        is_raw,
+        Some(path),
+        source_dimensions,
+    ) {
+        Ok(decoded) => offer_thumbnail_candidate(
+            &mut best_candidate,
+            decoded,
+            if is_raw { "embedded RAW preview" } else { "Jpeg-Viewer decoder" },
+        ),
+        Err(error) => {
+            if let Some(candidate) = best_candidate.as_ref() {
+                eprintln!(
+                    "[thumbnail] {}: decoder fallback failed ({error}); using {} ({}x{})",
+                    path.display(),
+                    candidate.source,
+                    candidate.image.width(),
+                    candidate.image.height(),
+                );
+            } else {
+                return Err(error);
+            }
+        }
+    }
+
+    let candidate = best_candidate.ok_or_else(|| {
+        format!("No usable native, embedded, or decoded thumbnail: {}", path.display())
+    })?;
+    let output_limit = candidate_output_limit(&candidate, output_limit);
+    finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio)
+}
+
+fn schedule_file_native_stage(
+    scheduler: Arc<ThumbnailScheduler>,
+    path: PathBuf,
+    key: String,
+    target_size: u32,
+    source_dimensions: Option<(u32, u32)>,
+    priority: u8,
+    masonry_placeholder: bool,
+    masonry_only: bool,
+    masonry_source_key: Option<String>,
+    cancellation: Arc<AtomicBool>,
+    tx: std::sync::mpsc::Sender<(String, Result<GeneratedThumbnail, String>)>,
+    repaint_ctx: egui::Context,
+    first_stage: bool,
+    started_at: ThumbnailStartedAt,
+) -> bool {
+    let stage_scheduler = Arc::clone(&scheduler);
+    let stage_cancellation = Arc::clone(&cancellation);
+    let stage_source_key = masonry_source_key.clone();
+    let stage_key = key.clone();
+    let stage_path = path.clone();
+    let stage_started_at = Arc::clone(&started_at);
+    let native_job = Box::new(move || {
+        if stage_cancellation.load(Ordering::Acquire) {
+            if masonry_only {
+                stage_scheduler.finish_masonry(&stage_key, &stage_cancellation);
+            }
+            return;
+        }
+        mark_thumbnail_started(&stage_started_at);
+
+        let native_request_size = thumbnail_output_limit(target_size, source_dimensions);
+        let native = if masonry_placeholder {
+            crate::platform::thumbnails::load_or_request_placeholder(&stage_path, native_request_size)
+        } else {
+            crate::platform::thumbnails::load_or_request(&stage_path, native_request_size)
+        };
+
+        let source_aspect_ratio = source_dimensions
+            .map(|(width, height)| width as f32 / height as f32);
+        let mut best_candidate = None;
+        let mut ready_result = None;
+        if let Some(native) = native {
+            let native_width = native.width();
+            let native_height = native.height();
+            let native_resolution = native_width.max(native_height);
+            offer_thumbnail_candidate(&mut best_candidate, native, "native OS/DE thumbnail");
+
+            let quality_floor = native_thumbnail_quality_floor(native_request_size);
+            let sufficient = native_resolution >= quality_floor;
+            if masonry_placeholder && native_resolution > 0 {
+                ready_result = best_candidate.take().map(|candidate| {
+                    finish_thumbnail_candidate(candidate, native_request_size, source_aspect_ratio)
+                });
+            } else if sufficient {
+                if native_resolution < native_request_size
+                    && crate::platform::thumbnails::diagnostics_enabled()
+                {
+                    eprintln!(
+                        "[thumbnail] {}: accepting native {}x{} preview for {}px request (quality floor {}px)",
+                        stage_path.display(), native_width, native_height,
+                        native_request_size, quality_floor,
+                    );
+                }
+                ready_result = best_candidate.take().map(|candidate| {
+                    finish_thumbnail_candidate(candidate, native_request_size, source_aspect_ratio)
+                });
+            } else if crate::platform::thumbnails::diagnostics_enabled() {
+                eprintln!(
+                    "[thumbnail] {}: native OS/DE returned {}x{} for {}px request (quality floor {}px); queueing viewer fallback",
+                    stage_path.display(), native_width, native_height,
+                    native_request_size, quality_floor,
+                );
+            }
+        }
+
+        if let Some(result) = ready_result {
+            complete_thumbnail_request(
+                stage_key.clone(),
+                result,
+                tx.clone(),
+                repaint_ctx.clone(),
+                &stage_scheduler,
+                &stage_cancellation,
+                masonry_only,
+            );
+            return;
+        }
+
+        if stage_cancellation.load(Ordering::Acquire) {
+            if masonry_only {
+                stage_scheduler.finish_masonry(&stage_key, &stage_cancellation);
+            }
+            return;
+        }
+
+        let decoder_scheduler = Arc::clone(&stage_scheduler);
+        let decoder_cancellation = Arc::clone(&stage_cancellation);
+        let decoder_key = stage_key.clone();
+        let decoder_path = stage_path.clone();
+        let decoder_tx = tx.clone();
+        let decoder_repaint = repaint_ctx.clone();
+        let decoder_source_key = stage_source_key.clone();
+        let decoder_submit_key = decoder_key.clone();
+        let decoder_job_scheduler = Arc::clone(&decoder_scheduler);
+        let decoder_job_cancellation = Arc::clone(&decoder_cancellation);
+        let decoder_job = Box::new(move || {
+            let result = decode_file_thumbnail_fallback(
+                &decoder_path,
+                target_size,
+                source_dimensions,
+                best_candidate,
+                masonry_placeholder,
+                &decoder_job_cancellation,
+            );
+            complete_thumbnail_request(
+                decoder_key,
+                result,
+                decoder_tx,
+                decoder_repaint,
+                &decoder_job_scheduler,
+                &decoder_job_cancellation,
+                masonry_only,
+            );
+        }) as ThumbnailJob;
+        let submitted = decoder_scheduler.submit_stage(
+            ThumbnailPool::Decoder,
+            decoder_submit_key,
+            priority,
+            decoder_source_key,
+            Some(decoder_cancellation.clone()),
+            decoder_job,
+        ).is_ok();
+        if !submitted {
+            complete_thumbnail_request(
+                stage_key,
+                Err("Jpeg-Viewer decoder request was cancelled before it could start".into()),
+                tx.clone(),
+                repaint_ctx.clone(),
+                &stage_scheduler,
+                &stage_cancellation,
+                masonry_only,
+            );
+        }
+    }) as ThumbnailJob;
+
+    let submitted = submit_pipeline_stage(
+        &scheduler,
+        ThumbnailPool::Native,
+        &key,
+        priority,
+        masonry_source_key.as_deref(),
+        &cancellation,
+        first_stage,
+        native_job,
+    );
+    if !submitted && masonry_only {
+        scheduler.finish_masonry(&key, &cancellation);
+    }
+    submitted
+}
+
 fn finish_thumbnail_candidate(
     candidate: ThumbnailCandidate,
     output_limit: u32,
@@ -442,7 +1138,6 @@ pub(crate) fn source_thumbnail_key(entry: &crate::imaging::entry::ImageEntry) ->
 const MAX_THUMB_SOURCE_PIXELS: u64 = 100_000_000;
 // Only used when a native square preview arrives and lightweight file metadata
 // could not provide the source ratio. Reuse these bytes for the fallback decode.
-const MAX_SOURCE_RATIO_FALLBACK_READ_BYTES: u64 = 128 * 1024 * 1024;
 // Don't load an arbitrarily large compressed source into memory just because
 // a native preview is smaller than the requested display resolution. When a
 // native candidate exists, it remains usable if this fallback read is skipped.
@@ -602,7 +1297,11 @@ fn extract_embedded_metadata_thumbnail(bytes: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn decode_checked_sidebar_image(
-    bytes: &[u8], name: &str, is_raw: bool, source_path: Option<&std::path::Path>,
+    bytes: &[u8],
+    name: &str,
+    is_raw: bool,
+    source_path: Option<&std::path::Path>,
+    source_dimensions: Option<(u32, u32)>,
 ) -> Result<image::RgbaImage, String> {
     if is_raw {
         let thumbnail = crate::decoder::extract_raw_thumbnail(bytes, source_path)
@@ -615,7 +1314,12 @@ fn decode_checked_sidebar_image(
     let format = crate::decoder::format_detection::detect_format(bytes)
         .ok_or_else(|| format!("Unknown image format: {name}"))?;
     let registry = crate::decoder::default_registry();
-    let (width, height) = registry.dimensions(bytes, format).map_err(|e| e.to_string())?;
+    // Prefer dimensions already measured by the dedicated metadata workers.
+    // Keep the format-registry probe as a safety fallback for unknown headers.
+    let (width, height) = source_dimensions
+        .filter(|(width, height)| *width > 0 && *height > 0)
+        .map(Ok)
+        .unwrap_or_else(|| registry.dimensions(bytes, format).map_err(|error| error.to_string()))?;
     let pixels = u64::from(width).checked_mul(u64::from(height))
         .ok_or_else(|| format!("Image dimensions overflow: {name}"))?;
     let rgba_bytes = pixels.checked_mul(4)
@@ -663,8 +1367,8 @@ fn remove_attempts_for_cached_source(attempted: &mut HashSet<String>, cache_key:
 }
 
 impl ViewerApp {
-    /// Queue a metadata-only dimension pass for every file in the filtered
-    /// Masonry collection. These jobs outrank thumbnail work so all tile
+    /// Queue a dimension pass for every entry in the filtered Masonry
+    /// collection. These jobs outrank thumbnail work so all tile
     /// geometry can be established before expensive preview generation begins.
     pub(crate) fn prepare_masonry_dimensions(
         &mut self,
@@ -673,12 +1377,6 @@ impl ViewerApp {
     ) {
         let scheduler = thumbnail_scheduler(self.settings_manager.get().thumbnail_workers);
         for entry in entries {
-            let crate::imaging::entry::ImageEntry::File(path) = *entry else {
-                // Archive dimensions are obtained from the archive member bytes
-                // when its first preview is requested. Do not decompress every
-                // archive member just to run the metadata prepass.
-                continue;
-            };
             let source_key = source_thumbnail_key(entry);
             let entry_id = entry.get_id();
             if let Some(dimensions) = self.masonry_dimension_results.get(&source_key).copied() {
@@ -700,32 +1398,53 @@ impl ViewerApp {
             }
 
             let (tx, rx) = std::sync::mpsc::channel();
-            let worker_path = path.to_path_buf();
+            let worker_entry = (*entry).clone();
             let worker_ctx = ctx.clone();
+            let started_at = Arc::new(Mutex::new(None));
+            let worker_started_at = Arc::clone(&started_at);
+            let cancellation = Arc::new(AtomicBool::new(false));
+            let worker_cancellation = Arc::clone(&cancellation);
             let job = Box::new(move || {
-                let dimensions = source_dimensions_from_file(&worker_path);
-                let _ = tx.send(dimensions);
-                worker_ctx.request_repaint();
+                if worker_cancellation.load(Ordering::Acquire) {
+                    return;
+                }
+                mark_thumbnail_started(&worker_started_at);
+                let dimensions = source_dimensions_from_entry(&worker_entry);
+                if !worker_cancellation.load(Ordering::Acquire) {
+                    let _ = tx.send(dimensions);
+                    worker_ctx.request_repaint();
+                }
             }) as ThumbnailJob;
             let scheduler_key = format!("masonry-dimensions:{source_key}");
-            match scheduler.submit(scheduler_key, MASONRY_DIMENSION_PRIORITY, job) {
+            match scheduler.submit_stage(
+                ThumbnailPool::Dimensions,
+                scheduler_key,
+                MASONRY_DIMENSION_PRIORITY,
+                None,
+                Some(Arc::clone(&cancellation)),
+                job,
+            ) {
                 Ok(()) => {
                     self.masonry_dimension_attempted.insert(source_key.clone());
                     self.masonry_dimension_pending.insert(source_key.clone());
-                    self.masonry_dimension_receivers.push((source_key, rx));
+                    self.masonry_dimension_receivers.push((
+                        source_key,
+                        Instant::now(),
+                        started_at,
+                        cancellation,
+                        rx,
+                    ));
                 }
                 Err(_job) => {
-                    // The bounded scheduler is full. Stop here and retry the
-                    // remaining entries on the next frame as completed work is
-                    // collected; do not starve visible thumbnails with an
-                    // unbounded queue of metadata tasks.
+                    // Keep this recovery path if scheduler submission ever
+                    // gains an explicit back-pressure policy.
                     break;
                 }
             }
         }
     }
 
-    /// True once every ordinary file in this filtered Masonry collection has
+    /// True once every entry in this filtered Masonry collection has
     /// completed (successfully or unsuccessfully) its lightweight dimensions
     /// probe. Unknown formats still get laid out with the neutral fallback ratio.
     pub(crate) fn masonry_dimensions_ready(
@@ -733,9 +1452,6 @@ impl ViewerApp {
         entries: &[&crate::imaging::entry::ImageEntry],
     ) -> bool {
         entries.iter().all(|entry| {
-            if !matches!(entry, crate::imaging::entry::ImageEntry::File(_)) {
-                return true;
-            }
             let source_key = source_thumbnail_key(entry);
             self.masonry_dimension_attempted.contains(&source_key)
                 && !self.masonry_dimension_pending.contains(&source_key)
@@ -748,17 +1464,40 @@ impl ViewerApp {
     pub(crate) fn collect_masonry_dimensions(&mut self) {
         let mut remaining = Vec::with_capacity(self.masonry_dimension_receivers.len());
         let mut completed = Vec::new();
-        for (source_key, receiver) in self.masonry_dimension_receivers.drain(..) {
+        for (source_key, queued_at, started_at, cancellation, receiver) in self.masonry_dimension_receivers.drain(..) {
+            if cancellation.load(Ordering::Acquire) {
+                completed.push((source_key, None));
+                continue;
+            }
             match receiver.try_recv() {
-                Ok(dimensions) => completed.push((source_key, dimensions)),
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    remaining.push((source_key, receiver));
+                Ok(dimensions) => {
+                    completed.push((source_key, dimensions));
+                    continue;
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.masonry_dimension_pending.remove(&source_key);
-                    self.masonry_dimension_attempted.remove(&source_key);
+                    // A worker panic or unexpected task exit is a completed
+                    // failure, not a reason to enqueue the same broken probe
+                    // again on every UI frame. The neutral Masonry ratio is
+                    // used for this item instead.
+                    completed.push((source_key, None));
+                    continue;
                 }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
+            let timed_out = thumbnail_started_elapsed(&started_at)
+                .map(|elapsed| elapsed >= DIMENSION_JOB_TIMEOUT)
+                .unwrap_or_else(|| queued_at.elapsed() >= DIMENSION_QUEUE_TIMEOUT);
+            if timed_out {
+                if let Some(scheduler) = THUMBNAIL_SCHEDULER.get() {
+                    scheduler.cancel_job(&cancellation);
+                } else {
+                    cancellation.store(true, Ordering::Release);
+                }
+                eprintln!("[thumbnail] dimension probe timed out for {source_key}; using the fallback Masonry aspect ratio");
+                completed.push((source_key, None));
+                continue;
+            }
+            remaining.push((source_key, queued_at, started_at, cancellation, receiver));
         }
         self.masonry_dimension_receivers = remaining;
 
@@ -903,11 +1642,10 @@ impl ViewerApp {
         if !path.is_file() {
             return;
         }
-        // Check pending before attempted: Masonry may request the same shared
-        // resolution after Browse queued it, and must be able to promote it.
         if self.sidebar_thumbnail_pending.contains(&key) {
             if priority > SIDEBAR_THUMBNAIL_PRIORITY {
-                thumbnail_scheduler(self.settings_manager.get().thumbnail_workers).promote(&key, priority);
+                thumbnail_scheduler(self.settings_manager.get().thumbnail_workers)
+                    .promote(&key, priority);
             }
             return;
         }
@@ -922,318 +1660,120 @@ impl ViewerApp {
         let (tx, rx) = std::sync::mpsc::channel();
         let masonry_only = priority >= MASONRY_THUMBNAIL_PRIORITY;
         let masonry_placeholder = priority == MASONRY_PLACEHOLDER_PRIORITY;
-        let masonry_source_key = thumbnail_source_key_from_cache_key(&key).map(str::to_owned);
-        let receiver_masonry_source = if masonry_only { masonry_source_key.clone() } else { None };
-        self.sidebar_thumbnail_receivers.push((key.clone(), receiver_masonry_source, rx));
+        let masonry_source_key = if masonry_only {
+            thumbnail_source_key_from_cache_key(&key).map(str::to_owned)
+        } else {
+            None
+        };
+        let receiver_masonry_source = masonry_source_key.clone();
+        let started_at = Arc::new(Mutex::new(None));
+        let cancellation = Arc::new(AtomicBool::new(false));
+        self.sidebar_thumbnail_receivers.push((
+            key.clone(),
+            receiver_masonry_source,
+            Instant::now(),
+            Arc::clone(&started_at),
+            Arc::clone(&cancellation),
+            rx,
+        ));
 
+        let scheduler = Arc::clone(thumbnail_scheduler(self.settings_manager.get().thumbnail_workers));
+        let repaint_ctx = ctx.clone();
         let job_key = key.clone();
         let scheduler_key = key.clone();
-        let repaint_ctx = ctx.clone();
-        let cancellation = Arc::new(AtomicBool::new(false));
-        let worker_cancellation = Arc::clone(&cancellation);
-        let job = Box::new(move || {
-            let result = (|| -> Result<GeneratedThumbnail, String> {
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
+        let source_key_for_job = masonry_source_key.clone();
+
+        // Non-Masonry consumers have not necessarily run the layout metadata
+        // prepass. Queue a fast dimensions probe first, then hand its result to
+        // the native OS/DE pool. Masonry already completed that pass before it
+        // requests any visible tile previews.
+        let first_stage = if precomputed_source_dimensions.is_none() && !masonry_only {
+            let dimension_scheduler = Arc::clone(&scheduler);
+            let dimension_cancellation = Arc::clone(&cancellation);
+            // Keep a separate handle for queue submission; the job closure owns
+            // dimension_cancellation.
+            let dimension_submit_cancellation = Arc::clone(&dimension_cancellation);
+            let dimension_path = path.clone();
+            let dimension_key = scheduler_key.clone();
+            let dimension_source_key = source_key_for_job.clone();
+            let native_scheduler = Arc::clone(&scheduler);
+            let native_cancellation = Arc::clone(&cancellation);
+            let native_path = path.clone();
+            let native_key = scheduler_key.clone();
+            let native_source_key = source_key_for_job.clone();
+            let native_tx = tx.clone();
+            let native_repaint = repaint_ctx.clone();
+            let dimension_started_at = Arc::clone(&started_at);
+            let dimension_job = Box::new(move || {
+                if dimension_cancellation.load(Ordering::Acquire) {
+                    return;
                 }
-                // Masonry's metadata-first phase normally supplies these
-                // dimensions already. Other consumers retain the lazy fallback.
-                let mut source_dimensions = precomputed_source_dimensions.or_else(|| {
-                    (!masonry_only).then(|| source_dimensions_from_file(&path)).flatten()
-                });
-                let mut source_aspect_ratio = source_dimensions
-                    .map(|(width, height)| width as f32 / height as f32);
-                let mut preloaded_source_bytes: Option<Vec<u8>> = None;
-                let mut native_request_size = thumbnail_output_limit(target_size, source_dimensions);
-                let mut best_candidate: Option<ThumbnailCandidate> = None;
-
-                // Request the native OS/DE preview first. A lower-resolution
-                // result is still a valid candidate: it must not be thrown away
-                // just because the viewer asked for a larger Masonry tile.
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
+                mark_thumbnail_started(&dimension_started_at);
+                let dimensions = source_dimensions_from_file(&dimension_path);
+                if dimension_cancellation.load(Ordering::Acquire) {
+                    return;
                 }
-                let native = if masonry_placeholder {
-                    crate::platform::thumbnails::load_or_request_placeholder(
-                        &path,
-                        native_request_size,
-                    )
-                } else {
-                    crate::platform::thumbnails::load_or_request(
-                        &path,
-                        native_request_size,
-                    )
-                };
-                if let Some(native) = native {
-                    // When neither the file-header reader nor Shell metadata
-                    // exposes the original ratio, inspect modest-sized source
-                    // files before deciding how to normalize a square preview.
-                    if source_aspect_ratio.is_none() && native.width() == native.height() {
-                        let source_size = fs::metadata(&path).ok().map(|metadata| metadata.len());
-                        if source_size.is_some_and(|size| size <= MAX_SOURCE_RATIO_FALLBACK_READ_BYTES) {
-                            if let Ok(bytes) = fs::read(&path) {
-                                source_dimensions = source_dimensions_from_bytes(&bytes);
-                                source_aspect_ratio = source_dimensions
-                                    .map(|(width, height)| width as f32 / height as f32);
-                                // Recalculate the usable output bound now that
-                                // source dimensions are known. The native request
-                                // has already been issued, but its result can now
-                                // be compared against the true source maximum.
-                                native_request_size =
-                                    thumbnail_output_limit(target_size, source_dimensions);
-                                preloaded_source_bytes = Some(bytes);
-                            }
-                        }
-                    }
-
-                    let native_width = native.width();
-                    let native_height = native.height();
-                    let native_resolution = native_width.max(native_height);
-                    offer_thumbnail_candidate(
-                        &mut best_candidate,
-                        native,
-                        "native OS/DE thumbnail",
-                    );
-
-                    // Desktop providers use discrete cache flavors and may
-                    // return a close-but-not-exact size. A result at or above
-                    // two-thirds of the requested side is considered close
-                    // enough to avoid a full source decode.
-                    let native_quality_floor = native_thumbnail_quality_floor(native_request_size);
-                    let native_resolution_is_sufficient =
-                        native_resolution >= native_quality_floor;
-
-                    // The placeholder pass is about coverage and responsiveness,
-                    // not final sharpness. Never hold a visible tile hostage to a
-                    // full-resolution decode when Windows/the DE has returned any
-                    // valid non-empty preview, even if it is only 32 or 48 pixels.
-                    if masonry_placeholder && native_resolution > 0 {
-                        return finish_thumbnail_candidate(
-                            best_candidate.expect("native thumbnail candidate was just inserted"),
-                            native_request_size,
-                            source_aspect_ratio,
-                        );
-                    }
-
-                    if native_resolution < native_request_size
-                        && crate::platform::thumbnails::diagnostics_enabled()
-                    {
-                        let assessment = if native_resolution_is_sufficient {
-                            "meets the native quality floor; source decoding will be skipped"
-                        } else {
-                            "kept as a fallback candidate while checking embedded/source previews"
-                        };
-                        eprintln!(
-                            "[thumbnail] {}: native OS/DE returned {}x{} for a {}px request ({}px native floor); {}",
-                            path.display(),
-                            native_width,
-                            native_height,
-                            native_request_size,
-                            native_quality_floor,
-                            assessment,
-                        );
-                    }
-
-                    if native_resolution_is_sufficient
-                    {
-                        #[cfg(target_os = "windows")]
-                        if native_resolution < native_request_size
-                            && crate::platform::thumbnails::diagnostics_enabled()
-                        {
-                            eprintln!(
-                                "[thumbnail] {}: accepting Windows native {}x{} thumbnail for {}px request (quality floor {}px); skipping source decode",
-                                path.display(),
-                                native_width,
-                                native_height,
-                                native_request_size,
-                                native_quality_floor,
-                            );
-                        }
-                        return finish_thumbnail_candidate(
-                            best_candidate.expect("native thumbnail candidate was just inserted"),
-                            native_request_size,
-                            source_aspect_ratio,
-                        );
-                    }
-                }
-
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
-                }
-
-                // A larger embedded/full decode may improve an undersized native
-                // preview. Keep the native candidate while trying those sources,
-                // and avoid reading unusually large compressed files into RAM.
-                let bytes = match preloaded_source_bytes {
-                    Some(bytes) => bytes,
-                    None => {
-                        if let Ok(metadata) = fs::metadata(&path) {
-                            if metadata.len() > MAX_THUMB_SOURCE_READ_BYTES {
-                                if let Some(candidate) = best_candidate.take() {
-                                    let output_limit =
-                                        thumbnail_output_limit(target_size, source_dimensions);
-                                    eprintln!(
-                                        "[thumbnail] {}: source file is {} bytes; skipping full-source fallback and using {} ({}x{})",
-                                        path.display(),
-                                        metadata.len(),
-                                        candidate.source,
-                                        candidate.image.width(),
-                                        candidate.image.height(),
-                                    );
-                                    return finish_thumbnail_candidate(
-                                        candidate,
-                                        output_limit,
-                                        source_aspect_ratio,
-                                    );
-                                }
-                                return Err(format!(
-                                    "Source file is too large for the thumbnail fallback read ({} bytes): {}",
-                                    metadata.len(),
-                                    path.display(),
-                                ));
-                            }
-                        }
-                        if worker_cancellation.load(Ordering::Acquire) {
-                            return Err("__masonry_thumbnail_cancelled__".into());
-                        }
-                        match fs::read(&path) {
-                            Ok(bytes) => bytes,
-                            Err(error) => {
-                                if let Some(candidate) = best_candidate.take() {
-                                    eprintln!(
-                                        "[thumbnail] {}: source read failed ({error}); using {} ({}x{})",
-                                        path.display(),
-                                        candidate.source,
-                                        candidate.image.width(),
-                                        candidate.image.height(),
-                                    );
-                                    let output_limit =
-                                        thumbnail_output_limit(target_size, source_dimensions);
-                                    return finish_thumbnail_candidate(
-                                        candidate,
-                                        output_limit,
-                                        source_aspect_ratio,
-                                    );
-                                }
-                                return Err(format!("Failed to read {}: {error}", path.display()));
-                            }
-                        }
-                    }
-                };
-                source_dimensions = source_dimensions.or_else(|| source_dimensions_from_bytes(&bytes));
-                source_aspect_ratio = source_aspect_ratio
-                    .or_else(|| source_dimensions.map(|(width, height)| width as f32 / height as f32));
-
-                // RAW uses its embedded preview/thumbnail path; do not develop
-                // full sensor data merely to populate a thumbnail.
-                let is_raw = path.extension().and_then(|e| e.to_str())
-                    .and_then(crate::imaging::core::ImageFormat::from_extension)
-                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
-                    || zenraw::is_raw_file(&bytes);
-
-                let output_limit = thumbnail_output_limit(target_size, source_dimensions);
-
-                if !is_raw {
-                    if let Some(embedded) = extract_embedded_metadata_thumbnail(&bytes) {
-                        if let Ok(image) = image::load_from_memory(&embedded) {
-                            let image = image.to_rgba8();
-                            let embedded_resolution = image.width().max(image.height());
-                            offer_thumbnail_candidate(
-                                &mut best_candidate,
-                                image,
-                                "EXIF embedded preview",
-                            );
-
-                            // An embedded preview that reaches the requested
-                            // size can be used immediately. Smaller embedded
-                            // candidates remain available while full decode is
-                            // attempted and can still win over a worse native
-                            // result.
-                            if (masonry_placeholder && embedded_resolution > 0)
-                                || (embedded_resolution >= output_limit
-                                    && best_candidate.as_ref().is_some_and(|candidate| {
-                                        candidate.resolution >= output_limit
-                                    }))
-                            {
-                                // A valid embedded preview is preferable to
-                                // leaving the visible placeholder blank while a
-                                // much slower full-source decode runs.
-                                return finish_thumbnail_candidate(
-                                    best_candidate.expect("embedded candidate exists"),
-                                    output_limit,
-                                    source_aspect_ratio,
-                                );
-                            }
-                        }
-                    }
-                }
-
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
-                }
-                match decode_checked_sidebar_image(
-                    &bytes,
-                    &path.display().to_string(),
-                    is_raw,
-                    Some(&path),
-                ) {
-                    Ok(decoded) => offer_thumbnail_candidate(
-                        &mut best_candidate,
-                        decoded,
-                        if is_raw { "embedded RAW preview" } else { "Jpeg-Viewer decoder" },
-                    ),
-                    Err(error) => {
-                        if let Some(candidate) = best_candidate.as_ref() {
-                            // Keep the source decoder's reason visible during
-                            // diagnosis, but don't discard a usable native or
-                            // embedded thumbnail because the original is huge.
-                            eprintln!(
-                                "[thumbnail] {}: decoder fallback failed ({error}); using {} ({}x{})",
-                                path.display(),
-                                candidate.source,
-                                candidate.image.width(),
-                                candidate.image.height(),
-                            );
-                        } else {
-                            return Err(error);
-                        }
-                    }
-                }
-
-                let candidate = best_candidate.ok_or_else(|| {
-                    format!("No usable native, embedded, or decoded thumbnail: {}", path.display())
-                })?;
-                let output_limit = candidate_output_limit(&candidate, output_limit);
-                finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio)
-            })();
-
-            // A cancelled off-screen Masonry job intentionally sends no result:
-            // dropping the sender clears its pending/attempted state in the UI
-            // collector without reporting a false thumbnail failure.
-            if masonry_only && worker_cancellation.load(Ordering::Acquire) {
-                return;
-            }
-            let _ = tx.send((key, result));
-            repaint_ctx.request_repaint();
-        }) as ThumbnailJob;
-        let scheduler = thumbnail_scheduler(self.settings_manager.get().thumbnail_workers);
-        let submitted = if masonry_only {
-            if let Some(source_key) = masonry_source_key {
-                scheduler.submit_masonry(
-                    scheduler_key,
+                let submitted = schedule_file_native_stage(
+                    Arc::clone(&native_scheduler),
+                    native_path,
+                    native_key.clone(),
+                    target_size,
+                    dimensions,
                     priority,
-                    source_key,
-                    cancellation,
-                    job,
-                )
-            } else {
-                eprintln!("[thumbnail] Masonry job has no source identity; submitting without off-screen cancellation");
-                scheduler.submit(scheduler_key, priority, job).is_ok()
-            }
+                    masonry_placeholder,
+                    masonry_only,
+                    native_source_key,
+                    Arc::clone(&native_cancellation),
+                    native_tx.clone(),
+                    native_repaint.clone(),
+                    false,
+                    Arc::clone(&dimension_started_at),
+                );
+                if !submitted {
+                    complete_thumbnail_request(
+                        native_key,
+                        Err("Native OS/DE thumbnail request could not be queued".into()),
+                        native_tx,
+                        native_repaint,
+                        &native_scheduler,
+                        &native_cancellation,
+                        masonry_only,
+                    );
+                }
+            }) as ThumbnailJob;
+            submit_pipeline_stage(
+                &dimension_scheduler,
+                ThumbnailPool::Dimensions,
+                &dimension_key,
+                MASONRY_DIMENSION_PRIORITY,
+                dimension_source_key.as_deref(),
+                &dimension_submit_cancellation,
+                true,
+                dimension_job,
+            )
         } else {
-            scheduler.submit(scheduler_key, priority, job).is_ok()
+            schedule_file_native_stage(
+                Arc::clone(&scheduler),
+                path,
+                scheduler_key,
+                target_size,
+                precomputed_source_dimensions,
+                priority,
+                masonry_placeholder,
+                masonry_only,
+                source_key_for_job,
+                Arc::clone(&cancellation),
+                tx,
+                repaint_ctx,
+                true,
+                Arc::clone(&started_at),
+            )
         };
-        if !submitted {
+
+        if !first_stage {
+            if masonry_only {
+                scheduler.finish_masonry(&job_key, &cancellation);
+            }
             self.sidebar_thumbnail_pending.remove(&job_key);
             self.sidebar_thumbnail_attempted.remove(&job_key);
             self.sidebar_thumbnail_receivers.pop();
@@ -1260,7 +1800,6 @@ impl ViewerApp {
         );
     }
 
-    #[allow(unused_assignments)]
     fn request_sized_archive_thumbnail(
         &mut self,
         entry: crate::imaging::entry::ImageEntry,
@@ -1270,11 +1809,10 @@ impl ViewerApp {
         ctx: &egui::Context,
         masonry_source_key: Option<String>,
     ) {
-        // As above, promote a pending sidebar extraction before honoring the
-        // attempted set. This keeps visible Masonry entries ahead in the queue.
         if self.sidebar_thumbnail_pending.contains(&key) {
             if priority > SIDEBAR_THUMBNAIL_PRIORITY {
-                thumbnail_scheduler(self.settings_manager.get().thumbnail_workers).promote(&key, priority);
+                thumbnail_scheduler(self.settings_manager.get().thumbnail_workers)
+                    .promote(&key, priority);
             }
             return;
         }
@@ -1284,128 +1822,202 @@ impl ViewerApp {
         self.sidebar_thumbnail_failed.remove(&key);
         self.sidebar_thumbnail_attempted.insert(key.clone());
         self.sidebar_thumbnail_pending.insert(key.clone());
+
         let (tx, rx) = std::sync::mpsc::channel();
-        let receiver_masonry_source = masonry_source_key.clone();
-        self.sidebar_thumbnail_receivers.push((key.clone(), receiver_masonry_source, rx));
-        let job_key = key.clone();
+        let masonry_only = masonry_source_key.is_some();
+        let started_at = Arc::new(Mutex::new(None));
+        let cancellation = Arc::new(AtomicBool::new(false));
+        self.sidebar_thumbnail_receivers.push((
+            key.clone(),
+            masonry_source_key.clone(),
+            Instant::now(),
+            Arc::clone(&started_at),
+            Arc::clone(&cancellation),
+            rx,
+        ));
+
+        let scheduler = Arc::clone(thumbnail_scheduler(self.settings_manager.get().thumbnail_workers));
+        let worker_cancellation = Arc::clone(&cancellation);
+        let worker_scheduler = Arc::clone(&scheduler);
+        let worker_source_key = masonry_source_key.clone();
         let scheduler_key = key.clone();
         let repaint_ctx = ctx.clone();
-        let masonry_only = masonry_source_key.is_some();
-        let cancellation = Arc::new(AtomicBool::new(false));
-        let worker_cancellation = Arc::clone(&cancellation);
-        let job = Box::new(move || {
-            let result = (|| -> Result<GeneratedThumbnail, String> {
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
-                }
-                use std::io::Read;
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
-                }
-                let bytes = match &entry {
-                    crate::imaging::entry::ImageEntry::File(path) => {
-                        std::fs::read(path).map_err(|e| e.to_string())?
-                    }
-                    crate::imaging::entry::ImageEntry::Zip(item) => {
-                        let file = std::fs::File::open(&item.archive_path).map_err(|e| e.to_string())?;
-                        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-                        let mut item_file = archive.by_index(item.entry_index).map_err(|e| e.to_string())?;
-                        let mut bytes = Vec::new();
-                        item_file.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-                        bytes
-                    }
-                    crate::imaging::entry::ImageEntry::S7z(item) => {
-                        let mut archive = sevenz_rust2::ArchiveReader::open(
-                            &item.archive_path, sevenz_rust2::Password::empty(),
-                        ).map_err(|e| e.to_string())?;
-                        archive.read_file(&item.name).map_err(|e| e.to_string())?
-                    }
-                    crate::imaging::entry::ImageEntry::Rar(item) => {
-                        let mut archive = unrar::Archive::new(&item.archive_path)
-                            .open_for_processing().map_err(|e| e.to_string())?;
-                        loop {
-                            let header = archive.read_header().map_err(|e| e.to_string())?
-                                .ok_or_else(|| format!("Entry not found: {}", item.name))?;
-                            if header.entry().filename.to_string_lossy() == item.name {
-                                let (bytes, next) = header.read().map_err(|e| e.to_string())?;
-                                archive = next;
-                                break bytes;
-                            }
-                            archive = header.skip().map_err(|e| e.to_string())?;
-                        }
-                    }
-                };
-                let name = match &entry {
-                    crate::imaging::entry::ImageEntry::File(path) => path.display().to_string(),
-                    crate::imaging::entry::ImageEntry::Zip(item) => item.name.clone(),
-                    crate::imaging::entry::ImageEntry::S7z(item) => item.name.clone(),
-                    crate::imaging::entry::ImageEntry::Rar(item) => item.name.clone(),
-                };
-                let is_raw = std::path::Path::new(&name)
-                    .extension().and_then(|e| e.to_str())
-                    .and_then(crate::imaging::core::ImageFormat::from_extension)
-                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
-                    || zenraw::is_raw_file(&bytes);
-                let source_dimensions = source_dimensions_from_bytes(&bytes);
-                let source_aspect_ratio = source_dimensions
-                    .map(|(width, height)| width as f32 / height as f32);
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return Err("__masonry_thumbnail_cancelled__".into());
-                }
-                let rgba = decode_checked_sidebar_image(&bytes, &name, is_raw, None)?;
-                let source_aspect_ratio = source_aspect_ratio_or_preview(
-                    source_aspect_ratio,
-                    rgba.width(),
-                    rgba.height(),
-                );
-                let output_limit = thumbnail_output_limit(target_size, source_dimensions);
-                let (width, height, pixels, resolution) = fit_thumbnail_to(rgba, output_limit, source_aspect_ratio)?;
-                Ok(GeneratedThumbnail { width, height, pixels, resolution, source_aspect_ratio })
-            })();
-            if masonry_only && worker_cancellation.load(Ordering::Acquire) {
+        let dimension_started_at = Arc::clone(&started_at);
+        let dimension_job = Box::new(move || {
+            if worker_cancellation.load(Ordering::Acquire) {
                 return;
             }
-            let _ = tx.send((key, result));
-            repaint_ctx.request_repaint();
-        }) as ThumbnailJob;
-        let scheduler = thumbnail_scheduler(self.settings_manager.get().thumbnail_workers);
-        let submitted = if let Some(source_key) = masonry_source_key {
-            scheduler.submit_masonry(
-                scheduler_key,
+            mark_thumbnail_started(&dimension_started_at);
+            let bytes = read_archive_entry_bytes(&entry);
+            let source_dimensions = bytes.as_ref().ok()
+                .and_then(|bytes| source_dimensions_from_bytes(bytes));
+            if worker_cancellation.load(Ordering::Acquire) {
+                return;
+            }
+
+            let decoder_scheduler = Arc::clone(&worker_scheduler);
+            let decoder_cancellation = Arc::clone(&worker_cancellation);
+            // The decoder closure owns decoder_cancellation; retain a second
+            // handle for submitting the cancellable queued job.
+            let decoder_submit_cancellation = Arc::clone(&decoder_cancellation);
+            let decoder_source_key = worker_source_key.clone();
+            let decoder_key = scheduler_key.clone();
+            let decoder_repaint = repaint_ctx.clone();
+            let decoder_tx = tx.clone();
+            let decoder_job = Box::new(move || {
+                let result = (|| -> Result<GeneratedThumbnail, String> {
+                    if decoder_cancellation.load(Ordering::Acquire) {
+                        return Err("__masonry_thumbnail_cancelled__".into());
+                    }
+                    let bytes = bytes?;
+                    let name = match &entry {
+                        crate::imaging::entry::ImageEntry::File(path) => path.display().to_string(),
+                        crate::imaging::entry::ImageEntry::Zip(item) => item.name.clone(),
+                        crate::imaging::entry::ImageEntry::S7z(item) => item.name.clone(),
+                        crate::imaging::entry::ImageEntry::Rar(item) => item.name.clone(),
+                    };
+                    let is_raw = std::path::Path::new(&name)
+                        .extension().and_then(|extension| extension.to_str())
+                        .and_then(crate::imaging::core::ImageFormat::from_extension)
+                        == Some(crate::imaging::core::ImageFormat::CameraRaw)
+                        || zenraw::is_raw_file(&bytes);
+                    let source_aspect_ratio = source_dimensions
+                        .map(|(width, height)| width as f32 / height as f32);
+                    if decoder_cancellation.load(Ordering::Acquire) {
+                        return Err("__masonry_thumbnail_cancelled__".into());
+                    }
+                    let rgba = decode_checked_sidebar_image(
+                        &bytes,
+                        &name,
+                        is_raw,
+                        None,
+                        source_dimensions,
+                    )?;
+                    let source_aspect_ratio = source_aspect_ratio_or_preview(
+                        source_aspect_ratio,
+                        rgba.width(),
+                        rgba.height(),
+                    );
+                    let output_limit = thumbnail_output_limit(target_size, source_dimensions);
+                    let (width, height, pixels, resolution) = fit_thumbnail_to(
+                        rgba,
+                        output_limit,
+                        source_aspect_ratio,
+                    )?;
+                    Ok(GeneratedThumbnail {
+                        width,
+                        height,
+                        pixels,
+                        resolution,
+                        source_aspect_ratio,
+                    })
+                })();
+                complete_thumbnail_request(
+                    decoder_key,
+                    result,
+                    decoder_tx,
+                    decoder_repaint,
+                    &decoder_scheduler,
+                    &decoder_cancellation,
+                    masonry_only,
+                );
+            }) as ThumbnailJob;
+
+            let submitted = worker_scheduler.submit_stage(
+                ThumbnailPool::Decoder,
+                scheduler_key.clone(),
                 priority,
-                source_key,
-                cancellation,
-                job,
-            )
-        } else {
-            scheduler.submit(scheduler_key, priority, job).is_ok()
-        };
+                decoder_source_key,
+                Some(decoder_submit_cancellation),
+                decoder_job,
+            ).is_ok();
+            if !submitted {
+                complete_thumbnail_request(
+                    scheduler_key,
+                    Err("Jpeg-Viewer archive decoder request was cancelled before it could start".into()),
+                    tx.clone(),
+                    repaint_ctx.clone(),
+                    &worker_scheduler,
+                    &worker_cancellation,
+                    masonry_only,
+                );
+            }
+        }) as ThumbnailJob;
+
+        let submitted = submit_pipeline_stage(
+            &scheduler,
+            ThumbnailPool::Dimensions,
+            &key,
+            MASONRY_DIMENSION_PRIORITY,
+            masonry_source_key.as_deref(),
+            &cancellation,
+            true,
+            dimension_job,
+        );
         if !submitted {
-            self.sidebar_thumbnail_pending.remove(&job_key);
-            self.sidebar_thumbnail_attempted.remove(&job_key);
+            if masonry_only {
+                scheduler.finish_masonry(&key, &cancellation);
+            }
+            self.sidebar_thumbnail_pending.remove(&key);
+            self.sidebar_thumbnail_attempted.remove(&key);
             self.sidebar_thumbnail_receivers.pop();
         }
     }
     pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
         self.collect_masonry_dimensions();
         let mut completed = Vec::new();
+        let mut cancelled = Vec::new();
         let mut disconnected = Vec::new();
+        let mut timed_out = Vec::new();
         self.sidebar_thumbnail_receivers
-            .retain(|(job_key, masonry_source, receiver)| match receiver.try_recv() {
-                Ok((_result_key, result)) => {
-                    completed.push((job_key.clone(), masonry_source.clone(), result));
-                    false
+            .retain(|(job_key, masonry_source, queued_at, started_at, cancellation, receiver)| {
+                if cancellation.load(Ordering::Acquire) {
+                    cancelled.push(job_key.clone());
+                    return false;
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    disconnected.push(job_key.clone());
-                    false
+                match receiver.try_recv() {
+                    Ok((_result_key, result)) => {
+                        completed.push((job_key.clone(), masonry_source.clone(), result));
+                        return false;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        disconnected.push(job_key.clone());
+                        return false;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 }
-                Err(std::sync::mpsc::TryRecvError::Empty) => true,
+                let has_timed_out = thumbnail_started_elapsed(started_at)
+                    .map(|elapsed| elapsed >= THUMBNAIL_JOB_TIMEOUT)
+                    .unwrap_or_else(|| queued_at.elapsed() >= THUMBNAIL_QUEUE_TIMEOUT);
+                if has_timed_out {
+                    if let Some(scheduler) = THUMBNAIL_SCHEDULER.get() {
+                        scheduler.cancel_job(cancellation);
+                    } else {
+                        cancellation.store(true, Ordering::Release);
+                    }
+                    timed_out.push(job_key.clone());
+                    eprintln!("[thumbnail] thumbnail pipeline timed out for {job_key}");
+                    return false;
+                }
+                true
             });
-        for key in disconnected {
+        for key in cancelled {
             self.sidebar_thumbnail_pending.remove(&key);
             self.sidebar_thumbnail_attempted.remove(&key);
             self.sidebar_thumbnail_failed.remove(&key);
+        }
+        for key in disconnected {
+            self.sidebar_thumbnail_pending.remove(&key);
+            // A disconnected result means a worker exited unexpectedly (for
+            // example after a panic). Mark it failed so the UI does not create
+            // an unbounded retry loop. Explicit retries clear this state.
+            self.sidebar_thumbnail_attempted.insert(key.clone());
+            self.sidebar_thumbnail_failed.insert(key);
+        }
+        for key in timed_out {
+            self.sidebar_thumbnail_pending.remove(&key);
+            self.sidebar_thumbnail_attempted.insert(key.clone());
+            self.sidebar_thumbnail_failed.insert(key);
         }
         for (key, masonry_source, result) in completed {
             self.sidebar_thumbnail_pending.remove(&key);

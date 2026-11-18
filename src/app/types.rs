@@ -13,7 +13,9 @@ use lru::LruCache;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 // ====== LOADED IMAGE ======
@@ -356,8 +358,14 @@ pub struct ViewerApp {
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
-    pub sidebar_thumbnail_receivers:
-        Vec<(String, Option<String>, Receiver<(String, Result<GeneratedThumbnail, String>)>)>,
+    pub sidebar_thumbnail_receivers: Vec<(
+        String,
+        Option<String>,
+        Instant,
+        Arc<Mutex<Option<Instant>>>,
+        Arc<AtomicBool>,
+        Receiver<(String, Result<GeneratedThumbnail, String>)>,
+    )>,
     /// Source keys currently intersecting the active Masonry viewport. Completed
     /// Masonry-only results outside this set are discarded instead of cached.
     pub masonry_visible_sources: HashSet<String>,
@@ -365,7 +373,8 @@ pub struct ViewerApp {
     pub masonry_dimension_attempted: HashSet<String>,
     pub masonry_dimension_pending: HashSet<String>,
     pub masonry_dimension_results: HashMap<String, Option<(u32, u32)>>,
-    pub masonry_dimension_receivers: Vec<(String, Receiver<Option<(u32, u32)>>)>,
+    pub masonry_dimension_receivers:
+        Vec<(String, Instant, Arc<Mutex<Option<Instant>>>, Arc<AtomicBool>, Receiver<Option<(u32, u32)>>)>,
 }
 
 impl Default for ViewerApp {
