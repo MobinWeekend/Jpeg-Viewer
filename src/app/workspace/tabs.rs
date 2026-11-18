@@ -80,13 +80,13 @@ impl crate::app::types::ViewerApp {
         }
     }
 
-    /// Open an entry in a one-image tab. Existing image tabs are focused rather
-    /// than duplicated. When opening from Masonry, reuse the most recently used
-    /// image tab; never replace the collection-based primary Viewer tab.
+    /// Open an entry in its own one-image tab. If that exact entry already has
+    /// an Image tab, focus the existing tab rather than creating a duplicate.
     pub(crate) fn open_entry_in_image_tab(&mut self, entry: ImageEntry, activate: bool) {
         let entry_id = entry.get_id();
 
-        // An image that already has a dedicated tab always resolves to that tab.
+        // An image that already has a dedicated tab resolves to that tab instead
+        // of creating a duplicate. Different images always receive distinct tabs.
         if let Some(index) = self.workspace.tabs.iter().position(|tab| {
             tab.kind == WorkspaceTabKind::Image
                 && tab
@@ -102,49 +102,9 @@ impl crate::app::types::ViewerApp {
             return;
         }
 
-        // A foreground open from an Image tab reuses that tab. From Masonry or
-        // Compare, reuse the most recently active Image tab. The primary Viewer
-        // remains a collection tab and is never collapsed into a one-image tab.
-        let reuse_id = if activate {
-            match self.workspace.active_kind() {
-                WorkspaceTabKind::Image => self.workspace.active_tab().map(|tab| tab.id),
-                WorkspaceTabKind::Masonry | WorkspaceTabKind::Compare => {
-                    self.workspace.last_image_tab_id
-                }
-                WorkspaceTabKind::Viewer | WorkspaceTabKind::Welcome => None,
-            }
-        } else {
-            None
-        };
-
-        if let Some(id) = reuse_id {
-            if let Some(index) = self
-                .workspace
-                .tabs
-                .iter()
-                .position(|tab| tab.id == id && tab.kind == WorkspaceTabKind::Image)
-            {
-                self.snapshot_active_viewer_tab();
-                {
-                    let tab = &mut self.workspace.tabs[index];
-                    tab.title = entry_display_name(&entry);
-                    tab.entries = vec![entry];
-                    tab.current_index = 0;
-                    tab.directory = entry_parent(&tab.entries[0]);
-                    tab.zoom = 1.0;
-                    tab.pan = egui::Vec2::ZERO;
-                    tab.fit_to_window = true;
-                    tab.zoom_used = false;
-                }
-                self.workspace.active_index = index;
-                let entries = self.workspace.tabs[index].entries.clone();
-                self.current_directory = self.workspace.tabs[index].directory.clone();
-                self.set_image_entries(entries, 0);
-                self.workspace.last_image_tab_id = Some(id);
-                return;
-            }
-        }
-
+        // "Open in New Tab" is an explicit request for a distinct tab. Do not
+        // reuse the active or most recently used Image tab: successive opens
+        // must preserve every previously opened image in its own tab.
         self.snapshot_active_viewer_tab();
         let id = self.workspace.allocate_id();
         let mut tab = WorkspaceTab::new(id, entry_display_name(&entry), WorkspaceTabKind::Image);
@@ -494,8 +454,10 @@ impl crate::app::types::ViewerApp {
                                             activate = Some(*id);
                                         }
                                     }
-                                    if response.drag_started() && response.interact_pointer_pos()
-                                        .is_some_and(|pos| !close_rect.contains(pos))
+                                    if response.drag_started()
+                                        && !self.window_mouse_operation_active
+                                        && response.interact_pointer_pos()
+                                            .is_some_and(|pos| !close_rect.contains(pos))
                                     {
                                         self.workspace.dragging_tab_id = Some(*id);
                                     }
@@ -868,6 +830,7 @@ impl crate::app::types::ViewerApp {
                                                         }
                                                     }
                                                     if response.drag_started()
+                                                        && !self.window_mouse_operation_active
                                                         && response
                                                             .interact_pointer_pos()
                                                             .is_some_and(|pos| {

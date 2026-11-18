@@ -288,6 +288,13 @@ impl ViewerApp {
                     }
                     ui.separator();
                 }
+                if path.is_file() && ui.button("Open in New Tab").clicked() {
+                    self.open_entry_in_image_tab(
+                        crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                        true,
+                    );
+                    ui.close();
+                }
                 if ui.button("Open With…").clicked() {
                     if let Err(error) = crate::app::external_open::open_with(path) {
                         self.queue_status =
@@ -402,7 +409,7 @@ impl ViewerApp {
 
         let clicked = response.clicked();
         if let Some(index) = context_index {
-            if response.drag_started() {
+            if response.drag_started() && !self.window_mouse_operation_active {
                 self.sidebar_drag_index = Some(index);
                 self.sidebar_drag_collection = context_mode;
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -514,6 +521,13 @@ impl ViewerApp {
                     }
                     if ui.button("Open image").clicked() {
                         self.navigate_to_index(ctx, index);
+                        ui.close();
+                    }
+                    if path.is_file() && ui.button("Open in New Tab").clicked() {
+                        self.open_entry_in_image_tab(
+                            crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                            true,
+                        );
                         ui.close();
                     }
                     if path.is_file() && ui.button("Rename… (F2)").clicked() {

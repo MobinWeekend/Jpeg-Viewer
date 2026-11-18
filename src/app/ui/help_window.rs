@@ -243,8 +243,8 @@ impl ViewerApp {
                         Self::render_mouse_row(ui, "Double-click Left", "Open file dialog (on empty screen)");
                         Self::render_mouse_row(ui, "Middle Click", "Toggle fullscreen");
                         Self::render_mouse_row(ui, "Double-click Right", "Fit image to window");
-                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window from anywhere in the main view");
-                        Self::render_mouse_row(ui, "Ctrl + Left Drag", "Resize window in windowed mode");
+                        Self::render_mouse_row(ui, "Alt + Left Drag", "Move window from anywhere in the application (toggle in General settings)");
+                        Self::render_mouse_row(ui, "Shift + Left Drag", "Resize the nearest window corner from anywhere in the application (toggle in General settings)");
                         Self::render_mouse_row(ui, "Touchpad scroll", "Navigate images; Ctrl + scroll zooms unless inverted in Settings");
                         Self::render_mouse_row(ui, "Sidebar thumbnails", "Select to open; drag to reorder Queue/Favorites entries");
                         Self::render_mouse_row(ui, "Entry number", "Enter a position to move the item in supported lists");

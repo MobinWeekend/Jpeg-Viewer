@@ -43,6 +43,12 @@ impl SettingsManager {
                     if let Some(value) = section.get("b_ctrl_invert") {
                         settings.b_ctrl_invert = Self::parse_bool(value);
                     }
+                    if let Some(value) = section.get("window_move_mouse_shortcut_enabled") {
+                        settings.window_move_mouse_shortcut_enabled = Self::parse_bool(value);
+                    }
+                    if let Some(value) = section.get("window_resize_mouse_shortcut_enabled") {
+                        settings.window_resize_mouse_shortcut_enabled = Self::parse_bool(value);
+                    }
                     if let Some(value) = section.get("zoom_step_mouse_right_button") {
                         if let Ok(step_mouse_right_button) = value.parse::<f32>() {
                             if step_mouse_right_button.is_finite()

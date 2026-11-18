@@ -324,6 +324,10 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             app.navigate_to_index(ctx, index);
                                                             ui.close();
                                                         }
+                                                        if ui.button("Open in New Tab").clicked() {
+                                                            app.open_entry_in_image_tab(entry.clone(), true);
+                                                            ui.close();
+                                                        }
                                                         if ui.button("Copy entry name").clicked() {
                                                             match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(name.clone())) {
                                                                 Ok(()) => app.queue_status = Some("Copied archive entry name.".into()),

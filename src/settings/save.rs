@@ -33,6 +33,14 @@ impl SettingsManager {
             },
         );
         section.set(
+            "window_move_mouse_shortcut_enabled",
+            if settings.window_move_mouse_shortcut_enabled { "true" } else { "false" },
+        );
+        section.set(
+            "window_resize_mouse_shortcut_enabled",
+            if settings.window_resize_mouse_shortcut_enabled { "true" } else { "false" },
+        );
+        section.set(
             "zoom_step_mouse_right_button",
             settings
                 .zoom_step_mouse_right_button

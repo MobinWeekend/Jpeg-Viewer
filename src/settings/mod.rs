@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 8;
+const SETTINGS_SCHEMA_VERSION: u32 = 9;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -16,6 +16,10 @@ mod tests;
 #[derive(Debug, Clone)]
 pub struct AppSettings {
     pub b_ctrl_invert: bool,
+    /// Enable Alt + left-drag anywhere in the app to move the window.
+    pub window_move_mouse_shortcut_enabled: bool,
+    /// Enable Shift + left-drag anywhere in the app to resize the nearest corner.
+    pub window_resize_mouse_shortcut_enabled: bool,
     /// Multiplicative zoom factor applied by keyboard and wheel zoom commands.
     pub zoom_step_mouse_right_button: f32,
     pub zoom_step_mouse_wheel: f32,
@@ -175,6 +179,8 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             b_ctrl_invert: false,
+            window_move_mouse_shortcut_enabled: true,
+            window_resize_mouse_shortcut_enabled: true,
             zoom_step_mouse_right_button: 1.2,
             zoom_step_mouse_wheel: 1.2,
             zoom_step_keyboard: 1.2,
@@ -185,7 +191,7 @@ impl Default for AppSettings {
             cache_delta_factor: 0.6,
             max_cache_task: 4,
             thumbnail_workers: 3,
-            texture_filter: "linear".to_string(),
+            texture_filter: "mipmap".to_string(),
             preload_throttle_ms: 100,
             max_fps: 30.0,
             idle_fps_limit: 0.0,

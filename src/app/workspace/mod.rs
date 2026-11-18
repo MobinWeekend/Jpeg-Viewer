@@ -219,6 +219,11 @@ impl WorkspaceManager {
         self.tabs.get_mut(self.active_index)
     }
 
+    /// Cancel any in-progress tab-strip drag before starting a global window gesture.
+    pub(crate) fn cancel_tab_drag(&mut self) {
+        self.dragging_tab_id = None;
+    }
+
     fn allocate_id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id = self.next_id.wrapping_add(1).max(2);

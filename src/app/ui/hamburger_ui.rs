@@ -14,12 +14,14 @@ impl ViewerApp {
         let platform_profile = crate::ui_theme::current_look_profile(ui.ctx());
         let button_label = "☰";
         let win98 = platform_profile == "win98";
-        let button_fill = if win98 {
+        let unframed_home = self.is_home_surface_active()
+            && !self.settings_manager.get().show_titlebar;
+        let button_fill = if win98 && !unframed_home {
             ui.visuals().widgets.inactive.bg_fill
         } else {
             egui::Color32::TRANSPARENT
         };
-        let button_stroke = if win98 {
+        let button_stroke = if win98 && !unframed_home {
             ui.visuals().widgets.inactive.bg_stroke
         } else {
             egui::Stroke::NONE

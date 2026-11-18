@@ -24,6 +24,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.separator();
         ui.label(egui::RichText::new("Input").strong());
         render_invert_scroll_zoom(app, ui);
+        render_window_mouse_shortcuts(app, ui);
         render_recursive_folder_drop(app, ui);
 
         ui.add_space(6.0);
@@ -133,6 +134,27 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
             .weak(),
         );
     });
+}
+
+fn render_window_mouse_shortcuts(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let mut move_enabled = app.settings_manager.get().window_move_mouse_shortcut_enabled;
+    if crate::ui_theme::switch(ui, &mut move_enabled, "Alt + left-drag moves window") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.window_move_mouse_shortcut_enabled = move_enabled;
+        });
+    }
+
+    let mut resize_enabled = app.settings_manager.get().window_resize_mouse_shortcut_enabled;
+    if crate::ui_theme::switch(ui, &mut resize_enabled, "Shift + left-drag resizes window") {
+        let _ = app.settings_manager.update(|settings| {
+            settings.window_resize_mouse_shortcut_enabled = resize_enabled;
+        });
+    }
+    ui.label(
+        egui::RichText::new("Both shortcuts work across the application. Shift-drag resizes toward the nearest window corner.")
+            .small()
+            .weak(),
+    );
 }
 
 fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {

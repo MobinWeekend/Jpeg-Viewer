@@ -236,25 +236,26 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                         let can_toggle_masonry = !has_desktop_menu && app.masonry_toggle_available();
                         if integrate_navigation && !has_desktop_menu && app.is_home_surface_active() {
                             ui.add_space(3.0);
-                            super::toolbar::toolbar_frame_mode(ctx, true).show(ui, |group| {
-                                group.horizontal(|group| {
-                                    app.render_hamburger_ui(group);
-                                    if can_toggle_masonry {
-                                        let tip = if masonry_active {
-                                            "Return to Viewer"
-                                        } else {
-                                            "Open current entries in Masonry"
-                                        };
-                                        if crate::app::ui::masonry_toggle_button(
-                                            group, masonry_active, true, 30.0,
-                                        )
-                                        .on_hover_text(tip)
-                                        .clicked()
-                                        {
-                                            app.activate_masonry_from_navigation_button();
-                                        }
+                            // Home is intentionally a clean landing page: keep the
+                            // hamburger and Masonry controls directly on the titlebar
+                            // without the floating toolbar's background surface.
+                            ui.horizontal(|group| {
+                                app.render_hamburger_ui(group);
+                                if can_toggle_masonry {
+                                    let tip = if masonry_active {
+                                        "Return to Viewer"
+                                    } else {
+                                        "Open current entries in Masonry"
+                                    };
+                                    if crate::app::ui::masonry_toggle_button(
+                                        group, masonry_active, true, 30.0,
+                                    )
+                                    .on_hover_text(tip)
+                                    .clicked()
+                                    {
+                                        app.activate_masonry_from_navigation_button();
                                     }
-                                });
+                                }
                             });
                         } else {
                             // When integrated navigation is enabled, the hamburger
@@ -383,7 +384,9 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             && title_response.clicked()
                         {
                             app.begin_rename_current();
-                        } else if title_response.drag_started() {
+                        } else if title_response.drag_started()
+                            && !app.window_mouse_operation_active
+                        {
                             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                             #[cfg(target_os = "linux")]
                             crate::platform::wayland_pointer_recovery::after_native_window_operation(

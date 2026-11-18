@@ -47,7 +47,9 @@ impl ViewerApp {
         if background_drag.double_clicked() {
             let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-        } else if background_drag.drag_started_by(egui::PointerButton::Primary) {
+        } else if background_drag.drag_started_by(egui::PointerButton::Primary)
+            && !self.window_mouse_operation_active
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
             #[cfg(target_os = "linux")]
             crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
@@ -66,6 +68,9 @@ impl ViewerApp {
             Vec::new()
         };
         let pinned_paths = self.welcome_pinned_paths();
+        // Pass this into the free-standing card renderers so they can avoid
+        // initiating shortcut drags during a global window move/resize gesture.
+        let window_mouse_operation_active = self.window_mouse_operation_active;
         // Match the target to the actual new-tab preview viewport (six-column
         // card width and the 82pt preview height), converted to physical pixels.
         let page_width = ui.available_width().min(900.0).max(1.0);
@@ -216,7 +221,11 @@ impl ViewerApp {
                                 // size: header first, then full-width shortcuts, then the
                                 // optional Recently opened section. Both grids use six-card rows.
                                 page.add_space(26.0);
-                                let shortcuts_action = render_shortcuts_section(page, &pinned);
+                                let shortcuts_action = render_shortcuts_section(
+                                    page,
+                                    &pinned,
+                                    window_mouse_operation_active,
+                                );
 
                                 let mut recent_action: Option<WelcomeAction> = None;
                                 if show_recent {
@@ -225,6 +234,7 @@ impl ViewerApp {
                                         page,
                                         &recent,
                                         recent_rows,
+                                        window_mouse_operation_active,
                                     );
                                 }
 
@@ -358,6 +368,7 @@ fn render_recent_section(
     ui: &mut egui::Ui,
     recent: &[NewTabCard],
     recent_rows: usize,
+    window_mouse_operation_active: bool,
 ) -> Option<WelcomeAction> {
     let mut selected_action = None;
     let recent_limit = (recent_rows.clamp(1, 2) * 6).min(8);
@@ -393,8 +404,13 @@ fn render_recent_section(
             ui.horizontal(|row_ui| {
                 row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
                 for card in row {
-                    let (opened, _, menu_action) =
-                        render_new_tab_card(row_ui, card, false, card_width);
+                    let (opened, _, menu_action) = render_new_tab_card(
+                        row_ui,
+                        card,
+                        false,
+                        card_width,
+                        window_mouse_operation_active,
+                    );
                     if opened {
                         selected_action = Some(WelcomeAction::OpenPath(card.path.clone()));
                     }
@@ -408,7 +424,11 @@ fn render_recent_section(
     selected_action
 }
 
-fn render_shortcuts_section(ui: &mut egui::Ui, pinned: &[NewTabCard]) -> Option<WelcomeAction> {
+fn render_shortcuts_section(
+    ui: &mut egui::Ui,
+    pinned: &[NewTabCard],
+    window_mouse_operation_active: bool,
+) -> Option<WelcomeAction> {
     let mut action = None;
     ui.horizontal_wrapped(|header| {
         header.heading("Your shortcuts");
@@ -445,8 +465,13 @@ fn render_shortcuts_section(ui: &mut egui::Ui, pinned: &[NewTabCard]) -> Option<
             ui.horizontal(|row_ui| {
                 row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
                 for card in row {
-                    let (opened, removed, menu_action) =
-                        render_new_tab_card(row_ui, card, true, card_width);
+                    let (opened, removed, menu_action) = render_new_tab_card(
+                        row_ui,
+                        card,
+                        true,
+                        card_width,
+                        window_mouse_operation_active,
+                    );
                     if removed {
                         action = Some(WelcomeAction::RemovePin(card.path.clone()));
                     } else if opened {
@@ -493,6 +518,7 @@ fn render_new_tab_card(
     card: &NewTabCard,
     removable: bool,
     card_width: f32,
+    window_mouse_operation_active: bool,
 ) -> (bool, bool, Option<WelcomeAction>) {
     let mut removed = false;
     let mut menu_action = None;
@@ -515,13 +541,16 @@ fn render_new_tab_card(
     let card_id = response.id.with(("new-tab-card", card.path.clone()));
     const SHORTCUT_DRAG_ID: &str = "home_shortcut_drag_source";
     let shortcut_drag_id = egui::Id::new(SHORTCUT_DRAG_ID);
-    if removable && response.drag_started() {
+    if removable && response.drag_started() && !window_mouse_operation_active {
         ui.ctx()
             .data_mut(|data| data.insert_temp(shortcut_drag_id, card.path.clone()));
     }
-    let dragging_path = ui
-        .ctx()
-        .data(|data| data.get_temp::<PathBuf>(shortcut_drag_id));
+    let dragging_path = if window_mouse_operation_active {
+        None
+    } else {
+        ui.ctx()
+            .data(|data| data.get_temp::<PathBuf>(shortcut_drag_id))
+    };
     let is_drop_target = removable
         && dragging_path
             .as_ref()

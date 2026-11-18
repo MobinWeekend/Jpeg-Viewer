@@ -7,6 +7,97 @@ use std::path::PathBuf;
 impl ViewerApp {
     // Handle all hardcoded input events (keyboard, mouse, drag & drop)
 
+    /// Start global window move/resize gestures after a real drag begins.
+    /// This runs before any widgets are built, so the shortcuts work over every
+    /// part of the application rather than only over the central image response.
+    fn handle_global_window_mouse_shortcuts(&mut self, ctx: &egui::Context) {
+        let settings = self.settings_manager.get();
+        let move_enabled = settings.window_move_mouse_shortcut_enabled;
+        let resize_enabled = settings.window_resize_mouse_shortcut_enabled;
+        let (
+            primary_down,
+            alt,
+            shift,
+            press_origin,
+            pointer_pos,
+            fullscreen,
+            maximized,
+            window_rect,
+        ) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                input.pointer.button_down(egui::PointerButton::Primary),
+                input.modifiers.alt,
+                input.modifiers.shift,
+                input.pointer.press_origin(),
+                input.pointer.interact_pos(),
+                viewport.fullscreen.unwrap_or(false),
+                viewport.maximized.unwrap_or(false),
+                viewport.inner_rect.unwrap_or_else(|| input.viewport_rect()),
+            )
+        });
+
+        if !primary_down {
+            self.window_mouse_operation_active = false;
+            return;
+        }
+        if self.window_mouse_operation_active {
+            return;
+        }
+
+        let (Some(origin), Some(pointer_pos)) = (press_origin, pointer_pos) else {
+            return;
+        };
+        // Do not turn a modified click into a window operation. Let ordinary
+        // widget clicks complete unless the pointer has actually started dragging.
+        if origin.distance(pointer_pos) < 5.0 {
+            return;
+        }
+
+        if shift && resize_enabled && !fullscreen && !maximized {
+            // The four half-window regions each select their nearest corner.
+            let left = origin.x < window_rect.center().x;
+            let top = origin.y < window_rect.center().y;
+            let (direction, cursor) = match (left, top) {
+                (true, true) => (
+                    egui::viewport::ResizeDirection::NorthWest,
+                    egui::CursorIcon::ResizeNorthWest,
+                ),
+                (false, true) => (
+                    egui::viewport::ResizeDirection::NorthEast,
+                    egui::CursorIcon::ResizeNorthEast,
+                ),
+                (true, false) => (
+                    egui::viewport::ResizeDirection::SouthWest,
+                    egui::CursorIcon::ResizeSouthWest,
+                ),
+                (false, false) => (
+                    egui::viewport::ResizeDirection::SouthEast,
+                    egui::CursorIcon::ResizeSouthEast,
+                ),
+            };
+            self.window_mouse_operation_active = true;
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+            self.workspace.cancel_tab_drag();
+            self.sidebar_drag_index = None;
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
+            ctx.set_cursor_icon(cursor);
+        } else if alt && move_enabled {
+            self.window_mouse_operation_active = true;
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+            self.workspace.cancel_tab_drag();
+            self.sidebar_drag_index = None;
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            #[cfg(target_os = "linux")]
+            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
+            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+    }
+
     // Handle mouse input on the image response.
     pub fn handle_image_mouse_input(
         &mut self,
@@ -14,13 +105,18 @@ impl ViewerApp {
         response: &egui::Response,
         image_rect: Option<egui::Rect>,
     ) {
-        let (fullscreen, maximized, alt, ctrl, left_down, right_down, delta, hover_pos) = ctx
+        if self.window_mouse_operation_active {
+            self.main_view_pan_drag_active = false;
+            self.main_view_window_drag_active = false;
+            return;
+        }
+
+        let (fullscreen, maximized, alt, left_down, right_down, delta, hover_pos) = ctx
             .input(|input| {
                 (
                     input.viewport().fullscreen.unwrap_or(false),
                     input.viewport().maximized.unwrap_or(false),
                     input.modifiers.alt,
-                    input.modifiers.ctrl,
                     input.pointer.button_down(egui::PointerButton::Primary),
                     input.pointer.button_down(egui::PointerButton::Secondary),
                     input.pointer.delta(),
@@ -28,6 +124,10 @@ impl ViewerApp {
                 )
             });
         let windowed = !fullscreen && !maximized;
+        let move_shortcut_enabled = self
+            .settings_manager
+            .get()
+            .window_move_mouse_shortcut_enabled;
 
         // Select the gesture mode once at drag start. Do not recalculate it while
         // panning, because the image rectangle itself moves as pan is applied.
@@ -57,31 +157,6 @@ impl ViewerApp {
             return;
         }
 
-        // CTRL + LEFT DRAG -> RESIZE WINDOW. Native resize is unavailable while
-        // maximized/fullscreen, so do not start a resize gesture in those states.
-        if ctrl && windowed && response.drag_started_by(egui::PointerButton::Primary) {
-            self.main_view_pan_drag_active = false;
-            self.main_view_window_drag_active = false;
-            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(
-                egui::viewport::ResizeDirection::SouthEast,
-            ));
-            #[cfg(target_os = "linux")]
-            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
-            ctx.set_cursor_icon(egui::CursorIcon::ResizeNwSe);
-            return;
-        }
-
-        // ALT + LEFT DRAG -> MOVE WINDOW, even when the drag starts on the image.
-        if alt && response.drag_started_by(egui::PointerButton::Primary) {
-            self.main_view_pan_drag_active = false;
-            self.main_view_window_drag_active = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            #[cfg(target_os = "linux")]
-            crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
-            ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-            return;
-        }
-
         // Plain left drag on the visible image pans it. A drag in the margins
         // around the image moves the window instead, but only when windowed.
         if response.drag_started_by(egui::PointerButton::Primary) {
@@ -91,10 +166,13 @@ impl ViewerApp {
             let started_on_image = drag_origin
                 .is_some_and(|position| image_rect.is_some_and(|rect| rect.contains(position)));
 
-            if started_on_image && !self.image_entries.is_empty() {
+            if started_on_image
+                && (!alt || !move_shortcut_enabled)
+                && !self.image_entries.is_empty()
+            {
                 self.main_view_pan_drag_active = true;
                 self.main_view_window_drag_active = false;
-            } else if windowed {
+            } else if windowed && !alt {
                 self.main_view_pan_drag_active = false;
                 self.main_view_window_drag_active = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -113,8 +191,8 @@ impl ViewerApp {
             return;
         }
 
-        // Alt/Ctrl are reserved for window operations; Ctrl + wheel remains valid.
-        if alt || ctrl {
+        // Alt is reserved for the window-move shortcut. Alt + wheel remains valid.
+        if alt && move_shortcut_enabled {
             let modified_wheel = ctx.input(|i| {
                 i.events
                     .iter()
@@ -198,6 +276,8 @@ impl ViewerApp {
     }
 
     pub fn handle_input(&mut self, ctx: &egui::Context) {
+        self.handle_global_window_mouse_shortcuts(ctx);
+
         // Mark interaction if any input occurs
         let has_input = ctx.input(|i| {
             i.pointer.any_down()

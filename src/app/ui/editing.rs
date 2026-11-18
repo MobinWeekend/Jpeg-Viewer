@@ -947,6 +947,9 @@ impl ViewerApp {
         response: &egui::Response,
         image_rect: egui::Rect,
     ) {
+        if self.window_mouse_operation_active {
+            return;
+        }
         let Some((image_width, image_height)) = self
             .edit_session
             .as_ref()

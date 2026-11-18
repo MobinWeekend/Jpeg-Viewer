@@ -137,6 +137,8 @@ pub struct ViewerApp {
     pub main_view_pan_drag_active: bool,
     /// True while a primary-button drag that began outside the image moves the window.
     pub main_view_window_drag_active: bool,
+    /// True while a global Alt/Shift mouse shortcut has handed control to the OS.
+    pub(crate) window_mouse_operation_active: bool,
 
     // ====== CACHE ======
     pub image_cache: LruCache<String, CachedImage>,
@@ -452,6 +454,7 @@ impl Default for ViewerApp {
             zoom_drag_start_center: egui::Pos2::ZERO,
             main_view_pan_drag_active: false,
             main_view_window_drag_active: false,
+            window_mouse_operation_active: false,
 
             // ====== CACHE ======
             image_cache: LruCache::new(
