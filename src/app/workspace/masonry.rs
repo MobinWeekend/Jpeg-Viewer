@@ -6,6 +6,10 @@ use super::helpers::*;
 impl crate::app::types::ViewerApp {
     /// Returns true when a non-viewer workspace rendered the central surface.
     pub(crate) fn render_active_workspace(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+        if self.workspace.active_kind() != WorkspaceTabKind::Masonry {
+            self.masonry_visible_sources.clear();
+            crate::app::queues::update_masonry_thumbnail_visibility(&HashSet::new());
+        }
         match self.workspace.active_kind() {
             WorkspaceTabKind::Viewer => {
                 if self.is_home_surface_active() && !self.workspace.session_prompt {
@@ -34,7 +38,10 @@ impl crate::app::types::ViewerApp {
     }
 
     pub(super) fn render_masonry_workspace(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        self.collect_sidebar_thumbnails(ctx);
+        // Dimension metadata must be applied before Masonry computes its
+        // shortest-column layout. Defer completed thumbnail uploads until after
+        // this frame has recalculated which cards are actually visible.
+        self.collect_masonry_dimensions();
         let Some(tab_index) = self.workspace.tabs.get(self.workspace.active_index)
             .map(|tab| self.workspace.tabs.iter().position(|candidate| candidate.id == tab.id).unwrap_or(self.workspace.active_index))
         else { return; };
@@ -56,6 +63,8 @@ impl crate::app::types::ViewerApp {
             .intersect(ui.clip_rect())
             .intersect(self.main_view_rect(ctx));
         if layout_rect.width() < 80.0 || layout_rect.height() < 40.0 {
+            self.masonry_visible_sources.clear();
+            crate::app::queues::update_masonry_thumbnail_visibility(&HashSet::new());
             return;
         }
         let footer_height = if selection_mode { 112.0 } else { 82.0 };
@@ -79,6 +88,10 @@ impl crate::app::types::ViewerApp {
         let masonry_entries = std::mem::take(
             &mut self.workspace.tabs[tab_index].entries,
         );
+
+        // Only entries intersecting the current Masonry viewport should keep
+        // exclusive Masonry thumbnail work alive.
+        let mut visible_masonry_sources = HashSet::new();
 
         // The content scroll area is constrained to the actual remaining CentralPanel
         // rect, which already accounts for both docked sidebars. The scrollbar is
@@ -151,6 +164,13 @@ impl crate::app::types::ViewerApp {
                                             && (extension_filter.is_empty() || ext == extension_filter)
                                     }).collect::<Vec<_>>()
                                 };
+
+                                // Run lightweight file-header/property metadata probes
+                                // for the entire filtered collection first. Their scheduler
+                                // priority is higher than thumbnail work, establishing stable
+                                // Masonry tile dimensions before pixel generation begins.
+                                self.prepare_masonry_dimensions(&filtered, ctx);
+                                let masonry_dimensions_ready = self.masonry_dimensions_ready(&filtered);
 
                                 if filtered.is_empty() {
                                     grid_ui.allocate_ui_with_layout(
@@ -278,6 +298,8 @@ impl crate::app::types::ViewerApp {
                                                 &selected,
                                                 &selected_entries,
                                                 preferred_size,
+                                                masonry_dimensions_ready,
+                                                &mut visible_masonry_sources,
                                                 ctx,
                                                 &mut action,
                                             );
@@ -295,9 +317,17 @@ impl crate::app::types::ViewerApp {
             },
         );
 
+        self.masonry_visible_sources = visible_masonry_sources.clone();
+        crate::app::queues::update_masonry_thumbnail_visibility(&visible_masonry_sources);
         // Restore the collection before drawing the footer or dispatching any
         // deferred actions; those controls operate on the tab's owned entries.
         self.workspace.tabs[tab_index].entries = masonry_entries;
+
+        // Collect only after the current viewport has been recomputed and the
+        // tab's entries restored. This prevents just-finished off-screen work
+        // from being uploaded using stale visibility and preserves aspect-ratio
+        // propagation into the active tab.
+        self.collect_sidebar_thumbnails(ctx);
 
         // Look-aware bottom dock. Normal mode is exactly two rows; selection mode
         // adds only one third row for bulk selection and file-management actions.
@@ -504,6 +534,7 @@ impl crate::app::types::ViewerApp {
                 let tab = &mut self.workspace.tabs[tab_index];
                 tab.entries = refreshed;
                 tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
+                tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
                 tab.selected.retain(|id| valid_ids.contains(id));
             }
         }

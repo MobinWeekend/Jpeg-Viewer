@@ -58,6 +58,9 @@ pub(crate) struct WorkspaceTab {
     /// Image aspect ratios retained independently of thumbnail texture residency.
     /// LRU eviction must never change a tile's dimensions or Masonry column layout.
     pub masonry_aspect_ratios: HashMap<String, f32>,
+    /// Original pixel dimensions discovered in the fast metadata-first pass.
+    /// Kept separately from thumbnail texture residency and aspect ratios.
+    pub masonry_dimensions: HashMap<String, (u32, u32)>,
 
     // Compare state. Anchor coordinates are normalized image coordinates.
     pub anchors: Vec<Option<[f32; 2]>>,
@@ -107,6 +110,7 @@ impl WorkspaceTab {
             collapsed_folders: HashSet::new(),
             masonry_tile_size: 220.0,
             masonry_aspect_ratios: HashMap::new(),
+            masonry_dimensions: HashMap::new(),
             anchors: Vec::new(),
             anchors_second: Vec::new(),
             offsets: Vec::new(),

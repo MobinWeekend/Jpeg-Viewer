@@ -13,6 +13,8 @@ impl crate::app::types::ViewerApp {
         selected: &HashSet<String>,
         selected_entries: &[&ImageEntry],
         preferred_tile_width: f32,
+        dimensions_ready: bool,
+        visible_sources: &mut HashSet<String>,
         ctx: &egui::Context,
         action: &mut Option<MasonryAction>,
     ) {
@@ -100,33 +102,60 @@ impl crate::app::types::ViewerApp {
 
             let key = entry.get_id();
             let thumbnail_source_key = crate::app::queues::source_thumbnail_key(entry);
+            visible_sources.insert(thumbnail_source_key.clone());
             let image_rect = tile_rect.shrink(TILE_MARGIN);
             // Request exactly the largest physical dimension needed by this
             // entry's image viewport. This is not restricted to fixed 64/128/
             // 256/512px buckets; native providers decide which sizes they can
             // actually produce.
+            let source_dimensions = self.workspace.tabs[tab_index]
+                .masonry_dimensions
+                .get(&key)
+                .copied();
+            // Never request more pixels than the source actually contains. This
+            // matters for small icons and thumbnails: otherwise Masonry can keep
+            // requesting an impossible high-resolution upgrade.
             let target_thumbnail_size = crate::app::queues::thumbnail_request_size(
                 image_rect,
                 ctx,
-            );
+            )
+            .min(source_dimensions.map(|(width, height)| width.max(height)).unwrap_or(u32::MAX))
+            .max(1);
 
-            let has_sufficient_resolution = self.has_shared_thumbnail_at_least(
-                &thumbnail_source_key,
-                target_thumbnail_size,
-            );
+            let best_cached_resolution = self.best_shared_thumbnail_resolution(&thumbnail_source_key);
             // Prefer the smallest cached preview that satisfies this entry's
-            // current display size. If none does, show the best smaller preview
-            // while the requested upgrade is generated asynchronously.
+            // current display size. Otherwise the best low-resolution candidate
+            // remains visible while its high-resolution upgrade is generated.
             let texture = self.get_shared_thumbnail(&thumbnail_source_key, target_thumbnail_size);
 
-            if !has_sufficient_resolution {
-                // The shared scheduler deduplicates jobs and promotes a matching
-                // pending Browse/Queue/Favorites request to Masonry priority.
-                self.request_masonry_thumbnail(
-                    (*entry).clone(),
-                    target_thumbnail_size,
-                    ctx,
-                );
+            if dimensions_ready {
+                match best_cached_resolution {
+                    None => {
+                        // Stage one: populate every visible tile with a quick
+                        // native/embedded preview before requesting full detail.
+                        self.request_masonry_thumbnail(
+                            (*entry).clone(),
+                            target_thumbnail_size.min(128),
+                            source_dimensions,
+                            ctx,
+                        );
+                    }
+                    Some(resolution)
+                        if resolution < target_thumbnail_size.min(
+                            96_u32.max(target_thumbnail_size.saturating_mul(2).div_ceil(3)),
+                        ) =>
+                    {
+                        // Stage two: only after a placeholder exists, request a
+                        // closer native/OS match to the actual physical display size.
+                        self.request_masonry_thumbnail(
+                            (*entry).clone(),
+                            target_thumbnail_size,
+                            source_dimensions,
+                            ctx,
+                        );
+                    }
+                    _ => {}
+                }
             }
 
             if let Some(texture) = texture {

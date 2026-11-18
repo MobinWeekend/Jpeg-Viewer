@@ -181,7 +181,10 @@ impl crate::app::types::ViewerApp {
                             // moving a file does not reset its tile geometry.
                             let new_id = entry.get_id();
                             if let Some(aspect) = tab.masonry_aspect_ratios.remove(&old_id) {
-                                tab.masonry_aspect_ratios.insert(new_id, aspect);
+                                tab.masonry_aspect_ratios.insert(new_id.clone(), aspect);
+                            }
+                            if let Some(dimensions) = tab.masonry_dimensions.remove(&old_id) {
+                                tab.masonry_dimensions.insert(new_id, dimensions);
                             }
                         }
                     }
@@ -189,6 +192,7 @@ impl crate::app::types::ViewerApp {
                 if tab.kind == WorkspaceTabKind::Masonry {
                     let valid_ids = tab.entries.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
                     tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
+                    tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
                 }
                 tab.selected.clear();
                 tab.current_index = tab.current_index.min(tab.entries.len().saturating_sub(1));
@@ -285,6 +289,7 @@ impl crate::app::types::ViewerApp {
                         if tab.kind == WorkspaceTabKind::Masonry {
                             let valid_ids = tab.entries.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
                             tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
+                            tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
                         }
                         tab.current_index = tab.current_index.min(tab.entries.len().saturating_sub(1));
                     }

@@ -113,6 +113,7 @@ impl crate::app::types::ViewerApp {
             // switch. A thumbnail LRU eviction or a source switch must not make
             // an already-sized tile collapse to the square loading placeholder.
             tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
+            tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
             tab.directory = directory;
             tab.folder_masonry = false;
             tab.recursive = false;
@@ -155,6 +156,7 @@ impl crate::app::types::ViewerApp {
             tab.title = "Masonry · Folder".into();
             tab.entries = entries;
             tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
+            tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
             tab.directory = Some(directory);
             tab.folder_masonry = true;
             tab.recursive = false;

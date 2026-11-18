@@ -10,7 +10,7 @@ use crate::input::shortcuts::InputBindings;
 use crate::imaging::sort::SortMethod;
 use eframe::egui;
 use lru::LruCache;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -357,7 +357,15 @@ pub struct ViewerApp {
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
     pub sidebar_thumbnail_receivers:
-        Vec<Receiver<(String, Result<GeneratedThumbnail, String>)>>,
+        Vec<(String, Option<String>, Receiver<(String, Result<GeneratedThumbnail, String>)>)>,
+    /// Source keys currently intersecting the active Masonry viewport. Completed
+    /// Masonry-only results outside this set are discarded instead of cached.
+    pub masonry_visible_sources: HashSet<String>,
+    /// File-dimension metadata jobs are a separate, higher-priority Masonry phase.
+    pub masonry_dimension_attempted: HashSet<String>,
+    pub masonry_dimension_pending: HashSet<String>,
+    pub masonry_dimension_results: HashMap<String, Option<(u32, u32)>>,
+    pub masonry_dimension_receivers: Vec<(String, Receiver<Option<(u32, u32)>>)>,
 }
 
 impl Default for ViewerApp {
@@ -605,6 +613,11 @@ impl Default for ViewerApp {
             sidebar_thumbnail_failed: HashSet::new(),
             sidebar_thumbnail_pending: HashSet::new(),
             sidebar_thumbnail_receivers: Vec::new(),
+            masonry_visible_sources: HashSet::new(),
+            masonry_dimension_attempted: HashSet::new(),
+            masonry_dimension_pending: HashSet::new(),
+            masonry_dimension_results: HashMap::new(),
+            masonry_dimension_receivers: Vec::new(),
         }
     }
 }

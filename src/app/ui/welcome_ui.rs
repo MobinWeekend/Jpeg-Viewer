@@ -320,7 +320,20 @@ impl ViewerApp {
                 let thumbnail = preview_entry.and_then(|entry| {
                     let key = crate::app::queues::source_thumbnail_key(&entry);
                     if !self.has_shared_thumbnail_at_least(&key, target_thumbnail_size) {
-                        self.request_masonry_thumbnail(entry, target_thumbnail_size, ctx);
+                        match entry {
+                            ImageEntry::File(path) => self.request_sidebar_thumbnail(
+                                path,
+                                key.clone(),
+                                target_thumbnail_size,
+                                ctx,
+                            ),
+                            archive_entry => self.request_sidebar_archive_thumbnail(
+                                archive_entry,
+                                key.clone(),
+                                target_thumbnail_size,
+                                ctx,
+                            ),
+                        }
                     }
                     self.get_shared_thumbnail(&key, target_thumbnail_size)
                 });
