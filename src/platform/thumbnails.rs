@@ -33,6 +33,22 @@ pub(crate) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaI
     None
 }
 
+/// Ask the native platform for source image dimensions without decoding the
+/// image. This is a metadata fallback for formats that the generic header
+/// reader does not understand. The caller runs it on the thumbnail worker.
+pub(crate) fn source_dimensions(path: &Path) -> Option<(u32, u32)> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_shell::source_dimensions(path);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = path;
+        None
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod quick_look {
     use super::*;
@@ -81,12 +97,26 @@ mod windows_shell {
         BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
         DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC,
     };
-    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+    use windows::Win32::Storage::EnhancedStorage::{
+        PKEY_Image_HorizontalSize, PKEY_Image_VerticalSize,
+    };
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED,
+        StructuredStorage::{PropVariantClear, PropVariantToUInt32},
+    };
     use windows::Win32::UI::Shell::{
-        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_INCACHEONLY,
-        SIIGBF_RESIZETOFIT, SIIGBF_THUMBNAILONLY,
+        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK,
+        SIIGBF_INCACHEONLY, SIIGBF_THUMBNAILONLY,
+        PropertiesSystem::{IPropertyStore, SHGetPropertyStoreFromParsingName, GPS_DEFAULT},
     };
     use windows::core::PCWSTR;
+
+    // Prevent a Shell extension from causing an unbounded RGBA allocation if
+    // it returns a bitmap much larger than requested with BIGGERSIZEOK. If a
+    // result exceeds these limits, request the same thumbnail again with the
+    // Shell's normal resize-to-fit behavior.
+    const MAX_SHELL_BITMAP_SIDE: u32 = 16_384;
+    const MAX_SHELL_BITMAP_PIXELS: u64 = 16_777_216; // 64 MiB RGBA
 
     fn bitmap_to_rgba(bitmap: windows::Win32::Graphics::Gdi::HBITMAP) -> Option<image::RgbaImage> {
         unsafe {
@@ -101,6 +131,13 @@ mod windows_shell {
             }
             let width = description.bmWidth as u32;
             let height = description.bmHeight.unsigned_abs();
+            let pixels = u64::from(width).checked_mul(u64::from(height))?;
+            if width > MAX_SHELL_BITMAP_SIDE
+                || height > MAX_SHELL_BITMAP_SIDE
+                || pixels > MAX_SHELL_BITMAP_PIXELS
+            {
+                return None;
+            }
             let byte_count = (width as usize).checked_mul(height as usize)?.checked_mul(4)?;
             let mut pixels = vec![0u8; byte_count];
             let mut info = BITMAPINFO::default();
@@ -163,12 +200,22 @@ mod windows_shell {
         }
     }
 
-    fn request_bitmap(path: &Path, max_side: u32, cache_only: bool) -> Option<image::RgbaImage> {
+    fn request_bitmap(
+        path: &Path,
+        max_side: u32,
+        cache_only: bool,
+        allow_larger_cached_bitmap: bool,
+    ) -> Option<image::RgbaImage> {
         let wide = path.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>();
         let factory: IShellItemImageFactory = unsafe {
             SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
         }.ok()?;
-        let mut flags = SIIGBF_THUMBNAILONLY | SIIGBF_RESIZETOFIT;
+        let mut flags = SIIGBF_THUMBNAILONLY;
+        if allow_larger_cached_bitmap {
+            // BIGGERSIZEOK lets Shell return a larger cached flavor (e.g. 1024
+            // px for a 768 px request) so Jpeg-Viewer can do the resampling.
+            flags |= SIIGBF_BIGGERSIZEOK;
+        }
         if cache_only {
             flags |= SIIGBF_INCACHEONLY;
         }
@@ -186,18 +233,68 @@ mod windows_shell {
         result
     }
 
-    pub(super) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaImage> {
-        // Shell thumbnail extraction uses COM. These workers are dedicated to
-        // thumbnail tasks, so an STA is appropriate for Shell extension calls.
+    fn get_image_dimension(
+        store: &IPropertyStore,
+        key: &windows::Win32::Foundation::PROPERTYKEY,
+    ) -> Option<u32> {
+        let mut value = unsafe { store.GetValue(key) }.ok()?;
+        let dimension = unsafe { PropVariantToUInt32(&value) }.ok();
+        // IPropertyStore::GetValue returns an owning PROPVARIANT. Clear it
+        // even when conversion fails, so future property handlers that return
+        // dynamically allocated values do not leak COM memory.
+        let _ = unsafe { PropVariantClear(&mut value) };
+        let dimension = dimension?;
+        (dimension > 0).then_some(dimension)
+    }
+
+    fn source_dimensions_inner(path: &Path) -> Option<(u32, u32)> {
+        let wide = path.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>();
+        let store: IPropertyStore = unsafe {
+            SHGetPropertyStoreFromParsingName::<_, _, IPropertyStore>(
+                PCWSTR(wide.as_ptr()),
+                None,
+                GPS_DEFAULT,
+            )
+        }.ok()?;
+        let width = get_image_dimension(&store, &PKEY_Image_HorizontalSize)?;
+        let height = get_image_dimension(&store, &PKEY_Image_VerticalSize)?;
+        Some((width, height))
+    }
+
+    pub(super) fn source_dimensions(path: &Path) -> Option<(u32, u32)> {
+        // Property handlers are COM components. Keep this off the UI thread and
+        // balance only the successful CoInitializeEx calls (S_FALSE is success
+        // too and must also be balanced with CoUninitialize).
         let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();
-        // Return the shell's best result even when it is smaller than the
-        // requested box. The shared request pipeline knows the source's true
-        // dimensions and decides whether that result is full-resolution or
-        // whether Jpeg-Viewer must decode the source itself.
-        let cached = request_bitmap(path, max_side, true);
-        let result = cached.or_else(|| request_bitmap(path, max_side, false));
+        let dimensions = source_dimensions_inner(path);
         if initialized {
-            unsafe { CoUninitialize(); }
+            unsafe {
+                CoUninitialize();
+            }
+        }
+        dimensions
+    }
+
+    pub(super) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaImage> {
+        // Shell thumbnail extraction and property handlers use COM. These jobs
+        // run on the dedicated thumbnail workers, never on egui's UI thread.
+        let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();
+
+        // Prefer a cached, larger native bitmap so Jpeg-Viewer can resample it
+        // with its own image filter. If the Shell returns a bitmap beyond our
+        // allocation safety ceiling, retry once using the normal bounded Shell
+        // scaling behavior. Preserve the cache-first / generate-second order.
+        let cached = request_bitmap(path, max_side, true, true)
+            .or_else(|| request_bitmap(path, max_side, true, false));
+        let result = cached.or_else(|| {
+            request_bitmap(path, max_side, false, true)
+                .or_else(|| request_bitmap(path, max_side, false, false))
+        });
+
+        if initialized {
+            unsafe {
+                CoUninitialize();
+            }
         }
         result
     }

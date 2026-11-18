@@ -181,6 +181,7 @@ fn source_dimensions_from_file(path: &std::path::Path) -> Option<(u32, u32)> {
     });
     if let Some(dimensions) = image::image_dimensions(path).ok()
         .or_else(|| exif.as_ref().and_then(exif_dimensions))
+        .or_else(|| crate::platform::thumbnails::source_dimensions(path))
     {
         let dimensions = oriented_dimensions(
             dimensions.0,
@@ -223,6 +224,54 @@ fn source_aspect_ratio_or_preview(
         })
 }
 
+/// Keep a decoded thumbnail candidate independently of the original image's
+/// safety-limited full decode. Native Shell previews must survive failed or
+/// intentionally skipped decoder fallbacks. `resolution` records the real
+/// provider pixels before any aspect-ratio normalization.
+struct ThumbnailCandidate {
+    image: image::RgbaImage,
+    resolution: u32,
+    source: &'static str,
+}
+
+fn offer_thumbnail_candidate(
+    best: &mut Option<ThumbnailCandidate>,
+    image: image::RgbaImage,
+    source: &'static str,
+) {
+    let resolution = image.width().max(image.height());
+    if resolution == 0 {
+        return;
+    }
+
+    // Strictly greater preserves source preference on ties: native OS/DE first,
+    // then embedded previews, then our own full decoder.
+    if best.as_ref().is_none_or(|candidate| resolution > candidate.resolution) {
+        *best = Some(ThumbnailCandidate { image, resolution, source });
+    }
+}
+
+fn finish_thumbnail_candidate(
+    candidate: ThumbnailCandidate,
+    output_limit: u32,
+    source_aspect_ratio: Option<f32>,
+) -> Result<GeneratedThumbnail, String> {
+    let ratio = source_aspect_ratio_or_preview(
+        source_aspect_ratio,
+        candidate.image.width(),
+        candidate.image.height(),
+    );
+    let (width, height, pixels, resolution) =
+        fit_thumbnail_to(candidate.image, output_limit, ratio)?;
+    Ok(GeneratedThumbnail {
+        width,
+        height,
+        pixels,
+        resolution,
+        source_aspect_ratio: ratio,
+    })
+}
+
 /// Stable cache identity shared with Browse/Queue/Favorites. Their filesystem
 /// cards normalize paths to an absolute path before constructing the key, so
 /// Masonry must do the same even when a collection contains relative paths.
@@ -243,6 +292,10 @@ const MAX_THUMB_SOURCE_PIXELS: u64 = 100_000_000;
 // Only used when a native square preview arrives and lightweight file metadata
 // could not provide the source ratio. Reuse these bytes for the fallback decode.
 const MAX_SOURCE_RATIO_FALLBACK_READ_BYTES: u64 = 128 * 1024 * 1024;
+// Don't load an arbitrarily large compressed source into memory just because
+// a native preview is smaller than the requested display resolution. When a
+// native candidate exists, it remains usable if this fallback read is skipped.
+const MAX_THUMB_SOURCE_READ_BYTES: u64 = 128 * 1024 * 1024;
 
 /// Calculate thumbnail dimensions after fitting the provider's native preview
 /// into the requested square bound, then correcting its aspect ratio to match
@@ -571,24 +624,25 @@ impl ViewerApp {
         let job = Box::new(move || {
             let result = (|| -> Result<GeneratedThumbnail, String> {
                 // Resolve original dimensions independently from the preview.
-                // This is deliberately header/metadata-only when possible and
-                // runs on the worker, never the UI thread.
+                // On Windows this can fall back to Shell's System.Image size
+                // properties; it never needs to decode the source pixels.
                 let mut source_dimensions = source_dimensions_from_file(&path);
                 let mut source_aspect_ratio = source_dimensions
                     .map(|(width, height)| width as f32 / height as f32);
                 let mut preloaded_source_bytes: Option<Vec<u8>> = None;
-
-                // Ask the operating system for its existing/generated thumbnail
-                // before reading and decoding the full source image. When the
-                // source is smaller than the preview viewport, request its own
-                // maximum dimension because upscaling cannot add detail.
                 let mut native_request_size = thumbnail_output_limit(target_size, source_dimensions);
-                if let Some(native) = crate::platform::thumbnails::load_or_request(&path, native_request_size) {
-                    // If metadata readers could not identify the source ratio
-                    // and KDE (or another provider) returned a square preview,
-                    // inspect the source bytes before accepting that square as
-                    // authoritative. Bound this exceptional fallback read and
-                    // reuse the bytes if the full decoder is needed afterward.
+                let mut best_candidate: Option<ThumbnailCandidate> = None;
+
+                // Request the native OS/DE preview first. A lower-resolution
+                // result is still a valid candidate: it must not be thrown away
+                // just because the viewer asked for a larger Masonry tile.
+                if let Some(native) = crate::platform::thumbnails::load_or_request(
+                    &path,
+                    native_request_size,
+                ) {
+                    // When neither the file-header reader nor Shell metadata
+                    // exposes the original ratio, inspect modest-sized source
+                    // files before deciding how to normalize a square preview.
                     if source_aspect_ratio.is_none() && native.width() == native.height() {
                         let source_size = fs::metadata(&path).ok().map(|metadata| metadata.len());
                         if source_size.is_some_and(|size| size <= MAX_SOURCE_RATIO_FALLBACK_READ_BYTES) {
@@ -596,90 +650,183 @@ impl ViewerApp {
                                 source_dimensions = source_dimensions_from_bytes(&bytes);
                                 source_aspect_ratio = source_dimensions
                                     .map(|(width, height)| width as f32 / height as f32);
-                                native_request_size = thumbnail_output_limit(target_size, source_dimensions);
+                                // Recalculate the usable output bound now that
+                                // source dimensions are known. The native request
+                                // has already been issued, but its result can now
+                                // be compared against the true source maximum.
+                                native_request_size =
+                                    thumbnail_output_limit(target_size, source_dimensions);
                                 preloaded_source_bytes = Some(bytes);
                             }
                         }
                     }
 
-                    // Test actual provider resolution before aspect correction.
-                    // Synthetic pixels added to the long side must not make a
-                    // 128px preview appear to satisfy a 256px request.
+                    let native_width = native.width();
+                    let native_height = native.height();
+                    let native_resolution = native_width.max(native_height);
                     let native_dimensions_are_trustworthy =
-                        source_aspect_ratio.is_some() || native.width() != native.height();
-                    let native_is_sufficient = native_dimensions_are_trustworthy
-                        && native.width().max(native.height()) >= native_request_size;
-                    if native_is_sufficient {
-                        let source_aspect_ratio = source_aspect_ratio_or_preview(
-                            source_aspect_ratio,
-                            native.width(),
-                            native.height(),
+                        source_aspect_ratio.is_some() || native_width != native_height;
+                    if native_resolution < native_request_size {
+                        eprintln!(
+                            "[thumbnail] {}: native OS/DE returned {}x{} for a {}px request; retaining it as a fallback candidate",
+                            path.display(),
+                            native_width,
+                            native_height,
+                            native_request_size,
                         );
-                        // The shared pipeline stores a single aspect-correct
-                        // texture for every thumbnail consumer. For example,
-                        // 128x128 from KDE becomes 228x128 for a 16:9 source.
-                        let (width, height, pixels, resolution) = fit_thumbnail_to(
-                            native,
+                    }
+                    offer_thumbnail_candidate(
+                        &mut best_candidate,
+                        native,
+                        "native OS/DE thumbnail",
+                    );
+
+                    // If Shell already returned enough genuine provider pixels,
+                    // avoid reading or decoding the original file entirely.
+                    if native_dimensions_are_trustworthy
+                        && native_resolution >= native_request_size
+                    {
+                        return finish_thumbnail_candidate(
+                            best_candidate.expect("native thumbnail candidate was just inserted"),
                             native_request_size,
                             source_aspect_ratio,
-                        )?;
-                        return Ok(GeneratedThumbnail { width, height, pixels, resolution, source_aspect_ratio });
+                        );
                     }
                 }
 
+                // A larger embedded/full decode may improve an undersized native
+                // preview. Keep the native candidate while trying those sources,
+                // and avoid reading unusually large compressed files into RAM.
                 let bytes = match preloaded_source_bytes {
                     Some(bytes) => bytes,
-                    None => fs::read(&path)
-                        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?,
+                    None => {
+                        if let Ok(metadata) = fs::metadata(&path) {
+                            if metadata.len() > MAX_THUMB_SOURCE_READ_BYTES {
+                                if let Some(candidate) = best_candidate.take() {
+                                    let output_limit =
+                                        thumbnail_output_limit(target_size, source_dimensions);
+                                    eprintln!(
+                                        "[thumbnail] {}: source file is {} bytes; skipping full-source fallback and using {} ({}x{})",
+                                        path.display(),
+                                        metadata.len(),
+                                        candidate.source,
+                                        candidate.image.width(),
+                                        candidate.image.height(),
+                                    );
+                                    return finish_thumbnail_candidate(
+                                        candidate,
+                                        output_limit,
+                                        source_aspect_ratio,
+                                    );
+                                }
+                                return Err(format!(
+                                    "Source file is too large for the thumbnail fallback read ({} bytes): {}",
+                                    metadata.len(),
+                                    path.display(),
+                                ));
+                            }
+                        }
+                        match fs::read(&path) {
+                            Ok(bytes) => bytes,
+                            Err(error) => {
+                                if let Some(candidate) = best_candidate.take() {
+                                    eprintln!(
+                                        "[thumbnail] {}: source read failed ({error}); using {} ({}x{})",
+                                        path.display(),
+                                        candidate.source,
+                                        candidate.image.width(),
+                                        candidate.image.height(),
+                                    );
+                                    let output_limit =
+                                        thumbnail_output_limit(target_size, source_dimensions);
+                                    return finish_thumbnail_candidate(
+                                        candidate,
+                                        output_limit,
+                                        source_aspect_ratio,
+                                    );
+                                }
+                                return Err(format!("Failed to read {}: {error}", path.display()));
+                            }
+                        }
+                    }
                 };
                 source_dimensions = source_dimensions.or_else(|| source_dimensions_from_bytes(&bytes));
                 source_aspect_ratio = source_aspect_ratio
                     .or_else(|| source_dimensions.map(|(width, height)| width as f32 / height as f32));
 
                 // RAW uses its embedded preview/thumbnail path; do not develop
-                // the full sensor data merely to populate a Masonry tile.
+                // full sensor data merely to populate a thumbnail.
                 let is_raw = path.extension().and_then(|e| e.to_str())
                     .and_then(crate::imaging::core::ImageFormat::from_extension)
                     == Some(crate::imaging::core::ImageFormat::CameraRaw)
                     || zenraw::is_raw_file(&bytes);
 
+                let output_limit = thumbnail_output_limit(target_size, source_dimensions);
+
                 if !is_raw {
                     if let Some(embedded) = extract_embedded_metadata_thumbnail(&bytes) {
                         if let Ok(image) = image::load_from_memory(&embedded) {
-                            // Check the embedded preview's real resolution before
-                            // aspect correction, so synthetic long-side pixels do
-                            // not make an undersized preview appear sufficient.
                             let image = image.to_rgba8();
-                            let output_limit = thumbnail_output_limit(target_size, source_dimensions);
-                            let embedded_dimensions_are_trustworthy =
-                                source_aspect_ratio.is_some() || image.width() != image.height();
-                            let embedded_is_sufficient = embedded_dimensions_are_trustworthy
-                                && image.width().max(image.height()) >= output_limit;
-                            if embedded_is_sufficient {
-                                let source_aspect_ratio = source_aspect_ratio_or_preview(
-                                    source_aspect_ratio,
-                                    image.width(),
-                                    image.height(),
-                                );
-                                let (width, height, pixels, resolution) = fit_thumbnail_to(
-                                    image,
+                            let embedded_resolution = image.width().max(image.height());
+                            offer_thumbnail_candidate(
+                                &mut best_candidate,
+                                image,
+                                "EXIF embedded preview",
+                            );
+
+                            // An embedded preview that reaches the requested
+                            // size can be used immediately. Smaller embedded
+                            // candidates remain available while full decode is
+                            // attempted and can still win over a worse native
+                            // result.
+                            if embedded_resolution >= output_limit
+                                && best_candidate.as_ref().is_some_and(|candidate| {
+                                    candidate.resolution >= output_limit
+                                })
+                            {
+                                return finish_thumbnail_candidate(
+                                    best_candidate.expect("embedded candidate exists"),
                                     output_limit,
                                     source_aspect_ratio,
-                                )?;
-                                return Ok(GeneratedThumbnail { width, height, pixels, resolution, source_aspect_ratio });
+                                );
                             }
                         }
                     }
                 }
-                let rgba = decode_checked_sidebar_image(&bytes, &path.display().to_string(), is_raw, Some(&path))?;
-                let source_aspect_ratio = source_aspect_ratio_or_preview(
-                    source_aspect_ratio,
-                    rgba.width(),
-                    rgba.height(),
-                );
-                let output_limit = thumbnail_output_limit(target_size, source_dimensions);
-                let (width, height, pixels, resolution) = fit_thumbnail_to(rgba, output_limit, source_aspect_ratio)?;
-                Ok(GeneratedThumbnail { width, height, pixels, resolution, source_aspect_ratio })
+
+                match decode_checked_sidebar_image(
+                    &bytes,
+                    &path.display().to_string(),
+                    is_raw,
+                    Some(&path),
+                ) {
+                    Ok(decoded) => offer_thumbnail_candidate(
+                        &mut best_candidate,
+                        decoded,
+                        if is_raw { "embedded RAW preview" } else { "Jpeg-Viewer decoder" },
+                    ),
+                    Err(error) => {
+                        if let Some(candidate) = best_candidate.as_ref() {
+                            // Keep the source decoder's reason visible during
+                            // diagnosis, but don't discard a usable native or
+                            // embedded thumbnail because the original is huge.
+                            eprintln!(
+                                "[thumbnail] {}: decoder fallback failed ({error}); using {} ({}x{})",
+                                path.display(),
+                                candidate.source,
+                                candidate.image.width(),
+                                candidate.image.height(),
+                            );
+                        } else {
+                            return Err(error);
+                        }
+                    }
+                }
+
+                let candidate = best_candidate.ok_or_else(|| {
+                    format!("No usable native, embedded, or decoded thumbnail: {}", path.display())
+                })?;
+                finish_thumbnail_candidate(candidate, output_limit, source_aspect_ratio)
             })();
 
             let _ = tx.send((key, result));
@@ -887,7 +1034,8 @@ impl ViewerApp {
                         }
                     }
                 }
-                Err(_) => {
+                Err(error) => {
+                    eprintln!("[thumbnail] {error}");
                     self.sidebar_thumbnail_failed.insert(key);
                 }
             }
@@ -899,9 +1047,9 @@ impl ViewerApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        fit_thumbnail_to, normalize_thumbnail_aspect_ratio, oriented_dimensions,
-        source_thumbnail_key, thumbnail_cache_size, thumbnail_fit_rect, thumbnail_output_limit,
-        thumbnail_source_key_from_cache_key,
+        fit_thumbnail_to, normalize_thumbnail_aspect_ratio, offer_thumbnail_candidate,
+        oriented_dimensions, source_thumbnail_key, thumbnail_cache_size, thumbnail_fit_rect,
+        thumbnail_output_limit, thumbnail_source_key_from_cache_key, ThumbnailCandidate,
     };
     use eframe::egui;
 
@@ -999,6 +1147,64 @@ mod tests {
         assert_eq!((width, height), (1536, 512));
         assert_eq!(resolution, 1536);
         assert_eq!(pixels.len(), width * height * 4);
+    }
+
+    #[test]
+    fn undersized_native_thumbnail_is_retained_when_fallback_is_smaller() {
+        let mut best: Option<ThumbnailCandidate> = None;
+        offer_thumbnail_candidate(
+            &mut best,
+            image::RgbaImage::new(1024, 683),
+            "native OS/DE thumbnail",
+        );
+        offer_thumbnail_candidate(
+            &mut best,
+            image::RgbaImage::new(256, 170),
+            "EXIF embedded preview",
+        );
+
+        let best = best.expect("native thumbnail should remain available");
+        assert_eq!(best.source, "native OS/DE thumbnail");
+        assert_eq!(best.resolution, 1024);
+        assert_eq!(best.image.dimensions(), (1024, 683));
+    }
+
+    #[test]
+    fn higher_resolution_decoder_result_replaces_native_candidate() {
+        let mut best: Option<ThumbnailCandidate> = None;
+        offer_thumbnail_candidate(
+            &mut best,
+            image::RgbaImage::new(1024, 683),
+            "native OS/DE thumbnail",
+        );
+        offer_thumbnail_candidate(
+            &mut best,
+            image::RgbaImage::new(2048, 1365),
+            "Jpeg-Viewer decoder",
+        );
+
+        let best = best.expect("decoder result should be retained");
+        assert_eq!(best.source, "Jpeg-Viewer decoder");
+        assert_eq!(best.resolution, 2048);
+        assert_eq!(best.image.dimensions(), (2048, 1365));
+    }
+
+    #[test]
+    fn equal_resolution_candidate_keeps_native_provider_preference() {
+        let mut best: Option<ThumbnailCandidate> = None;
+        offer_thumbnail_candidate(
+            &mut best,
+            image::RgbaImage::new(1024, 683),
+            "native OS/DE thumbnail",
+        );
+        offer_thumbnail_candidate(
+            &mut best,
+            image::RgbaImage::new(1024, 682),
+            "Jpeg-Viewer decoder",
+        );
+
+        let best = best.expect("native candidate should be retained on a tie");
+        assert_eq!(best.source, "native OS/DE thumbnail");
     }
 
     #[test]

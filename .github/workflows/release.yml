@@ -53,6 +53,9 @@ jobs:
       - name: Update Cargo.lock
         run: cargo check
 
+      - name: Run regression tests
+        run: cargo test
+
       - name: Verify version
         shell: pwsh
         run: |
@@ -128,6 +131,9 @@ jobs:
 
       - name: Update Cargo.lock
         run: cargo check
+
+      - name: Run regression tests
+        run: cargo test
 
       - name: Verify version
         shell: pwsh

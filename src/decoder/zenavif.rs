@@ -32,6 +32,73 @@ impl ZenAvifDecoder {
         }
     }
 
+    /// Read image dimensions from AVIF container/sequence metadata without
+    /// running the AV1 pixel decoder. This is important for thumbnail jobs: a
+    /// native OS preview should remain usable even when the source image is
+    /// too large for the full decoder's safety limits.
+    fn metadata_dimensions(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
+        // Parsing metadata does not allocate a full image buffer. Keep a parser
+        // memory limit and tile/frame bounds, but do not apply the pixel limit
+        // used for full decode to metadata discovery.
+        let parse_config = ParseConfig::unlimited()
+            .with_peak_memory_limit(256 * 1024 * 1024)
+            .with_max_animation_frames(1)
+            .with_max_grid_tiles(64);
+
+        let parsed = catch_unwind(AssertUnwindSafe(|| {
+            AvifParser::from_bytes_with_config(bytes, &parse_config, &zenavif_parse::Unstoppable)
+        }));
+        let parser = match parsed {
+            Ok(Ok(parser)) => parser,
+            Ok(Err(error)) => {
+                return Err(ImageError::Decode(format!("AVIF metadata probe: {error}")));
+            }
+            Err(_) => {
+                return Err(ImageError::Decode("AVIF metadata probe panicked".to_string()));
+            }
+        };
+
+        let metadata = parser
+            .primary_metadata()
+            .map_err(|error| ImageError::Decode(format!("AVIF sequence metadata: {error}")))?;
+        let (mut width, mut height) = if let Some(grid) = parser.grid_config() {
+            if grid.output_width > 0 && grid.output_height > 0 {
+                (grid.output_width, grid.output_height)
+            } else {
+                let width = metadata
+                    .max_frame_width
+                    .get()
+                    .checked_mul(u32::from(grid.columns))
+                    .ok_or_else(|| ImageError::Decode("AVIF grid width overflow".to_string()))?;
+                let height = metadata
+                    .max_frame_height
+                    .get()
+                    .checked_mul(u32::from(grid.rows))
+                    .ok_or_else(|| ImageError::Decode("AVIF grid height overflow".to_string()))?;
+                (width, height)
+            }
+        } else {
+            (metadata.max_frame_width.get(), metadata.max_frame_height.get())
+        };
+
+        if width == 0 || height == 0 {
+            return Err(ImageError::Decode(
+                "AVIF metadata reported empty dimensions".to_string(),
+            ));
+        }
+
+        // The AVIF irot property is applied after decode. Reflect that in the
+        // reported display dimensions for quarter-turn rotations.
+        if parser
+            .rotation()
+            .is_some_and(|rotation| matches!(rotation.angle, 90 | 270))
+        {
+            std::mem::swap(&mut width, &mut height);
+        }
+
+        Ok((width, height))
+    }
+
     fn pre_validate(bytes: &[u8]) -> Result<(), ImageError> {
         let parse_config = ParseConfig::default()
             .with_peak_memory_limit(256 * 1024 * 1024)
@@ -146,8 +213,6 @@ impl ImageDecoder for ZenAvifDecoder {
     }
 
     fn dimensions(&self, bytes: &[u8]) -> Result<(u32, u32), ImageError> {
-        Self::pre_validate(bytes)?;
-        let decoded = Self::decode_with_timeout(bytes.to_vec(), self.config.clone())?;
-        Ok((decoded.width, decoded.height))
+        Self::metadata_dimensions(bytes)
     }
 }
