@@ -1,5 +1,8 @@
 # JPEG Viewer
 
+[![Latest release](https://img.shields.io/github/v/release/MobinWeekend/Jpeg-Viewer?label=release)](https://github.com/MobinWeekend/Jpeg-Viewer/releases)
+[![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-blue.svg)](LICENSE)
+
 A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse image collections, inspect large images, run slideshows, organize queues and favorites, and make basic edits without a large editing interface getting in the way.
 
 ![JPEG Viewer screenshot](https://github.com/user-attachments/assets/8dd722cc-7994-40a5-84d2-474e1ee332f6)
@@ -13,13 +16,23 @@ A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse im
 - **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan, fullscreen, and compact mode. In windowed mode, drag the image-view margins to move the window.
 - **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable. With single-instance mode enabled, file-manager multi-selections are forwarded to the existing window and shown as the selected collection.
 - **Queues:** create a viewing/slideshow sequence, save and load `.jvq` lists, export paths, shuffle, repeat, and remap moved folders.
+- **Workspace tabs:** open images, Masonry collections, and comparisons in browser-style tabs. Switch with **Ctrl+PageUp**/**Ctrl+PageDown** and reorder the active tab with **Ctrl+Shift+PageUp/PageDown/ArrowLeft/ArrowRight**. The strip can render inline in the custom title bar, and it hides when only the primary viewer remains.
+- **Home page:** a Home surface in the primary viewer showing recently opened items and pinned shortcuts; open pinned images, folders, and `.jvq` queues in the Viewer or Masonry.
+- **Masonry browsing:** grid browsing of a folder with optional recursive subfolders, search, extension filtering, and natural/name/newest/oldest/random sorting; select multiple entries or view a selected subset, and group results by collapsible folders.
+- **Compare:** side-by-side multi-pane comparison with optional synchronized pan and zoom, columns or rows layout, and anchor alignment — two corresponding points per pane compute matching zoom, pan, and image rotation.
 - **Editing:** crop, resize with optional aspect-ratio locking, rotate, flip, adjust brightness/contrast/saturation/hue, undo/redo, and export to a selected format. The source is unchanged until you save or overwrite it.
 - **GIFs and slideshows:** playback speed controls, configurable intervals, transitions, pan/zoom motion, looping, and optional prevention of system sleep.
 - **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98. Main-view padding can follow the active Look, be fine-tuned per Look, or use custom values.
 - **Window sizing:** optionally fit the window to each viewed image, use monitor or custom size limits, preserve the image aspect ratio when constrained, and center the resized window.
+- **Window gestures:** optionally move the window with **Alt+left-drag** and resize the nearest corner with **Shift+left-drag** anywhere in the app.
 - **Single-instance mode:** optionally forward later file-open requests to the existing window, including multi-file selections.
 - **Performance:** background decoding and preloading, configurable cache, virtual texturing for very large images, and an adjustable frame limiter. Native desktop thumbnails are reused where available, with the built-in thumbnail pipeline as a fallback.
 - **File actions:** drag and drop, Open With, locate in file manager, rename supported filesystem images, copy image/path, and trash integration where supported.
+- **File operations:** copy, extract archive entries, move, and delete to Trash with confirmation; name conflicts resolve with **Replace all**, **Skip all**, or **Keep Both all** (numbered suffix), with replacements backed up until committed.
+- **Session restore:** restore the previous session's tabs, Masonry collections, comparisons, and viewing positions; choose **automatic**, **ask**, or **never** on startup.
+- **Tricks:** optional decorative effects inside the main image view — snowfall, a text or image watermark, and a blurred image backdrop — each configurable for color, position, speed, opacity, and size.
+- **RAW full quality:** toggle camera RAW files between the developed preview and the full-resolution RAW output.
+- **Desktop menu bar:** an optional desktop-style menu bar (File, Edit, View, Queue) that can sit in its own row or inline in the custom title bar.
 
 ## Downloads
 
@@ -55,7 +68,11 @@ RAW decoding uses the Rust `zenraw` library and its `rawler` backend; a separate
 
 ## Build from source
 
-Requirements: [Rust and Cargo](https://rustup.rs) and the platform dependencies needed by `eframe`/`wgpu` and your graphics stack.
+- [Rust and Cargo](https://rustup.rs). The toolchain is pinned in [`rust-toolchain.toml`](rust-toolchain.toml), so `rustup` installs the exact version automatically on first build.
+- Platform libraries for the graphics and windowing stack, matching what the release builds install:
+  - **Linux (Debian/Ubuntu):** `sudo apt-get install --no-install-recommends build-essential pkg-config libdbus-1-dev libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev`
+  - **Windows:** VS Build Tools with the "Desktop development with C++" workload (MSVC linker)
+  - **macOS:** Xcode command-line tools (`xcode-select --install`)
 
 ```bash
 git clone https://github.com/MobinWeekend/Jpeg-Viewer.git
@@ -64,7 +81,7 @@ cargo run --release       # build and run
 cargo build --release     # build only
 ```
 
-The executable is placed in `target/release/`. Open a file directly by passing its path. Pass multiple image paths to open only that explicit selection rather than indexing their containing directory:
+The executable is placed in `target/release/`. Unit tests can be run with `cargo test`. Open a file directly by passing its path. Pass multiple image paths to open only that explicit selection rather than indexing their containing directory:
 
 ```bash
 jpeg_viewer image.jpg
@@ -120,4 +137,4 @@ Queues currently store standalone filesystem image files only; images inside arc
 
 ## License
 
-See [LICENSE](LICENSE).
+Licensed under **GPL-3.0-only**. See [LICENSE](LICENSE).
