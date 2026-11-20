@@ -1,0 +1,13 @@
+name: Prepare release metadata
+description: Synchronize application and platform package versions with the pushed Git tag.
+runs:
+  using: composite
+  steps:
+    - name: Require committed Cargo lockfile
+      shell: bash
+      run: |
+        set -euo pipefail
+        git ls-files --error-unmatch Cargo.lock >/dev/null
+    - name: Synchronize release version
+      shell: bash
+      run: python scripts/prepare_release.py "$GITHUB_REF_NAME"

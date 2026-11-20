@@ -27,7 +27,7 @@ Get the latest artifacts from [GitHub Releases](https://github.com/MobinWeekend/
 
 | Platform | Available builds |
 |---|---|
-| Windows | x64 and ARM64 |
+| Windows | x64 and ARM64 per-user installers, plus portable ZIPs |
 | macOS | Intel (x86_64) and Apple Silicon (ARM64) |
 | Linux | x64 and ARM64 `.tar.gz`, x64 and ARM64 AppImage, Flatpak, and distribution packages where published |
 | Linux packages | Debian/Ubuntu `.deb`, Fedora-compatible `.rpm`, and Arch `.pkg.tar.zst` where published |
@@ -35,9 +35,10 @@ Get the latest artifacts from [GitHub Releases](https://github.com/MobinWeekend/
 ### Portable Linux archives
 
 1. Download and extract the matching `.tar.gz` archive.
-2. Run `./jpeg_viewer` to launch directly, or run `./install.sh` to install under `~/.local/opt/jpeg-viewer` and register an application-menu entry and icon.
+2. Run `./jpeg_viewer` to launch directly, or run `./install.sh` to install under `~/.local/opt/jpeg-viewer` and register an application-menu entry, icon, and supported MIME types for the current user.
+3. To remove that per-user installation, run `./uninstall.sh` from the extracted archive. It removes the installed app and desktop integration but preserves user settings.
 
-Linux packages can depend on system libraries provided by the distribution. AppImage compatibility depends on the host system. macOS builds are currently unsigned and may require approval in Security settings.
+Windows Setup installers are per-user and do not require administrator rights; portable ZIPs are also available. Windows binaries are currently unsigned, so SmartScreen may display a reputation warning. Linux packages can depend on system libraries provided by the distribution. AppImage compatibility depends on the host system. macOS builds are currently unsigned and not notarized, so Gatekeeper may require manual approval in Security settings.
 
 ## Supported formats
 

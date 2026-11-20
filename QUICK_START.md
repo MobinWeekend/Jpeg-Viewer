@@ -1,5 +1,12 @@
 # Getting Started
 
+## Installation
+
+- **Windows installer:** choose the installer matching your CPU (x64 or ARM64). It installs for the current Windows user under `%LOCALAPPDATA%\Programs\JPEG Viewer` and does not require administrator rights.
+- **Windows portable:** extract the matching Portable ZIP and run `jpeg_viewer.exe`; no installation is performed.
+- **Linux portable:** extract the archive and run `./jpeg_viewer`, or use the included `install.sh` to add a launcher, icon, and file-type integration for the current user. Run `./uninstall.sh` from the extracted archive to remove that installation; user settings are preserved.
+
+
 This guide covers the common workflows. For the supported formats, build instructions, and project overview, see [README.md](README.md). Press **F1** inside the app for a shortcut reference.
 
 ## Open an image
@@ -104,7 +111,7 @@ If browsing feels slow, reduce **Cache Radius** or **Max Tasks** under Advanced.
 
 ## Linux portable install
 
-For a `.tar.gz` release, extract the archive and run `./jpeg_viewer`. To add an application-menu entry and icon, run `./install.sh` from the extracted directory. The installer places the app under `~/.local/opt/jpeg-viewer` and registers a desktop entry for the current user. AppImage behavior and required libraries depend on the host distribution and desktop environment.
+For a `.tar.gz` release, extract the archive and run `./jpeg_viewer`. To add an application-menu entry and icon, run `./install.sh` from the extracted directory. The installer places the app under `~/.local/opt/jpeg-viewer` and registers a desktop entry, icon, and MIME types for the current user. `uninstall.sh` removes those files without deleting user settings. AppImage behavior and required libraries depend on the host distribution and desktop environment.
 
 ## Troubleshooting
 

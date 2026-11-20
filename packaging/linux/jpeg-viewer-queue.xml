@@ -2,6 +2,63 @@
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-jpeg-viewer-queue">
     <comment>JPEG Viewer saved queue</comment>
-    <glob pattern="*.jvq"/>
+    <glob pattern="*.jvq" weight="90"/>
+  </mime-type>
+
+  <mime-type type="image/qoi">
+    <comment>Quite OK Image</comment>
+    <glob pattern="*.qoi" weight="80"/>
+    <magic priority="80">
+      <match type="string" value="qoif" offset="0"/>
+    </magic>
+  </mime-type>
+
+  <mime-type type="image/x-farbfeld">
+    <comment>Farbfeld image</comment>
+    <glob pattern="*.ff" weight="80"/>
+    <magic priority="80">
+      <match type="string" value="farbfeld" offset="0"/>
+    </magic>
+  </mime-type>
+
+  <mime-type type="image/x-dds">
+    <comment>DirectDraw Surface image</comment>
+    <glob pattern="*.dds" weight="80"/>
+    <magic priority="80">
+      <match type="string" value="DDS " offset="0"/>
+    </magic>
+  </mime-type>
+
+  <mime-type type="image/x-exr">
+    <comment>OpenEXR image</comment>
+    <glob pattern="*.exr" weight="80"/>
+  </mime-type>
+
+  <mime-type type="image/x-tga">
+    <comment>Targa image</comment>
+    <glob pattern="*.tga" weight="50"/>
+  </mime-type>
+
+  <mime-type type="image/x-camera-raw">
+    <comment>Camera RAW image</comment>
+    <glob pattern="*.cr2" weight="80"/>
+    <glob pattern="*.cr3" weight="80"/>
+    <glob pattern="*.nef" weight="80"/>
+    <glob pattern="*.nrw" weight="80"/>
+    <glob pattern="*.arw" weight="80"/>
+    <glob pattern="*.dng" weight="80"/>
+    <glob pattern="*.raf" weight="80"/>
+    <glob pattern="*.orf" weight="80"/>
+    <glob pattern="*.rw2" weight="80"/>
+    <glob pattern="*.pef" weight="80"/>
+    <glob pattern="*.srw" weight="80"/>
+    <glob pattern="*.3fr" weight="80"/>
+    <glob pattern="*.fff" weight="80"/>
+    <glob pattern="*.iiq" weight="80"/>
+    <glob pattern="*.kdc" weight="80"/>
+    <glob pattern="*.mos" weight="80"/>
+    <glob pattern="*.mrw" weight="80"/>
+    <glob pattern="*.rwl" weight="80"/>
+    <glob pattern="*.x3f" weight="80"/>
   </mime-type>
 </mime-info>
