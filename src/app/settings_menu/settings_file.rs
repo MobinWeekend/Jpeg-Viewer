@@ -1,4 +1,4 @@
-//! Settings file location, open button, and read/write error status.
+//! Settings file location, open-folder action, and read/write error status.
 
 use crate::app::types::ViewerApp;
 use eframe::egui;
@@ -8,52 +8,45 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(4.0);
 
         let path = app.settings_manager.path();
+        let folder = path.parent().unwrap_or(path);
 
-        // Path display
-        ui.horizontal_wrapped(|ui| {
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new("Location:").strong());
-            ui.add_space(8.0);
-            ui.label(
+        ui.label(egui::RichText::new("INI file").strong());
+        ui.add(
+            egui::Label::new(
                 egui::RichText::new(path.display().to_string())
                     .color(ui.visuals().weak_text_color())
                     .monospace(),
-            );
-        });
+            )
+            .wrap(),
+        );
         ui.add_space(6.0);
 
-        // Open button + reload status
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
             if ui
                 .add(
-                    egui::Button::new(egui::RichText::new("📂 Open Settings File").size(13.0))
-                        .min_size(egui::vec2(180.0, 28.0)),
+                    egui::Button::new(egui::RichText::new("📂 Open Settings Folder").size(13.0))
+                        .min_size(egui::vec2(190.0, 28.0)),
                 )
-                .on_hover_text("Open the settings .ini file in your default editor")
+                .on_hover_text("Open the folder containing settings.ini in your file manager")
                 .clicked()
+                && let Err(error) = open::that(folder)
             {
-                open_path(path);
+                eprintln!("Could not open settings folder {}: {error}", folder.display());
             }
         });
         ui.add_space(6.0);
 
-        // Error / status display
         if let Some(err) = app.settings_manager.last_error() {
             ui.horizontal_wrapped(|ui| {
-                ui.add_space(8.0);
                 ui.label(
-                    egui::RichText::new(format!("⚠ {}", err)).color(ui.visuals().error_fg_color),
+                    egui::RichText::new(format!("⚠ {err}"))
+                        .color(ui.visuals().error_fg_color),
                 );
             });
         } else {
-            ui.horizontal_wrapped(|ui| {
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new("✅ Settings loaded successfully")
-                        .color(egui::Color32::DARK_GREEN),
-                );
-            });
+            ui.label(
+                egui::RichText::new("✓ Settings loaded successfully").weak(),
+            );
         }
 
         ui.separator();
@@ -62,22 +55,4 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         super::advanced::reset_all::render(app, ui, ctx);
         ui.add_space(4.0);
     });
-}
-
-/// Open the settings file with the OS default handler.
-fn open_path(path: &std::path::Path) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
-            .spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(path).spawn();
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(path).spawn();
-    }
 }

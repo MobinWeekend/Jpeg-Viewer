@@ -2251,9 +2251,35 @@ impl ViewerApp {
             .flatten()
     }
 
+    /// Forget every in-memory thumbnail resolution for a source so an explicit
+    /// Home-card refresh can queue a replacement instead of reusing stale pixels.
+    /// Pending jobs are left intact: if one is already producing this source, its
+    /// completion is the refresh result and can be persisted by the Home caller.
+    pub(crate) fn invalidate_shared_thumbnails_for_source(&mut self, source_key: &str) {
+        let texture_keys = self
+            .sidebar_thumbnails
+            .iter()
+            .filter_map(|(cache_key, _)| {
+                (cache_key.as_str() == source_key
+                    || thumbnail_cache_size(cache_key, source_key).is_some())
+                .then(|| cache_key.clone())
+            })
+            .collect::<Vec<_>>();
+        for cache_key in texture_keys {
+            let _ = self.sidebar_thumbnails.pop(&cache_key);
+        }
+
+        let matches_source = |cache_key: &String| {
+            cache_key.as_str() == source_key
+                || thumbnail_cache_size(cache_key, source_key).is_some()
+        };
+        self.sidebar_thumbnail_attempted.retain(|key| !matches_source(key));
+        self.sidebar_thumbnail_failed.retain(|key| !matches_source(key));
+    }
+
     /// Resolve the best cached resolution for a shared key. Prefer the smallest
     /// texture at or above the requested size, then fall back to the largest
-    /// lower-resolution preview while an upgrade is generated.
+    /// lower-resolution preview.
     pub(crate) fn get_shared_thumbnail(
         &mut self,
         key: &str,

@@ -1267,26 +1267,26 @@ jobs:
 
           | Platform | Package | Download |
           |---|---|---|
-          | Windows x64 | Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Setup-x64.exe) |
-          | Windows ARM64 | Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Setup-ARM64.exe) |
-          | Windows x64 | Portable | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Portable-x64.zip) |
-          | Windows ARM64 | Portable | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Portable-ARM64.zip) |
-          | macOS Intel | Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Intel-x64.dmg) |
-          | macOS Intel | ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Intel-x64.zip) |
-          | macOS Apple Silicon | Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.dmg) |
-          | macOS Apple Silicon | ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip) |
-          | Linux x64 | Portable | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.tar.gz) |
-          | Linux ARM64 | Portable | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.tar.gz) |
-          | Debian / Ubuntu x64 | Native package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.deb) |
-          | Debian / Ubuntu ARM64 | Native package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.deb) |
-          | Fedora x64 | Native package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Fedora-x64.rpm) |
-          | Fedora ARM64 | Native package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Fedora-ARM64.rpm) |
-          | Arch x64 | Native package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Arch-x64.pkg.tar.zst) |
-          | Arch ARM64 | Native package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst) |
-          | Linux x64 | Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.flatpak) |
-          | Linux ARM64 | Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.flatpak) |
-          | Linux x64 | AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.AppImage) |
-          | Linux ARM64 | AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.AppImage) |
+          | ![Windows](https://img.shields.io/badge/Windows-x64-0078D6?style=flat-square&logo=windows&logoColor=white) | 🛠️ Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Setup-x64.exe) |
+          | ![Windows](https://img.shields.io/badge/Windows-ARM64-0078D6?style=flat-square&logo=windows&logoColor=white) | 🛠️ Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Setup-ARM64.exe) |
+          | ![Windows](https://img.shields.io/badge/Windows-x64-0078D6?style=flat-square&logo=windows&logoColor=white) | 🗜️ Portable ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Portable-x64.zip) |
+          | ![Windows](https://img.shields.io/badge/Windows-ARM64-0078D6?style=flat-square&logo=windows&logoColor=white) | 🗜️ Portable ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Portable-ARM64.zip) |
+          | ![macOS](https://img.shields.io/badge/macOS-Intel-555555?style=flat-square&logo=apple&logoColor=white) | 💿 Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Intel-x64.dmg) |
+          | ![macOS](https://img.shields.io/badge/macOS-Intel-555555?style=flat-square&logo=apple&logoColor=white) | 🗜️ ZIP archive | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Intel-x64.zip) |
+          | ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-555555?style=flat-square&logo=apple&logoColor=white) | 💿 Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.dmg) |
+          | ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-555555?style=flat-square&logo=apple&logoColor=white) | 🗜️ ZIP archive | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip) |
+          | ![Linux](https://img.shields.io/badge/Linux-x64-FCC624?style=flat-square&logo=linux&logoColor=black) | 🗜️ Portable TAR.GZ | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.tar.gz) |
+          | ![Linux](https://img.shields.io/badge/Linux-ARM64-FCC624?style=flat-square&logo=linux&logoColor=black) | 🗜️ Portable TAR.GZ | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.tar.gz) |
+          | ![Debian](https://img.shields.io/badge/Debian%20%2F%20Ubuntu-x64-A81D33?style=flat-square&logo=debian&logoColor=white) | 📦 DEB package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.deb) |
+          | ![Debian](https://img.shields.io/badge/Debian%20%2F%20Ubuntu-ARM64-A81D33?style=flat-square&logo=debian&logoColor=white) | 📦 DEB package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.deb) |
+          | ![Fedora](https://img.shields.io/badge/Fedora-x64-294172?style=flat-square&logo=fedora&logoColor=white) | 📦 RPM package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Fedora-x64.rpm) |
+          | ![Fedora](https://img.shields.io/badge/Fedora-ARM64-294172?style=flat-square&logo=fedora&logoColor=white) | 📦 RPM package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Fedora-ARM64.rpm) |
+          | ![Arch Linux](https://img.shields.io/badge/Arch%20Linux-x64-1793D1?style=flat-square&logo=archlinux&logoColor=white) | 📦 PKG.TAR.ZST package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Arch-x64.pkg.tar.zst) |
+          | ![Arch Linux](https://img.shields.io/badge/Arch%20Linux-ARM64-1793D1?style=flat-square&logo=archlinux&logoColor=white) | 📦 PKG.TAR.ZST package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst) |
+          | ![Linux](https://img.shields.io/badge/Linux-x64-FCC624?style=flat-square&logo=linux&logoColor=black) | 📦 Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.flatpak) |
+          | ![Linux](https://img.shields.io/badge/Linux-ARM64-FCC624?style=flat-square&logo=linux&logoColor=black) | 📦 Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.flatpak) |
+          | ![Linux](https://img.shields.io/badge/Linux-x64-FCC624?style=flat-square&logo=linux&logoColor=black) | 🚀 AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.AppImage) |
+          | ![Linux](https://img.shields.io/badge/Linux-ARM64-FCC624?style=flat-square&logo=linux&logoColor=black) | 🚀 AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.AppImage) |
 
           **Checksums:** [SHA256SUMS](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/SHA256SUMS)
 

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 10;
+const SETTINGS_SCHEMA_VERSION: u32 = 11;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -36,6 +36,10 @@ pub struct AppSettings {
     /// Publish Jpeg-Viewer-generated thumbnails into the shared Linux XDG cache.
     /// Existing shared-cache thumbnails are still read when publishing is disabled.
     pub publish_generated_thumbnails: bool,
+    /// Unix timestamp of the most recent automatic or manual update-check attempt.
+    pub update_check_last_attempt_unix: i64,
+    /// Small validated release reference, retained until a later check confirms the app is current.
+    pub update_available_release_json: String,
     pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches
     // Frame limiter settings
@@ -195,6 +199,8 @@ impl Default for AppSettings {
             max_cache_task: 4,
             thumbnail_workers: 3,
             publish_generated_thumbnails: true,
+            update_check_last_attempt_unix: 0,
+            update_available_release_json: String::new(),
             texture_filter: "mipmap".to_string(),
             preload_throttle_ms: 100,
             max_fps: 30.0,

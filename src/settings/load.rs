@@ -126,6 +126,17 @@ impl SettingsManager {
                     if let Some(value) = section.get("publish_generated_thumbnails") {
                         settings.publish_generated_thumbnails = SettingsManager::parse_bool(value);
                     }
+                    if let Some(value) = section.get("update_check_last_attempt_unix")
+                        && let Ok(timestamp) = value.parse::<i64>()
+                        && timestamp >= 0
+                    {
+                        settings.update_check_last_attempt_unix = timestamp;
+                    }
+                    if let Some(value) = section.get("update_available_release_json")
+                        && value.len() <= 4096
+                    {
+                        settings.update_available_release_json = value.to_owned();
+                    }
                     // Read texture_filter
                     if let Some(value) = section.get("texture_filter")
                         && matches!(value, "nearest" | "linear" | "mipmap")

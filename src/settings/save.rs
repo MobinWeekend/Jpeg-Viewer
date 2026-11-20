@@ -96,6 +96,14 @@ impl SettingsManager {
                 "false"
             },
         );
+        section.set(
+            "update_check_last_attempt_unix",
+            settings.update_check_last_attempt_unix.max(0).to_string(),
+        );
+        section.set(
+            "update_available_release_json",
+            &settings.update_available_release_json,
+        );
         section.set("texture_filter", &settings.texture_filter);
         section.set(
             "preload_throttle_ms",

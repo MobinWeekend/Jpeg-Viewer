@@ -47,6 +47,8 @@ infer = "0.22.0"
 arboard = "3.4"
 thiserror = "2"
 chrono = "0.4.45"
+semver = "1.0"
+serde_json = "1.0"
 kamadak-exif = "0.6.1"
 # In-process camera RAW development (no darktable/dcraw executable required).
 zenraw = { version = "0.2.0", features = ["rawler"] }

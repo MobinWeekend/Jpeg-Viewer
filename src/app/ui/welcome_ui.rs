@@ -18,6 +18,7 @@ enum WelcomeAction {
     Favorites,
     OpenPath(PathBuf),
     OpenMasonryPath(PathBuf),
+    RefreshThumbnail(PathBuf),
     RemoveRecent(PathBuf),
     RemovePin(PathBuf),
     ReorderPins(PathBuf, PathBuf, bool),
@@ -283,6 +284,9 @@ impl ViewerApp {
             Some(WelcomeAction::Favorites) => self.load_favorites_from_welcome(),
             Some(WelcomeAction::OpenPath(path)) => self.open_welcome_shortcut(path, ctx),
             Some(WelcomeAction::OpenMasonryPath(path)) => self.open_welcome_path_in_masonry(path),
+            Some(WelcomeAction::RefreshThumbnail(path)) => {
+                self.refresh_home_thumbnail(&path, target_thumbnail_size, ctx);
+            }
             Some(WelcomeAction::RemoveRecent(path)) => self.remove_welcome_recent(&path),
             Some(WelcomeAction::RemovePin(path)) => self.remove_welcome_pin(&path),
             Some(WelcomeAction::ReorderPins(from, to, before)) => {
@@ -446,6 +450,7 @@ impl ViewerApp {
         let mut remaining = Vec::with_capacity(receivers.len());
         let mut uploads = 0;
         let mut upload_limit_reached = false;
+        let mut forced_refreshes = Vec::new();
 
         for (source_path, request_key, receiver) in receivers {
             if uploads >= MAX_TEXTURE_UPLOADS_PER_FRAME {
@@ -477,10 +482,19 @@ impl ViewerApp {
                         self.home_thumbnail_cache_checked.insert(cache_key.clone());
                         if let Some(cache_path) = result.cache_path {
                             self.home_thumbnail_cache_paths
-                                .insert(cache_key.clone(), cache_path);
+                                .insert(cache_key.clone(), cache_path.clone());
+
+                            if self.home_thumbnail_refresh_requested.contains(&cache_key) {
+                                // A forced refresh replaces the old cache atomically
+                                // after a successful thumbnail generation.
+                                self.home_thumbnail_cache_writes
+                                    .insert(cache_key.clone(), cache_path);
+                            }
                         }
 
-                        if let Some(cached) = result.cached
+                        if self.home_thumbnail_refresh_requested.remove(&cache_key) {
+                            forced_refreshes.push((entry.clone(), result.target_size));
+                        } else if let Some(cached) = result.cached
                             && !self.has_shared_thumbnail_at_least(
                                 &source_key,
                                 result.target_size,
@@ -527,12 +541,32 @@ impl ViewerApp {
                     }
                     if let Some(key) = request_key {
                         self.home_thumbnail_cache_pending.remove(&key);
+                        if self.home_thumbnail_refresh_requested.remove(&key) {
+                            // Permit a later visible frame to retry the cache lookup
+                            // after an unexpected worker exit.
+                            self.home_thumbnail_cache_checked.remove(&key);
+                        }
                     }
                 }
             }
         }
 
         self.home_preview_receivers = remaining;
+        for (entry, target_size) in forced_refreshes {
+            let source_key = crate::app::queues::source_thumbnail_key(&entry);
+            let cache_key = crate::app::queues::shared_thumbnail_key(&source_key, target_size);
+            if let Some(cache_path) = self.home_thumbnail_cache_paths.get(&cache_key).cloned() {
+                self.home_thumbnail_cache_writes.insert(cache_key, cache_path);
+            }
+            match entry {
+                ImageEntry::File(path) => {
+                    self.request_sidebar_thumbnail(path, source_key, target_size, ctx);
+                }
+                archive_entry => {
+                    self.request_sidebar_archive_thumbnail(archive_entry, source_key, target_size, ctx);
+                }
+            }
+        }
         if upload_limit_reached {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
@@ -560,9 +594,10 @@ impl ViewerApp {
             return self.get_shared_thumbnail(&key, target_size);
         }
 
-        // A smaller persistent preview may be shown immediately while the
-        // normal thumbnail pipeline generates an upgrade for the card size.
-        if !self.has_shared_thumbnail_at_least(&key, target_size) {
+        // Home is intentionally cache-first: once any cached resolution exists,
+        // keep it instead of scheduling a background quality upgrade. Missing
+        // thumbnails are generated once and then persisted in the Home cache.
+        if self.get_shared_thumbnail(&key, target_size).is_none() {
             let cache_path = self.home_thumbnail_cache_paths.get(&request_key).cloned();
             if self.sidebar_thumbnail_pending.contains(&request_key) {
                 // Another workspace may already be generating this exact key.
@@ -596,6 +631,41 @@ impl ViewerApp {
         }
 
         self.get_shared_thumbnail(&key, target_size)
+    }
+
+    /// Explicitly refresh a visible Home card. Normal Home rendering never
+    /// regenerates a thumbnail once any suitable cached resolution is available.
+    /// A user-requested refresh evicts that source's shared textures and ignores
+    /// the old persistent-cache result before queuing one replacement.
+    fn refresh_home_thumbnail(
+        &mut self,
+        path: &Path,
+        target_size: u32,
+        ctx: &egui::Context,
+    ) {
+        let Some(entry) = self
+            .workspace
+            .welcome_thumbnail_sources
+            .get(path)
+            .cloned()
+            .flatten()
+        else {
+            return;
+        };
+
+        let source_key = crate::app::queues::source_thumbnail_key(&entry);
+        let request_key = crate::app::queues::shared_thumbnail_key(&source_key, target_size);
+        self.invalidate_shared_thumbnails_for_source(&source_key);
+        self.home_thumbnail_cache_checked.remove(&request_key);
+        self.home_thumbnail_refresh_requested.insert(request_key.clone());
+
+        // If a cache read is already running, collect_home_preview_jobs will
+        // ignore the stale cache hit and queue the replacement when it returns.
+        // Otherwise start a fresh lookup so it can also resolve the write path.
+        if !self.home_thumbnail_cache_pending.contains(&request_key) {
+            self.request_home_preview_job(None, Some(entry), target_size, ctx);
+        }
+        ctx.request_repaint();
     }
 
     /// The session prompt is intentionally checked before rendering Welcome so
@@ -945,6 +1015,10 @@ fn render_new_tab_card(
         }
         if menu.button("Open in Masonry").clicked() {
             menu_action = Some(WelcomeAction::OpenMasonryPath(card.path.clone()));
+            menu.close();
+        }
+        if card.thumbnail.is_some() && menu.button("Refresh thumbnail").clicked() {
+            menu_action = Some(WelcomeAction::RefreshThumbnail(card.path.clone()));
             menu.close();
         }
         menu.separator();

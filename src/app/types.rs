@@ -254,6 +254,8 @@ pub struct ViewerApp {
 
     // ====== SETTINGS ======
     pub settings_manager: SettingsManager,
+    /// Background GitHub release checker and its current UI status.
+    pub(crate) updater: super::updater::Updater,
     /// Independent Viewer, Image, Masonry, and Compare workspace tabs.
     pub(crate) workspace: super::workspace::WorkspaceManager,
     pub input_bindings: InputBindings,
@@ -420,6 +422,9 @@ pub struct ViewerApp {
     pub(crate) home_thumbnail_cache_paths: HashMap<String, PathBuf>,
     /// Home card/source-size pairs whose persistent cache was already checked.
     pub(crate) home_thumbnail_cache_checked: HashSet<String>,
+    /// Home card/source-size pairs explicitly requested for a forced thumbnail refresh.
+    /// The persistent cache lookup is allowed to finish, but its old result is ignored.
+    pub(crate) home_thumbnail_refresh_requested: HashSet<String>,
     /// Cache reads and Home preview-source discovery currently in flight.
     pub(crate) home_thumbnail_cache_pending: HashSet<String>,
     pub(crate) home_preview_receivers: Vec<(
@@ -479,6 +484,9 @@ impl ViewerApp {
     /// bootstrap. This avoids reading/migrating settings.ini twice on startup.
     pub(crate) fn new(settings_manager: SettingsManager) -> Self {
         let settings = settings_manager.get().clone();
+        let updater = super::updater::Updater::from_cached_release(
+            &settings.update_available_release_json,
+        );
 
         // ====== CACHE SIZE ======
 
@@ -608,6 +616,7 @@ impl ViewerApp {
 
             // ====== SETTINGS ======
             settings_manager,
+            updater,
             workspace: super::workspace::WorkspaceManager::default(),
             input_bindings: InputBindings::default(),
 
@@ -732,6 +741,7 @@ impl ViewerApp {
             home_thumbnail_cache_writes: HashMap::new(),
             home_thumbnail_cache_paths: HashMap::new(),
             home_thumbnail_cache_checked: HashSet::new(),
+            home_thumbnail_refresh_requested: HashSet::new(),
             home_thumbnail_cache_pending: HashSet::new(),
             home_preview_receivers: Vec::new(),
             sidebar_thumbnail_receivers: Vec::new(),

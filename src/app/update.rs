@@ -6,6 +6,35 @@ use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        // Check for a stable GitHub release at most once every seven days. The
+        // request runs on a dedicated thread and never blocks the UI frame.
+        if let Some(status) = self.updater.poll() {
+            match status {
+                super::updater::UpdateStatus::UpdateAvailable { release } => {
+                    let cached_release_json = release.to_settings_json();
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.update_available_release_json = cached_release_json;
+                    });
+                }
+                super::updater::UpdateStatus::UpToDate { .. } => {
+                    let _ = self.settings_manager.update(|settings| {
+                        settings.update_available_release_json.clear();
+                    });
+                }
+                super::updater::UpdateStatus::Idle
+                | super::updater::UpdateStatus::Checking
+                | super::updater::UpdateStatus::Failed { .. } => {}
+            }
+        }
+        if let Some(attempted_at) = self.updater.maybe_start_automatic_check(
+            self.settings_manager.get().update_check_last_attempt_unix,
+            ctx,
+        ) {
+            let _ = self.settings_manager.update(|settings| {
+                settings.update_check_last_attempt_unix = attempted_at;
+            });
+        }
+
         if let Some(Err(error)) = self.settings_manager.save_if_due() {
             eprintln!("Could not persist updated settings: {error}");
         }

@@ -6,6 +6,7 @@ pub mod general;
 mod look;
 mod settings_file;
 mod slideshow;
+mod updates;
 pub(crate) mod viewing;
 
 use crate::app::types::ViewerApp;
@@ -80,6 +81,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                     slideshow::render(app, ui, ctx);
                     tricks::render(app, ui, ctx);
                     advanced::render(app, ui, ctx);
+                    updates::render(app, ui, ctx);
                     settings_file::render(app, ui, ctx);
                     ui.add_space(8.0);
                 });
