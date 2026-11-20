@@ -861,12 +861,24 @@ jobs:
           mkdir -p "$OUT_DIR"
           chmod 0777 "$OUT_DIR"
 
+          case "${{ matrix.arch }}" in
+            x64) DOCKER_PLATFORM='linux/amd64' ;;
+            ARM64) DOCKER_PLATFORM='linux/arm64' ;;
+            *) echo "Unsupported Arch build architecture: ${{ matrix.arch }}" >&2; exit 1 ;;
+          esac
+
           echo "Arch image: $IMAGE"
+          echo "Docker platform: $DOCKER_PLATFORM"
           echo "Expected Arch package version: $ARCH_VERSION"
           echo "Runner workspace: $WORKSPACE"
-          docker image inspect "$IMAGE" --format 'Image ID: {{.Id}}'
 
-          docker run --rm --user 0:0 \
+          # Do not inspect the local image cache first. The GitHub runner may
+          # not have this user-selected image yet. Let docker run pull it from
+          # its registry, for the requested platform, before creating the
+          # container. This also avoids a race between separate pull/inspect/run
+          # calls and produces the registry's real error if the tag is invalid.
+          echo "Pulling and starting selected Arch image for $DOCKER_PLATFORM..."
+          docker run --rm --pull=always --platform "$DOCKER_PLATFORM" --user 0:0 \
             --mount "type=bind,source=$WORKSPACE,target=/workspace" \
             -e ARCH_VERSION="$ARCH_VERSION" \
             -e JPEG_VIEWER_SOURCE_COMMIT="$GITHUB_SHA" \
