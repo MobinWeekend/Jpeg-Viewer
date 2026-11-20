@@ -729,15 +729,17 @@ fn render_new_tab_card(
         );
     }
 
-    if removable && is_drop_target && ui.ctx().input(|input| input.pointer.any_released()) {
-        if let Some(from) = dragging_path {
-            let pointer_x = ui
-                .ctx()
-                .pointer_interact_pos()
-                .map_or(rect.center().x, |pos| pos.x);
-            let before = pointer_x < rect.center().x;
-            menu_action = Some(WelcomeAction::ReorderPins(from, card.path.clone(), before));
-        }
+    if removable
+        && is_drop_target
+        && ui.ctx().input(|input| input.pointer.any_released())
+        && let Some(from) = dragging_path
+    {
+        let pointer_x = ui
+            .ctx()
+            .pointer_interact_pos()
+            .map_or(rect.center().x, |pos| pos.x);
+        let before = pointer_x < rect.center().x;
+        menu_action = Some(WelcomeAction::ReorderPins(from, card.path.clone(), before));
     }
 
     (opened && !is_drop_target, removed, menu_action)

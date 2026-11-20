@@ -86,10 +86,10 @@ impl crate::app::types::ViewerApp {
             });
         if let Some(resolution) = resolution {
             let pending = self.workspace.pending_file_operation.take();
-            if let Some(pending) = pending {
-                if resolution != ConflictResolution::Cancel {
-                    self.execute_file_operation(pending, resolution);
-                }
+            if let Some(pending) = pending
+                && resolution != ConflictResolution::Cancel
+            {
+                self.execute_file_operation(pending, resolution);
             }
         }
     }
@@ -172,16 +172,16 @@ impl crate::app::types::ViewerApp {
                 continue;
             }
 
-            if pending.move_files {
-                if let ImageEntry::File(source) = &entry {
-                    if let Err(error) = fs::remove_file(source) {
-                        // Keep both copies rather than deleting the successfully
-                        // installed destination or pretending the move completed.
-                        failed.push(format!("{file_name}: copied to destination, but source could not be removed: {error}"));
-                        continue;
-                    }
-                    moved_paths.insert(entry_id, target.clone());
+            if pending.move_files
+                && let ImageEntry::File(source) = &entry
+            {
+                if let Err(error) = fs::remove_file(source) {
+                    // Keep both copies rather than deleting the successfully
+                    // installed destination or pretending the move completed.
+                    failed.push(format!("{file_name}: copied to destination, but source could not be removed: {error}"));
+                    continue;
                 }
+                moved_paths.insert(entry_id, target.clone());
             }
             succeeded += 1;
         }
@@ -196,7 +196,7 @@ impl crate::app::types::ViewerApp {
                 let folder = tab.directory.clone();
                 if is_folder_masonry {
                     tab.entries.retain(|entry| {
-                        moved_paths.get(&entry.get_id()).map_or(true, |new_path| {
+                        moved_paths.get(&entry.get_id()).is_none_or(|new_path| {
                             if recursive_folder {
                                 folder
                                     .as_ref()
@@ -209,19 +209,19 @@ impl crate::app::types::ViewerApp {
                 }
                 for entry in &mut tab.entries {
                     let old_id = entry.get_id();
-                    if let Some(new_path) = moved_paths.get(&old_id) {
-                        if let ImageEntry::File(path) = entry {
-                            *path = new_path.clone();
-                            // A move changes the stable entry ID. Carry its
-                            // already-known Masonry dimensions to the new ID so
-                            // moving a file does not reset its tile geometry.
-                            let new_id = entry.get_id();
-                            if let Some(aspect) = tab.masonry_aspect_ratios.remove(&old_id) {
-                                tab.masonry_aspect_ratios.insert(new_id.clone(), aspect);
-                            }
-                            if let Some(dimensions) = tab.masonry_dimensions.remove(&old_id) {
-                                tab.masonry_dimensions.insert(new_id, dimensions);
-                            }
+                    if let Some(new_path) = moved_paths.get(&old_id)
+                        && let ImageEntry::File(path) = entry
+                    {
+                        *path = new_path.clone();
+                        // A move changes the stable entry ID. Carry its
+                        // already-known Masonry dimensions to the new ID so
+                        // moving a file does not reset its tile geometry.
+                        let new_id = entry.get_id();
+                        if let Some(aspect) = tab.masonry_aspect_ratios.remove(&old_id) {
+                            tab.masonry_aspect_ratios.insert(new_id.clone(), aspect);
+                        }
+                        if let Some(dimensions) = tab.masonry_dimensions.remove(&old_id) {
+                            tab.masonry_dimensions.insert(new_id, dimensions);
                         }
                     }
                 }
@@ -238,11 +238,11 @@ impl crate::app::types::ViewerApp {
                 }
                 tab.selected.clear();
                 tab.current_index = tab.current_index.min(tab.entries.len().saturating_sub(1));
-                if tab.kind == WorkspaceTabKind::Image {
-                    if let Some(entry) = tab.entries.first() {
-                        tab.title = entry_display_name(entry);
-                        tab.directory = entry_parent(entry);
-                    }
+                if tab.kind == WorkspaceTabKind::Image
+                    && let Some(entry) = tab.entries.first()
+                {
+                    tab.title = entry_display_name(entry);
+                    tab.directory = entry_parent(entry);
                 }
             }
             // Old cache keys no longer identify the moved paths.

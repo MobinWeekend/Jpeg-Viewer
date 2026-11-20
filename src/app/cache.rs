@@ -289,20 +289,18 @@ impl ViewerApp {
             None
         };
 
-        if should_cache {
-            if let Some(image_id) = image_id {
-                let cached = CachedImage {
-                    texture: texture.clone(),
-                    texture_filter,
-                    mipmap_state: mipmap_state.clone(),
-                    is_gif: false,
-                    is_preview: false,
-                    index,
-                    file_type_detection: self.file_type_detection.clone(),
-                    file_metadata: self.file_metadata.clone(),
-                };
-                self.image_cache.put(image_id, cached);
-            }
+        if should_cache && let Some(image_id) = image_id {
+            let cached = CachedImage {
+                texture: texture.clone(),
+                texture_filter,
+                mipmap_state: mipmap_state.clone(),
+                is_gif: false,
+                is_preview: false,
+                index,
+                file_type_detection: self.file_type_detection.clone(),
+                file_metadata: self.file_metadata.clone(),
+            };
+            self.image_cache.put(image_id, cached);
         }
 
         self.current_mipmap_state = mipmap_state.clone();
@@ -331,13 +329,13 @@ impl ViewerApp {
         // A completed preload has already examined the source signature and
         // decoded its format. Seed both positive and negative results so later
         // scheduler/progress checks never reopen this entry just for GIF magic.
-        if let Some(image_id) = self.get_image_id(index) {
-            if let Ok(mut cache) = self.gif_detection_cache.lock() {
-                cache.insert(
-                    image_id,
-                    matches!(&loaded_entry.image, LoadedImage::Animated(_, _)),
-                );
-            }
+        if let Some(image_id) = self.get_image_id(index)
+            && let Ok(mut cache) = self.gif_detection_cache.lock()
+        {
+            cache.insert(
+                image_id,
+                matches!(&loaded_entry.image, LoadedImage::Animated(_, _)),
+            );
         }
         let LoadedEntryData {
             image,

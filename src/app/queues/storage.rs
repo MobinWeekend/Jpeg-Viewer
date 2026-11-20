@@ -29,7 +29,7 @@ fn encode_hex(text: &str) -> String {
 }
 
 fn decode_hex(text: &str) -> Result<String, String> {
-    if text.len() % 2 != 0 {
+    if !text.len().is_multiple_of(2) {
         return Err("invalid hex field length".into());
     }
     let bytes = (0..text.len())

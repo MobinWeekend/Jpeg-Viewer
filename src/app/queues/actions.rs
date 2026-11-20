@@ -127,11 +127,11 @@ impl ViewerApp {
 
     fn save_favorites(&mut self) {
         let path = self.favorites_file_path();
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                self.queue_status = Some(format!("Could not create favorites directory: {error}"));
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            self.queue_status = Some(format!("Could not create favorites directory: {error}"));
+            return;
         }
         match write_queue(&path, &self.favorite_paths, None) {
             Ok(()) => {

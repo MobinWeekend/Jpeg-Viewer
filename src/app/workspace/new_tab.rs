@@ -62,11 +62,11 @@ impl crate::app::types::ViewerApp {
 
     pub(super) fn save_welcome_data(&self) {
         let path = self.welcome_data_path();
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                eprintln!("Could not create Home data directory: {error}");
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            eprintln!("Could not create Home data directory: {error}");
+            return;
         }
         let mut output = String::new();
         for item in self
@@ -81,13 +81,11 @@ impl crate::app::types::ViewerApp {
             output.push_str(&format!("P|{}\n", encode_field(&item.to_string_lossy())));
         }
         let temporary = path.with_extension("txt.tmp");
-        if fs::write(&temporary, output).is_ok() {
-            if fs::rename(&temporary, &path).is_err() {
-                // Windows does not replace an existing file on rename. Fall back
-                // to a direct write so Welcome links remain available next launch.
-                let _ = fs::write(&path, fs::read_to_string(&temporary).unwrap_or_default());
-                let _ = fs::remove_file(temporary);
-            }
+        if fs::write(&temporary, output).is_ok() && fs::rename(&temporary, &path).is_err() {
+            // Windows does not replace an existing file on rename. Fall back
+            // to a direct write so Welcome links remain available next launch.
+            let _ = fs::write(&path, fs::read_to_string(&temporary).unwrap_or_default());
+            let _ = fs::remove_file(temporary);
         }
     }
 

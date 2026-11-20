@@ -97,17 +97,18 @@ impl crate::app::types::ViewerApp {
                     .masonry_thumbnail_size
                     .clamp(76.0, 512.0);
             }
-            if tab.kind == WorkspaceTabKind::Masonry && tab.folder_masonry {
-                if let Some(directory) = tab.directory.as_ref() {
-                    let paths = if tab.recursive {
-                        let mut paths = crate::app::queues::collect_folder_images(directory);
-                        crate::imaging::sort::sort_images(&mut paths, self.sort_method);
-                        paths
-                    } else {
-                        crate::imaging::loader::load_directory_images(directory, self.sort_method)
-                    };
-                    tab.entries = paths.into_iter().map(ImageEntry::File).collect();
-                }
+            if tab.kind == WorkspaceTabKind::Masonry
+                && tab.folder_masonry
+                && let Some(directory) = tab.directory.as_ref()
+            {
+                let paths = if tab.recursive {
+                    let mut paths = crate::app::queues::collect_folder_images(directory);
+                    crate::imaging::sort::sort_images(&mut paths, self.sort_method);
+                    paths
+                } else {
+                    crate::imaging::loader::load_directory_images(directory, self.sort_method)
+                };
+                tab.entries = paths.into_iter().map(ImageEntry::File).collect();
             }
             if tab.kind == WorkspaceTabKind::Compare {
                 let old_entries = std::mem::take(&mut tab.entries);
@@ -188,11 +189,11 @@ impl crate::app::types::ViewerApp {
             let _ = fs::remove_file(&path);
             return;
         }
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                eprintln!("Could not create workspace session directory: {error}");
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            eprintln!("Could not create workspace session directory: {error}");
+            return;
         }
         let mut output = String::new();
         let active_tab = self.workspace.tabs.get(self.workspace.active_index);
@@ -312,14 +313,10 @@ impl crate::app::types::ViewerApp {
             // failed replacement never destroys the last known-good session.
             let backup = path.with_extension("txt.bak");
             let had_previous = path.exists();
-            if had_previous {
-                if let Err(backup_error) = fs::rename(&path, &backup) {
-                    eprintln!(
-                        "Could not back up previous workspace session ({error}; {backup_error})"
-                    );
-                    let _ = fs::remove_file(&temporary);
-                    return;
-                }
+            if had_previous && let Err(backup_error) = fs::rename(&path, &backup) {
+                eprintln!("Could not back up previous workspace session ({error}; {backup_error})");
+                let _ = fs::remove_file(&temporary);
+                return;
             }
             match fs::rename(&temporary, &path) {
                 Ok(()) => {

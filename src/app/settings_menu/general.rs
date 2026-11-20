@@ -589,14 +589,13 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
             .map(|entry| entry.get_id());
         if !app.image_entries.is_empty() {
             crate::imaging::sort::sort_images(&mut app.image_entries, app.sort_method);
-            if let Some(id) = selected_id {
-                if let Some(index) = app
+            if let Some(id) = selected_id
+                && let Some(index) = app
                     .image_entries
                     .iter()
                     .position(|entry| entry.get_id() == id)
-                {
-                    app.current_index = index;
-                }
+            {
+                app.current_index = index;
             }
         } else {
             app.handle_command(ctx, ViewerCommand::RebuildIndex);

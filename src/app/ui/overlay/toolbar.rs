@@ -583,10 +583,8 @@ fn render_platform_primary_row(
                 let consumed = (ui.next_widget_position().x - row_start).max(0.0);
                 app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
             }
-        } else if placement == "win98" {
-            if ui.button("Open Image…").clicked() {
-                app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
-            }
+        } else if placement == "win98" && ui.button("Open Image…").clicked() {
+            app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
         }
     });
 }

@@ -49,154 +49,143 @@ impl SettingsManager {
                     if let Some(value) = section.get("window_resize_mouse_shortcut_enabled") {
                         settings.window_resize_mouse_shortcut_enabled = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("zoom_step_mouse_right_button") {
-                        if let Ok(step_mouse_right_button) = value.parse::<f32>() {
-                            if step_mouse_right_button.is_finite()
-                                && (1.05..=2.0).contains(&step_mouse_right_button)
-                            {
-                                settings.zoom_step_mouse_right_button = step_mouse_right_button;
-                            }
-                        }
+                    if let Some(value) = section.get("zoom_step_mouse_right_button")
+                        && let Ok(step_mouse_right_button) = value.parse::<f32>()
+                        && step_mouse_right_button.is_finite()
+                        && (1.05..=2.0).contains(&step_mouse_right_button)
+                    {
+                        settings.zoom_step_mouse_right_button = step_mouse_right_button;
                     }
-                    if let Some(value) = section.get("zoom_step_mouse_wheel") {
-                        if let Ok(step_mouse_wheel) = value.parse::<f32>() {
-                            if step_mouse_wheel.is_finite()
-                                && (1.05..=2.0).contains(&step_mouse_wheel)
-                            {
-                                settings.zoom_step_mouse_wheel = step_mouse_wheel;
-                            }
-                        }
+                    if let Some(value) = section.get("zoom_step_mouse_wheel")
+                        && let Ok(step_mouse_wheel) = value.parse::<f32>()
+                        && step_mouse_wheel.is_finite()
+                        && (1.05..=2.0).contains(&step_mouse_wheel)
+                    {
+                        settings.zoom_step_mouse_wheel = step_mouse_wheel;
                     }
-                    if let Some(value) = section.get("zoom_step_keyboard") {
-                        if let Ok(step_keyboard) = value.parse::<f32>() {
-                            if step_keyboard.is_finite() && (1.05..=2.0).contains(&step_keyboard) {
-                                settings.zoom_step_keyboard = step_keyboard;
-                            }
-                        }
+                    if let Some(value) = section.get("zoom_step_keyboard")
+                        && let Ok(step_keyboard) = value.parse::<f32>()
+                        && step_keyboard.is_finite()
+                        && (1.05..=2.0).contains(&step_keyboard)
+                    {
+                        settings.zoom_step_keyboard = step_keyboard;
                     }
                     // Read window position
-                    if let Some(value) = section.get("window_pos") {
-                        if let Some((x, y)) = Self::parse_f32_pair(value) {
-                            if x.is_finite() && y.is_finite() {
-                                settings.window_pos = Some([x, y]);
-                            }
-                        }
+                    if let Some(value) = section.get("window_pos")
+                        && let Some((x, y)) = Self::parse_f32_pair(value)
+                        && x.is_finite()
+                        && y.is_finite()
+                    {
+                        settings.window_pos = Some([x, y]);
                     }
                     // Read window size
-                    if let Some(value) = section.get("window_size") {
-                        if let Some((width, height)) = Self::parse_f32_pair(value) {
-                            if width.is_finite()
-                                && height.is_finite()
-                                && width > 100.0
-                                && height > 100.0
-                            {
-                                settings.window_size = Some([width, height]);
-                            }
-                        }
+                    if let Some(value) = section.get("window_size")
+                        && let Some((width, height)) = Self::parse_f32_pair(value)
+                        && width.is_finite()
+                        && height.is_finite()
+                        && width > 100.0
+                        && height > 100.0
+                    {
+                        settings.window_size = Some([width, height]);
                     }
                     // Read whether the previous normal window session ended maximized.
                     if let Some(value) = section.get("window_maximized") {
                         settings.window_maximized = Self::parse_bool(value);
                     }
                     // Read cache radius
-                    if let Some(value) = section.get("cache_radius") {
-                        if let Ok(radius) = value.parse::<usize>() {
-                            if radius > 0 && radius <= 100 {
-                                settings.cache_radius = radius;
-                            }
-                        }
+                    if let Some(value) = section.get("cache_radius")
+                        && let Ok(radius) = value.parse::<usize>()
+                        && radius > 0
+                        && radius <= 100
+                    {
+                        settings.cache_radius = radius;
                     }
                     // Read cache delta_factor
-                    if let Some(value) = section.get("cache_delta_factor") {
-                        if let Ok(factor) = value.parse::<f32>() {
-                            if factor.is_finite() && (0.0..=10.0).contains(&factor) && factor > 0.0
-                            {
-                                settings.cache_delta_factor = factor;
-                            }
-                        }
+                    if let Some(value) = section.get("cache_delta_factor")
+                        && let Ok(factor) = value.parse::<f32>()
+                        && factor.is_finite()
+                        && (0.0..=10.0).contains(&factor)
+                        && factor > 0.0
+                    {
+                        settings.cache_delta_factor = factor;
                     }
                     // Read max_cache_task
-                    if let Some(value) = section.get("max_cache_task") {
-                        if let Ok(tasks) = value.parse::<u8>() {
-                            if tasks > 0 && tasks <= 10 {
-                                settings.max_cache_task = tasks;
-                            }
-                        }
+                    if let Some(value) = section.get("max_cache_task")
+                        && let Ok(tasks) = value.parse::<u8>()
+                        && tasks > 0
+                        && tasks <= 10
+                    {
+                        settings.max_cache_task = tasks;
                     }
-                    if let Some(value) = section.get("thumbnail_workers") {
-                        if let Ok(workers) = value.parse::<usize>() {
-                            if (1..=8).contains(&workers) {
-                                settings.thumbnail_workers = workers;
-                            }
-                        }
+                    if let Some(value) = section.get("thumbnail_workers")
+                        && let Ok(workers) = value.parse::<usize>()
+                        && (1..=8).contains(&workers)
+                    {
+                        settings.thumbnail_workers = workers;
                     }
                     if let Some(value) = section.get("publish_generated_thumbnails") {
                         settings.publish_generated_thumbnails = SettingsManager::parse_bool(value);
                     }
                     // Read texture_filter
-                    if let Some(value) = section.get("texture_filter") {
-                        if matches!(value, "nearest" | "linear" | "mipmap") {
-                            settings.texture_filter = value.to_string();
-                        }
+                    if let Some(value) = section.get("texture_filter")
+                        && matches!(value, "nearest" | "linear" | "mipmap")
+                    {
+                        settings.texture_filter = value.to_string();
                     }
                     // Read preload_throttle_ms
-                    if let Some(value) = section.get("preload_throttle_ms") {
-                        if let Ok(throttle) = value.parse::<u64>() {
-                            if throttle >= 10 {
-                                settings.preload_throttle_ms = throttle;
-                            }
-                        }
+                    if let Some(value) = section.get("preload_throttle_ms")
+                        && let Ok(throttle) = value.parse::<u64>()
+                        && throttle >= 10
+                    {
+                        settings.preload_throttle_ms = throttle;
                     }
                     // Read max_fps
-                    if let Some(value) = section.get("max_fps") {
-                        if let Ok(fps) = value.parse::<f32>() {
-                            if fps.is_finite() && fps >= 0.0 && fps <= 120.0 {
-                                settings.max_fps = fps;
-                            }
-                        }
+                    if let Some(value) = section.get("max_fps")
+                        && let Ok(fps) = value.parse::<f32>()
+                        && fps.is_finite()
+                        && (0.0..=120.0).contains(&fps)
+                    {
+                        settings.max_fps = fps;
                     }
                     // Read idle_fps_limit
-                    if let Some(value) = section.get("idle_fps_limit") {
-                        if let Ok(fps) = value.parse::<f32>() {
-                            if fps.is_finite() && fps >= 0.0 && fps <= 120.0 {
-                                settings.idle_fps_limit = fps;
-                            }
-                        }
+                    if let Some(value) = section.get("idle_fps_limit")
+                        && let Ok(fps) = value.parse::<f32>()
+                        && fps.is_finite()
+                        && (0.0..=120.0).contains(&fps)
+                    {
+                        settings.idle_fps_limit = fps;
                     }
                     // Read idle_timeout_ms
-                    if let Some(value) = section.get("idle_timeout_ms") {
-                        if let Ok(timeout) = value.parse::<u64>() {
-                            if timeout >= 100 && timeout <= 10000 {
-                                settings.idle_timeout_ms = timeout;
-                            }
-                        }
+                    if let Some(value) = section.get("idle_timeout_ms")
+                        && let Ok(timeout) = value.parse::<u64>()
+                        && (100..=10000).contains(&timeout)
+                    {
+                        settings.idle_timeout_ms = timeout;
                     }
                     // Read unfocused_idle_timeout_ms
-                    if let Some(value) = section.get("unfocused_idle_timeout_ms") {
-                        if let Ok(timeout) = value.parse::<u64>() {
-                            if timeout >= 50 && timeout <= 5000 {
-                                settings.unfocused_idle_timeout_ms = timeout;
-                            }
-                        }
+                    if let Some(value) = section.get("unfocused_idle_timeout_ms")
+                        && let Ok(timeout) = value.parse::<u64>()
+                        && (50..=5000).contains(&timeout)
+                    {
+                        settings.unfocused_idle_timeout_ms = timeout;
                     }
                     // Read unfocused_idle_fps_limit
-                    if let Some(value) = section.get("unfocused_idle_fps_limit") {
-                        if let Ok(fps) = value.parse::<f32>() {
-                            if fps.is_finite() && fps >= 0.0 && fps <= 120.0 {
-                                settings.unfocused_idle_fps_limit = fps;
-                            }
-                        }
+                    if let Some(value) = section.get("unfocused_idle_fps_limit")
+                        && let Ok(fps) = value.parse::<f32>()
+                        && fps.is_finite()
+                        && (0.0..=120.0).contains(&fps)
+                    {
+                        settings.unfocused_idle_fps_limit = fps;
                     }
                     // Slideshow playback state is intentionally transient and is never restored.
                     if let Some(value) = section.get("prevent_sleep_during_slideshow") {
                         settings.prevent_sleep_during_slideshow = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("slideshow_interval_ms") {
-                        if let Ok(interval) = value.parse::<u64>() {
-                            if interval >= 500 && interval <= 60000 {
-                                settings.slideshow_interval_ms = interval;
-                            }
-                        }
+                    if let Some(value) = section.get("slideshow_interval_ms")
+                        && let Ok(interval) = value.parse::<u64>()
+                        && (500..=60000).contains(&interval)
+                    {
+                        settings.slideshow_interval_ms = interval;
                     }
                     if let Some(value) = section.get("slideshow_loop") {
                         settings.slideshow_loop = Self::parse_bool(value);
@@ -204,13 +193,13 @@ impl SettingsManager {
                     if let Some(value) = section.get("slideshow_random") {
                         settings.slideshow_random = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("slideshow_transition") {
-                        if matches!(value, "none" | "fade" | "slide" | "random") {
-                            settings.slideshow_transition = value.to_string();
-                        }
+                    if let Some(value) = section.get("slideshow_transition")
+                        && matches!(value, "none" | "fade" | "slide" | "random")
+                    {
+                        settings.slideshow_transition = value.to_string();
                     }
-                    if let Some(value) = section.get("slideshow_motion") {
-                        if matches!(
+                    if let Some(value) = section.get("slideshow_motion")
+                        && matches!(
                             value,
                             "none"
                                 | "smart"
@@ -219,14 +208,14 @@ impl SettingsManager {
                                 | "zoom-in"
                                 | "zoom-out"
                                 | "random"
-                        ) {
-                            settings.slideshow_motion = value.to_string();
-                        }
+                        )
+                    {
+                        settings.slideshow_motion = value.to_string();
                     }
-                    if let Some(value) = section.get("slideshow_motion_strength") {
-                        if let Ok(strength) = value.parse::<f32>() {
-                            settings.slideshow_motion_strength = strength.clamp(5.0, 40.0);
-                        }
+                    if let Some(value) = section.get("slideshow_motion_strength")
+                        && let Ok(strength) = value.parse::<f32>()
+                    {
+                        settings.slideshow_motion_strength = strength.clamp(5.0, 40.0);
                     }
                     if let Some(value) = section.get("win98_dialup_enabled") {
                         settings.win98_dialup_enabled = Self::parse_bool(value);
@@ -241,12 +230,11 @@ impl SettingsManager {
                         settings.win98_dialup_enabled = true;
                         settings.win98_dialup_preference_configured = true;
                     }
-                    if let Some(value) = section.get("win98_dialup_connection_kbps") {
-                        if let Ok(speed) = value.parse::<u32>() {
-                            if (1..=56).contains(&speed) {
-                                settings.win98_dialup_connection_kbps = speed;
-                            }
-                        }
+                    if let Some(value) = section.get("win98_dialup_connection_kbps")
+                        && let Ok(speed) = value.parse::<u32>()
+                        && (1..=56).contains(&speed)
+                    {
+                        settings.win98_dialup_connection_kbps = speed;
                     }
                     // Read startup settings
                     if let Some(value) = section.get("start_fullscreen") {
@@ -256,20 +244,18 @@ impl SettingsManager {
                         settings.start_centered = Self::parse_bool(value);
                     }
                     // Read virtual_texture_threshold
-                    if let Some(value) = section.get("virtual_texture_threshold") {
-                        if let Ok(v) = value.parse::<u32>() {
-                            if (1024..=16384).contains(&v) {
-                                settings.virtual_texture_threshold = v;
-                            }
-                        }
+                    if let Some(value) = section.get("virtual_texture_threshold")
+                        && let Ok(v) = value.parse::<u32>()
+                        && (1024..=16384).contains(&v)
+                    {
+                        settings.virtual_texture_threshold = v;
                     }
                     // Read tile_size
-                    if let Some(value) = section.get("tile_size") {
-                        if let Ok(v) = value.parse::<u32>() {
-                            if [128, 256, 512].contains(&v) {
-                                settings.tile_size = v;
-                            }
-                        }
+                    if let Some(value) = section.get("tile_size")
+                        && let Ok(v) = value.parse::<u32>()
+                        && [128, 256, 512].contains(&v)
+                    {
+                        settings.tile_size = v;
                     }
                     // Titlebar visibility
                     if let Some(value) = section.get("show_titlebar") {
@@ -287,17 +273,17 @@ impl SettingsManager {
                         settings.custom_titlebar_navigation_preference_configured =
                             Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("title_bar_color_mode") {
-                        if matches!(value, "system" | "main_view" | "main_color") {
-                            settings.title_bar_color_mode = value.to_string();
-                        }
+                    if let Some(value) = section.get("title_bar_color_mode")
+                        && matches!(value, "system" | "main_view" | "main_color")
+                    {
+                        settings.title_bar_color_mode = value.to_string();
                     }
-                    if let Some(value) = section.get("custom_window_frame_thickness") {
-                        if let Ok(thickness) = value.parse::<f32>() {
-                            if thickness.is_finite() && (2.0..=12.0).contains(&thickness) {
-                                settings.custom_window_frame_thickness = thickness;
-                            }
-                        }
+                    if let Some(value) = section.get("custom_window_frame_thickness")
+                        && let Ok(thickness) = value.parse::<f32>()
+                        && thickness.is_finite()
+                        && (2.0..=12.0).contains(&thickness)
+                    {
+                        settings.custom_window_frame_thickness = thickness;
                     }
                     if let Some(value) = section.get("center_custom_window_title") {
                         settings.center_custom_window_title = Self::parse_bool(value);
@@ -311,19 +297,19 @@ impl SettingsManager {
                     if let Some(value) = section.get("show_file_sidebar") {
                         settings.show_file_sidebar = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("file_sidebar_width") {
-                        if let Ok(width) = value.parse::<f32>() {
-                            if width.is_finite() && (90.0..=520.0).contains(&width) {
-                                settings.file_sidebar_width = width;
-                            }
-                        }
+                    if let Some(value) = section.get("file_sidebar_width")
+                        && let Ok(width) = value.parse::<f32>()
+                        && width.is_finite()
+                        && (90.0..=520.0).contains(&width)
+                    {
+                        settings.file_sidebar_width = width;
                     }
-                    if let Some(value) = section.get("settings_sidebar_width") {
-                        if let Ok(width) = value.parse::<f32>() {
-                            if width.is_finite() && (260.0..=640.0).contains(&width) {
-                                settings.settings_sidebar_width = width;
-                            }
-                        }
+                    if let Some(value) = section.get("settings_sidebar_width")
+                        && let Ok(width) = value.parse::<f32>()
+                        && width.is_finite()
+                        && (260.0..=640.0).contains(&width)
+                    {
+                        settings.settings_sidebar_width = width;
                     }
                     if let Some(value) = section.get("compact_mode") {
                         settings.compact_mode = Self::parse_bool(value);
@@ -333,12 +319,12 @@ impl SettingsManager {
                         ("queue_entry_size", &mut settings.queue_entry_size),
                         ("favorites_entry_size", &mut settings.favorites_entry_size),
                     ] {
-                        if let Some(value) = section.get(key) {
-                            if let Ok(size) = value.parse::<f32>() {
-                                if size.is_finite() && (64.0..=240.0).contains(&size) {
-                                    *target = size;
-                                }
-                            }
+                        if let Some(value) = section.get(key)
+                            && let Ok(size) = value.parse::<f32>()
+                            && size.is_finite()
+                            && (64.0..=240.0).contains(&size)
+                        {
+                            *target = size;
                         }
                     }
                     if let Some(value) = section.get("single_instance_enabled") {
@@ -347,17 +333,17 @@ impl SettingsManager {
                     if let Some(value) = section.get("drag_drop_folders_recursive") {
                         settings.drag_drop_folders_recursive = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("session_restore_preference") {
-                        if matches!(value, "automatic" | "ask" | "never") {
-                            settings.session_restore_preference = value.to_string();
-                        }
+                    if let Some(value) = section.get("session_restore_preference")
+                        && matches!(value, "automatic" | "ask" | "never")
+                    {
+                        settings.session_restore_preference = value.to_string();
                     }
-                    if let Some(value) = section.get("masonry_thumbnail_size") {
-                        if let Ok(size) = value.parse::<f32>() {
-                            if size.is_finite() && (76.0..=512.0).contains(&size) {
-                                settings.masonry_thumbnail_size = size;
-                            }
-                        }
+                    if let Some(value) = section.get("masonry_thumbnail_size")
+                        && let Ok(size) = value.parse::<f32>()
+                        && size.is_finite()
+                        && (76.0..=512.0).contains(&size)
+                    {
+                        settings.masonry_thumbnail_size = size;
                     }
                     if let Some(value) = section.get("masonry_show_folder_headers") {
                         settings.masonry_show_folder_headers = Self::parse_bool(value);
@@ -385,43 +371,39 @@ impl SettingsManager {
                             settings.new_tab_recent_rows = settings.new_tab_recent_rows.clamp(1, 2);
                         }
                     }
-                    if let Some(value) = section.get("view_padding_mode") {
-                        if matches!(value, "look" | "fine_tune" | "custom") {
-                            settings.view_padding_mode = value.to_string();
-                        }
+                    if let Some(value) = section.get("view_padding_mode")
+                        && matches!(value, "look" | "fine_tune" | "custom")
+                    {
+                        settings.view_padding_mode = value.to_string();
                     }
                     for profile in ["native", "cosmic", "gnome", "win98"] {
                         let key = format!("view_padding_fine_tune_{profile}");
-                        if let Some(value) = section.get(&key) {
-                            if let Some(values) = Self::parse_f32_quad(value) {
-                                if values
-                                    .iter()
-                                    .all(|v| v.is_finite() && (-300.0..=300.0).contains(v))
-                                {
-                                    settings
-                                        .view_padding_fine_tune
-                                        .insert(profile.to_string(), values);
-                                }
-                            }
+                        if let Some(value) = section.get(&key)
+                            && let Some(values) = Self::parse_f32_quad(value)
+                            && values
+                                .iter()
+                                .all(|v| v.is_finite() && (-300.0..=300.0).contains(v))
+                        {
+                            settings
+                                .view_padding_fine_tune
+                                .insert(profile.to_string(), values);
                         }
                     }
-                    if let Some(value) = section.get("view_padding_custom") {
-                        if let Some(values) = Self::parse_f32_quad(value) {
-                            if values
-                                .iter()
-                                .all(|v| v.is_finite() && (0.0..=400.0).contains(v))
-                            {
-                                settings.view_padding_custom = values;
-                            }
-                        }
+                    if let Some(value) = section.get("view_padding_custom")
+                        && let Some(values) = Self::parse_f32_quad(value)
+                        && values
+                            .iter()
+                            .all(|v| v.is_finite() && (0.0..=400.0).contains(v))
+                    {
+                        settings.view_padding_custom = values;
                     }
                     if let Some(value) = section.get("fit_window_to_image") {
                         settings.fit_window_to_image = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("fit_window_limit") {
-                        if matches!(value, "monitor" | "custom") {
-                            settings.fit_window_limit = value.to_string();
-                        }
+                    if let Some(value) = section.get("fit_window_limit")
+                        && matches!(value, "monitor" | "custom")
+                    {
+                        settings.fit_window_limit = value.to_string();
                     }
                     for (key, target, min, max) in [
                         (
@@ -449,12 +431,12 @@ impl SettingsManager {
                             16384.0,
                         ),
                     ] {
-                        if let Some(value) = section.get(key) {
-                            if let Ok(parsed) = value.parse::<f32>() {
-                                if parsed.is_finite() && (min..=max).contains(&parsed) {
-                                    *target = parsed;
-                                }
-                            }
+                        if let Some(value) = section.get(key)
+                            && let Ok(parsed) = value.parse::<f32>()
+                            && parsed.is_finite()
+                            && (min..=max).contains(&parsed)
+                        {
+                            *target = parsed;
                         }
                     }
                     if settings.fit_window_min_width > settings.fit_window_max_width {
@@ -469,22 +451,22 @@ impl SettingsManager {
                     if let Some(value) = section.get("fit_window_center") {
                         settings.fit_window_center = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("ui_scale") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() && (0.75..=1.50).contains(&v) {
-                                settings.ui_scale = v;
-                            }
-                        }
+                    if let Some(value) = section.get("ui_scale")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                        && (0.75..=1.50).contains(&v)
+                    {
+                        settings.ui_scale = v;
                     }
-                    if let Some(value) = section.get("ui_text_scale") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() && (0.80..=1.40).contains(&v) {
-                                settings.ui_text_scale = v;
-                            }
-                        }
+                    if let Some(value) = section.get("ui_text_scale")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                        && (0.80..=1.40).contains(&v)
+                    {
+                        settings.ui_text_scale = v;
                     }
-                    if let Some(value) = section.get("ui_accent_color") {
-                        if [
+                    if let Some(value) = section.get("ui_accent_color")
+                        && ([
                             "auto",
                             "teal",
                             "blue",
@@ -499,45 +481,40 @@ impl SettingsManager {
                         .contains(&value)
                             || (value.starts_with("custom:#")
                                 && value.len() == 14
-                                && value[8..].chars().all(|c| c.is_ascii_hexdigit()))
-                        {
-                            settings.ui_accent_color = value.to_string();
-                        }
+                                && value[8..].chars().all(|c| c.is_ascii_hexdigit())))
+                    {
+                        settings.ui_accent_color = value.to_string();
                     }
-                    if let Some(value) = section.get("main_view_background") {
-                        if value == "dark"
+                    if let Some(value) = section.get("main_view_background")
+                        && (value == "dark"
                             || value == "light"
                             || value == "theme"
                             || (value.starts_with("custom:#")
                                 && value.len() == 14
-                                && value[8..].chars().all(|c| c.is_ascii_hexdigit()))
-                        {
-                            settings.main_view_background = value.to_string();
-                        }
+                                && value[8..].chars().all(|c| c.is_ascii_hexdigit())))
+                    {
+                        settings.main_view_background = value.to_string();
                     }
-                    if let Some(value) = section.get("main_view_background_opacity") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() {
-                                settings.main_view_background_opacity = v.clamp(0.15, 1.0);
-                            }
-                        }
+                    if let Some(value) = section.get("main_view_background_opacity")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                    {
+                        settings.main_view_background_opacity = v.clamp(0.15, 1.0);
                     }
                     if let Some(value) = section.get("show_alpha_checkerboard") {
                         settings.show_alpha_checkerboard = Self::parse_bool(value);
                     }
-                    if let Some(value) = section.get("alpha_checkerboard_size") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() {
-                                settings.alpha_checkerboard_size = v.clamp(8.0, 64.0);
-                            }
-                        }
+                    if let Some(value) = section.get("alpha_checkerboard_size")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                    {
+                        settings.alpha_checkerboard_size = v.clamp(8.0, 64.0);
                     }
-                    if let Some(value) = section.get("alpha_checkerboard_brightness") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() {
-                                settings.alpha_checkerboard_brightness = v.clamp(0.25, 1.5);
-                            }
-                        }
+                    if let Some(value) = section.get("alpha_checkerboard_brightness")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                    {
+                        settings.alpha_checkerboard_brightness = v.clamp(0.25, 1.5);
                     }
                     // Tricks decorative effects.
                     if let Some(value) = section.get("tricks_snow_enabled") {
@@ -549,27 +526,24 @@ impl SettingsManager {
                             settings.tricks_snow_particle = value.to_string();
                         }
                     }
-                    if let Some(value) = section.get("tricks_snow_color") {
-                        if value.len() == 7
-                            && value.starts_with('#')
-                            && value[1..].chars().all(|c| c.is_ascii_hexdigit())
-                        {
-                            settings.tricks_snow_color = value.to_ascii_uppercase();
-                        }
+                    if let Some(value) = section.get("tricks_snow_color")
+                        && value.len() == 7
+                        && value.starts_with('#')
+                        && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+                    {
+                        settings.tricks_snow_color = value.to_ascii_uppercase();
                     }
-                    if let Some(value) = section.get("tricks_snow_speed") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() {
-                                settings.tricks_snow_speed = v.clamp(0.1, 5.0);
-                            }
-                        }
+                    if let Some(value) = section.get("tricks_snow_speed")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                    {
+                        settings.tricks_snow_speed = v.clamp(0.1, 5.0);
                     }
-                    if let Some(value) = section.get("tricks_snow_density") {
-                        if let Ok(v) = value.parse::<f32>() {
-                            if v.is_finite() {
-                                settings.tricks_snow_density = v.clamp(0.25, 2.5);
-                            }
-                        }
+                    if let Some(value) = section.get("tricks_snow_density")
+                        && let Ok(v) = value.parse::<f32>()
+                        && v.is_finite()
+                    {
+                        settings.tricks_snow_density = v.clamp(0.25, 2.5);
                     }
                     if let Some(value) = section.get("tricks_snow_above_image") {
                         settings.tricks_snow_above_image = Self::parse_bool(value);
@@ -580,21 +554,20 @@ impl SettingsManager {
                     if let Some(value) = section.get("tricks_watermark_text") {
                         settings.tricks_watermark_text = value.to_string();
                     }
-                    if let Some(value) = section.get("tricks_watermark_text_color") {
-                        if value.len() == 7
-                            && value.starts_with('#')
-                            && value[1..].chars().all(|c| c.is_ascii_hexdigit())
-                        {
-                            settings.tricks_watermark_text_color = value.to_ascii_uppercase();
-                        }
+                    if let Some(value) = section.get("tricks_watermark_text_color")
+                        && value.len() == 7
+                        && value.starts_with('#')
+                        && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+                    {
+                        settings.tricks_watermark_text_color = value.to_ascii_uppercase();
                     }
                     if let Some(value) = section.get("tricks_watermark_image_path") {
                         settings.tricks_watermark_image_path = value.to_string();
                     }
-                    if let Some(value) = section.get("tricks_watermark_mode") {
-                        if matches!(value, "anchored" | "bounce") {
-                            settings.tricks_watermark_mode = value.to_string();
-                        }
+                    if let Some(value) = section.get("tricks_watermark_mode")
+                        && matches!(value, "anchored" | "bounce")
+                    {
+                        settings.tricks_watermark_mode = value.to_string();
                     }
                     for (key, target, min, max) in [
                         (
@@ -646,34 +619,33 @@ impl SettingsManager {
                             1.0,
                         ),
                     ] {
-                        if let Some(value) = section.get(key) {
-                            if let Ok(v) = value.parse::<f32>() {
-                                if v.is_finite() {
-                                    *target = v.clamp(min, max);
-                                }
-                            }
+                        if let Some(value) = section.get(key)
+                            && let Ok(v) = value.parse::<f32>()
+                            && v.is_finite()
+                        {
+                            *target = v.clamp(min, max);
                         }
                     }
                     if let Some(value) = section.get("tricks_backdrop_enabled") {
                         settings.tricks_backdrop_enabled = Self::parse_bool(value);
                     }
                     // theme
-                    if let Some(value) = section.get("theme_preference") {
-                        if value == "system" || value == "light" || value == "dark" {
-                            settings.theme_preference = value.to_string();
-                        }
+                    if let Some(value) = section.get("theme_preference")
+                        && (value == "system" || value == "light" || value == "dark")
+                    {
+                        settings.theme_preference = value.to_string();
                     }
                     // Look profile. Invalid or absent values safely fall back to automatic detection.
-                    if let Some(value) = section.get("look_preference") {
-                        if ["auto", "native", "cosmic", "gnome", "win98"].contains(&value) {
-                            settings.look_preference = value.to_string();
-                        }
+                    if let Some(value) = section.get("look_preference")
+                        && ["auto", "native", "cosmic", "gnome", "win98"].contains(&value)
+                    {
+                        settings.look_preference = value.to_string();
                     }
                     // Desktop menu bar can follow the Look profile or be explicitly enabled/disabled.
-                    if let Some(value) = section.get("desktop_menu_bar_preference") {
-                        if ["auto", "on", "off"].contains(&value) {
-                            settings.desktop_menu_bar_preference = value.to_string();
-                        }
+                    if let Some(value) = section.get("desktop_menu_bar_preference")
+                        && ["auto", "on", "off"].contains(&value)
+                    {
+                        settings.desktop_menu_bar_preference = value.to_string();
                     }
                     // Read the newer three-state preference first. In older INI files,
                     // `true` was the default and maps to Automatic; an explicit `false`
@@ -689,12 +661,11 @@ impl SettingsManager {
                             "off".to_string()
                         };
                     }
-                    if let Some(value) = section.get("navigation_ui_auto_hide_ms") {
-                        if let Ok(ms) = value.parse::<u64>() {
-                            if (500..=5000).contains(&ms) {
-                                settings.navigation_ui_auto_hide_ms = ms;
-                            }
-                        }
+                    if let Some(value) = section.get("navigation_ui_auto_hide_ms")
+                        && let Ok(ms) = value.parse::<u64>()
+                        && (500..=5000).contains(&ms)
+                    {
+                        settings.navigation_ui_auto_hide_ms = ms;
                     }
                     if let Some(value) = section.get("os_background_blur") {
                         settings.os_background_blur = Self::parse_bool(value);
@@ -703,10 +674,10 @@ impl SettingsManager {
                         settings.disable_os_background_blur_in_fullscreen = Self::parse_bool(value);
                     }
                     // Main toolbar/navigation placement is independently selectable.
-                    if let Some(value) = section.get("main_ui_placement_preference") {
-                        if ["auto", "native", "cosmic", "gnome"].contains(&value) {
-                            settings.main_ui_placement_preference = value.to_string();
-                        }
+                    if let Some(value) = section.get("main_ui_placement_preference")
+                        && ["auto", "native", "cosmic", "gnome"].contains(&value)
+                    {
+                        settings.main_ui_placement_preference = value.to_string();
                     }
                 }
 

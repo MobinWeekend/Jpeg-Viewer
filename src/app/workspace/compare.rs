@@ -54,10 +54,10 @@ impl crate::app::types::ViewerApp {
                     // Keep the cache bounded. Each comparison image owns CPU-side
                     // tiles and lazily uploaded GPU textures, so evicting a pane
                     // releases both instead of retaining a second full-size copy.
-                    if self.workspace.compare_images.len() >= 12 {
-                        if let Some(evict) = self.workspace.compare_images.keys().next().cloned() {
-                            self.workspace.compare_images.remove(&evict);
-                        }
+                    if self.workspace.compare_images.len() >= 12
+                        && let Some(evict) = self.workspace.compare_images.keys().next().cloned()
+                    {
+                        self.workspace.compare_images.remove(&evict);
                     }
                     self.workspace.compare_images.insert(key, image);
                 }
@@ -993,11 +993,11 @@ impl crate::app::types::ViewerApp {
                     }
                 }
             }
-            if let Some((index, delta)) = resize_delta {
-                if let Some(size) = self.workspace.tabs[tab_index].pane_size.get_mut(index) {
-                    size[0] = (size[0] + delta[0]).clamp(0.5, 1.0);
-                    size[1] = (size[1] + delta[1]).clamp(0.5, 2.0);
-                }
+            if let Some((index, delta)) = resize_delta
+                && let Some(size) = self.workspace.tabs[tab_index].pane_size.get_mut(index)
+            {
+                size[0] = (size[0] + delta[0]).clamp(0.5, 1.0);
+                size[1] = (size[1] + delta[1]).clamp(0.5, 2.0);
             }
             if let Some((index, anchor_slot, anchor)) = placed_anchor {
                 let tab = &mut self.workspace.tabs[tab_index];

@@ -123,7 +123,7 @@ pub fn set_native_window_shape(enabled: bool) {
 pub fn is_active() -> bool {
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     {
-        return NATIVE_BACKDROP_ACTIVE.load(Ordering::Relaxed);
+        NATIVE_BACKDROP_ACTIVE.load(Ordering::Relaxed)
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {

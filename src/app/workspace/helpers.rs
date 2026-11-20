@@ -144,12 +144,11 @@ pub(super) fn entry_breadcrumb(entry: &ImageEntry, root: Option<&Path>) -> Strin
             parts.push(value.into_owned());
         }
     }
-    if let Some(inner) = inner {
-        if let Some(parent) = Path::new(inner).parent() {
-            if !parent.as_os_str().is_empty() {
-                parts.push(parent.to_string_lossy().into_owned());
-            }
-        }
+    if let Some(inner) = inner
+        && let Some(parent) = Path::new(inner).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        parts.push(parent.to_string_lossy().into_owned());
     }
     if parts.is_empty() {
         "Current folder".to_owned()
@@ -233,26 +232,26 @@ pub(super) fn commit_staged_file(
     };
 
     if let Err(error) = fs::rename(staged, destination) {
-        if let Some(backup) = backup.as_ref() {
-            if let Err(restore_error) = fs::rename(backup, destination) {
-                return Err(format!(
-                    "could not install replacement ({error}) or restore the original ({restore_error}); backup remains at {}",
-                    backup.display()
-                ));
-            }
+        if let Some(backup) = backup.as_ref()
+            && let Err(restore_error) = fs::rename(backup, destination)
+        {
+            return Err(format!(
+                "could not install replacement ({error}) or restore the original ({restore_error}); backup remains at {}",
+                backup.display()
+            ));
         }
         return Err(format!("could not install staged file: {error}"));
     }
 
-    if let Some(backup) = backup {
-        if let Err(error) = fs::remove_file(&backup) {
-            // The new destination is committed. Preserve the backup and surface
-            // its path instead of reporting the replacement as a total failure.
-            return Err(format!(
-                "destination was replaced, but backup cleanup failed: {} ({error})",
-                backup.display()
-            ));
-        }
+    if let Some(backup) = backup
+        && let Err(error) = fs::remove_file(&backup)
+    {
+        // The new destination is committed. Preserve the backup and surface
+        // its path instead of reporting the replacement as a total failure.
+        return Err(format!(
+            "destination was replaced, but backup cleanup failed: {} ({error})",
+            backup.display()
+        ));
     }
     Ok(())
 }

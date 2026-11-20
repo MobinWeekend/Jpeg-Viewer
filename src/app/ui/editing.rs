@@ -255,13 +255,13 @@ impl ViewerApp {
         self.is_gif = false;
         self.image_rect = None;
 
-        if !self.b_fit_to_window {
-            if let Some(old_size) = old_size.filter(|size| size.x > 0.0 && size.y > 0.0) {
-                let factor = old_size.x / new_size.x.max(1.0);
-                self.zoom = (self.zoom * factor).clamp(0.005, 50.0);
-                if factor > 0.0 {
-                    self.pan /= factor;
-                }
+        if !self.b_fit_to_window
+            && let Some(old_size) = old_size.filter(|size| size.x > 0.0 && size.y > 0.0)
+        {
+            let factor = old_size.x / new_size.x.max(1.0);
+            self.zoom = (self.zoom * factor).clamp(0.005, 50.0);
+            if factor > 0.0 {
+                self.pan /= factor;
             }
         }
     }
@@ -453,7 +453,7 @@ impl ViewerApp {
                         let sidebar_clip = ui.painter().clip_rect();
                         let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
                         self.paint_tricks_backdrop(
-                            &ui.painter(),
+                            ui.painter(),
                             sidebar_clip,
                             backdrop_rect,
                             crate::ui_theme::main_accent_color(ctx),
@@ -963,21 +963,19 @@ impl ViewerApp {
                 self.crop_selection = None;
             }
         }
-        if response.dragged_by(egui::PointerButton::Primary)
-            || response.drag_stopped_by(egui::PointerButton::Primary)
-        {
-            if let (Some(start), Some(pos)) =
+        if (response.dragged_by(egui::PointerButton::Primary)
+            || response.drag_stopped_by(egui::PointerButton::Primary))
+            && let (Some(start), Some(pos)) =
                 (self.crop_drag_start_image, response.interact_pointer_pos())
-            {
-                let current = screen_to_image(pos, image_rect, image_width, image_height);
-                let selection = image_selection(start, current, image_width, image_height);
-                if selection[2] > 1 && selection[3] > 1 {
-                    self.crop_selection = Some(selection);
-                    self.crop_x = selection[0];
-                    self.crop_y = selection[1];
-                    self.crop_width = selection[2];
-                    self.crop_height = selection[3];
-                }
+        {
+            let current = screen_to_image(pos, image_rect, image_width, image_height);
+            let selection = image_selection(start, current, image_width, image_height);
+            if selection[2] > 1 && selection[3] > 1 {
+                self.crop_selection = Some(selection);
+                self.crop_x = selection[0];
+                self.crop_y = selection[1];
+                self.crop_width = selection[2];
+                self.crop_height = selection[3];
             }
         }
         if response.drag_stopped() {
@@ -1059,7 +1057,7 @@ impl ViewerApp {
 
         let border = egui::Color32::from_rgb(245, 245, 245);
         let accent = egui::Color32::from_rgb(70, 165, 255);
-        let stroke = egui::Stroke::new(1.5 as f32, border);
+        let stroke = egui::Stroke::new(1.5_f32, border);
         for (a, b) in [
             (selection.left_top(), selection.right_top()),
             (selection.right_top(), selection.right_bottom()),

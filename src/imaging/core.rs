@@ -175,7 +175,7 @@ pub trait ImageDecoder: Send + Sync {
 
     /// Fast dimension inspection. Default falls back to full decode.
     fn dimensions(&self, bytes: &[u8]) -> Result<(u32, u32), ImageError> {
-        let img = self.decode(bytes, &DecodeOptions::default())?;
+        let img = self.decode(bytes, &DecodeOptions)?;
         Ok((img.width(), img.height()))
     }
 }

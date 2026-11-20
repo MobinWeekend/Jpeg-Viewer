@@ -23,16 +23,16 @@ pub fn main_view_background_color(value: &str, dark: bool) -> egui::Color32 {
             egui::Color32::from_rgb(238, 238, 238)
         };
     }
-    if let Some(hex) = value.strip_prefix("custom:#") {
-        if hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            if let (Ok(r), Ok(g), Ok(b)) = (
-                u8::from_str_radix(&hex[0..2], 16),
-                u8::from_str_radix(&hex[2..4], 16),
-                u8::from_str_radix(&hex[4..6], 16),
-            ) {
-                return egui::Color32::from_rgb(r, g, b);
-            }
-        }
+    if let Some(hex) = value.strip_prefix("custom:#")
+        && hex.len() == 6
+        && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && let (Ok(r), Ok(g), Ok(b)) = (
+            u8::from_str_radix(&hex[0..2], 16),
+            u8::from_str_radix(&hex[2..4], 16),
+            u8::from_str_radix(&hex[4..6], 16),
+        )
+    {
+        return egui::Color32::from_rgb(r, g, b);
     }
     if dark {
         egui::Color32::from_rgb(18, 18, 18)

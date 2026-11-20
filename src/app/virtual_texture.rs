@@ -20,22 +20,12 @@ const STATE_COMPLETE: u8 = 2;
 /// Snapshot of preparation progress.
 #[derive(Debug, Clone, Copy)]
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct PreparationProgress {
     pub total_tiles: usize,
     pub prepared_tiles: usize,
     pub is_preparing: bool,
     pub is_complete: bool,
-}
-
-impl Default for PreparationProgress {
-    fn default() -> Self {
-        Self {
-            total_tiles: 0,
-            prepared_tiles: 0,
-            is_preparing: false,
-            is_complete: false,
-        }
-    }
 }
 
 /// Metadata for one virtual tile. Pixel data stays in the source image buffer

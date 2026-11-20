@@ -47,18 +47,17 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
                 egui::Slider::new(&mut threshold, 4096..=16384).text("px"),
             ))
             .changed()
+            && threshold != app.settings_manager.get().virtual_texture_threshold
         {
-            if threshold != app.settings_manager.get().virtual_texture_threshold {
-                let _ = app.settings_manager.update(|settings| {
-                    settings.virtual_texture_threshold = threshold;
-                });
-                if !app.image_entries.is_empty() {
-                    app.virtual_texture = None;
-                    app.vt_progress = None;
-                    app.vt_total_tiles = 0;
-                    app.virtual_texture_thread = None;
-                    app.load_current_image_with_cache();
-                }
+            let _ = app.settings_manager.update(|settings| {
+                settings.virtual_texture_threshold = threshold;
+            });
+            if !app.image_entries.is_empty() {
+                app.virtual_texture = None;
+                app.vt_progress = None;
+                app.vt_total_tiles = 0;
+                app.virtual_texture_thread = None;
+                app.load_current_image_with_cache();
             }
         }
     });

@@ -84,10 +84,10 @@ fn main() -> eframe::Result<()> {
     // is only applied when starting in the restored state.
     let start_maximized = app_settings.window_maximized && !app_settings.start_fullscreen;
     if !start_maximized {
-        if !app_settings.start_centered {
-            if let Some(pos) = app_settings.window_pos {
-                viewport = viewport.with_position(pos);
-            }
+        if !app_settings.start_centered
+            && let Some(pos) = app_settings.window_pos
+        {
+            viewport = viewport.with_position(pos);
         }
         if let Some(size) = app_settings.window_size {
             viewport = viewport.with_inner_size(size);

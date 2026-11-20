@@ -383,14 +383,14 @@ impl ThumbnailScheduler {
             {
                 state.active_cancellations[pool.index()].swap_remove(index);
             }
-            if pool == ThumbnailPool::Dimensions && blocks_lower_stages {
-                if let Some(index) = state
+            if pool == ThumbnailPool::Dimensions
+                && blocks_lower_stages
+                && let Some(index) = state
                     .active_dimension_barriers
                     .iter()
                     .position(|token| Arc::ptr_eq(token, cancellation))
-                {
-                    state.active_dimension_barriers.swap_remove(index);
-                }
+            {
+                state.active_dimension_barriers.swap_remove(index);
             }
         }
         self.ready.notify_all();
@@ -994,18 +994,16 @@ fn submit_pipeline_stage(
     blocks_lower_stages: bool,
     job: ThumbnailJob,
 ) -> bool {
-    if first_stage {
-        if let Some(source_key) = masonry_source_key {
-            return scheduler.submit_masonry(
-                pool,
-                key.to_owned(),
-                priority,
-                source_key.to_owned(),
-                Arc::clone(cancellation),
-                blocks_lower_stages,
-                job,
-            );
-        }
+    if first_stage && let Some(source_key) = masonry_source_key {
+        return scheduler.submit_masonry(
+            pool,
+            key.to_owned(),
+            priority,
+            source_key.to_owned(),
+            Arc::clone(cancellation),
+            blocks_lower_stages,
+            job,
+        );
     }
 
     scheduler
@@ -1038,31 +1036,31 @@ fn decode_file_thumbnail_fallback(
     let mut source_aspect_ratio =
         source_dimensions.map(|(width, height)| width as f32 / height as f32);
     let bytes = {
-        if let Ok(metadata) = fs::metadata(path) {
-            if metadata.len() > MAX_THUMB_SOURCE_READ_BYTES {
-                if let Some(candidate) = best_candidate.take() {
-                    let output_limit = thumbnail_output_limit(target_size, source_dimensions);
-                    eprintln!(
-                        "[thumbnail] {}: source file is {} bytes; skipping full-source fallback and using {} ({}x{})",
-                        path.display(),
-                        metadata.len(),
-                        candidate.source,
-                        candidate.image.width(),
-                        candidate.image.height(),
-                    );
-                    return finish_thumbnail_candidate(
-                        candidate,
-                        output_limit,
-                        source_aspect_ratio,
-                        source_dimensions,
-                    );
-                }
-                return Err(format!(
-                    "Source file is too large for the thumbnail fallback read ({} bytes): {}",
-                    metadata.len(),
+        if let Ok(metadata) = fs::metadata(path)
+            && metadata.len() > MAX_THUMB_SOURCE_READ_BYTES
+        {
+            if let Some(candidate) = best_candidate.take() {
+                let output_limit = thumbnail_output_limit(target_size, source_dimensions);
+                eprintln!(
+                    "[thumbnail] {}: source file is {} bytes; skipping full-source fallback and using {} ({}x{})",
                     path.display(),
-                ));
+                    metadata.len(),
+                    candidate.source,
+                    candidate.image.width(),
+                    candidate.image.height(),
+                );
+                return finish_thumbnail_candidate(
+                    candidate,
+                    output_limit,
+                    source_aspect_ratio,
+                    source_dimensions,
+                );
             }
+            return Err(format!(
+                "Source file is too large for the thumbnail fallback read ({} bytes): {}",
+                metadata.len(),
+                path.display(),
+            ));
         }
         if cancellation.load(Ordering::Acquire) {
             return Err("__masonry_thumbnail_cancelled__".into());
@@ -1108,27 +1106,26 @@ fn decode_file_thumbnail_fallback(
         || zenraw::is_raw_file(&bytes);
     let output_limit = thumbnail_output_limit(target_size, source_dimensions);
 
-    if !is_raw {
-        if let Some(embedded) = extract_embedded_metadata_thumbnail(&bytes) {
-            if let Ok(image) = image::load_from_memory(&embedded) {
-                let image = image.to_rgba8();
-                let embedded_resolution = image.width().max(image.height());
-                offer_thumbnail_candidate(&mut best_candidate, image, "EXIF embedded preview");
+    if !is_raw
+        && let Some(embedded) = extract_embedded_metadata_thumbnail(&bytes)
+        && let Ok(image) = image::load_from_memory(&embedded)
+    {
+        let image = image.to_rgba8();
+        let embedded_resolution = image.width().max(image.height());
+        offer_thumbnail_candidate(&mut best_candidate, image, "EXIF embedded preview");
 
-                if (masonry_placeholder && embedded_resolution > 0)
-                    || (embedded_resolution >= output_limit
-                        && best_candidate
-                            .as_ref()
-                            .is_some_and(|candidate| candidate.resolution >= output_limit))
-                {
-                    return finish_thumbnail_candidate(
-                        best_candidate.expect("embedded candidate exists"),
-                        output_limit,
-                        source_aspect_ratio,
-                        source_dimensions,
-                    );
-                }
-            }
+        if (masonry_placeholder && embedded_resolution > 0)
+            || (embedded_resolution >= output_limit
+                && best_candidate
+                    .as_ref()
+                    .is_some_and(|candidate| candidate.resolution >= output_limit))
+        {
+            return finish_thumbnail_candidate(
+                best_candidate.expect("embedded candidate exists"),
+                output_limit,
+                source_aspect_ratio,
+                source_dimensions,
+            );
         }
     }
 
@@ -1617,11 +1614,7 @@ fn decode_checked_sidebar_image(
         ));
     }
     let decoded = registry
-        .decode(
-            bytes,
-            format,
-            &crate::imaging::core::DecodeOptions::default(),
-        )
+        .decode(bytes, format, &crate::imaging::core::DecodeOptions)
         .map_err(|e| e.to_string())?;
     image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.into_data())
         .ok_or_else(|| format!("Invalid decoded image data: {name}"))
@@ -1710,16 +1703,17 @@ impl ViewerApp {
             self.masonry_dimension_attempted.insert(source_key);
             return;
         }
-        if let Some(aspect_ratio) = self.masonry_aspect_ratio_results.get(&source_key).copied() {
-            if aspect_ratio.is_finite() && aspect_ratio > 0.0 {
-                let mut changed = false;
-                if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
-                    changed = tab.masonry_aspect_ratios.get(&entry_id) != Some(&aspect_ratio);
-                    tab.masonry_aspect_ratios.insert(entry_id, aspect_ratio);
-                }
-                if changed {
-                    ctx.request_repaint();
-                }
+        if let Some(aspect_ratio) = self.masonry_aspect_ratio_results.get(&source_key).copied()
+            && aspect_ratio.is_finite()
+            && aspect_ratio > 0.0
+        {
+            let mut changed = false;
+            if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
+                changed = tab.masonry_aspect_ratios.get(&entry_id) != Some(&aspect_ratio);
+                tab.masonry_aspect_ratios.insert(entry_id, aspect_ratio);
+            }
+            if changed {
+                ctx.request_repaint();
             }
         }
 
@@ -2079,10 +2073,10 @@ impl ViewerApp {
 
     pub(crate) fn has_shared_thumbnail_at_least(&mut self, key: &str, requested_size: u32) -> bool {
         let requested_size = requested_size.max(1);
-        let found = self.sidebar_thumbnails.iter().any(|(cache_key, _)| {
+
+        self.sidebar_thumbnails.iter().any(|(cache_key, _)| {
             thumbnail_cache_size(cache_key, key).is_some_and(|size| size >= requested_size)
-        });
-        found
+        })
     }
 
     pub(crate) fn shared_thumbnail_failed(&self, key: &str, requested_size: u32) -> bool {
@@ -2289,19 +2283,17 @@ impl ViewerApp {
                 false,
                 dimension_job,
             );
-            if submitted {
-                if let Some(source_key) = cache_source_key.clone() {
-                    self.masonry_dimension_attempted.insert(source_key.clone());
-                    self.masonry_dimension_pending.insert(source_key.clone());
-                    self.masonry_dimension_receivers.push((
-                        source_key,
-                        true,
-                        Instant::now(),
-                        Arc::clone(&started_at),
-                        Arc::clone(&cancellation),
-                        dimension_rx,
-                    ));
-                }
+            if submitted && let Some(source_key) = cache_source_key.clone() {
+                self.masonry_dimension_attempted.insert(source_key.clone());
+                self.masonry_dimension_pending.insert(source_key.clone());
+                self.masonry_dimension_receivers.push((
+                    source_key,
+                    true,
+                    Instant::now(),
+                    Arc::clone(&started_at),
+                    Arc::clone(&cancellation),
+                    dimension_rx,
+                ));
             }
             submitted
         } else {
@@ -2584,23 +2576,20 @@ impl ViewerApp {
             false,
             dimension_job,
         );
-        if submitted {
-            if sidebar_managed {
-                if let Some(source_key) =
-                    thumbnail_source_key_from_cache_key(&key).map(str::to_owned)
-                {
-                    self.masonry_dimension_attempted.insert(source_key.clone());
-                    self.masonry_dimension_pending.insert(source_key.clone());
-                    self.masonry_dimension_receivers.push((
-                        source_key,
-                        true,
-                        Instant::now(),
-                        Arc::clone(&started_at),
-                        Arc::clone(&cancellation),
-                        dimension_rx,
-                    ));
-                }
-            }
+        if submitted
+            && sidebar_managed
+            && let Some(source_key) = thumbnail_source_key_from_cache_key(&key).map(str::to_owned)
+        {
+            self.masonry_dimension_attempted.insert(source_key.clone());
+            self.masonry_dimension_pending.insert(source_key.clone());
+            self.masonry_dimension_receivers.push((
+                source_key,
+                true,
+                Instant::now(),
+                Arc::clone(&started_at),
+                Arc::clone(&cancellation),
+                dimension_rx,
+            ));
         }
         if !submitted {
             if masonry_only {
@@ -2715,27 +2704,27 @@ impl ViewerApp {
         }
         for (key, masonry_source, sidebar_managed, result) in completed {
             self.sidebar_thumbnail_pending.remove(&key);
-            if let Ok(thumbnail) = &result {
-                if let Some(source_key) = thumbnail_source_key_from_cache_key(&key) {
-                    if let Some(dimensions) = thumbnail
-                        .source_dimensions
-                        .filter(|(width, height)| *width > 0 && *height > 0)
-                    {
-                        self.masonry_dimension_results
-                            .insert(source_key.to_owned(), Some(dimensions));
-                        self.masonry_dimension_attempted
-                            .insert(source_key.to_owned());
-                        self.masonry_aspect_ratio_results.remove(source_key);
-                    } else if let Some(aspect_ratio) = thumbnail
-                        .source_aspect_ratio
-                        .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
-                    {
-                        // Cache the provider's preview ratio without walking every
-                        // entry in every tab. Visible Masonry cards consume it
-                        // lazily; a real source-dimension probe may refine it later.
-                        self.masonry_aspect_ratio_results
-                            .insert(source_key.to_owned(), aspect_ratio);
-                    }
+            if let Ok(thumbnail) = &result
+                && let Some(source_key) = thumbnail_source_key_from_cache_key(&key)
+            {
+                if let Some(dimensions) = thumbnail
+                    .source_dimensions
+                    .filter(|(width, height)| *width > 0 && *height > 0)
+                {
+                    self.masonry_dimension_results
+                        .insert(source_key.to_owned(), Some(dimensions));
+                    self.masonry_dimension_attempted
+                        .insert(source_key.to_owned());
+                    self.masonry_aspect_ratio_results.remove(source_key);
+                } else if let Some(aspect_ratio) = thumbnail
+                    .source_aspect_ratio
+                    .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+                {
+                    // Cache the provider's preview ratio without walking every
+                    // entry in every tab. Visible Masonry cards consume it
+                    // lazily; a real source-dimension probe may refine it later.
+                    self.masonry_aspect_ratio_results
+                        .insert(source_key.to_owned(), aspect_ratio);
                 }
             }
             let sidebar_source_visible = !sidebar_managed
@@ -2778,13 +2767,13 @@ impl ViewerApp {
                     // Enforce the shared cache's entry cap; a second pass below
                     // enforces its byte budget because Masonry may keep previews
                     // at any native/requested resolution in this same LRU cache.
-                    if self.sidebar_thumbnails.len() >= 256 {
-                        if let Some((evicted_key, _texture)) = self.sidebar_thumbnails.pop_lru() {
-                            remove_attempts_for_cached_source(
-                                &mut self.sidebar_thumbnail_attempted,
-                                &evicted_key,
-                            );
-                        }
+                    if self.sidebar_thumbnails.len() >= 256
+                        && let Some((evicted_key, _texture)) = self.sidebar_thumbnails.pop_lru()
+                    {
+                        remove_attempts_for_cached_source(
+                            &mut self.sidebar_thumbnail_attempted,
+                            &evicted_key,
+                        );
                     }
                     self.sidebar_thumbnails.put(texture_key, texture);
 

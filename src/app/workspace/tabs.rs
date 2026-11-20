@@ -133,42 +133,40 @@ impl crate::app::types::ViewerApp {
         // Returning from a one-pane Compare placeholder marks that comparison as
         // the destination. Masonry's Compare action then appends new entries to
         // it rather than opening an unrelated comparison tab.
-        if let Some(target_id) = self.workspace.pending_compare_target_id.take() {
-            if let Some(index) = self
+        if let Some(target_id) = self.workspace.pending_compare_target_id.take()
+            && let Some(index) = self
                 .workspace
                 .tabs
                 .iter()
                 .position(|tab| tab.id == target_id && tab.kind == WorkspaceTabKind::Compare)
-            {
-                if entries.is_empty() {
-                    self.queue_status =
-                        Some("Select an image in Masonry to add it to Compare.".into());
-                    self.workspace.active_index = index;
-                    self.stop_preloading_for_workspace();
-                    return;
-                }
-                let tab = &mut self.workspace.tabs[index];
-                let mut known = tab
-                    .entries
-                    .iter()
-                    .map(ImageEntry::get_id)
-                    .collect::<HashSet<_>>();
-                for entry in entries {
-                    if known.insert(entry.get_id()) {
-                        tab.entries.push(entry);
-                        tab.anchors.push(None);
-                        tab.anchors_second.push(None);
-                        tab.offsets.push([0.0, 0.0]);
-                        tab.pane_zoom.push(1.0);
-                        tab.pane_sync.push(true);
-                        tab.pane_size.push([1.0, 1.0]);
-                    }
-                }
-                tab.title = format!("Compare ({})", tab.entries.len());
+        {
+            if entries.is_empty() {
+                self.queue_status = Some("Select an image in Masonry to add it to Compare.".into());
                 self.workspace.active_index = index;
                 self.stop_preloading_for_workspace();
                 return;
             }
+            let tab = &mut self.workspace.tabs[index];
+            let mut known = tab
+                .entries
+                .iter()
+                .map(ImageEntry::get_id)
+                .collect::<HashSet<_>>();
+            for entry in entries {
+                if known.insert(entry.get_id()) {
+                    tab.entries.push(entry);
+                    tab.anchors.push(None);
+                    tab.anchors_second.push(None);
+                    tab.offsets.push([0.0, 0.0]);
+                    tab.pane_zoom.push(1.0);
+                    tab.pane_sync.push(true);
+                    tab.pane_size.push([1.0, 1.0]);
+                }
+            }
+            tab.title = format!("Compare ({})", tab.entries.len());
+            self.workspace.active_index = index;
+            self.stop_preloading_for_workspace();
+            return;
         }
         if entries.len() < 2 {
             self.queue_status = Some("Select at least two images to compare.".into());
@@ -950,14 +948,13 @@ impl crate::app::types::ViewerApp {
         if let Some(dragging_id) = self.workspace.dragging_tab_id {
             let pointer_down = ctx.input(|input| input.pointer.primary_down());
             if pointer_down {
-                if let Some(pointer) = ctx.pointer_interact_pos() {
-                    if let Some((target_id, target_rect)) = tab_rects
+                if let Some(pointer) = ctx.pointer_interact_pos()
+                    && let Some((target_id, target_rect)) = tab_rects
                         .iter()
                         .find(|(id, rect)| *id != dragging_id && rect.contains(pointer))
-                    {
-                        let before = pointer.x < target_rect.center().x;
-                        self.move_workspace_tab_before(dragging_id, *target_id, before);
-                    }
+                {
+                    let before = pointer.x < target_rect.center().x;
+                    self.move_workspace_tab_before(dragging_id, *target_id, before);
                 }
             } else {
                 self.workspace.dragging_tab_id = None;

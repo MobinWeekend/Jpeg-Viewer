@@ -131,26 +131,26 @@ impl ViewerApp {
             }
         }
 
-        if let Some((width, height)) = dimensions {
-            if width > 0 && height > 0 {
-                let pixels = width as u64 * height as u64;
-                metadata.pixel_count = Some(pixels);
-                metadata.megapixels = Some(pixels as f64 / 1_000_000.0);
-                metadata.estimated_uncompressed_size = Some(pixels.saturating_mul(4));
-                if let Some(label) = crate::app::aspect_ratio::AspectRatio::get_label(width, height)
-                {
-                    metadata.aspect_ratio = Some(label.to_string());
-                }
+        if let Some((width, height)) = dimensions
+            && width > 0
+            && height > 0
+        {
+            let pixels = width as u64 * height as u64;
+            metadata.pixel_count = Some(pixels);
+            metadata.megapixels = Some(pixels as f64 / 1_000_000.0);
+            metadata.estimated_uncompressed_size = Some(pixels.saturating_mul(4));
+            if let Some(label) = crate::app::aspect_ratio::AspectRatio::get_label(width, height) {
+                metadata.aspect_ratio = Some(label.to_string());
             }
         }
 
         if let Some(bytes) = bytes {
-            if let Some(format) = format {
-                if let Ok(Some(color)) = default_registry().color_info(bytes, format) {
-                    metadata.decoded_color = Some(color.description);
-                    metadata.decoded_bit_depth =
-                        Some(format!("{}-bit per channel", color.bits_per_channel));
-                }
+            if let Some(format) = format
+                && let Ok(Some(color)) = default_registry().color_info(bytes, format)
+            {
+                metadata.decoded_color = Some(color.description);
+                metadata.decoded_bit_depth =
+                    Some(format!("{}-bit per channel", color.bits_per_channel));
             }
             // GIF frame metadata is populated from the decoded animation result
             // in the shared loader. Parsing the full animation here would decode

@@ -100,7 +100,7 @@ impl ViewerApp {
                 let central_rect = ui.max_rect();
                 let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, central_rect);
                 self.paint_tricks_backdrop(
-                    &ui.painter(),
+                    ui.painter(),
                     central_rect,
                     backdrop_rect,
                     main_accent,
@@ -187,7 +187,7 @@ impl ViewerApp {
                             LoadingState::VirtualTextureLoading => "Loading large image...",
                             _ => "Loading...",
                         };
-                        Self::draw_loading_overlay(&painter, available_rect, message);
+                        Self::draw_loading_overlay(painter, available_rect, message);
                     }
                     self.handle_background_window_drag(ui, ctx);
                     return;
@@ -221,7 +221,7 @@ impl ViewerApp {
                 // front-layer particles and watermarks never cover application UI.
                 if !settings.tricks_snow_above_image {
                     self.paint_tricks_snow(
-                        &tricks_painter,
+                        tricks_painter,
                         available_rect,
                         &settings,
                         ctx.input(|i| i.time),
@@ -312,14 +312,14 @@ impl ViewerApp {
                 }
                 if settings.tricks_snow_above_image {
                     self.paint_tricks_snow(
-                        &tricks_painter,
+                        tricks_painter,
                         available_rect,
                         &settings,
                         ctx.input(|i| i.time),
                     );
                 }
                 self.paint_tricks_watermark(
-                    &tricks_painter,
+                    tricks_painter,
                     available_rect,
                     &settings,
                     ctx.input(|i| i.time),
@@ -343,7 +343,7 @@ impl ViewerApp {
                         || crate::app::ui::desktop_menu_bar_in_custom_titlebar(self, ctx))
                 {
                     let painter = ui.painter();
-                    Self::draw_loading_overlay(&painter, available_rect, "Loading...");
+                    Self::draw_loading_overlay(painter, available_rect, "Loading...");
                 }
                 return;
             }
@@ -424,66 +424,62 @@ impl ViewerApp {
                 if let (Some(previous), Some(started)) = (
                     self.slideshow_previous_texture.clone(),
                     self.slideshow_transition_started,
-                ) {
-                    if previous.id() != texture_id {
-                        let elapsed = started.elapsed();
-                        if elapsed < TRANSITION_DURATION {
-                            let t = (elapsed.as_secs_f32() / TRANSITION_DURATION.as_secs_f32())
-                                .clamp(0.0, 1.0);
-                            let transition = match self.slideshow_transition.as_str() {
-                                "slide" => "slide",
-                                "random" if self.current_index % 2 == 1 => "slide",
-                                "none" => "none",
-                                _ => "fade",
-                            };
-                            if transition == "slide" {
-                                let offset = image_viewport_rect.width() * t;
-                                let old_size = previous.size_vec2();
-                                let old_scale = (image_viewport_rect.width() / old_size.x.max(1.0))
-                                    .min(image_viewport_rect.height() / old_size.y.max(1.0));
-                                // Prefer the outgoing image's exact last-rendered
-                                // rectangle so its zoom and pan don't snap to the
-                                // incoming image's view settings.
-                                let old_rect = self
-                                    .slideshow_previous_rect
-                                    .unwrap_or_else(|| {
-                                        egui::Rect::from_center_size(
-                                            image_viewport_rect.center(),
-                                            old_size * old_scale,
-                                        )
-                                    })
-                                    .translate(egui::vec2(-offset, 0.0));
-                                image_rect = frame.rect.translate(egui::vec2(
-                                    image_viewport_rect.width() * (1.0 - t),
-                                    0.0,
-                                ));
-                                outgoing_frame = Some((previous, old_rect, egui::Color32::WHITE));
-                            } else if transition == "fade" {
-                                let old_size = previous.size_vec2();
-                                let old_scale = (image_viewport_rect.width() / old_size.x.max(1.0))
-                                    .min(image_viewport_rect.height() / old_size.y.max(1.0));
-                                let old_rect = self.slideshow_previous_rect.unwrap_or_else(|| {
+                ) && previous.id() != texture_id
+                {
+                    let elapsed = started.elapsed();
+                    if elapsed < TRANSITION_DURATION {
+                        let t = (elapsed.as_secs_f32() / TRANSITION_DURATION.as_secs_f32())
+                            .clamp(0.0, 1.0);
+                        let transition = match self.slideshow_transition.as_str() {
+                            "slide" => "slide",
+                            "random" if self.current_index % 2 == 1 => "slide",
+                            "none" => "none",
+                            _ => "fade",
+                        };
+                        if transition == "slide" {
+                            let offset = image_viewport_rect.width() * t;
+                            let old_size = previous.size_vec2();
+                            let old_scale = (image_viewport_rect.width() / old_size.x.max(1.0))
+                                .min(image_viewport_rect.height() / old_size.y.max(1.0));
+                            // Prefer the outgoing image's exact last-rendered
+                            // rectangle so its zoom and pan don't snap to the
+                            // incoming image's view settings.
+                            let old_rect = self
+                                .slideshow_previous_rect
+                                .unwrap_or_else(|| {
                                     egui::Rect::from_center_size(
                                         image_viewport_rect.center(),
                                         old_size * old_scale,
                                     )
-                                });
-                                outgoing_frame = Some((
-                                    previous,
-                                    old_rect,
-                                    egui::Color32::from_white_alpha(
-                                        ((1.0 - t) * 255.0).round() as u8
-                                    ),
-                                ));
-                                image_tint =
-                                    egui::Color32::from_white_alpha((t * 255.0).round() as u8);
-                            }
-                            ctx.request_repaint_after(std::time::Duration::from_millis(16));
-                        } else {
-                            self.slideshow_previous_texture = None;
-                            self.slideshow_previous_rect = None;
-                            self.slideshow_transition_started = None;
+                                })
+                                .translate(egui::vec2(-offset, 0.0));
+                            image_rect = frame.rect.translate(egui::vec2(
+                                image_viewport_rect.width() * (1.0 - t),
+                                0.0,
+                            ));
+                            outgoing_frame = Some((previous, old_rect, egui::Color32::WHITE));
+                        } else if transition == "fade" {
+                            let old_size = previous.size_vec2();
+                            let old_scale = (image_viewport_rect.width() / old_size.x.max(1.0))
+                                .min(image_viewport_rect.height() / old_size.y.max(1.0));
+                            let old_rect = self.slideshow_previous_rect.unwrap_or_else(|| {
+                                egui::Rect::from_center_size(
+                                    image_viewport_rect.center(),
+                                    old_size * old_scale,
+                                )
+                            });
+                            outgoing_frame = Some((
+                                previous,
+                                old_rect,
+                                egui::Color32::from_white_alpha(((1.0 - t) * 255.0).round() as u8),
+                            ));
+                            image_tint = egui::Color32::from_white_alpha((t * 255.0).round() as u8);
                         }
+                        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                    } else {
+                        self.slideshow_previous_texture = None;
+                        self.slideshow_previous_rect = None;
+                        self.slideshow_transition_started = None;
                     }
                 }
             } else {
@@ -660,7 +656,7 @@ impl ViewerApp {
                     LoadingState::VirtualTextureLoading => "Loading large image...",
                     _ => "Loading...",
                 };
-                Self::draw_loading_overlay(&painter, available_rect, message);
+                Self::draw_loading_overlay(painter, available_rect, message);
             }
         });
     }
@@ -702,7 +698,7 @@ impl ViewerApp {
         painter.rect_filled(rect, 12.0, ui.style().visuals.panel_fill);
 
         Self::draw_loading_content(
-            &painter,
+            painter,
             rect.center(),
             message,
             progress,
@@ -769,60 +765,60 @@ impl ViewerApp {
         // Progress bar
         // -------------------------
 
-        if let Some(progress) = progress {
-            if progress > 0.0 {
-                let progress = progress.clamp(0.0, 1.0);
+        if let Some(progress) = progress
+            && progress > 0.0
+        {
+            let progress = progress.clamp(0.0, 1.0);
 
-                let bar_rect = egui::Rect::from_center_size(
-                    egui::pos2(center.x + 24.0, center.y + 13.0),
-                    egui::vec2(112.0, 4.0),
-                );
+            let bar_rect = egui::Rect::from_center_size(
+                egui::pos2(center.x + 24.0, center.y + 13.0),
+                egui::vec2(112.0, 4.0),
+            );
 
-                painter.rect_filled(bar_rect, 4.0, style.visuals.widgets.noninteractive.bg_fill);
+            painter.rect_filled(bar_rect, 4.0, style.visuals.widgets.noninteractive.bg_fill);
 
-                let fill_rect = egui::Rect::from_min_size(
-                    bar_rect.min,
-                    egui::vec2(bar_rect.width() * progress, bar_rect.height()),
-                );
+            let fill_rect = egui::Rect::from_min_size(
+                bar_rect.min,
+                egui::vec2(bar_rect.width() * progress, bar_rect.height()),
+            );
 
-                painter.rect_filled(fill_rect, 4.0, style.visuals.widgets.active.bg_fill);
+            painter.rect_filled(fill_rect, 4.0, style.visuals.widgets.active.bg_fill);
 
-                // Percentage
+            // Percentage
 
-                let percent = (progress * 100.0) as u32;
+            let percent = (progress * 100.0) as u32;
 
-                let percent_galley = painter.layout(
-                    format!("{}%", percent),
-                    egui::FontId::proportional(scaled_text_size(painter.ctx(), 10.0)),
+            let percent_galley = painter.layout(
+                format!("{}%", percent),
+                egui::FontId::proportional(scaled_text_size(painter.ctx(), 10.0)),
+                text_color,
+                f32::INFINITY,
+            );
+
+            painter.galley(
+                egui::pos2(
+                    center.x + 24.0 - percent_galley.rect.width() / 2.0,
+                    bar_rect.max.y + 2.0,
+                ),
+                percent_galley,
+                text_color,
+            );
+
+            // Extreme aspect ratio message
+
+            if show_extreme_ratio {
+                let galley = painter.layout(
+                    "Extreme aspect ratio - showing at 1:1".to_string(),
+                    egui::FontId::proportional(scaled_text_size(painter.ctx(), 12.0)),
                     text_color,
                     f32::INFINITY,
                 );
 
                 painter.galley(
-                    egui::pos2(
-                        center.x + 24.0 - percent_galley.rect.width() / 2.0,
-                        bar_rect.max.y + 2.0,
-                    ),
-                    percent_galley,
+                    egui::pos2(center.x - galley.rect.width() / 2.0, bar_rect.max.y + 12.0),
+                    galley,
                     text_color,
                 );
-
-                // Extreme aspect ratio message
-
-                if show_extreme_ratio {
-                    let galley = painter.layout(
-                        "Extreme aspect ratio - showing at 1:1".to_string(),
-                        egui::FontId::proportional(scaled_text_size(painter.ctx(), 12.0)),
-                        text_color,
-                        f32::INFINITY,
-                    );
-
-                    painter.galley(
-                        egui::pos2(center.x - galley.rect.width() / 2.0, bar_rect.max.y + 12.0),
-                        galley,
-                        text_color,
-                    );
-                }
             }
         }
     }

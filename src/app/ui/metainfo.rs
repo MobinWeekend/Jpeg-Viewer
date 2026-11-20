@@ -139,45 +139,39 @@ impl ViewerApp {
 
                         if let Some(metadata) = metadata {
                             ui.horizontal_wrapped(|ui| {
-                                if let Some(source) = metadata.source.as_deref() {
-                                    if ui.small_button("Copy source").clicked() {
-                                        match copy_metadata_text(source) {
-                                            Ok(()) => {
-                                                ctx.data_mut(|data| {
-                                                    data.remove::<String>(clipboard_error_id);
-                                                });
-                                                clipboard_error = None;
-                                            }
-                                            Err(error) => {
-                                                ctx.data_mut(|data| {
-                                                    data.insert_temp(
-                                                        clipboard_error_id,
-                                                        error.clone(),
-                                                    );
-                                                });
-                                                clipboard_error = Some(error);
-                                            }
+                                if let Some(source) = metadata.source.as_deref()
+                                    && ui.small_button("Copy source").clicked()
+                                {
+                                    match copy_metadata_text(source) {
+                                        Ok(()) => {
+                                            ctx.data_mut(|data| {
+                                                data.remove::<String>(clipboard_error_id);
+                                            });
+                                            clipboard_error = None;
+                                        }
+                                        Err(error) => {
+                                            ctx.data_mut(|data| {
+                                                data.insert_temp(clipboard_error_id, error.clone());
+                                            });
+                                            clipboard_error = Some(error);
                                         }
                                     }
                                 }
-                                if let Some((width, height)) = metadata.dimensions {
-                                    if ui.small_button("Copy dimensions").clicked() {
-                                        match copy_metadata_text(&format!("{width}×{height}")) {
-                                            Ok(()) => {
-                                                ctx.data_mut(|data| {
-                                                    data.remove::<String>(clipboard_error_id);
-                                                });
-                                                clipboard_error = None;
-                                            }
-                                            Err(error) => {
-                                                ctx.data_mut(|data| {
-                                                    data.insert_temp(
-                                                        clipboard_error_id,
-                                                        error.clone(),
-                                                    );
-                                                });
-                                                clipboard_error = Some(error);
-                                            }
+                                if let Some((width, height)) = metadata.dimensions
+                                    && ui.small_button("Copy dimensions").clicked()
+                                {
+                                    match copy_metadata_text(&format!("{width}×{height}")) {
+                                        Ok(()) => {
+                                            ctx.data_mut(|data| {
+                                                data.remove::<String>(clipboard_error_id);
+                                            });
+                                            clipboard_error = None;
+                                        }
+                                        Err(error) => {
+                                            ctx.data_mut(|data| {
+                                                data.insert_temp(clipboard_error_id, error.clone());
+                                            });
+                                            clipboard_error = Some(error);
                                         }
                                     }
                                 }
@@ -207,13 +201,13 @@ impl ViewerApp {
 
         // Close only for a click outside both the anchor and popup. Escape and
         // the explicit close control are handled above.
-        if ctx.input(|input| input.pointer.any_click()) {
-            if let Some(pointer_pos) = ctx.input(|input| input.pointer.interact_pos()) {
-                let clicked_button = response.rect.contains(pointer_pos);
-                let clicked_popup = popup_response.response.rect.contains(pointer_pos);
-                if !clicked_button && !clicked_popup {
-                    self.file_metadata_open = false;
-                }
+        if ctx.input(|input| input.pointer.any_click())
+            && let Some(pointer_pos) = ctx.input(|input| input.pointer.interact_pos())
+        {
+            let clicked_button = response.rect.contains(pointer_pos);
+            let clicked_popup = popup_response.response.rect.contains(pointer_pos);
+            if !clicked_button && !clicked_popup {
+                self.file_metadata_open = false;
             }
         }
     }

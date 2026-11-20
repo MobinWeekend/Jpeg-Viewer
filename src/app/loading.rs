@@ -687,7 +687,7 @@ fn decode_entry_bytes_with_source(
                     preview,
                     Some(std::path::Path::new("embedded-preview.jpg")),
                     threshold,
-                    &DecodeOptions::default(),
+                    &DecodeOptions,
                     None,
                 );
             }
@@ -704,7 +704,7 @@ fn decode_entry_bytes_with_source(
         bytes,
         path_hint,
         threshold,
-        &DecodeOptions::default(),
+        &DecodeOptions,
         None,
     )
 }

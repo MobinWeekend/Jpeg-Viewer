@@ -19,15 +19,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
                     .clamp_existing_to_range(true),
             )
             .changed()
+            && radius != app.cache_radius
         {
-            if radius != app.cache_radius {
-                app.update_cache_radius(radius);
-                let _ = app.settings_manager.update(|settings| {
-                    settings.cache_radius = radius;
-                });
-                if !app.image_entries.is_empty() && !app.is_loading() {
-                    app.preload_adjacent_images();
-                }
+            app.update_cache_radius(radius);
+            let _ = app.settings_manager.update(|settings| {
+                settings.cache_radius = radius;
+            });
+            if !app.image_entries.is_empty() && !app.is_loading() {
+                app.preload_adjacent_images();
             }
         }
         ui.add_space(4.0);
@@ -49,13 +48,12 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
                     .clamp_existing_to_range(true),
             )
             .changed()
+            && factor != app.cache_delta_factor
         {
-            if factor != app.cache_delta_factor {
-                app.cache_delta_factor = factor;
-                let _ = app.settings_manager.update(|settings| {
-                    settings.cache_delta_factor = factor;
-                });
-            }
+            app.cache_delta_factor = factor;
+            let _ = app.settings_manager.update(|settings| {
+                settings.cache_delta_factor = factor;
+            });
         }
         ui.add_space(4.0);
         ui.label(format!("({:.2})", factor));
@@ -76,13 +74,12 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
                     .clamp_existing_to_range(true),
             )
             .changed()
+            && tasks != app.max_cache_task
         {
-            if tasks != app.max_cache_task {
-                app.max_cache_task = tasks;
-                let _ = app.settings_manager.update(|settings| {
-                    settings.max_cache_task = tasks;
-                });
-            }
+            app.max_cache_task = tasks;
+            let _ = app.settings_manager.update(|settings| {
+                settings.max_cache_task = tasks;
+            });
         }
         ui.add_space(4.0);
         ui.label(format!("({})", tasks));
@@ -103,12 +100,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
                     .clamp_existing_to_range(true),
             )
             .changed()
+            && throttle != app.settings_manager.get().preload_throttle_ms
         {
-            if throttle != app.settings_manager.get().preload_throttle_ms {
-                let _ = app.settings_manager.update(|settings| {
-                    settings.preload_throttle_ms = throttle;
-                });
-            }
+            let _ = app.settings_manager.update(|settings| {
+                settings.preload_throttle_ms = throttle;
+            });
         }
         ui.add_space(4.0);
         ui.label(format!("({} ms)", throttle));

@@ -89,7 +89,7 @@ impl crate::app::types::ViewerApp {
         // All off-screen items still contribute to the layout and scroll height,
         // but only viewport-intersecting cards get thumbnails, widgets, tooltips,
         // painter operations, or context-menu responses.
-        for (entry, local_rect) in entries.iter().zip(local_tile_rects.into_iter()) {
+        for (entry, local_rect) in entries.iter().zip(local_tile_rects) {
             let entry = *entry;
             let tile_rect = local_rect.translate(grid_rect.min.to_vec2());
 

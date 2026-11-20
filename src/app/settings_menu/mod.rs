@@ -44,7 +44,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
                 let sidebar_clip = ui.painter().clip_rect();
                 let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
                 app.paint_tricks_backdrop(
-                    &ui.painter(),
+                    ui.painter(),
                     sidebar_clip,
                     backdrop_rect,
                     crate::ui_theme::main_accent_color(ctx),

@@ -19,10 +19,10 @@ pub fn detect_format(bytes: &[u8]) -> Option<ImageFormat> {
         return Some(ImageFormat::CameraRaw);
     }
 
-    if let Some(kind) = infer::get(bytes) {
-        if let Some(format) = map_infer_type(&kind) {
-            return Some(format);
-        }
+    if let Some(kind) = infer::get(bytes)
+        && let Some(format) = map_infer_type(&kind)
+    {
+        return Some(format);
     }
 
     detect_fallback_format(bytes)
@@ -157,48 +157,6 @@ fn looks_like_tga(bytes: &[u8]) -> bool {
     true
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn tga_header(image_type: u8, depth: u8, width: u16, height: u16) -> Vec<u8> {
-        let mut bytes = vec![0u8; 18];
-        bytes[2] = image_type;
-        bytes[12..14].copy_from_slice(&width.to_le_bytes());
-        bytes[14..16].copy_from_slice(&height.to_le_bytes());
-        bytes[16] = depth;
-        bytes
-    }
-
-    #[test]
-    fn detects_uncompressed_and_rle_true_color_tga() {
-        for image_type in [2, 10] {
-            assert!(looks_like_tga(&tga_header(image_type, 24, 1, 1)));
-        }
-    }
-
-    #[test]
-    fn detects_grayscale_and_color_mapped_tga() {
-        for image_type in [3, 11] {
-            assert!(looks_like_tga(&tga_header(image_type, 8, 1, 1)));
-        }
-
-        let mut color_mapped = tga_header(1, 8, 1, 1);
-        color_mapped[1] = 1;
-        color_mapped[5..7].copy_from_slice(&1u16.to_le_bytes());
-        color_mapped[7] = 24;
-        assert!(looks_like_tga(&color_mapped));
-    }
-
-    #[test]
-    fn rejects_invalid_or_incomplete_tga_headers() {
-        assert!(!looks_like_tga(&[0u8; 17]));
-        assert!(!looks_like_tga(&tga_header(2, 24, 0, 1)));
-        assert!(!looks_like_tga(&tga_header(2, 7, 1, 1)));
-        assert!(!looks_like_tga(&tga_header(99, 24, 1, 1)));
-    }
-}
-
 /// Load bytes and optionally return the original compressed source when a GIF
 /// preview is produced. The caller can retain that bounded source while the
 /// asynchronous full-animation upgrade runs, avoiding a second disk/archive read.
@@ -276,4 +234,46 @@ pub(crate) fn load_bytes_with_detection_and_source(
 /// Quick check if bytes start with a GIF signature.
 fn is_gif_bytes(bytes: &[u8]) -> bool {
     bytes.len() >= 6 && (bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tga_header(image_type: u8, depth: u8, width: u16, height: u16) -> Vec<u8> {
+        let mut bytes = vec![0u8; 18];
+        bytes[2] = image_type;
+        bytes[12..14].copy_from_slice(&width.to_le_bytes());
+        bytes[14..16].copy_from_slice(&height.to_le_bytes());
+        bytes[16] = depth;
+        bytes
+    }
+
+    #[test]
+    fn detects_uncompressed_and_rle_true_color_tga() {
+        for image_type in [2, 10] {
+            assert!(looks_like_tga(&tga_header(image_type, 24, 1, 1)));
+        }
+    }
+
+    #[test]
+    fn detects_grayscale_and_color_mapped_tga() {
+        for image_type in [3, 11] {
+            assert!(looks_like_tga(&tga_header(image_type, 8, 1, 1)));
+        }
+
+        let mut color_mapped = tga_header(1, 8, 1, 1);
+        color_mapped[1] = 1;
+        color_mapped[5..7].copy_from_slice(&1u16.to_le_bytes());
+        color_mapped[7] = 24;
+        assert!(looks_like_tga(&color_mapped));
+    }
+
+    #[test]
+    fn rejects_invalid_or_incomplete_tga_headers() {
+        assert!(!looks_like_tga(&[0u8; 17]));
+        assert!(!looks_like_tga(&tga_header(2, 24, 0, 1)));
+        assert!(!looks_like_tga(&tga_header(2, 7, 1, 1)));
+        assert!(!looks_like_tga(&tga_header(99, 24, 1, 1)));
+    }
 }

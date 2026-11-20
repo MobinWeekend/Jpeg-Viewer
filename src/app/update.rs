@@ -274,191 +274,191 @@ impl eframe::App for ViewerApp {
         if self.receiver.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(32));
         }
-        if let Some(rx) = &self.receiver {
-            if let Ok(result) = rx.try_recv() {
-                self.receiver = None;
+        if let Some(rx) = &self.receiver
+            && let Ok(result) = rx.try_recv()
+        {
+            self.receiver = None;
 
-                // Clear old file type detection before loading new image
-                self.file_type_detection = None;
+            // Clear old file type detection before loading new image
+            self.file_type_detection = None;
 
-                match result {
-                    Ok(loaded_entry) => {
-                        // The shared loader has already identified GIFs from the
-                        // source bytes. Seed the look-ahead cache so preload
-                        // scheduling does not reopen the same entry for its header.
-                        if let Some(image_id) = self.get_image_id(self.current_index) {
-                            if let Ok(mut cache) = self.gif_detection_cache.lock() {
-                                cache.insert(
-                                    image_id,
-                                    matches!(
-                                        &loaded_entry.image,
-                                        super::types::LoadedImage::Animated(_, _)
-                                    ),
-                                );
+            match result {
+                Ok(loaded_entry) => {
+                    // The shared loader has already identified GIFs from the
+                    // source bytes. Seed the look-ahead cache so preload
+                    // scheduling does not reopen the same entry for its header.
+                    if let Some(image_id) = self.get_image_id(self.current_index)
+                        && let Ok(mut cache) = self.gif_detection_cache.lock()
+                    {
+                        cache.insert(
+                            image_id,
+                            matches!(
+                                &loaded_entry.image,
+                                super::types::LoadedImage::Animated(_, _)
+                            ),
+                        );
+                    }
+                    // Metadata, format detection, and pixels were all derived
+                    // from the same source read by the background loader.
+                    self.file_metadata = Some(loaded_entry.metadata);
+                    self.set_file_type_detection(loaded_entry.file_type_detection);
+                    self.full_gif_source = loaded_entry.full_gif_source;
+                    let mut should_spawn_full_gif = false;
+                    match loaded_entry.image {
+                        super::types::LoadedImage::Static(img) => {
+                            // Reuse a preloaded base texture when available. Otherwise
+                            // create it once, without egui's synchronous generate_mipmap.
+                            // The decoded RGBA allocation is shared with the background
+                            // mip and backdrop workers instead of being cloned.
+                            let prepared =
+                                self.prepare_current_static_image(ctx, self.current_index, img);
+                            self.texture = Some(prepared.texture);
+                            self.texture_image_id = self.get_image_id(self.current_index);
+                            self.cache_tricks_backdrop_from_decoded(
+                                self.current_image_path.clone(),
+                                prepared.width,
+                                prepared.height,
+                                prepared.rgba,
+                            );
+                            self.mark_win98_dialup_texture_ready(false);
+                            if self.slideshow_previous_texture.is_some()
+                                && self.slideshow_transition_started.is_none()
+                                && self
+                                    .slideshow_previous_texture
+                                    .as_ref()
+                                    .map(egui::TextureHandle::id)
+                                    != self.texture.as_ref().map(egui::TextureHandle::id)
+                            {
+                                self.slideshow_transition_started = Some(Instant::now());
                             }
+                            self.gif_animation = None;
+                            self.is_gif = false;
+                            self.is_preview = false;
+                            self.image_error = None;
+                            self.virtual_texture = None;
+                            self.vt_progress = None;
+                            self.vt_total_tiles = 0;
+                            self.b_fit_to_window = true;
+                            ctx.request_repaint();
+                            self.set_loading_state(LoadingState::Idle);
                         }
-                        // Metadata, format detection, and pixels were all derived
-                        // from the same source read by the background loader.
-                        self.file_metadata = Some(loaded_entry.metadata);
-                        self.set_file_type_detection(loaded_entry.file_type_detection);
-                        self.full_gif_source = loaded_entry.full_gif_source;
-                        let mut should_spawn_full_gif = false;
-                        match loaded_entry.image {
-                            super::types::LoadedImage::Static(img) => {
-                                // Reuse a preloaded base texture when available. Otherwise
-                                // create it once, without egui's synchronous generate_mipmap.
-                                // The decoded RGBA allocation is shared with the background
-                                // mip and backdrop workers instead of being cloned.
-                                let prepared =
-                                    self.prepare_current_static_image(ctx, self.current_index, img);
-                                self.texture = Some(prepared.texture);
-                                self.texture_image_id = self.get_image_id(self.current_index);
+                        super::types::LoadedImage::Animated(gif, is_preview) => {
+                            self.current_mipmap_state = None;
+                            self.gif_animation = Some(gif);
+                            let backdrop_frame = self.gif_animation.as_ref().and_then(|gif| {
+                                gif.get_current_frame_ref().map(|frame| {
+                                    (frame.width(), frame.height(), frame.as_raw().clone())
+                                })
+                            });
+                            if let (Some(path), Some((width, height, pixels))) =
+                                (self.current_image_path.clone(), backdrop_frame)
+                            {
                                 self.cache_tricks_backdrop_from_decoded(
-                                    self.current_image_path.clone(),
-                                    prepared.width,
-                                    prepared.height,
-                                    prepared.rgba,
-                                );
-                                self.mark_win98_dialup_texture_ready(false);
-                                if self.slideshow_previous_texture.is_some()
-                                    && self.slideshow_transition_started.is_none()
-                                    && self
-                                        .slideshow_previous_texture
-                                        .as_ref()
-                                        .map(egui::TextureHandle::id)
-                                        != self.texture.as_ref().map(egui::TextureHandle::id)
-                                {
-                                    self.slideshow_transition_started = Some(Instant::now());
-                                }
-                                self.gif_animation = None;
-                                self.is_gif = false;
-                                self.is_preview = false;
-                                self.image_error = None;
-                                self.virtual_texture = None;
-                                self.vt_progress = None;
-                                self.vt_total_tiles = 0;
-                                self.b_fit_to_window = true;
-                                ctx.request_repaint();
-                                self.set_loading_state(LoadingState::Idle);
-                            }
-                            super::types::LoadedImage::Animated(gif, is_preview) => {
-                                self.current_mipmap_state = None;
-                                self.gif_animation = Some(gif);
-                                let backdrop_frame = self.gif_animation.as_ref().and_then(|gif| {
-                                    gif.get_current_frame_ref().map(|frame| {
-                                        (frame.width(), frame.height(), frame.as_raw().clone())
-                                    })
-                                });
-                                if let (Some(path), Some((width, height, pixels))) =
-                                    (self.current_image_path.clone(), backdrop_frame)
-                                {
-                                    self.cache_tricks_backdrop_from_decoded(
-                                        Some(path),
-                                        width,
-                                        height,
-                                        std::sync::Arc::new(pixels),
-                                    );
-                                }
-                                self.is_gif = true;
-                                self.is_preview = is_preview;
-                                self.image_error = None;
-                                self.virtual_texture = None;
-                                self.b_fit_to_window = true;
-                                self.set_loading_state(LoadingState::Idle);
-                                // Detect file type after GIF load
-                                self.detect_current_file_type();
-
-                                // Spawn full GIF loading if this is a preview
-                                if is_preview {
-                                    println!(
-                                        "GIF preview loaded, will spawn full GIF load after loading flag clears"
-                                    );
-                                    should_spawn_full_gif = true;
-                                } else {
-                                    println!(
-                                        "Full GIF loaded directly ({} frames)",
-                                        self.gif_animation
-                                            .as_ref()
-                                            .map(|g| g.frame_count())
-                                            .unwrap_or(0)
-                                    );
-                                }
-                            }
-                            super::types::LoadedImage::VirtualPending(bytes, width, height) => {
-                                self.current_mipmap_state = None;
-                                // Large image – start virtual texture loading
-                                println!(
-                                    "VirtualPending: {}x{} ({} MP)",
+                                    Some(path),
                                     width,
                                     height,
-                                    (width as u64 * height as u64) / 1_000_000
+                                    std::sync::Arc::new(pixels),
                                 );
+                            }
+                            self.is_gif = true;
+                            self.is_preview = is_preview;
+                            self.image_error = None;
+                            self.virtual_texture = None;
+                            self.b_fit_to_window = true;
+                            self.set_loading_state(LoadingState::Idle);
+                            // Detect file type after GIF load
+                            self.detect_current_file_type();
 
-                                self.set_loading_state(LoadingState::VirtualTextureLoading);
-
-                                // Clear old state
-                                self.texture = None;
-                                self.texture_image_id = None;
-                                self.current_mipmap_state = None;
-                                self.gif_animation = None;
-                                self.is_gif = false;
-                                self.is_preview = false;
-                                self.image_error = None;
-
-                                let tile_size = self.settings_manager.get().tile_size;
-
-                                // Spawn thread to decode and prepare virtual texture
-                                let handle = std::thread::spawn(move || {
-                                    let img = decode_bytes(&bytes).expect("Failed to decode image");
-                                    let mut vt = VirtualTexture::new(img, tile_size); // VirtualTexture must accept DecodedImage
-                                    vt.prepare();
-                                    vt
-                                });
-                                self.virtual_texture_thread = Some(handle);
-
-                                // We don't have progress yet; will be set when thread finishes
-                                self.vt_progress = None;
-                                self.vt_total_tiles = 0;
-
-                                self.detect_current_file_type();
-                                ctx.request_repaint();
+                            // Spawn full GIF loading if this is a preview
+                            if is_preview {
+                                println!(
+                                    "GIF preview loaded, will spawn full GIF load after loading flag clears"
+                                );
+                                should_spawn_full_gif = true;
+                            } else {
+                                println!(
+                                    "Full GIF loaded directly ({} frames)",
+                                    self.gif_animation
+                                        .as_ref()
+                                        .map(|g| g.frame_count())
+                                        .unwrap_or(0)
+                                );
                             }
                         }
-                        self.update_window_title(ctx);
-                        if self.workspace.should_preload() {
-                            self.preload_adjacent_images();
-                        }
-                        self.mark_interaction();
+                        super::types::LoadedImage::VirtualPending(bytes, width, height) => {
+                            self.current_mipmap_state = None;
+                            // Large image – start virtual texture loading
+                            println!(
+                                "VirtualPending: {}x{} ({} MP)",
+                                width,
+                                height,
+                                (width as u64 * height as u64) / 1_000_000
+                            );
 
-                        // Now spawn the full GIF loading if needed
-                        if should_spawn_full_gif {
-                            println!("Spawning full GIF load now...");
-                            self.spawn_full_gif_loading();
-                            self.set_loading_state(LoadingState::LoadingFullGif);
+                            self.set_loading_state(LoadingState::VirtualTextureLoading);
+
+                            // Clear old state
+                            self.texture = None;
+                            self.texture_image_id = None;
+                            self.current_mipmap_state = None;
+                            self.gif_animation = None;
+                            self.is_gif = false;
+                            self.is_preview = false;
+                            self.image_error = None;
+
+                            let tile_size = self.settings_manager.get().tile_size;
+
+                            // Spawn thread to decode and prepare virtual texture
+                            let handle = std::thread::spawn(move || {
+                                let img = decode_bytes(&bytes).expect("Failed to decode image");
+                                let mut vt = VirtualTexture::new(img, tile_size); // VirtualTexture must accept DecodedImage
+                                vt.prepare();
+                                vt
+                            });
+                            self.virtual_texture_thread = Some(handle);
+
+                            // We don't have progress yet; will be set when thread finishes
+                            self.vt_progress = None;
+                            self.vt_total_tiles = 0;
+
+                            self.detect_current_file_type();
+                            ctx.request_repaint();
                         }
                     }
-                    Err(error) => {
-                        // The normal loader supplies detection from its shared
-                        // byte buffer. Keep the legacy disk check only for the
-                        // uncommon decode-failure path so rename suggestions
-                        // remain available when a decoder rejects the file.
-                        self.detect_from_disk();
-                        self.current_mipmap_state = None;
-                        self.texture = None;
-                        self.texture_image_id = None;
-                        self.image_error = Some(error);
-                        self.gif_animation = None;
-                        self.is_gif = false;
-                        self.is_preview = false;
-                        self.virtual_texture = None;
-                        self.set_loading_state(LoadingState::Idle);
-
-                        eprintln!(
-                            "Error loading image: {}",
-                            self.image_error.as_ref().unwrap()
-                        );
-                        ctx.request_repaint();
+                    self.update_window_title(ctx);
+                    if self.workspace.should_preload() {
+                        self.preload_adjacent_images();
                     }
+                    self.mark_interaction();
+
+                    // Now spawn the full GIF loading if needed
+                    if should_spawn_full_gif {
+                        println!("Spawning full GIF load now...");
+                        self.spawn_full_gif_loading();
+                        self.set_loading_state(LoadingState::LoadingFullGif);
+                    }
+                }
+                Err(error) => {
+                    // The normal loader supplies detection from its shared
+                    // byte buffer. Keep the legacy disk check only for the
+                    // uncommon decode-failure path so rename suggestions
+                    // remain available when a decoder rejects the file.
+                    self.detect_from_disk();
+                    self.current_mipmap_state = None;
+                    self.texture = None;
+                    self.texture_image_id = None;
+                    self.image_error = Some(error);
+                    self.gif_animation = None;
+                    self.is_gif = false;
+                    self.is_preview = false;
+                    self.virtual_texture = None;
+                    self.set_loading_state(LoadingState::Idle);
+
+                    eprintln!(
+                        "Error loading image: {}",
+                        self.image_error.as_ref().unwrap()
+                    );
+                    ctx.request_repaint();
                 }
             }
         }
@@ -508,54 +508,51 @@ impl eframe::App for ViewerApp {
         }
 
         // ========== FULL IMAGE LOADING (non-GIF) ==========
-        if let Some(rx) = &self.full_image_receiver {
-            if let Ok(full_image) = rx.try_recv() {
-                if !self.is_loading() && self.texture.is_some() {
-                    // full_image is DecodedImage; refresh the small backdrop source from
-                    // the full-resolution decoded buffer without reopening the file.
-                    let width = full_image.width;
-                    let height = full_image.height;
-                    let rgba = std::sync::Arc::new(full_image.data);
-                    let size = [width as usize, height as usize];
-                    let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
-                    self.texture = Some(ctx.load_texture(
-                        "image_full",
-                        color,
-                        self.get_texture_base_options(),
-                    ));
-                    self.texture_image_id = self.get_image_id(self.current_index);
-                    self.current_mipmap_state =
-                        if self.settings_manager.get().texture_filter == "mipmap" {
-                            Some(super::texture_mipmap::start_mipmap_upload(
-                                width,
-                                height,
-                                std::sync::Arc::clone(&rgba),
-                            ))
-                        } else {
-                            None
-                        };
-                    self.cache_tricks_backdrop_from_decoded(
-                        self.current_image_path.clone(),
-                        width,
-                        height,
-                        rgba,
-                    );
-                    self.is_preview = false;
-                    self.b_fit_to_window = true;
-                    self.full_image_receiver = None;
-                    self.cache_current_image();
+        if let Some(rx) = &self.full_image_receiver
+            && let Ok(full_image) = rx.try_recv()
+        {
+            if !self.is_loading() && self.texture.is_some() {
+                // full_image is DecodedImage; refresh the small backdrop source from
+                // the full-resolution decoded buffer without reopening the file.
+                let width = full_image.width;
+                let height = full_image.height;
+                let rgba = std::sync::Arc::new(full_image.data);
+                let size = [width as usize, height as usize];
+                let color = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_slice());
+                self.texture =
+                    Some(ctx.load_texture("image_full", color, self.get_texture_base_options()));
+                self.texture_image_id = self.get_image_id(self.current_index);
+                self.current_mipmap_state =
+                    if self.settings_manager.get().texture_filter == "mipmap" {
+                        Some(super::texture_mipmap::start_mipmap_upload(
+                            width,
+                            height,
+                            std::sync::Arc::clone(&rgba),
+                        ))
+                    } else {
+                        None
+                    };
+                self.cache_tricks_backdrop_from_decoded(
+                    self.current_image_path.clone(),
+                    width,
+                    height,
+                    rgba,
+                );
+                self.is_preview = false;
+                self.b_fit_to_window = true;
+                self.full_image_receiver = None;
+                self.cache_current_image();
 
-                    // Detect file type after full image upgrade
-                    self.detect_current_file_type();
+                // Detect file type after full image upgrade
+                self.detect_current_file_type();
 
-                    self.update_window_title(ctx);
-                    self.mark_interaction();
-                    // flag here
-                    ctx.request_repaint();
-                    self.set_loading_state(LoadingState::Idle);
-                } else {
-                    self.full_image_receiver = None;
-                }
+                self.update_window_title(ctx);
+                self.mark_interaction();
+                // flag here
+                ctx.request_repaint();
+                self.set_loading_state(LoadingState::Idle);
+            } else {
+                self.full_image_receiver = None;
             }
         }
 
@@ -630,12 +627,10 @@ impl eframe::App for ViewerApp {
         }
 
         // Cancel loading if we navigated away from a GIF preview
-        if !self.is_gif || !self.is_preview {
-            if self.full_gif_receiver.is_some() {
-                self.full_gif_receiver = None;
-                self.set_loading_state(LoadingState::Idle);
-                println!("Cancelled full GIF loading - no longer viewing a GIF preview");
-            }
+        if (!self.is_gif || !self.is_preview) && self.full_gif_receiver.is_some() {
+            self.full_gif_receiver = None;
+            self.set_loading_state(LoadingState::Idle);
+            println!("Cancelled full GIF loading - no longer viewing a GIF preview");
         }
 
         // ========== GIF ANIMATION ==========
@@ -782,30 +777,30 @@ impl ViewerApp {
         // Keep the mutable borrow of the GIF animation scoped to frame extraction and
         // playback scheduling. Dial-up state needs `&mut self`, so update it only after
         // the GIF borrow has ended.
-        if let Some(gif) = &mut self.gif_animation {
-            if let Some(frame) = gif.get_current_frame() {
-                let size = [frame.width() as usize, frame.height() as usize];
-                let color_image = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
+        if let Some(gif) = &mut self.gif_animation
+            && let Some(frame) = gif.get_current_frame()
+        {
+            let size = [frame.width() as usize, frame.height() as usize];
+            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, frame.as_raw());
 
-                self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
-                self.texture_image_id = current_image_id;
-                texture_updated = true;
+            self.texture = Some(ctx.load_texture("gif_frame", color_image, options));
+            self.texture_image_id = current_image_id;
+            texture_updated = true;
 
-                if gif.is_playing && gif.is_animated() {
-                    let current_delay = if gif.current_frame < gif.delays.len() {
-                        gif.delays[gif.current_frame]
-                    } else {
-                        std::time::Duration::from_millis(100)
-                    };
-                    let adjusted_delay = if gif.speed_multiplier > 0.0 {
-                        std::time::Duration::from_micros(
-                            (current_delay.as_micros() as f32 / gif.speed_multiplier) as u64,
-                        )
-                    } else {
-                        current_delay
-                    };
-                    ctx.request_repaint_after(adjusted_delay);
-                }
+            if gif.is_playing && gif.is_animated() {
+                let current_delay = if gif.current_frame < gif.delays.len() {
+                    gif.delays[gif.current_frame]
+                } else {
+                    std::time::Duration::from_millis(100)
+                };
+                let adjusted_delay = if gif.speed_multiplier > 0.0 {
+                    std::time::Duration::from_micros(
+                        (current_delay.as_micros() as f32 / gif.speed_multiplier) as u64,
+                    )
+                } else {
+                    current_delay
+                };
+                ctx.request_repaint_after(adjusted_delay);
             }
         }
 

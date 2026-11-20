@@ -601,13 +601,13 @@ pub fn save_image_safely_with_quality(
         Ok(())
     })();
 
-    if temp_path.exists() {
-        if let Err(e) = fs::remove_file(&temp_path) {
-            eprintln!(
-                "Could not remove temporary file {}: {e}",
-                temp_path.display()
-            );
-        }
+    if temp_path.exists()
+        && let Err(e) = fs::remove_file(&temp_path)
+    {
+        eprintln!(
+            "Could not remove temporary file {}: {e}",
+            temp_path.display()
+        );
     }
     write_result
 }

@@ -223,10 +223,10 @@ pub fn launch_or_forward(settings_path: &Path, paths: Vec<PathBuf>) -> io::Resul
                                         break;
                                     }
                                     // Wake the UI thread even when the viewer is idle.
-                                    if let Ok(context) = thread_repaint_context.lock() {
-                                        if let Some(context) = context.as_ref() {
-                                            context.request_repaint();
-                                        }
+                                    if let Ok(context) = thread_repaint_context.lock()
+                                        && let Some(context) = context.as_ref()
+                                    {
+                                        context.request_repaint();
                                     }
                                 }
                             }

@@ -766,11 +766,11 @@ impl ViewerApp {
             return;
         }
         let current_id = self.texture.as_ref().map(egui::TextureHandle::id);
-        if let Some(current_id) = current_id {
-            if force || Some(current_id) != self.win98_dialup_previous_texture_id {
-                self.win98_dialup_reveal_started = Some(Instant::now());
-                self.win98_dialup_reveal_pending = false;
-            }
+        if let Some(current_id) = current_id
+            && (force || Some(current_id) != self.win98_dialup_previous_texture_id)
+        {
+            self.win98_dialup_reveal_started = Some(Instant::now());
+            self.win98_dialup_reveal_pending = false;
         }
     }
 

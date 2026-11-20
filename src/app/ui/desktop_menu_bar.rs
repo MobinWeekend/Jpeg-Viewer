@@ -345,13 +345,12 @@ fn loading_status_text(app: &ViewerApp) -> String {
         LoadingState::Indexing => "Indexing…".to_owned(),
         LoadingState::LoadingFullGif => "Loading GIF…".to_owned(),
         LoadingState::VirtualTextureLoading => {
-            if let Some(progress) = app.vt_progress {
-                if progress.total_tiles > 0 {
-                    let percent = (progress.prepared_tiles.saturating_mul(100)
-                        / progress.total_tiles)
-                        .min(100);
-                    return format!("Loading {percent}%");
-                }
+            if let Some(progress) = app.vt_progress
+                && progress.total_tiles > 0
+            {
+                let percent =
+                    (progress.prepared_tiles.saturating_mul(100) / progress.total_tiles).min(100);
+                return format!("Loading {percent}%");
             }
             "Loading image…".to_owned()
         }
@@ -457,11 +456,10 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             .add_enabled(has_path, egui::Button::new("Open With…"))
             .clicked()
         {
-            if let Some(path) = app.current_image_path.as_deref() {
-                if let Err(error) = crate::app::external_open::open_with(path) {
-                    app.queue_status =
-                        Some(format!("Could not open the Open With dialog: {error}"));
-                }
+            if let Some(path) = app.current_image_path.as_deref()
+                && let Err(error) = crate::app::external_open::open_with(path)
+            {
+                app.queue_status = Some(format!("Could not open the Open With dialog: {error}"));
             }
             ui.close();
         }
@@ -476,10 +474,10 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             )
             .clicked()
         {
-            if let Some(path) = locate_path {
-                if let Err(error) = crate::app::external_open::reveal_in_file_manager(path) {
-                    app.queue_status = Some(format!("Could not locate file: {error}"));
-                }
+            if let Some(path) = locate_path
+                && let Err(error) = crate::app::external_open::reveal_in_file_manager(path)
+            {
+                app.queue_status = Some(format!("Could not locate file: {error}"));
             }
             ui.close();
         }

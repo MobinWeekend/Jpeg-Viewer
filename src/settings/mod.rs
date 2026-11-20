@@ -371,19 +371,17 @@ impl SettingsManager {
         let app_dir = config_root.join("Jpeg Viewer");
         let target = app_dir.join(filename);
 
-        if !target.exists() {
-            if let Ok(exe_path) = std::env::current_exe() {
-                if let Some(parent) = exe_path.parent() {
-                    for legacy_name in ["jpeg_viewer settings.ini", "settings.ini"] {
-                        let legacy = parent.join(legacy_name);
-                        if legacy.is_file() {
-                            if fs::create_dir_all(&app_dir).is_ok()
-                                && fs::copy(&legacy, &target).is_ok()
-                            {
-                                break;
-                            }
-                        }
-                    }
+        if !target.exists()
+            && let Ok(exe_path) = std::env::current_exe()
+            && let Some(parent) = exe_path.parent()
+        {
+            for legacy_name in ["jpeg_viewer settings.ini", "settings.ini"] {
+                let legacy = parent.join(legacy_name);
+                if legacy.is_file()
+                    && fs::create_dir_all(&app_dir).is_ok()
+                    && fs::copy(&legacy, &target).is_ok()
+                {
+                    break;
                 }
             }
         }

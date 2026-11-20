@@ -235,7 +235,7 @@ impl ViewerApp {
             painter.rect_stroke(
                 cell_rect.shrink(1.0),
                 9.0,
-                egui::Stroke::new(2.0 as f32, visuals.selection.stroke.color),
+                egui::Stroke::new(2.0_f32, visuals.selection.stroke.color),
                 egui::StrokeKind::Inside,
             );
         } else {
@@ -336,10 +336,11 @@ impl ViewerApp {
                         {
                             self.open_queue_in_viewer_at(ctx, index);
                         }
-                    } else if let Some(_) = self
+                    } else if self
                         .favorite_paths
                         .iter()
                         .position(|p| crate::app::queues::storage::paths_equal(p, path))
+                        .is_some()
                     {
                         if !self.prepare_for_image_change(
                             "Save or discard unsaved edits before opening favorites.",
@@ -379,12 +380,11 @@ impl ViewerApp {
                     self.begin_rename(path);
                     ui.close();
                 }
-                if let Some(index) = context_index {
-                    if ui.button("Move to position…").clicked() {
-                        self.sidebar_number_edit =
-                            Some((context_mode, index, (index + 1).to_string()));
-                        ui.close();
-                    }
+                if let Some(index) = context_index
+                    && ui.button("Move to position…").clicked()
+                {
+                    self.sidebar_number_edit = Some((context_mode, index, (index + 1).to_string()));
+                    ui.close();
                 }
                 if context_mode == 1 && ui.button("Add to favorites").clicked() {
                     self.add_favorite_path(path.to_path_buf());
@@ -425,68 +425,63 @@ impl ViewerApp {
                 && self.sidebar_drag_collection == context_mode
                 && response.hovered()
                 && ctx.input(|i| i.pointer.any_released())
+                && let Some(from) = self.sidebar_drag_index.take()
             {
-                if let Some(from) = self.sidebar_drag_index.take() {
-                    let pointer_y = ctx
-                        .input(|i| i.pointer.interact_pos())
-                        .map(|p| p.y)
-                        .unwrap_or(cell_rect.center().y);
-                    let to = if pointer_y < cell_rect.center().y {
-                        index
-                    } else {
-                        index + 1
-                    };
-                    let len = match context_mode {
-                        0 => self.image_entries.len(),
-                        1 => self.queue_paths.len(),
-                        2 => self.favorite_paths.len(),
-                        _ => 0,
-                    };
-                    if from < len
-                        && to <= len
-                        && !(from == index && (to == index || to == index + 1))
-                    {
-                        match context_mode {
-                            0 => {
-                                let selected_path = self.current_image_path.clone();
-                                let item = self.image_entries.remove(from);
-                                let insert_at = if from < to { to.saturating_sub(1) } else { to };
-                                self.image_entries
-                                    .insert(insert_at.min(self.image_entries.len()), item);
-                                if let Some(path) = selected_path {
-                                    if let Some(new_index) = self.image_entries.iter().position(|e| matches!(e, crate::imaging::entry::ImageEntry::File(p) if p == &path)) { self.current_index = new_index; }
-                                }
-                                self.sidebar_last_current_index = None;
-                                self.image_cache.clear();
-                                self.preloading_indices.clear();
-                                self.cancel_all_preload_tasks();
-                                self.preload_generation = self.preload_generation.wrapping_add(1);
-                                self.preloading_indices.clear();
-                                if !self.image_entries.is_empty() {
-                                    self.load_current_image_with_cache();
-                                }
+                let pointer_y = ctx
+                    .input(|i| i.pointer.interact_pos())
+                    .map(|p| p.y)
+                    .unwrap_or(cell_rect.center().y);
+                let to = if pointer_y < cell_rect.center().y {
+                    index
+                } else {
+                    index + 1
+                };
+                let len = match context_mode {
+                    0 => self.image_entries.len(),
+                    1 => self.queue_paths.len(),
+                    2 => self.favorite_paths.len(),
+                    _ => 0,
+                };
+                if from < len && to <= len && !(from == index && (to == index || to == index + 1)) {
+                    match context_mode {
+                        0 => {
+                            let selected_path = self.current_image_path.clone();
+                            let item = self.image_entries.remove(from);
+                            let insert_at = if from < to { to.saturating_sub(1) } else { to };
+                            self.image_entries
+                                .insert(insert_at.min(self.image_entries.len()), item);
+                            if let Some(path) = selected_path
+                                    && let Some(new_index) = self.image_entries.iter().position(|e| matches!(e, crate::imaging::entry::ImageEntry::File(p) if p == &path)) { self.current_index = new_index; }
+                            self.sidebar_last_current_index = None;
+                            self.image_cache.clear();
+                            self.preloading_indices.clear();
+                            self.cancel_all_preload_tasks();
+                            self.preload_generation = self.preload_generation.wrapping_add(1);
+                            self.preloading_indices.clear();
+                            if !self.image_entries.is_empty() {
+                                self.load_current_image_with_cache();
                             }
-                            1 => {
-                                let item = self.queue_paths.remove(from);
-                                let insert_at = if from < to { to.saturating_sub(1) } else { to };
-                                self.queue_paths
-                                    .insert(insert_at.min(self.queue_paths.len()), item);
-                            }
-                            2 => {
-                                let item = self.favorite_paths.remove(from);
-                                let insert_at = if from < to { to.saturating_sub(1) } else { to };
-                                self.favorite_paths
-                                    .insert(insert_at.min(self.favorite_paths.len()), item);
-                                self.save_favorites_for_ui();
-                            }
-                            _ => {}
                         }
-                        self.queue_status = Some(format!(
-                            "Moved item {} to position {}.",
-                            from + 1,
-                            to.min(len)
-                        ));
+                        1 => {
+                            let item = self.queue_paths.remove(from);
+                            let insert_at = if from < to { to.saturating_sub(1) } else { to };
+                            self.queue_paths
+                                .insert(insert_at.min(self.queue_paths.len()), item);
+                        }
+                        2 => {
+                            let item = self.favorite_paths.remove(from);
+                            let insert_at = if from < to { to.saturating_sub(1) } else { to };
+                            self.favorite_paths
+                                .insert(insert_at.min(self.favorite_paths.len()), item);
+                            self.save_favorites_for_ui();
+                        }
+                        _ => {}
                     }
+                    self.queue_status = Some(format!(
+                        "Moved item {} to position {}.",
+                        from + 1,
+                        to.min(len)
+                    ));
                 }
             }
             if response.hovered()
@@ -507,7 +502,7 @@ impl ViewerApp {
                         egui::pos2(cell_rect.left(), y),
                         egui::pos2(cell_rect.right(), y),
                     ],
-                    egui::Stroke::new(3.0 as f32, visuals.selection.stroke.color),
+                    egui::Stroke::new(3.0_f32, visuals.selection.stroke.color),
                 );
                 ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
             }

@@ -44,7 +44,7 @@ pub(crate) fn pump_worker_messages() {
 pub(crate) fn diagnostics_enabled() -> bool {
     #[cfg(target_os = "windows")]
     {
-        return windows_shell::diagnostics_enabled();
+        windows_shell::diagnostics_enabled()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -113,7 +113,7 @@ pub(crate) fn load_or_request_placeholder(path: &Path, max_side: u32) -> Option<
 pub(crate) fn source_dimensions(path: &Path) -> Option<(u32, u32)> {
     #[cfg(target_os = "windows")]
     {
-        return windows_shell::source_dimensions(path);
+        windows_shell::source_dimensions(path)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -381,19 +381,23 @@ mod windows_shell {
             // Some providers expose premultiplied channels. Detect that layout
             // conservatively (all partially transparent RGB channels <= alpha)
             // and convert it to straight alpha for egui's unmultiplied textures.
-            let has_alpha = pixels.chunks_exact(4).any(|pixel| pixel[3] != 0);
+            let has_alpha = pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0);
             let has_partial_alpha = pixels
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] > 0 && pixel[3] < 255);
             let looks_premultiplied = has_alpha
                 && has_partial_alpha
                 && pixels
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter(|pixel| pixel[3] > 0 && pixel[3] < 255)
                     .all(|pixel| {
                         pixel[0] <= pixel[3] && pixel[1] <= pixel[3] && pixel[2] <= pixel[3]
                     });
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 pixel.swap(0, 2);
                 if !has_alpha {
                     pixel[3] = 255;

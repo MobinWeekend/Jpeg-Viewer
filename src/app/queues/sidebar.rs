@@ -69,7 +69,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 let sidebar_clip = ui.painter().clip_rect();
                 let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
                 app.paint_tricks_backdrop(
-                    &ui.painter(),
+                    ui.painter(),
                     sidebar_clip,
                     backdrop_rect,
                     crate::ui_theme::main_accent_color(ctx),
@@ -471,7 +471,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                     }
                                 }
 
-                                if entries.len() % columns != 0 {
+                                if !entries.len().is_multiple_of(columns) {
                                     ui.end_row();
                                 }
                             });
@@ -580,14 +580,13 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                         let item = app.image_entries.remove(index);
                         app.image_entries
                             .insert(target.min(app.image_entries.len()), item);
-                        if let Some(path) = selected_path {
-                            if let Some(new_index) = app
+                        if let Some(path) = selected_path
+                            && let Some(new_index) = app
                                 .image_entries
                                 .iter()
                                 .position(|e| matches!(e, ImageEntry::File(p) if p == &path))
-                            {
-                                app.current_index = new_index;
-                            }
+                        {
+                            app.current_index = new_index;
                         }
                         app.image_cache.clear();
                         app.preloading_indices.clear();
@@ -749,10 +748,10 @@ pub fn render_rename_dialog(app: &mut ViewerApp, ctx: &egui::Context) {
                     match std::fs::rename(&path, &new_path) {
                         Ok(()) => {
                             for entry in &mut app.image_entries {
-                                if let ImageEntry::File(p) = entry {
-                                    if *p == path {
-                                        *p = new_path.clone();
-                                    }
+                                if let ImageEntry::File(p) = entry
+                                    && *p == path
+                                {
+                                    *p = new_path.clone();
                                 }
                             }
                             for p in &mut app.queue_paths {

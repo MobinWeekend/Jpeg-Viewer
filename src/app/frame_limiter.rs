@@ -36,10 +36,12 @@ impl ViewerApp {
         }
 
         // Overlay timeout has priority when it is visible.
-        if self.overlay_visible && !self.hamburger_menu_open && !self.image_entries.is_empty() {
-            if self.handle_overlay_repaint(ctx) {
-                return;
-            }
+        if self.overlay_visible
+            && !self.hamburger_menu_open
+            && !self.image_entries.is_empty()
+            && self.handle_overlay_repaint(ctx)
+        {
+            return;
         }
 
         // Normal idle/non-idle FPS.

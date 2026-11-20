@@ -23,14 +23,13 @@ pub fn is_gif_entry(entry: &ImageEntry) -> bool {
         }
         ImageEntry::Zip(zip) => {
             // For zip, try to read the header from the archive
-            if let Ok(file) = File::open(&zip.archive_path) {
-                if let Ok(mut archive) = ZipArchive::new(file) {
-                    if let Ok(mut entry) = archive.by_index(zip.entry_index) {
-                        let mut header = [0u8; 6];
-                        if entry.read_exact(&mut header).is_ok() {
-                            return is_gif_bytes(&header);
-                        }
-                    }
+            if let Ok(file) = File::open(&zip.archive_path)
+                && let Ok(mut archive) = ZipArchive::new(file)
+                && let Ok(mut entry) = archive.by_index(zip.entry_index)
+            {
+                let mut header = [0u8; 6];
+                if entry.read_exact(&mut header).is_ok() {
+                    return is_gif_bytes(&header);
                 }
             }
             false

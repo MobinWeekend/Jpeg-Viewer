@@ -577,35 +577,31 @@ impl SettingsManager {
             }
 
             if let Err(e) = fs::rename(&temp_path, path) {
-                if had_original {
-                    if let Err(restore_error) = fs::rename(&backup_path, path) {
-                        return Err(format!(
-                            "Could not install new settings file: {}; restoring the previous file also failed: {} (backup at {:?})",
-                            e, restore_error, backup_path
-                        ));
-                    }
+                if had_original && let Err(restore_error) = fs::rename(&backup_path, path) {
+                    return Err(format!(
+                        "Could not install new settings file: {}; restoring the previous file also failed: {} (backup at {:?})",
+                        e, restore_error, backup_path
+                    ));
                 }
                 return Err(format!("Could not install new settings file: {}", e));
             }
 
-            if had_original {
-                if let Err(e) = fs::remove_file(&backup_path) {
-                    eprintln!(
-                        "Warning: settings saved, but could not remove backup {:?}: {}",
-                        backup_path, e
-                    );
-                }
+            if had_original && let Err(e) = fs::remove_file(&backup_path) {
+                eprintln!(
+                    "Warning: settings saved, but could not remove backup {:?}: {}",
+                    backup_path, e
+                );
             }
             Ok(())
         })();
 
-        if temp_path.exists() {
-            if let Err(e) = fs::remove_file(&temp_path) {
-                eprintln!(
-                    "Warning: could not remove temporary settings file {:?}: {}",
-                    temp_path, e
-                );
-            }
+        if temp_path.exists()
+            && let Err(e) = fs::remove_file(&temp_path)
+        {
+            eprintln!(
+                "Warning: could not remove temporary settings file {:?}: {}",
+                temp_path, e
+            );
         }
         result
     }
