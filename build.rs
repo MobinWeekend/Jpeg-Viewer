@@ -1,6 +1,7 @@
 fn main() {
     // Re-run the build script when application assets change.
     println!("cargo:rerun-if-changed=assets/icons");
+    println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
 
     #[cfg(target_os = "windows")]
     build_windows();
@@ -17,6 +18,15 @@ fn build_windows() {
     let mut res = winresource::WindowsResource::new();
 
     res.set_icon("assets/icons/icon.ico");
+    res.set("FileDescription", "JPEG Viewer");
+    res.set("ProductName", "JPEG Viewer");
+    res.set("CompanyName", "MobinWeekend");
+    res.set("LegalCopyright", "Copyright © MobinWeekend");
+
+    let version =
+        std::env::var("CARGO_PKG_VERSION").expect("Cargo did not provide CARGO_PKG_VERSION");
+    res.set("FileVersion", &version);
+    res.set("ProductVersion", &version);
 
     res.compile().expect("Failed to compile Windows resources");
 }

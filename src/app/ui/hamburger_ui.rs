@@ -14,8 +14,8 @@ impl ViewerApp {
         let platform_profile = crate::ui_theme::current_look_profile(ui.ctx());
         let button_label = "☰";
         let win98 = platform_profile == "win98";
-        let unframed_home = self.is_home_surface_active()
-            && !self.settings_manager.get().show_titlebar;
+        let unframed_home =
+            self.is_home_surface_active() && !self.settings_manager.get().show_titlebar;
         let button_fill = if win98 && !unframed_home {
             ui.visuals().widgets.inactive.bg_fill
         } else {
@@ -129,18 +129,18 @@ impl ViewerApp {
         let menu_rect = ui.min_rect();
 
         ctx.input(|input| {
-            if let Some(pointer_pos) = input.pointer.interact_pos() {
-                if input.pointer.any_pressed() {
-                    let hamburger_rect = self.hamburger_button_rect.unwrap_or_else(|| {
-                        egui::Rect::from_min_size(
-                            egui::pos2(MENU_OFFSET, MENU_OFFSET),
-                            egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE),
-                        )
-                    });
+            if let Some(pointer_pos) = input.pointer.interact_pos()
+                && input.pointer.any_pressed()
+            {
+                let hamburger_rect = self.hamburger_button_rect.unwrap_or_else(|| {
+                    egui::Rect::from_min_size(
+                        egui::pos2(MENU_OFFSET, MENU_OFFSET),
+                        egui::vec2(HAMBURGER_SIZE, HAMBURGER_SIZE),
+                    )
+                });
 
-                    if !menu_rect.contains(pointer_pos) && !hamburger_rect.contains(pointer_pos) {
-                        self.hamburger_menu_open = false;
-                    }
+                if !menu_rect.contains(pointer_pos) && !hamburger_rect.contains(pointer_pos) {
+                    self.hamburger_menu_open = false;
                 }
             }
         });
@@ -297,11 +297,10 @@ impl ViewerApp {
             .on_hover_text("Choose an application using the operating system's Open With dialog")
             .clicked()
         {
-            if let Some(path) = path {
-                if let Err(error) = super::super::external_open::open_with(&path) {
-                    self.queue_status =
-                        Some(format!("Could not open external application: {error}"));
-                }
+            if let Some(path) = path
+                && let Err(error) = super::super::external_open::open_with(&path)
+            {
+                self.queue_status = Some(format!("Could not open external application: {error}"));
             }
             self.hamburger_menu_open = false;
         }
@@ -325,10 +324,10 @@ impl ViewerApp {
             )
             .clicked()
         {
-            if let Some(path) = path {
-                if let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
-                    self.queue_status = Some(format!("Could not locate file: {error}"));
-                }
+            if let Some(path) = path
+                && let Err(error) = super::super::external_open::reveal_in_file_manager(&path)
+            {
+                self.queue_status = Some(format!("Could not locate file: {error}"));
             }
             self.hamburger_menu_open = false;
         }

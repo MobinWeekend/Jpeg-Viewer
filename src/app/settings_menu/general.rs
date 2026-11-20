@@ -6,8 +6,8 @@
 //! - Sorting method
 
 use crate::app::types::ViewerApp;
-use crate::input::shortcuts::ViewerCommand;
 use crate::imaging::sort::SortMethod;
+use crate::input::shortcuts::ViewerCommand;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -52,7 +52,6 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     });
 }
 
-
 fn render_masonry_folder_headers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut show_headers = app.settings_manager.get().masonry_show_folder_headers;
     if crate::ui_theme::switch(ui, &mut show_headers, "Show folder headers") {
@@ -89,16 +88,20 @@ fn render_new_tab_recent_options(app: &mut ViewerApp, ui: &mut egui::Ui) {
         });
     }
     ui.label(
-        egui::RichText::new("Home keeps up to 8 recently opened folders, saved queues, and archives.")
-            .small()
-            .weak(),
+        egui::RichText::new(
+            "Home keeps up to 8 recently opened folders, saved queues, and archives.",
+        )
+        .small()
+        .weak(),
     );
 }
 
 fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut centered = app.settings_manager.get().start_centered;
     if crate::ui_theme::switch(ui, &mut centered, "Start centered on screen") {
-        let _ = app.settings_manager.update(|settings| settings.start_centered = centered);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.start_centered = centered);
     }
 }
 
@@ -107,7 +110,9 @@ pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut workers = current as u32;
     ui.horizontal(|ui| {
         ui.label("Thumbnail worker multiplier");
-        ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut workers, 1..=8).show_value(true)));
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut workers, 1..=8).show_value(true),
+        ));
     });
     if workers as usize != current {
         let _ = app
@@ -122,7 +127,9 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         if crate::ui_theme::switch(ui, &mut app.b_ctrl_invert, "Invert scroll zoom") {
             let value = app.b_ctrl_invert;
-            let _ = app.settings_manager.update(|settings| settings.b_ctrl_invert = value);
+            let _ = app
+                .settings_manager
+                .update(|settings| settings.b_ctrl_invert = value);
         }
         ui.label(
             egui::RichText::new(if app.b_ctrl_invert {
@@ -137,14 +144,20 @@ fn render_invert_scroll_zoom(app: &mut ViewerApp, ui: &mut egui::Ui) {
 }
 
 fn render_window_mouse_shortcuts(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    let mut move_enabled = app.settings_manager.get().window_move_mouse_shortcut_enabled;
+    let mut move_enabled = app
+        .settings_manager
+        .get()
+        .window_move_mouse_shortcut_enabled;
     if crate::ui_theme::switch(ui, &mut move_enabled, "Alt + left-drag moves window") {
         let _ = app.settings_manager.update(|settings| {
             settings.window_move_mouse_shortcut_enabled = move_enabled;
         });
     }
 
-    let mut resize_enabled = app.settings_manager.get().window_resize_mouse_shortcut_enabled;
+    let mut resize_enabled = app
+        .settings_manager
+        .get()
+        .window_resize_mouse_shortcut_enabled;
     if crate::ui_theme::switch(ui, &mut resize_enabled, "Shift + left-drag resizes window") {
         let _ = app.settings_manager.update(|settings| {
             settings.window_resize_mouse_shortcut_enabled = resize_enabled;
@@ -161,7 +174,9 @@ fn render_toggle_compactui(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         if crate::ui_theme::switch(ui, &mut app.compactui, "Compact mode") {
             let value = app.compactui;
-            let _ = app.settings_manager.update(|settings| settings.compact_mode = value);
+            let _ = app
+                .settings_manager
+                .update(|settings| settings.compact_mode = value);
         }
         ui.label(egui::RichText::new("F4").small().weak().monospace());
     });
@@ -182,7 +197,9 @@ fn render_texture_filter(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Con
             });
     });
     if filter != current_filter {
-        let _ = app.settings_manager.update(|settings| settings.texture_filter = filter);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.texture_filter = filter);
         reload_current_image_for_filter(app, ctx);
     }
 }
@@ -259,10 +276,8 @@ pub(crate) fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
 
             // Apply to egui context
             let s = app.settings_manager.get().clone();
-            let theme_pref = crate::ui_theme::effective_theme_preference(
-                &theme,
-                &s.look_preference,
-            );
+            let theme_pref =
+                crate::ui_theme::effective_theme_preference(&theme, &s.look_preference);
             ctx.set_theme(theme_pref);
             // Refresh desktop-specific settings such as COSMIC's light/dark frost option.
             crate::ui_theme::set_look_profile(ctx, &s.look_preference);
@@ -288,8 +303,8 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
         .unwrap_or(current.ui_scale);
     ui.horizontal(|ui| {
         ui.label("UI scale");
-        let response = ui.add(
-            crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut scale, 0.75..=1.50)
+        let response = ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut scale, 0.75..=1.50)
                 .step_by(0.05)
                 .suffix("×"),
         ));
@@ -314,8 +329,8 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
         .unwrap_or(saved_text_scale);
     ui.horizontal(|ui| {
         ui.label("Text size");
-        let response = ui.add(
-            crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut text_scale, 0.80..=1.40)
+        let response = ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut text_scale, 0.80..=1.40)
                 .step_by(0.05)
                 .suffix("×"),
         ));
@@ -344,7 +359,9 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
                 "Custom"
             } else {
                 match accent.as_str() {
-                    "auto" if crate::ui_theme::current_look_profile(ctx) == "win98" => "Classic (Windows 98 default)",
+                    "auto" if crate::ui_theme::current_look_profile(ctx) == "win98" => {
+                        "Classic (Windows 98 default)"
+                    }
                     "auto" => "Automatic (desktop)",
                     "win98blue" => "Classic Windows 98 blue",
                     "blue" => "Blue",
@@ -358,8 +375,20 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
                 }
             })
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut accent, "auto".to_string(), if crate::ui_theme::current_look_profile(ctx) == "win98" { "Classic (Windows 98 default)" } else { "Automatic (desktop)" });
-                ui.selectable_value(&mut accent, "win98blue".to_string(), "Classic Windows 98 blue");
+                ui.selectable_value(
+                    &mut accent,
+                    "auto".to_string(),
+                    if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                        "Classic (Windows 98 default)"
+                    } else {
+                        "Automatic (desktop)"
+                    },
+                );
+                ui.selectable_value(
+                    &mut accent,
+                    "win98blue".to_string(),
+                    "Classic Windows 98 blue",
+                );
                 ui.selectable_value(&mut accent, "teal".to_string(), "Teal");
                 ui.selectable_value(&mut accent, "blue".to_string(), "Blue");
                 ui.selectable_value(&mut accent, "purple".to_string(), "Purple");
@@ -441,14 +470,14 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     }
     let settings = app.settings_manager.get().clone();
     let mut checker_size = settings.alpha_checkerboard_size;
-    ui.add(
-        crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut checker_size, 12.0..=64.0)
+    ui.add(crate::ui_theme::BorderedSlider::new(
+        egui::Slider::new(&mut checker_size, 12.0..=64.0)
             .step_by(2.0)
             .text("Checker size"),
     ));
     let mut checker_brightness = settings.alpha_checkerboard_brightness;
-    ui.add(
-        crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut checker_brightness, 0.25..=1.5)
+    ui.add(crate::ui_theme::BorderedSlider::new(
+        egui::Slider::new(&mut checker_brightness, 0.25..=1.5)
             .step_by(0.05)
             .text("Checker brightness"),
     ));
@@ -487,7 +516,11 @@ fn theme_label_str(theme: &str) -> &'static str {
 // Startup Fullscreen
 
 fn render_session_restore(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    let current = app.settings_manager.get().session_restore_preference.clone();
+    let current = app
+        .settings_manager
+        .get()
+        .session_restore_preference
+        .clone();
     let mut selected = current.clone();
     ui.horizontal(|ui| {
         ui.label("Restore workspace session");
@@ -499,13 +532,19 @@ fn render_session_restore(app: &mut ViewerApp, ui: &mut egui::Ui) {
                 _ => "Restore automatically",
             })
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut selected, "automatic".to_owned(), "Restore automatically");
+                ui.selectable_value(
+                    &mut selected,
+                    "automatic".to_owned(),
+                    "Restore automatically",
+                );
                 ui.selectable_value(&mut selected, "ask".to_owned(), "Ask every startup");
                 ui.selectable_value(&mut selected, "never".to_owned(), "Never restore");
             });
     });
     if selected != current {
-        let _ = app.settings_manager.update(|settings| settings.session_restore_preference = selected);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.session_restore_preference = selected);
     }
     ui.label(egui::RichText::new("Controls whether open Viewer, Masonry, Image, and Compare tabs are restored when JPEG Viewer starts.").small().weak());
 }
@@ -513,9 +552,15 @@ fn render_session_restore(app: &mut ViewerApp, ui: &mut egui::Ui) {
 fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut start_fs = app.settings_manager.get().start_fullscreen;
     if crate::ui_theme::switch(ui, &mut start_fs, "Start in fullscreen mode") {
-        let _ = app.settings_manager.update(|settings| settings.start_fullscreen = start_fs);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.start_fullscreen = start_fs);
     }
-    ui.label(egui::RichText::new("Escape exits fullscreen.").small().weak());
+    ui.label(
+        egui::RichText::new("Escape exits fullscreen.")
+            .small()
+            .weak(),
+    );
 }
 
 /// Render sort method in a horizontal layout (for compact settings panels)
@@ -544,14 +589,13 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
             .map(|entry| entry.get_id());
         if !app.image_entries.is_empty() {
             crate::imaging::sort::sort_images(&mut app.image_entries, app.sort_method);
-            if let Some(id) = selected_id {
-                if let Some(index) = app
+            if let Some(id) = selected_id
+                && let Some(index) = app
                     .image_entries
                     .iter()
                     .position(|entry| entry.get_id() == id)
-                {
-                    app.current_index = index;
-                }
+            {
+                app.current_index = index;
             }
         } else {
             app.handle_command(ctx, ViewerCommand::RebuildIndex);
@@ -568,15 +612,15 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
     }
 }
 
-
 fn render_single_instance(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut enabled = app.settings_manager.get().single_instance_enabled;
     if crate::ui_theme::switch(ui, &mut enabled, "Run only one instance") {
-        let _ = app.settings_manager.update(|settings| settings.single_instance_enabled = enabled);
+        let _ = app
+            .settings_manager
+            .update(|settings| settings.single_instance_enabled = enabled);
     }
     ui.label(egui::RichText::new("When enabled, later launches send their selected files to the running window. Restart the app to apply changes.").small().weak());
 }
-
 
 fn render_recursive_folder_drop(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let mut enabled = app.settings_manager.get().drag_drop_folders_recursive;

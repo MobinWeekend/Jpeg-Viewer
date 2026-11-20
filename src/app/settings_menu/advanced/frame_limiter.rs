@@ -34,7 +34,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         if app.max_fps == 0.0 {
             ui.label("Unlimited");
         } else {
-            ui.label(format!(""));
+            ui.label(String::new());
         }
     });
     ui.add_space(4.0);
@@ -63,7 +63,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         if app.idle_fps_limit == 0.0 {
             ui.label("Stop frame draw");
         } else {
-            ui.label(format!(""));
+            ui.label(String::new());
         }
         ui.add_space(4.0);
     });
@@ -139,7 +139,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         if app.unfocused_idle_fps_limit == 0.0 {
             ui.label("Stop frame draw");
         } else {
-            ui.label(format!(""));
+            ui.label(String::new());
         }
         ui.add_space(4.0);
     });

@@ -33,7 +33,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 .on_hover_text("Open the settings .ini file in your default editor")
                 .clicked()
             {
-                open_path(&path);
+                open_path(path);
             }
         });
         ui.add_space(6.0);

@@ -133,8 +133,10 @@ pub fn render_top_toolbar(
                     {
                         this.render_hamburger_ui(ui);
                     }
-                    let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
-                    let masonry_is_in_fullscreen_strip = fullscreen && this.workspace_tab_strip_visible(ctx);
+                    let fullscreen =
+                        ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+                    let masonry_is_in_fullscreen_strip =
+                        fullscreen && this.workspace_tab_strip_visible(ctx);
                     if !crate::app::ui::uses_desktop_menu_bar(ctx)
                         && this.masonry_toggle_available()
                         && !masonry_is_in_fullscreen_strip
@@ -142,7 +144,11 @@ pub fn render_top_toolbar(
                         let active = this.workspace.active_kind()
                             == crate::app::workspace::WorkspaceTabKind::Masonry;
                         let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
-                            .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+                            .on_hover_text(if active {
+                                "Return to Viewer"
+                            } else {
+                                "Open current entries in Masonry"
+                            });
                         if toggle.clicked() {
                             this.activate_masonry_from_navigation_button();
                         }
@@ -438,13 +444,20 @@ fn render_win98_primary_row(
         separator(ui, 1.0);
     }
     let masonry_is_in_fullscreen_strip = fullscreen && app.workspace_tab_strip_visible(ctx);
-    if native_window_titlebar && !crate::app::ui::uses_desktop_menu_bar(ctx)
-        && app.masonry_toggle_available() && !masonry_is_in_fullscreen_strip
+    if native_window_titlebar
+        && !crate::app::ui::uses_desktop_menu_bar(ctx)
+        && app.masonry_toggle_available()
+        && !masonry_is_in_fullscreen_strip
     {
-        let active = app.workspace.active_kind()
-            == crate::app::workspace::WorkspaceTabKind::Masonry;
-        let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
-            .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+        let active =
+            app.workspace.active_kind() == crate::app::workspace::WorkspaceTabKind::Masonry;
+        let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0).on_hover_text(
+            if active {
+                "Return to Viewer"
+            } else {
+                "Open current entries in Masonry"
+            },
+        );
         if toggle.clicked() {
             app.activate_masonry_from_navigation_button();
         }
@@ -527,10 +540,14 @@ fn render_platform_primary_row(
             && app.masonry_toggle_available()
             && !masonry_is_in_fullscreen_strip
         {
-            let active = app.workspace.active_kind()
-                == crate::app::workspace::WorkspaceTabKind::Masonry;
+            let active =
+                app.workspace.active_kind() == crate::app::workspace::WorkspaceTabKind::Masonry;
             let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
-                .on_hover_text(if active { "Return to Viewer" } else { "Open current entries in Masonry" });
+                .on_hover_text(if active {
+                    "Return to Viewer"
+                } else {
+                    "Open current entries in Masonry"
+                });
             if toggle.clicked() {
                 app.activate_masonry_from_navigation_button();
             }
@@ -566,10 +583,8 @@ fn render_platform_primary_row(
                 let consumed = (ui.next_widget_position().x - row_start).max(0.0);
                 app.file_metadata_button_with_width(ui, (width_budget - consumed).max(0.0));
             }
-        } else if placement == "win98" {
-            if ui.button("Open Image…").clicked() {
-                app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
-            }
+        } else if placement == "win98" && ui.button("Open Image…").clicked() {
+            app.handle_command(ctx, crate::input::shortcuts::ViewerCommand::OpenFile);
         }
     });
 }
@@ -597,11 +612,24 @@ pub fn render_bottom_right_toolbar(app: &mut ViewerApp, ctx: &egui::Context, rig
         } else if crate::app::ui::uses_desktop_menu_bar(ctx) {
             crate::app::ui::desktop_menu_bar_height(ctx)
                 + 2.0
-                + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
+                + if app.workspace_tab_strip_visible(ctx) {
+                    44.0
+                } else {
+                    0.0
+                }
         } else if app.settings_manager.get().show_titlebar {
-            MENU_OFFSET + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
+            MENU_OFFSET
+                + if app.workspace_tab_strip_visible(ctx) {
+                    44.0
+                } else {
+                    0.0
+                }
         } else {
-            40.0 + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
+            40.0 + if app.workspace_tab_strip_visible(ctx) {
+                44.0
+            } else {
+                0.0
+            }
         };
         (
             egui::Align2::RIGHT_TOP,

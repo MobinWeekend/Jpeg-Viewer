@@ -48,6 +48,6 @@ impl ImageDecoder for HeicDecoder {
         let info = heic::ImageInfo::from_bytes(bytes)
             .map_err(|e| ImageError::Decode(format!("HEIC probe: {e}")))?;
 
-        Ok((info.width as u32, info.height as u32))
+        Ok((info.width, info.height))
     }
 }

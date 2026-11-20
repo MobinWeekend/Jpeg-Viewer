@@ -362,7 +362,6 @@ fn viewing_and_single_instance_settings_round_trip() {
     let _ = fs::remove_file(path);
 }
 
-
 #[test]
 fn settings_updates_are_debounced_and_unchanged_updates_stay_clean() {
     let unique = SystemTime::now()
@@ -378,15 +377,22 @@ fn settings_updates_are_debounced_and_unchanged_updates_stay_clean() {
         dirty_since: None,
     };
 
-    manager.update(|settings| settings.cache_radius = 9).unwrap();
+    manager
+        .update(|settings| settings.cache_radius = 9)
+        .unwrap();
     assert!(manager.is_dirty());
     assert!(manager.time_until_save().is_some());
     assert!(manager.save_if_due().is_none());
-    assert!(!path.exists(), "debounced updates must not write immediately");
+    assert!(
+        !path.exists(),
+        "debounced updates must not write immediately"
+    );
 
     // An update that does not change the serialized settings should not
     // restart the debounce timer or cause a needless rewrite.
-    manager.update(|settings| settings.cache_radius = 9).unwrap();
+    manager
+        .update(|settings| settings.cache_radius = 9)
+        .unwrap();
     assert!(manager.is_dirty());
     manager.dirty_since = Some(Instant::now() - Duration::from_secs(1));
     assert!(manager.save_if_due().is_some());
@@ -400,7 +406,10 @@ fn settings_updates_are_debounced_and_unchanged_updates_stay_clean() {
 fn unchanged_settings_updates_do_not_mark_the_file_dirty() {
     let path = std::env::temp_dir().join(format!(
         "jpeg-viewer-settings-clean-{}.ini",
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
     let mut manager = SettingsManager {
         path: path.clone(),

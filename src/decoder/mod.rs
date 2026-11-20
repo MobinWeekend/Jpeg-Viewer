@@ -62,5 +62,5 @@ pub fn decode_bytes(bytes: &[u8]) -> Result<DecodedImage, ImageError> {
 
     let format = format_detection::detect_format(bytes).ok_or(ImageError::UnknownFormat)?;
 
-    registry.decode(bytes, format, &DecodeOptions::default())
+    registry.decode(bytes, format, &DecodeOptions)
 }

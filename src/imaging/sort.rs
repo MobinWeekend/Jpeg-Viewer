@@ -7,9 +7,10 @@ use std::time::SystemTime;
 use crate::imaging::entry::{ArchiveImage, RarArchiveImage, S7ArchiveImage};
 
 /// Sort method enum
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortMethod {
     /// Natural/alphanumeric sorting (default)
+    #[default]
     Natural,
     /// Sort by file modification date (newest first)
     DateNewest,
@@ -17,12 +18,6 @@ pub enum SortMethod {
     DateOldest,
     /// Random shuffle
     Shuffle,
-}
-
-impl Default for SortMethod {
-    fn default() -> Self {
-        Self::Natural
-    }
 }
 
 /// Trait for getting a path reference from different image types
@@ -163,9 +158,7 @@ pub fn sort_by_date_oldest<T: AsPath>(images: &mut [T]) {
 fn sort_by_cached_modified_time<T: AsPath>(images: &mut [T], newest_first: bool) {
     if newest_first {
         images.sort_by_cached_key(|image| {
-            std::cmp::Reverse(
-                get_modified_time(image.as_path()).unwrap_or(SystemTime::UNIX_EPOCH),
-            )
+            std::cmp::Reverse(get_modified_time(image.as_path()).unwrap_or(SystemTime::UNIX_EPOCH))
         });
     } else {
         images.sort_by_cached_key(|image| {

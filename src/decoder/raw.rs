@@ -63,7 +63,12 @@ impl CameraRawDecoder {
             .checked_mul(4)
             .ok_or_else(|| ImageError::InvalidData("RAW image dimensions overflow".into()))?;
         let mut rgba = vec![255u8; rgba_len];
-        for (source, destination) in rgb16.chunks_exact(6).zip(rgba.chunks_exact_mut(4)) {
+        for (source, destination) in rgb16
+            .as_chunks::<6>()
+            .0
+            .iter()
+            .zip(rgba.chunks_exact_mut(4))
+        {
             // Develop mode is interleaved native-endian RGB16 sRGB. Scale the
             // full 0..65535 range to 0..255 instead of discarding the low byte.
             let r = u16::from_ne_bytes([source[0], source[1]]) as u32;

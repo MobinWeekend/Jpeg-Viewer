@@ -44,7 +44,7 @@ pub(crate) fn pump_worker_messages() {
 pub(crate) fn diagnostics_enabled() -> bool {
     #[cfg(target_os = "windows")]
     {
-        return windows_shell::diagnostics_enabled();
+        windows_shell::diagnostics_enabled()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -83,10 +83,7 @@ pub(crate) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaI
 /// performs one cache-first / generation pass here, but deliberately skips the
 /// second larger-size retry; the later high-resolution stage is responsible for
 /// asking Shell again at a closer size when the first preview is too small.
-pub(crate) fn load_or_request_placeholder(
-    path: &Path,
-    max_side: u32,
-) -> Option<image::RgbaImage> {
+pub(crate) fn load_or_request_placeholder(path: &Path, max_side: u32) -> Option<image::RgbaImage> {
     if !path.is_file() {
         return None;
     }
@@ -116,7 +113,7 @@ pub(crate) fn load_or_request_placeholder(
 pub(crate) fn source_dimensions(path: &Path) -> Option<(u32, u32)> {
     #[cfg(target_os = "windows")]
     {
-        return windows_shell::source_dimensions(path);
+        windows_shell::source_dimensions(path)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -138,9 +135,8 @@ mod quick_look {
     pub(super) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaImage> {
         static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
         let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-        let directory = std::env::temp_dir().join(format!(
-            "jpeg-viewer-quicklook-{}-{id}", std::process::id()
-        ));
+        let directory =
+            std::env::temp_dir().join(format!("jpeg-viewer-quicklook-{}-{id}", std::process::id()));
         std::fs::create_dir_all(&directory).ok()?;
         let thumbnail_size = max_side.max(1).to_string();
         let mut child = match Command::new("qlmanage")
@@ -181,12 +177,20 @@ mod quick_look {
         };
 
         let result = if status {
-            let generated = path.file_name().map(|name| directory.join(format!("{}.png", name.to_string_lossy())));
-            let fallback = path.file_stem().map(|stem| directory.join(format!("{}.png", stem.to_string_lossy())));
+            let generated = path
+                .file_name()
+                .map(|name| directory.join(format!("{}.png", name.to_string_lossy())));
+            let fallback = path
+                .file_stem()
+                .map(|stem| directory.join(format!("{}.png", stem.to_string_lossy())));
             generated
-                .and_then(|generated| image::open(&generated).ok().or_else(|| {
-                    fallback.as_deref().and_then(|fallback| image::open(fallback).ok())
-                }))
+                .and_then(|generated| {
+                    image::open(&generated).ok().or_else(|| {
+                        fallback
+                            .as_deref()
+                            .and_then(|fallback| image::open(fallback).ok())
+                    })
+                })
                 .map(|image| image.to_rgba8())
         } else {
             None
@@ -205,23 +209,23 @@ mod windows_shell {
     use std::sync::OnceLock;
     use windows::Win32::Foundation::SIZE;
     use windows::Win32::Graphics::Gdi::{
-        BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
-        DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC,
+        BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject, GetDC,
+        GetDIBits, GetObjectW, ReleaseDC,
     };
     use windows::Win32::Storage::EnhancedStorage::{
         PKEY_Image_HorizontalSize, PKEY_Image_VerticalSize,
     };
     use windows::Win32::System::Com::{
-        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED,
+        COINIT_APARTMENTTHREADED, CoInitializeEx, CoUninitialize,
         StructuredStorage::{PropVariantClear, PropVariantToUInt32},
     };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_NOREMOVE, PM_REMOVE,
-    };
     use windows::Win32::UI::Shell::{
-        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK,
-        SIIGBF_INCACHEONLY, SIIGBF_THUMBNAILONLY,
-        PropertiesSystem::{IPropertyStore, SHGetPropertyStoreFromParsingName, GPS_DEFAULT},
+        IShellItemImageFactory,
+        PropertiesSystem::{GPS_DEFAULT, IPropertyStore, SHGetPropertyStoreFromParsingName},
+        SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_INCACHEONLY, SIIGBF_THUMBNAILONLY,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, MSG, PM_NOREMOVE, PM_REMOVE, PeekMessageW, TranslateMessage,
     };
     use windows::core::PCWSTR;
 
@@ -247,10 +251,7 @@ mod windows_shell {
 
     fn diagnostic(path: &Path, stage: &str, detail: impl std::fmt::Display) {
         if diagnostics_enabled() {
-            eprintln!(
-                "[thumbnail:windows] {}: {stage}: {detail}",
-                path.display(),
-            );
+            eprintln!("[thumbnail:windows] {}: {stage}: {detail}", path.display(),);
         }
     }
 
@@ -336,7 +337,9 @@ mod windows_shell {
                 );
                 return None;
             }
-            let byte_count = (width as usize).checked_mul(height as usize)?.checked_mul(4)?;
+            let byte_count = (width as usize)
+                .checked_mul(height as usize)?
+                .checked_mul(4)?;
             let mut pixels = vec![0u8; byte_count];
             let mut info = BITMAPINFO::default();
             info.bmiHeader = BITMAPINFOHEADER {
@@ -378,13 +381,23 @@ mod windows_shell {
             // Some providers expose premultiplied channels. Detect that layout
             // conservatively (all partially transparent RGB channels <= alpha)
             // and convert it to straight alpha for egui's unmultiplied textures.
-            let has_alpha = pixels.chunks_exact(4).any(|pixel| pixel[3] != 0);
-            let has_partial_alpha = pixels.chunks_exact(4)
+            let has_alpha = pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0);
+            let has_partial_alpha = pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .any(|pixel| pixel[3] > 0 && pixel[3] < 255);
-            let looks_premultiplied = has_alpha && has_partial_alpha && pixels.chunks_exact(4)
-                .filter(|pixel| pixel[3] > 0 && pixel[3] < 255)
-                .all(|pixel| pixel[0] <= pixel[3] && pixel[1] <= pixel[3] && pixel[2] <= pixel[3]);
-            for pixel in pixels.chunks_exact_mut(4) {
+            let looks_premultiplied = has_alpha
+                && has_partial_alpha
+                && pixels
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter(|pixel| pixel[3] > 0 && pixel[3] < 255)
+                    .all(|pixel| {
+                        pixel[0] <= pixel[3] && pixel[1] <= pixel[3] && pixel[2] <= pixel[3]
+                    });
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 pixel.swap(0, 2);
                 if !has_alpha {
                     pixel[3] = 255;
@@ -395,8 +408,7 @@ mod windows_shell {
                 } else if looks_premultiplied && pixel[3] < 255 {
                     let alpha = pixel[3] as u16;
                     for channel in &mut pixel[..3] {
-                        *channel = ((*channel as u16 * 255 + alpha / 2) / alpha)
-                            .min(255) as u8;
+                        *channel = ((*channel as u16 * 255 + alpha / 2) / alpha).min(255) as u8;
                     }
                 }
             }
@@ -410,19 +422,22 @@ mod windows_shell {
         cache_only: bool,
         allow_larger_cached_bitmap: bool,
     ) -> Option<image::RgbaImage> {
-        let wide = path.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>();
-        let factory: IShellItemImageFactory = unsafe {
-            SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
-        }
-        .map_err(|error| {
-            diagnostic(
-                path,
-                "SHCreateItemFromParsingName",
-                format!("HRESULT 0x{:08X}: {error}", error.code().0 as u32),
-            );
-            error
-        })
-        .ok()?;
+        let wide = path
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        let factory: IShellItemImageFactory =
+            unsafe { SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None) }
+                .map_err(|error| {
+                    diagnostic(
+                        path,
+                        "SHCreateItemFromParsingName",
+                        format!("HRESULT 0x{:08X}: {error}", error.code().0 as u32),
+                    );
+                    error
+                })
+                .ok()?;
         let mut flags = SIIGBF_THUMBNAILONLY;
         if allow_larger_cached_bitmap {
             // BIGGERSIZEOK lets Shell return a larger cached flavor (e.g. 1024
@@ -442,7 +457,11 @@ mod windows_shell {
             )
         }
         .map_err(|error| {
-            let mode = if cache_only { "GetImage(cache-only)" } else { "GetImage(generate)" };
+            let mode = if cache_only {
+                "GetImage(cache-only)"
+            } else {
+                "GetImage(generate)"
+            };
             diagnostic(
                 path,
                 mode,
@@ -452,9 +471,15 @@ mod windows_shell {
         })
         .ok()?;
         let result = bitmap_to_rgba(path, bitmap);
-        unsafe { let _ = DeleteObject(bitmap.into()); }
+        unsafe {
+            let _ = DeleteObject(bitmap.into());
+        }
         if result.is_none() {
-            diagnostic(path, "bitmap conversion", "Shell bitmap could not be converted to a complete RGBA image");
+            diagnostic(
+                path,
+                "bitmap conversion",
+                "Shell bitmap could not be converted to a complete RGBA image",
+            );
         }
         result
     }
@@ -470,7 +495,10 @@ mod windows_shell {
                 diagnostic(
                     path,
                     property_name,
-                    format!("IPropertyStore::GetValue failed (HRESULT 0x{:08X}): {error}", error.code().0 as u32),
+                    format!(
+                        "IPropertyStore::GetValue failed (HRESULT 0x{:08X}): {error}",
+                        error.code().0 as u32
+                    ),
                 );
                 error
             })
@@ -480,7 +508,10 @@ mod windows_shell {
                 diagnostic(
                     path,
                     property_name,
-                    format!("PROPVARIANT conversion failed (HRESULT 0x{:08X}): {error}", error.code().0 as u32),
+                    format!(
+                        "PROPVARIANT conversion failed (HRESULT 0x{:08X}): {error}",
+                        error.code().0 as u32
+                    ),
                 );
                 error
             })
@@ -498,7 +529,11 @@ mod windows_shell {
     }
 
     fn source_dimensions_inner(path: &Path) -> Option<(u32, u32)> {
-        let wide = path.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>();
+        let wide = path
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
         let store: IPropertyStore = unsafe {
             SHGetPropertyStoreFromParsingName::<_, _, IPropertyStore>(
                 PCWSTR(wide.as_ptr()),
@@ -521,12 +556,8 @@ mod windows_shell {
             &PKEY_Image_HorizontalSize,
             "Image_HorizontalSize",
         )?;
-        let height = get_image_dimension(
-            path,
-            &store,
-            &PKEY_Image_VerticalSize,
-            "Image_VerticalSize",
-        )?;
+        let height =
+            get_image_dimension(path, &store, &PKEY_Image_VerticalSize, "Image_VerticalSize")?;
         Some((width, height))
     }
 
@@ -577,7 +608,9 @@ mod windows_shell {
 
         let max_side = max_side.max(1);
         let first = request_at_size(path, max_side);
-        let first_resolution = first.as_ref().map(|image| image.width().max(image.height()));
+        let first_resolution = first
+            .as_ref()
+            .map(|image| image.width().max(image.height()));
         let native_floor = max_side.saturating_mul(3).div_ceil(4);
         if first_resolution.is_some_and(|resolution| resolution >= native_floor) {
             return first;

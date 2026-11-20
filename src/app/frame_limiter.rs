@@ -36,10 +36,12 @@ impl ViewerApp {
         }
 
         // Overlay timeout has priority when it is visible.
-        if self.overlay_visible && !self.hamburger_menu_open && !self.image_entries.is_empty() {
-            if self.handle_overlay_repaint(ctx) {
-                return;
-            }
+        if self.overlay_visible
+            && !self.hamburger_menu_open
+            && !self.image_entries.is_empty()
+            && self.handle_overlay_repaint(ctx)
+        {
+            return;
         }
 
         // Normal idle/non-idle FPS.
@@ -104,7 +106,8 @@ impl ViewerApp {
             return false;
         }
 
-        let hide_delay = Duration::from_millis(settings.navigation_ui_auto_hide_ms.clamp(500, 5000));
+        let hide_delay =
+            Duration::from_millis(settings.navigation_ui_auto_hide_ms.clamp(500, 5000));
         let elapsed = self.last_interaction_time.elapsed();
 
         if elapsed >= hide_delay {

@@ -18,12 +18,11 @@ impl ViewerApp {
 
         self.file_type_detection = detection.clone();
 
-        if let Some(detection) = detection {
-            if let Some(image_id) = self.get_image_id(self.current_index) {
-                if let Some(cached) = self.image_cache.get_mut(&image_id) {
-                    cached.file_type_detection = Some(detection);
-                }
-            }
+        if let Some(detection) = detection
+            && let Some(image_id) = self.get_image_id(self.current_index)
+            && let Some(cached) = self.image_cache.get_mut(&image_id)
+        {
+            cached.file_type_detection = Some(detection);
         }
     }
 
@@ -32,12 +31,11 @@ impl ViewerApp {
         // Detection is produced by the background image loader from the same
         // source bytes used for decoding. Never reopen the file from navigation
         // or a UI update merely to repeat this check.
-        if let Some(detection) = self.file_type_detection.clone() {
-            if detection.index == self.current_index
-                && detection.generation == self.preload_generation
-            {
-                return;
-            }
+        if let Some(detection) = self.file_type_detection.clone()
+            && detection.index == self.current_index
+            && detection.generation == self.preload_generation
+        {
+            return;
         }
 
         let cached_detection = self.get_image_id(self.current_index).and_then(|image_id| {

@@ -221,27 +221,25 @@ impl ViewerApp {
             if !self.startup_restore_maximize_pending {
                 self.settings_manager.settings.window_maximized = is_maximized;
             }
-            if !is_maximized && !self.startup_restore_maximize_pending {
-                if let (Some(pos), Some(size)) = (pos, size) {
-                    if size.x > 100.0 && size.y > 100.0 {
-                        let pos_arr = [pos.x, pos.y];
-                        let size_arr = [size.x, size.y];
-                        if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr)
-                        {
-                            eprintln!("Failed to save window state: {}", e);
-                        } else {
-                            geometry_was_saved = true;
-                        }
-                    }
+            if !is_maximized
+                && !self.startup_restore_maximize_pending
+                && let (Some(pos), Some(size)) = (pos, size)
+                && size.x > 100.0
+                && size.y > 100.0
+            {
+                let pos_arr = [pos.x, pos.y];
+                let size_arr = [size.x, size.y];
+                if let Err(e) = self.settings_manager.update_window_state(pos_arr, size_arr) {
+                    eprintln!("Failed to save window state: {}", e);
+                } else {
+                    geometry_was_saved = true;
                 }
             }
         }
         // If maximized (or closing from fullscreen), preserve the last normal
         // geometry and persist the maximize flag independently.
-        if !geometry_was_saved {
-            if let Err(error) = self.settings_manager.save() {
-                eprintln!("Failed to save window maximize state: {}", error);
-            }
+        if !geometry_was_saved && let Err(error) = self.settings_manager.save() {
+            eprintln!("Failed to save window maximize state: {}", error);
         }
     }
 
@@ -462,15 +460,13 @@ impl ViewerApp {
         // Do not make the user wait for the grouping window. Open the first path
         // from this activation immediately; later requests are still accumulated
         // below and can replace it with the complete multi-file selection.
-        if !had_pending_batch {
-            if let Some(path) = first_incoming_path.as_ref() {
-                let is_queue_file = path
-                    .extension()
-                    .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
-                if !is_queue_file {
-                    self.open_path(path.clone());
-                    self.pending_open_first_opened = true;
-                }
+        if !had_pending_batch && let Some(path) = first_incoming_path.as_ref() {
+            let is_queue_file = path
+                .extension()
+                .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"));
+            if !is_queue_file {
+                self.open_path(path.clone());
+                self.pending_open_first_opened = true;
             }
         }
 

@@ -111,8 +111,8 @@ impl ViewerApp {
             return;
         }
 
-        let (fullscreen, maximized, alt, left_down, right_down, delta, hover_pos) = ctx
-            .input(|input| {
+        let (fullscreen, maximized, alt, left_down, right_down, delta, hover_pos) =
+            ctx.input(|input| {
                 (
                     input.viewport().fullscreen.unwrap_or(false),
                     input.viewport().maximized.unwrap_or(false),
@@ -506,10 +506,11 @@ impl ViewerApp {
     pub fn handle_window_resize(&mut self, ctx: &egui::Context) {
         let current_size = ctx.input(|i| i.viewport().inner_rect).map(|r| r.size());
 
-        if let (Some(prev), Some(curr)) = (self.last_window_size, current_size) {
-            if prev != curr && !self.b_zoom_used {
-                self.b_fit_to_window = true;
-            }
+        if let (Some(prev), Some(curr)) = (self.last_window_size, current_size)
+            && prev != curr
+            && !self.b_zoom_used
+        {
+            self.b_fit_to_window = true;
         }
 
         self.last_window_size = current_size;

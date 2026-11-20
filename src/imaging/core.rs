@@ -67,7 +67,10 @@ impl ImageFormat {
             Self::Heic => &["heic", "heif"],
             Self::JpegXl => &["jxl"],
             Self::Svg => &["svg"],
-            Self::CameraRaw => &["cr2", "cr3", "nef", "nrw", "arw", "dng", "raf", "orf", "rw2", "pef", "srw", "3fr", "fff", "iiq", "kdc", "mos", "mrw", "rwl", "x3f"],
+            Self::CameraRaw => &[
+                "cr2", "cr3", "nef", "nrw", "arw", "dng", "raf", "orf", "rw2", "pef", "srw", "3fr",
+                "fff", "iiq", "kdc", "mos", "mrw", "rwl", "x3f",
+            ],
         }
     }
 
@@ -172,7 +175,7 @@ pub trait ImageDecoder: Send + Sync {
 
     /// Fast dimension inspection. Default falls back to full decode.
     fn dimensions(&self, bytes: &[u8]) -> Result<(u32, u32), ImageError> {
-        let img = self.decode(bytes, &DecodeOptions::default())?;
+        let img = self.decode(bytes, &DecodeOptions)?;
         Ok((img.width(), img.height()))
     }
 }

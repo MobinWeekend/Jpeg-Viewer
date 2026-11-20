@@ -29,7 +29,10 @@ fn detect_from_values(current: &str, session: &str) -> Desktop {
     if values.iter().any(|value| value.contains("cosmic")) {
         return Desktop::Cosmic;
     }
-    if values.iter().any(|value| value.contains("kde") || value.contains("plasma")) {
+    if values
+        .iter()
+        .any(|value| value.contains("kde") || value.contains("plasma"))
+    {
         return Desktop::Kde;
     }
     if values.iter().any(|value| value.contains("xfce")) {
@@ -54,11 +57,20 @@ mod tests {
     #[test]
     fn recognizes_requested_desktops() {
         assert_eq!(detect_from_values("COSMIC", "cosmic"), Desktop::Cosmic);
-        assert_eq!(detect_from_values("GNOME", "gnome"), Desktop::GnomeCompatible);
+        assert_eq!(
+            detect_from_values("GNOME", "gnome"),
+            Desktop::GnomeCompatible
+        );
         assert_eq!(detect_from_values("KDE", "plasma"), Desktop::Kde);
         assert_eq!(detect_from_values("XFCE", "xfce"), Desktop::Xfce);
-        assert_eq!(detect_from_values("X-Cinnamon", ""), Desktop::GnomeCompatible);
+        assert_eq!(
+            detect_from_values("X-Cinnamon", ""),
+            Desktop::GnomeCompatible
+        );
         assert_eq!(detect_from_values("MATE", "mate"), Desktop::GnomeCompatible);
-        assert_eq!(detect_from_values("Budgie:GNOME", "budgie"), Desktop::GnomeCompatible);
+        assert_eq!(
+            detect_from_values("Budgie:GNOME", "budgie"),
+            Desktop::GnomeCompatible
+        );
     }
 }

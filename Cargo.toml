@@ -5,6 +5,7 @@ edition = "2024"
 description = "A fast, lightweight GPU-accelerated image viewer written in Rust."
 license = "GPL-3.0-only"
 repository = "https://github.com/MobinWeekend/Jpeg-Viewer"
+homepage = "https://github.com/MobinWeekend/Jpeg-Viewer"
 readme = "README.md"
 keywords = ["image", "viewer", "jpeg", "graphics", "egui"]
 categories = ["multimedia::images"]
@@ -109,9 +110,19 @@ assets = [
         "644"
     ],
     [
-        "assets/icons/icon.png",
+        "packaging/icons/512x512/com.jpegviewer.JpegViewer.png",
         "usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png",
-        "644",
+        "644"
+    ],
+    [
+        "packaging/linux/debian/copyright",
+        "usr/share/doc/jpeg-viewer/copyright",
+        "644"
+    ],
+    [
+        "LICENSE",
+        "usr/share/doc/jpeg-viewer/LICENSE",
+        "644"
     ]
 ]
 

@@ -15,7 +15,6 @@ finish-args:
   - --device=dri
   - --filesystem=home
   - --share=ipc
-  - --socket=pulseaudio
 
 modules:
   - name: jpeg-viewer
@@ -27,6 +26,9 @@ modules:
       env:
         CARGO_HOME: /run/build/jpeg-viewer/cargo
         CARGO_NET_OFFLINE: "true"
+        # Use the Rust toolchain supplied by the pinned Flatpak SDK extension.
+        # This intentionally overrides the repository rust-toolchain.toml inside the sandbox.
+        RUSTUP_TOOLCHAIN: stable
 
     build-commands:
       - cargo build --offline --release --locked
@@ -38,7 +40,9 @@ modules:
 
       - install -Dm644 packaging/flatpak/com.jpegviewer.JpegViewer.desktop /app/share/applications/com.jpegviewer.JpegViewer.desktop
 
-      - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/jpeg-viewer/LICENSE
+      - install -Dm644 packaging/linux/jpeg-viewer-queue.xml /app/share/mime/packages/jpeg-viewer-queue.xml
+
+      - install -Dm644 LICENSE /app/share/licenses/com.jpegviewer.JpegViewer/LICENSE
 
     sources:
       - cargo-sources.json

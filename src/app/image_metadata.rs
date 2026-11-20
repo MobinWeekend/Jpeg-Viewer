@@ -77,9 +77,21 @@ impl ViewerApp {
             ImageEntry::File(_) => source_path
                 .as_ref()
                 .map(|path| path.to_string_lossy().into_owned()),
-            ImageEntry::Zip(zip) => Some(format!("{}#{}", zip.archive_path.to_string_lossy(), zip.name)),
-            ImageEntry::S7z(s7z) => Some(format!("{}#{}", s7z.archive_path.to_string_lossy(), s7z.name)),
-            ImageEntry::Rar(rar) => Some(format!("{}#{}", rar.archive_path.to_string_lossy(), rar.name)),
+            ImageEntry::Zip(zip) => Some(format!(
+                "{}#{}",
+                zip.archive_path.to_string_lossy(),
+                zip.name
+            )),
+            ImageEntry::S7z(s7z) => Some(format!(
+                "{}#{}",
+                s7z.archive_path.to_string_lossy(),
+                s7z.name
+            )),
+            ImageEntry::Rar(rar) => Some(format!(
+                "{}#{}",
+                rar.archive_path.to_string_lossy(),
+                rar.name
+            )),
         };
 
         if let ImageEntry::File(path) = entry {
@@ -119,24 +131,26 @@ impl ViewerApp {
             }
         }
 
-        if let Some((width, height)) = dimensions {
-            if width > 0 && height > 0 {
-                let pixels = width as u64 * height as u64;
-                metadata.pixel_count = Some(pixels);
-                metadata.megapixels = Some(pixels as f64 / 1_000_000.0);
-                metadata.estimated_uncompressed_size = Some(pixels.saturating_mul(4));
-                if let Some(label) = crate::app::aspect_ratio::AspectRatio::get_label(width, height) {
-                    metadata.aspect_ratio = Some(label.to_string());
-                }
+        if let Some((width, height)) = dimensions
+            && width > 0
+            && height > 0
+        {
+            let pixels = width as u64 * height as u64;
+            metadata.pixel_count = Some(pixels);
+            metadata.megapixels = Some(pixels as f64 / 1_000_000.0);
+            metadata.estimated_uncompressed_size = Some(pixels.saturating_mul(4));
+            if let Some(label) = crate::app::aspect_ratio::AspectRatio::get_label(width, height) {
+                metadata.aspect_ratio = Some(label.to_string());
             }
         }
 
         if let Some(bytes) = bytes {
-            if let Some(format) = format {
-                if let Ok(Some(color)) = default_registry().color_info(bytes, format) {
-                    metadata.decoded_color = Some(color.description);
-                    metadata.decoded_bit_depth = Some(format!("{}-bit per channel", color.bits_per_channel));
-                }
+            if let Some(format) = format
+                && let Ok(Some(color)) = default_registry().color_info(bytes, format)
+            {
+                metadata.decoded_color = Some(color.description);
+                metadata.decoded_bit_depth =
+                    Some(format!("{}-bit per channel", color.bits_per_channel));
             }
             // GIF frame metadata is populated from the decoded animation result
             // in the shared loader. Parsing the full animation here would decode
@@ -234,10 +248,17 @@ impl ViewerApp {
             let section_for = |name: &str| -> &'static str {
                 match name {
                     "Description" | "UserComment" | "DocumentName" => "Description metadata",
-                    "Creator / Artist" | "Copyright" | "Software" | "Date Taken" => "Origin metadata",
-                    "Image ID" | "EXIF Width" | "EXIF Height" | "Orientation" | "ColorSpace" => "Image metadata",
-                    "Make" | "Model" | "Lens" | "Focal Length" | "35mm Focal Length" => "Camera metadata",
-                    "ISO" | "Aperture" | "Shutter Speed" | "Exposure Bias" | "Flash" | "WhiteBalance" | "MeteringMode" | "ExposureProgram" => "Photo settings",
+                    "Creator / Artist" | "Copyright" | "Software" | "Date Taken" => {
+                        "Origin metadata"
+                    }
+                    "Image ID" | "EXIF Width" | "EXIF Height" | "Orientation" | "ColorSpace" => {
+                        "Image metadata"
+                    }
+                    "Make" | "Model" | "Lens" | "Focal Length" | "35mm Focal Length" => {
+                        "Camera metadata"
+                    }
+                    "ISO" | "Aperture" | "Shutter Speed" | "Exposure Bias" | "Flash"
+                    | "WhiteBalance" | "MeteringMode" | "ExposureProgram" => "Photo settings",
                     _ => "Advanced photo metadata",
                 }
             };

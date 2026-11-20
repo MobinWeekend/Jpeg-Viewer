@@ -1,7 +1,7 @@
 use crate::imaging::entry::ImageEntry;
-use zip::ZipArchive;
 use std::fs::File;
 use std::io::Read;
+use zip::ZipArchive;
 
 /// Check if the first 6 bytes match GIF magic numbers.
 pub fn is_gif_bytes(bytes: &[u8]) -> bool {
@@ -23,14 +23,13 @@ pub fn is_gif_entry(entry: &ImageEntry) -> bool {
         }
         ImageEntry::Zip(zip) => {
             // For zip, try to read the header from the archive
-            if let Ok(file) = File::open(&zip.archive_path) {
-                if let Ok(mut archive) = ZipArchive::new(file) {
-                    if let Ok(mut entry) = archive.by_index(zip.entry_index) {
-                        let mut header = [0u8; 6];
-                        if entry.read_exact(&mut header).is_ok() {
-                            return is_gif_bytes(&header);
-                        }
-                    }
+            if let Ok(file) = File::open(&zip.archive_path)
+                && let Ok(mut archive) = ZipArchive::new(file)
+                && let Ok(mut entry) = archive.by_index(zip.entry_index)
+            {
+                let mut header = [0u8; 6];
+                if entry.read_exact(&mut header).is_ok() {
+                    return is_gif_bytes(&header);
                 }
             }
             false
@@ -39,8 +38,6 @@ pub fn is_gif_entry(entry: &ImageEntry) -> bool {
             // For 7z, checking content is expensive; fall back to extension hint
             s7z.name.to_lowercase().ends_with(".gif")
         }
-        ImageEntry::Rar(rar) => {
-            rar.name.to_lowercase().ends_with(".gif")
-        }
+        ImageEntry::Rar(rar) => rar.name.to_lowercase().ends_with(".gif"),
     }
 }

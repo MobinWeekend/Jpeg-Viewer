@@ -4,11 +4,11 @@
 //! itself runs an installed standard thumbnailer, it writes the resulting PNG
 //! back with the required URI/mtime metadata and an atomic rename.
 
-use std::path::{Path, PathBuf};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::time::UNIX_EPOCH;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::UNIX_EPOCH;
 
 static NEXT_CACHE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 static PUBLISH_ENABLED: AtomicBool = AtomicBool::new(true);
@@ -20,7 +20,9 @@ pub(super) fn set_publish_enabled(enabled: bool) {
 
 pub(super) fn file_uri(path: &Path) -> Option<String> {
     let absolute = path.canonicalize().ok()?;
-    url::Url::from_file_path(absolute).ok().map(|uri| uri.to_string())
+    url::Url::from_file_path(absolute)
+        .ok()
+        .map(|uri| uri.to_string())
 }
 
 fn cache_root() -> Option<PathBuf> {
@@ -66,7 +68,10 @@ fn valid_thumbnail_metadata(bytes: &[u8], uri: &str, mtime: u64, source_size: u6
             bytes[offset + 2],
             bytes[offset + 3],
         ]) as usize;
-        let Some(chunk_end) = offset.checked_add(12).and_then(|end| end.checked_add(length)) else {
+        let Some(chunk_end) = offset
+            .checked_add(12)
+            .and_then(|end| end.checked_add(length))
+        else {
             return false;
         };
         if chunk_end > bytes.len() {
@@ -100,7 +105,6 @@ fn valid_thumbnail_metadata(bytes: &[u8], uri: &str, mtime: u64, source_size: u6
         && found_size.is_none_or(|value| value.parse::<u64>().ok() == Some(source_size))
 }
 
-
 fn standard_cache_flavors() -> [&'static str; 4] {
     ["normal", "large", "x-large", "xx-large"]
 }
@@ -133,14 +137,17 @@ fn cached_candidates(uri: &str, requested_side: u32) -> Vec<PathBuf> {
 
 /// Lightweight candidate signatures let wait_for_cached poll for desktop
 /// output without rereading unchanged PNG files every interval.
-fn cached_candidate_state(uri: &str, requested_side: u32) -> Vec<Option<(u64, std::time::SystemTime)>> {
+fn cached_candidate_state(
+    uri: &str,
+    requested_side: u32,
+) -> Vec<Option<(u64, std::time::SystemTime)>> {
     cached_candidates(uri, requested_side)
         .into_iter()
         .map(|candidate| {
             crate::io_metrics::metadata_query();
-            std::fs::metadata(candidate).ok().and_then(|metadata| {
-                Some((metadata.len(), metadata.modified().ok()?))
-            })
+            std::fs::metadata(candidate)
+                .ok()
+                .and_then(|metadata| Some((metadata.len(), metadata.modified().ok()?)))
         })
         .collect()
 }
@@ -174,7 +181,9 @@ pub(super) fn read_cached(path: &Path, uri: &str, requested_side: u32) -> Option
         let Some(pixel_count) = (width as u64).checked_mul(height as u64) else {
             continue;
         };
-        if width == 0 || height == 0 || pixel_count > 16_777_216
+        if width == 0
+            || height == 0
+            || pixel_count > 16_777_216
             || width.max(height) < requested_side
         {
             continue;
@@ -242,19 +251,17 @@ pub(super) fn store_generated(
 
     // Serialize publish checks so concurrent requests for the same source do
     // not each rewrite the same shared cache file. A valid existing entry wins.
-    let _write_guard = CACHE_WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _write_guard = CACHE_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     crate::io_metrics::metadata_query();
     if std::fs::metadata(&destination)
         .is_ok_and(|metadata| metadata.len() > 0 && metadata.len() <= 64 * 1024 * 1024)
     {
         if let Ok(existing) = std::fs::read(&destination) {
             crate::io_metrics::thumbnail_cache_read(existing.len());
-            if valid_thumbnail_metadata(
-                &existing,
-                uri,
-                expected_source_mtime,
-                expected_source_size,
-            ) {
+            if valid_thumbnail_metadata(&existing, uri, expected_source_mtime, expected_source_size)
+            {
                 return;
             }
         }
@@ -266,10 +273,7 @@ pub(super) fn store_generated(
     }
 
     let id = NEXT_CACHE_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-    let temporary = directory.join(format!(
-        ".jpeg-viewer-{}-{id}.tmp",
-        std::process::id()
-    ));
+    let temporary = directory.join(format!(".jpeg-viewer-{}-{id}.tmp", std::process::id()));
     let Ok(mut file) = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -371,17 +375,33 @@ mod tests {
                 .add_text_chunk("Thumb::Size".to_owned(), source_size.to_string())
                 .expect("write source size metadata");
             let mut writer = encoder.write_header().expect("write PNG header");
-            writer.write_image_data(&[255, 0, 0, 255]).expect("write pixel");
+            writer
+                .write_image_data(&[255, 0, 0, 255])
+                .expect("write pixel");
             writer.finish().expect("finish PNG");
         }
 
         assert!(valid_thumbnail_metadata(&bytes, uri, mtime, source_size));
-        assert!(!valid_thumbnail_metadata(&bytes, uri, mtime + 1, source_size));
-        assert!(!valid_thumbnail_metadata(&bytes, uri, mtime, source_size + 1));
-        assert!(!valid_thumbnail_metadata(&bytes, "file:///different.jpg", mtime, source_size));
+        assert!(!valid_thumbnail_metadata(
+            &bytes,
+            uri,
+            mtime + 1,
+            source_size
+        ));
+        assert!(!valid_thumbnail_metadata(
+            &bytes,
+            uri,
+            mtime,
+            source_size + 1
+        ));
+        assert!(!valid_thumbnail_metadata(
+            &bytes,
+            "file:///different.jpg",
+            mtime,
+            source_size
+        ));
     }
 }
-
 
 #[cfg(test)]
 mod cache_flavor_tests {

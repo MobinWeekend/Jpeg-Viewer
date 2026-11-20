@@ -7,7 +7,8 @@ pub(super) fn operation_has_conflicts(operation: &PendingFileOperation) -> bool 
     operation.entries.iter().any(|entry| {
         let target = operation.destination.join(entry_display_name(entry));
         let duplicate_in_batch = !seen_targets.insert(target.clone());
-        let source_is_target = matches!(entry, ImageEntry::File(path) if operation.move_files && *path == target);
+        let source_is_target =
+            matches!(entry, ImageEntry::File(path) if operation.move_files && *path == target);
         (target.exists() && !source_is_target) || duplicate_in_batch
     })
 }
@@ -37,7 +38,8 @@ pub(super) fn is_welcome_recent_path(path: &Path) -> bool {
 
 pub(super) fn welcome_paths_equal(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
-        a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
+        a.to_string_lossy()
+            .eq_ignore_ascii_case(&b.to_string_lossy())
     } else {
         a == b
     }
@@ -54,10 +56,26 @@ pub(super) fn sort_method_label(method: crate::imaging::sort::SortMethod) -> &'s
 
 pub(super) fn entry_display_name(entry: &ImageEntry) -> String {
     match entry {
-        ImageEntry::File(path) => path.file_name().and_then(|name| name.to_str()).unwrap_or("Image").to_owned(),
-        ImageEntry::Zip(item) => Path::new(&item.name).file_name().and_then(|name| name.to_str()).unwrap_or(item.name.as_str()).to_owned(),
-        ImageEntry::S7z(item) => Path::new(&item.name).file_name().and_then(|name| name.to_str()).unwrap_or(item.name.as_str()).to_owned(),
-        ImageEntry::Rar(item) => Path::new(&item.name).file_name().and_then(|name| name.to_str()).unwrap_or(item.name.as_str()).to_owned(),
+        ImageEntry::File(path) => path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Image")
+            .to_owned(),
+        ImageEntry::Zip(item) => Path::new(&item.name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(item.name.as_str())
+            .to_owned(),
+        ImageEntry::S7z(item) => Path::new(&item.name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(item.name.as_str())
+            .to_owned(),
+        ImageEntry::Rar(item) => Path::new(&item.name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(item.name.as_str())
+            .to_owned(),
     }
 }
 
@@ -84,7 +102,8 @@ pub(super) fn entry_folder_parts<'a>(
 
     match entry {
         ImageEntry::File(path) => (
-            path.parent().map(|container| relative_container(container, root)),
+            path.parent()
+                .map(|container| relative_container(container, root)),
             None,
         ),
         ImageEntry::Zip(item) => (
@@ -117,21 +136,33 @@ pub(super) fn entry_breadcrumb(entry: &ImageEntry, root: Option<&Path>) -> Strin
     };
     let mut parts = Vec::new();
     if let Some(container) = container {
-        let display = root.and_then(|root| container.strip_prefix(root).ok()).unwrap_or(container);
+        let display = root
+            .and_then(|root| container.strip_prefix(root).ok())
+            .unwrap_or(container);
         let value = display.to_string_lossy();
-        if !value.is_empty() && value != "." { parts.push(value.into_owned()); }
-    }
-    if let Some(inner) = inner {
-        if let Some(parent) = Path::new(inner).parent() {
-            if !parent.as_os_str().is_empty() { parts.push(parent.to_string_lossy().into_owned()); }
+        if !value.is_empty() && value != "." {
+            parts.push(value.into_owned());
         }
     }
-    if parts.is_empty() { "Current folder".to_owned() } else { parts.join(" / ") }
+    if let Some(inner) = inner
+        && let Some(parent) = Path::new(inner).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        parts.push(parent.to_string_lossy().into_owned());
+    }
+    if parts.is_empty() {
+        "Current folder".to_owned()
+    } else {
+        parts.join(" / ")
+    }
 }
 
 pub(super) fn unique_destination_path(path: &Path) -> PathBuf {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("image");
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
     let extension = path.extension().and_then(|value| value.to_str());
     for suffix in 2..10_000u32 {
         let name = match extension {
@@ -139,7 +170,9 @@ pub(super) fn unique_destination_path(path: &Path) -> PathBuf {
             None => format!("{stem} ({suffix})"),
         };
         let candidate = parent.join(name);
-        if !candidate.exists() { return candidate; }
+        if !candidate.exists() {
+            return candidate;
+        }
     }
     parent.join(format!("{stem}-copy"))
 }
@@ -147,10 +180,16 @@ pub(super) fn unique_destination_path(path: &Path) -> PathBuf {
 pub(super) fn unique_sidecar_path(path: &Path, purpose: &str) -> PathBuf {
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(1);
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("image");
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
     for _ in 0..10_000 {
         let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-        let candidate = parent.join(format!(".{name}.jpeg-viewer-{purpose}-{}-{id}", std::process::id()));
+        let candidate = parent.join(format!(
+            ".{name}.jpeg-viewer-{purpose}-{}-{id}",
+            std::process::id()
+        ));
         if !candidate.exists() {
             return candidate;
         }
@@ -170,10 +209,16 @@ pub(super) fn stage_entry_to_file(entry: &ImageEntry, staged: &Path) -> Result<(
     }
 }
 
-pub(super) fn commit_staged_file(staged: &Path, destination: &Path, allow_replace: bool) -> Result<(), String> {
+pub(super) fn commit_staged_file(
+    staged: &Path,
+    destination: &Path,
+    allow_replace: bool,
+) -> Result<(), String> {
     let backup = if destination.exists() {
         if !allow_replace {
-            return Err("the destination appeared during the operation; no file was overwritten".into());
+            return Err(
+                "the destination appeared during the operation; no file was overwritten".into(),
+            );
         }
         if !destination.is_file() {
             return Err("the destination exists and is not a regular file".into());
@@ -187,20 +232,26 @@ pub(super) fn commit_staged_file(staged: &Path, destination: &Path, allow_replac
     };
 
     if let Err(error) = fs::rename(staged, destination) {
-        if let Some(backup) = backup.as_ref() {
-            if let Err(restore_error) = fs::rename(backup, destination) {
-                return Err(format!("could not install replacement ({error}) or restore the original ({restore_error}); backup remains at {}", backup.display()));
-            }
+        if let Some(backup) = backup.as_ref()
+            && let Err(restore_error) = fs::rename(backup, destination)
+        {
+            return Err(format!(
+                "could not install replacement ({error}) or restore the original ({restore_error}); backup remains at {}",
+                backup.display()
+            ));
         }
         return Err(format!("could not install staged file: {error}"));
     }
 
-    if let Some(backup) = backup {
-        if let Err(error) = fs::remove_file(&backup) {
-            // The new destination is committed. Preserve the backup and surface
-            // its path instead of reporting the replacement as a total failure.
-            return Err(format!("destination was replaced, but backup cleanup failed: {} ({error})", backup.display()));
-        }
+    if let Some(backup) = backup
+        && let Err(error) = fs::remove_file(&backup)
+    {
+        // The new destination is committed. Preserve the backup and surface
+        // its path instead of reporting the replacement as a total failure.
+        return Err(format!(
+            "destination was replaced, but backup cleanup failed: {} ({error})",
+            backup.display()
+        ));
     }
     Ok(())
 }
@@ -215,23 +266,38 @@ pub(super) fn read_archive_entry(entry: &ImageEntry) -> Result<Vec<u8>, String> 
         ImageEntry::Zip(item) => {
             let file = fs::File::open(&item.archive_path).map_err(|error| error.to_string())?;
             let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
-            let mut source = archive.by_index(item.entry_index).map_err(|error| error.to_string())?;
+            let mut source = archive
+                .by_index(item.entry_index)
+                .map_err(|error| error.to_string())?;
             let mut bytes = Vec::new();
-            source.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+            source
+                .read_to_end(&mut bytes)
+                .map_err(|error| error.to_string())?;
             crate::io_metrics::archive_extraction(bytes.len());
             Ok(bytes)
         }
         ImageEntry::S7z(item) => {
-            let mut archive = sevenz_rust2::ArchiveReader::open(&item.archive_path, sevenz_rust2::Password::empty()).map_err(|error| error.to_string())?;
-            let bytes = archive.read_file(&item.name).map_err(|error| error.to_string())?;
+            let mut archive = sevenz_rust2::ArchiveReader::open(
+                &item.archive_path,
+                sevenz_rust2::Password::empty(),
+            )
+            .map_err(|error| error.to_string())?;
+            let bytes = archive
+                .read_file(&item.name)
+                .map_err(|error| error.to_string())?;
             crate::io_metrics::archive_extraction(bytes.len());
             Ok(bytes)
         }
         ImageEntry::Rar(item) => {
-            let archive = unrar::Archive::new(&item.archive_path).open_for_processing().map_err(|error| error.to_string())?;
+            let archive = unrar::Archive::new(&item.archive_path)
+                .open_for_processing()
+                .map_err(|error| error.to_string())?;
             let mut archive = archive;
             loop {
-                let header = archive.read_header().map_err(|error| error.to_string())?.ok_or_else(|| format!("{} not found in archive", item.name))?;
+                let header = archive
+                    .read_header()
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| format!("{} not found in archive", item.name))?;
                 let name = header.entry().filename.to_string_lossy().to_string();
                 if name == item.name {
                     let (bytes, _) = header.read().map_err(|error| error.to_string())?;
@@ -243,7 +309,6 @@ pub(super) fn read_archive_entry(entry: &ImageEntry) -> Result<Vec<u8>, String> 
         }
     }
 }
-
 
 #[cfg(test)]
 mod welcome_recent_tests {

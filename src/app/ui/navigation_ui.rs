@@ -218,14 +218,13 @@ impl ViewerApp {
                 .map(|entry| entry.get_id());
             if !self.image_entries.is_empty() {
                 crate::imaging::sort::sort_images(&mut self.image_entries, self.sort_method);
-                if let Some(id) = selected_id {
-                    if let Some(index) = self
+                if let Some(id) = selected_id
+                    && let Some(index) = self
                         .image_entries
                         .iter()
                         .position(|entry| entry.get_id() == id)
-                    {
-                        self.current_index = index;
-                    }
+                {
+                    self.current_index = index;
                 }
             }
             // Shuffle now means shuffle the collection once, not a separate random

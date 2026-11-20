@@ -146,7 +146,7 @@ impl ImageDecoder for SvgDecoder {
 ///
 /// DecodedImage expects straight RGBA8.
 fn unpremultiply_rgba8(data: &mut [u8]) {
-    for pixel in data.chunks_exact_mut(4) {
+    for pixel in data.as_chunks_mut::<4>().0 {
         let alpha = pixel[3];
 
         match alpha {

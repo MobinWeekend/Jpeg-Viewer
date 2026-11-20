@@ -45,7 +45,11 @@ pub(super) fn wrap_label(ui: &egui::Ui, text: &str, max_width: f32, max_lines: u
     let mut line = String::new();
 
     for word in text.split_whitespace() {
-        let candidate = if line.is_empty() { word.to_owned() } else { format!("{line} {word}") };
+        let candidate = if line.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{line} {word}")
+        };
         if measure(&candidate) <= width {
             line = candidate;
             continue;

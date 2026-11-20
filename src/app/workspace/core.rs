@@ -1,12 +1,15 @@
 //! Workspace entry points, active-view snapshots, and preload coordination.
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 impl crate::app::types::ViewerApp {
     /// Snapshot the collection-based viewer before switching to another tab.
     pub(super) fn snapshot_active_viewer_tab(&mut self) {
-        if !matches!(self.workspace.active_kind(), WorkspaceTabKind::Viewer | WorkspaceTabKind::Image) {
+        if !matches!(
+            self.workspace.active_kind(),
+            WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
+        ) {
             return;
         }
         // Preserve the currently displayed GPU texture before the shared Viewer
@@ -32,7 +35,8 @@ impl crate::app::types::ViewerApp {
             return;
         }
         if self.image_entries.is_empty() {
-            self.queue_status = Some("There are no current image entries to show in Local Masonry.".into());
+            self.queue_status =
+                Some("There are no current image entries to show in Local Masonry.".into());
             return;
         }
         self.open_masonry_collection(
@@ -46,11 +50,25 @@ impl crate::app::types::ViewerApp {
     /// entries are expanded to supported images; unsupported files and missing
     /// paths are ignored because Masonry is an image-entry workspace.
     pub(crate) fn open_masonry_from_paths(&mut self, paths: &[PathBuf], title: &str) {
-        fn append_path(path: &Path, entries: &mut Vec<ImageEntry>, seen: &mut HashSet<String>, depth: usize) {
-            if depth > 8 { return; }
-            let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("").to_ascii_lowercase();
+        fn append_path(
+            path: &Path,
+            entries: &mut Vec<ImageEntry>,
+            seen: &mut HashSet<String>,
+            depth: usize,
+        ) {
+            if depth > 8 {
+                return;
+            }
+            let extension = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
             let expanded: Vec<ImageEntry> = if path.is_dir() {
-                crate::app::queues::collect_folder_images(path).into_iter().map(ImageEntry::File).collect()
+                crate::app::queues::collect_folder_images(path)
+                    .into_iter()
+                    .map(ImageEntry::File)
+                    .collect()
             } else if path.is_file() && crate::imaging::helpers::is_supported_image(path) {
                 vec![ImageEntry::File(path.to_path_buf())]
             } else if path.is_file() && extension == "zip" {
@@ -62,7 +80,9 @@ impl crate::app::types::ViewerApp {
             } else if path.is_file() && matches!(extension.as_str(), "jvq" | "txt") {
                 match crate::app::queues::read_queue(path) {
                     Ok((nested, _)) => {
-                        for item in nested { append_path(&item, entries, seen, depth + 1); }
+                        for item in nested {
+                            append_path(&item, entries, seen, depth + 1);
+                        }
                         Vec::new()
                     }
                     Err(_) => Vec::new(),
@@ -71,15 +91,21 @@ impl crate::app::types::ViewerApp {
                 Vec::new()
             };
             for entry in expanded {
-                if seen.insert(entry.get_id()) { entries.push(entry); }
+                if seen.insert(entry.get_id()) {
+                    entries.push(entry);
+                }
             }
         }
 
         let mut entries = Vec::new();
         let mut seen = HashSet::new();
-        for path in paths { append_path(path, &mut entries, &mut seen, 0); }
+        for path in paths {
+            append_path(path, &mut entries, &mut seen, 0);
+        }
         if entries.is_empty() {
-            self.queue_status = Some(format!("{title} contains no available supported image entries."));
+            self.queue_status = Some(format!(
+                "{title} contains no available supported image entries."
+            ));
             return;
         }
         crate::imaging::sort::sort_images(&mut entries, self.sort_method);
@@ -93,27 +119,42 @@ impl crate::app::types::ViewerApp {
         directory: Option<PathBuf>,
     ) {
         if entries.is_empty() {
-            self.queue_status = Some("There are no supported image entries to show in Masonry.".into());
+            self.queue_status =
+                Some("There are no supported image entries to show in Masonry.".into());
             return;
         }
         if self.workspace.active_kind() != WorkspaceTabKind::Masonry {
-            let return_tab_id = self.workspace.tabs
-                .get(self.workspace.active_index).map(|tab| tab.id);
+            let return_tab_id = self
+                .workspace
+                .tabs
+                .get(self.workspace.active_index)
+                .map(|tab| tab.id);
             self.workspace.masonry_return_tab_id = return_tab_id;
         }
         self.snapshot_active_viewer_tab();
         // Masonry is a singleton workspace. Reuse its stable tab ID and visual
         // preferences, replacing the collection whenever another source is opened.
-        if let Some(index) = self.workspace.tabs.iter().position(|tab| tab.kind == WorkspaceTabKind::Masonry) {
-            let valid_ids = entries.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
+        if let Some(index) = self
+            .workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Masonry)
+        {
+            let valid_ids = entries
+                .iter()
+                .map(ImageEntry::get_id)
+                .collect::<HashSet<_>>();
             let tab = &mut self.workspace.tabs[index];
             tab.title = title;
             tab.entries = entries;
+            tab.invalidate_masonry_layout();
             // Keep known tile dimensions for entries that survive a collection
             // switch. A thumbnail LRU eviction or a source switch must not make
             // an already-sized tile collapse to the square loading placeholder.
-            tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
-            tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
+            tab.masonry_aspect_ratios
+                .retain(|id, _| valid_ids.contains(id));
+            tab.masonry_dimensions
+                .retain(|id, _| valid_ids.contains(id));
             tab.directory = directory;
             tab.folder_masonry = false;
             tab.recursive = false;
@@ -129,7 +170,11 @@ impl crate::app::types::ViewerApp {
             let mut tab = WorkspaceTab::new(id, title, WorkspaceTabKind::Masonry);
             tab.entries = entries;
             tab.directory = directory;
-            tab.masonry_tile_size = self.settings_manager.get().masonry_thumbnail_size.clamp(76.0, 512.0);
+            tab.masonry_tile_size = self
+                .settings_manager
+                .get()
+                .masonry_thumbnail_size
+                .clamp(76.0, 512.0);
             self.workspace.tabs.push(tab);
             self.workspace.active_index = self.workspace.tabs.len() - 1;
         }
@@ -142,21 +187,35 @@ impl crate::app::types::ViewerApp {
             return;
         };
         if self.workspace.active_kind() != WorkspaceTabKind::Masonry {
-            let return_tab_id = self.workspace.tabs
-                .get(self.workspace.active_index).map(|tab| tab.id);
+            let return_tab_id = self
+                .workspace
+                .tabs
+                .get(self.workspace.active_index)
+                .map(|tab| tab.id);
             self.workspace.masonry_return_tab_id = return_tab_id;
         }
         self.snapshot_active_viewer_tab();
         let paths = crate::imaging::loader::load_directory_images(&directory, self.sort_method);
         let entries = paths.into_iter().map(ImageEntry::File).collect::<Vec<_>>();
         // Keep an empty Folder Masonry collection available for recursive browsing.
-        if let Some(index) = self.workspace.tabs.iter().position(|tab| tab.kind == WorkspaceTabKind::Masonry) {
-            let valid_ids = entries.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
+        if let Some(index) = self
+            .workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Masonry)
+        {
+            let valid_ids = entries
+                .iter()
+                .map(ImageEntry::get_id)
+                .collect::<HashSet<_>>();
             let tab = &mut self.workspace.tabs[index];
             tab.title = "Masonry · Folder".into();
             tab.entries = entries;
-            tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
-            tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
+            tab.invalidate_masonry_layout();
+            tab.masonry_aspect_ratios
+                .retain(|id, _| valid_ids.contains(id));
+            tab.masonry_dimensions
+                .retain(|id, _| valid_ids.contains(id));
             tab.directory = Some(directory);
             tab.folder_masonry = true;
             tab.recursive = false;
@@ -169,10 +228,15 @@ impl crate::app::types::ViewerApp {
             self.workspace.active_index = index;
         } else {
             let id = self.workspace.allocate_id();
-            let mut tab = WorkspaceTab::new(id, "Masonry · Folder".into(), WorkspaceTabKind::Masonry);
+            let mut tab =
+                WorkspaceTab::new(id, "Masonry · Folder".into(), WorkspaceTabKind::Masonry);
             tab.entries = entries;
             tab.directory = Some(directory);
-            tab.masonry_tile_size = self.settings_manager.get().masonry_thumbnail_size.clamp(76.0, 512.0);
+            tab.masonry_tile_size = self
+                .settings_manager
+                .get()
+                .masonry_thumbnail_size
+                .clamp(76.0, 512.0);
             tab.folder_masonry = true;
             self.workspace.tabs.push(tab);
             self.workspace.active_index = self.workspace.tabs.len() - 1;
@@ -196,14 +260,27 @@ impl crate::app::types::ViewerApp {
         if self.workspace.active_kind() != WorkspaceTabKind::Masonry {
             return false;
         }
-        let (escape, select_all, delete) = ctx.input(|input| (
-            input.key_pressed(egui::Key::Escape),
-            input.key_pressed(egui::Key::A) && input.modifiers.ctrl,
-            input.key_pressed(egui::Key::Delete),
-        ));
-        let Some(index) = self.workspace.tabs.get(self.workspace.active_index)
-            .map(|tab| self.workspace.tabs.iter().position(|candidate| candidate.id == tab.id).unwrap_or(self.workspace.active_index))
-        else { return false; };
+        let (escape, select_all, delete) = ctx.input(|input| {
+            (
+                input.key_pressed(egui::Key::Escape),
+                input.key_pressed(egui::Key::A) && input.modifiers.ctrl,
+                input.key_pressed(egui::Key::Delete),
+            )
+        });
+        let Some(index) = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .map(|tab| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .position(|candidate| candidate.id == tab.id)
+                    .unwrap_or(self.workspace.active_index)
+            })
+        else {
+            return false;
+        };
 
         if escape {
             let tab = &mut self.workspace.tabs[index];
@@ -218,18 +295,28 @@ impl crate::app::types::ViewerApp {
             let search = tab.search.to_lowercase();
             let extension_filter = tab.extension_filter.to_lowercase();
             tab.selection_mode = true;
-            tab.selected = tab.entries.iter().filter(|entry| {
-                let name = entry_display_name(entry).to_lowercase();
-                let extension = Path::new(&name).extension().and_then(|value| value.to_str()).unwrap_or("").to_lowercase();
-                (search.is_empty() || name.contains(&search))
-                    && (extension_filter.is_empty() || extension == extension_filter)
-            }).map(ImageEntry::get_id).collect();
+            tab.selected = tab
+                .entries
+                .iter()
+                .filter(|entry| {
+                    let name = entry_display_name(entry).to_lowercase();
+                    let extension = Path::new(&name)
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    (search.is_empty() || name.contains(&search))
+                        && (extension_filter.is_empty() || extension == extension_filter)
+                })
+                .map(ImageEntry::get_id)
+                .collect();
             return true;
         }
         if delete {
             let selected = self.workspace.tabs[index].selected.len();
             if selected == 0 {
-                self.queue_status = Some("Select one or more entries before pressing Delete.".into());
+                self.queue_status =
+                    Some("Select one or more entries before pressing Delete.".into());
             } else {
                 self.handle_masonry_action(index, MasonryAction::Delete, ctx);
             }
@@ -241,16 +328,26 @@ impl crate::app::types::ViewerApp {
     /// Activate the existing singleton Masonry workspace from the current
     /// Viewer/Image workspace, remembering where the toggle should return.
     fn activate_existing_masonry_from_current_workspace(&mut self) -> bool {
-        if !matches!(self.workspace.active_kind(), WorkspaceTabKind::Viewer | WorkspaceTabKind::Image) {
+        if !matches!(
+            self.workspace.active_kind(),
+            WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
+        ) {
             return false;
         }
-        let Some(masonry_id) = self.workspace.tabs.iter()
+        let Some(masonry_id) = self
+            .workspace
+            .tabs
+            .iter()
             .find(|tab| tab.kind == WorkspaceTabKind::Masonry)
             .map(|tab| tab.id)
         else {
             return false;
         };
-        let current_id = self.workspace.tabs.get(self.workspace.active_index).map(|tab| tab.id);
+        let current_id = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .map(|tab| tab.id);
         self.workspace.masonry_return_tab_id = current_id;
         let home_was_visible = self.workspace.home_page_visible;
         self.activate_workspace_tab(masonry_id);
@@ -279,11 +376,25 @@ impl crate::app::types::ViewerApp {
             let home_was_visible = self.workspace.home_page_visible;
             let remembered_return_id = self.workspace.masonry_return_tab_id.take();
             let return_id = remembered_return_id
-                .filter(|id| self.workspace.tabs.iter().any(|tab| tab.id == *id && tab.kind != WorkspaceTabKind::Masonry))
-                .or_else(|| self.workspace.tabs.iter()
-                    .find(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
-                    .or_else(|| self.workspace.tabs.iter().find(|tab| tab.kind == WorkspaceTabKind::Viewer))
-                    .map(|tab| tab.id));
+                .filter(|id| {
+                    self.workspace
+                        .tabs
+                        .iter()
+                        .any(|tab| tab.id == *id && tab.kind != WorkspaceTabKind::Masonry)
+                })
+                .or_else(|| {
+                    self.workspace
+                        .tabs
+                        .iter()
+                        .find(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+                        .or_else(|| {
+                            self.workspace
+                                .tabs
+                                .iter()
+                                .find(|tab| tab.kind == WorkspaceTabKind::Viewer)
+                        })
+                        .map(|tab| tab.id)
+                });
             if let Some(return_id) = return_id {
                 self.activate_workspace_tab(return_id);
                 self.workspace.home_page_visible = home_was_visible;
@@ -291,7 +402,8 @@ impl crate::app::types::ViewerApp {
         } else if matches!(
             self.workspace.active_kind(),
             WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
-        ) && !self.image_entries.is_empty() {
+        ) && !self.image_entries.is_empty()
+        {
             // Reuse the previous Masonry collection whenever one exists. Only the
             // first visit seeds a new Masonry collection from the current Viewer.
             if !self.activate_existing_masonry_from_current_workspace() {
@@ -299,5 +411,4 @@ impl crate::app::types::ViewerApp {
             }
         }
     }
-
 }

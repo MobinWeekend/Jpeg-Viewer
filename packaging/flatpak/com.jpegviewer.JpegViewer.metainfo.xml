@@ -5,6 +5,7 @@
     <id>com.jpegviewer.JpegViewer</id>
 
     <name>JPEG Viewer</name>
+    <icon type="stock">com.jpegviewer.JpegViewer</icon>
 
     <summary>Fast GPU-accelerated image viewer</summary>
 
@@ -12,7 +13,7 @@
 
     <project_license>GPL-3.0-only</project_license>
 
-    <developer id="com.github.MobinWeekend">
+    <developer id="com.jpegviewer">
         <name>MobinWeekend</name>
     </developer>
 

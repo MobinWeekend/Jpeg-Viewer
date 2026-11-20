@@ -1,8 +1,8 @@
 //! Reusable egui controls that adapt to the selected appearance profile.
 
-use eframe::egui;
 use super::colors::with_alpha;
 use super::profiles::current_look_profile;
+use eframe::egui;
 
 /// Wrap an egui slider and draw a thin outline around its rail. egui's standard
 /// slider rail uses `inactive.bg_fill` without `inactive.bg_stroke`, so the track

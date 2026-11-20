@@ -40,14 +40,14 @@ impl ViewerApp {
         });
 
         ui.horizontal_wrapped(|ui| {
-            if ui.button("+ files").clicked() {
-                if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                    let mut added = 0;
-                    for path in paths {
-                        added += usize::from(self.add_queue_path(path));
-                    }
-                    self.queue_status = Some(format!("Added {added} file(s)."));
+            if ui.button("+ files").clicked()
+                && let Some(paths) = rfd::FileDialog::new().pick_files()
+            {
+                let mut added = 0;
+                for path in paths {
+                    added += usize::from(self.add_queue_path(path));
                 }
+                self.queue_status = Some(format!("Added {added} file(s)."));
             }
             if ui.button("+ Current").clicked() {
                 self.add_current_image_to_queue();
@@ -79,11 +79,10 @@ impl ViewerApp {
                 .button("+ Folder…")
                 .on_hover_text("Add images from a folder and its subfolders")
                 .clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_folder()
             {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    let added = self.add_folder_recursively(&path);
-                    self.queue_status = Some(format!("Added {added} image(s) from folder tree."));
-                }
+                let added = self.add_folder_recursively(&path);
+                self.queue_status = Some(format!("Added {added} image(s) from folder tree."));
             }
             if ui
                 .button("+ folder as entry…")
@@ -91,15 +90,14 @@ impl ViewerApp {
                     "Keep the folder as one queue item; its contents are read when opened",
                 )
                 .clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_folder()
             {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    let added = self.add_queue_path(path);
-                    self.queue_status = Some(if added {
-                        "Added folder as one queue entry.".into()
-                    } else {
-                        "Folder is already in the queue.".into()
-                    });
-                }
+                let added = self.add_queue_path(path);
+                self.queue_status = Some(if added {
+                    "Added folder as one queue entry.".into()
+                } else {
+                    "Folder is already in the queue.".into()
+                });
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -281,7 +279,7 @@ impl ViewerApp {
                                     ui.end_row();
                                 }
                             }
-                            if queue_items.len() % columns != 0 {
+                            if !queue_items.len().is_multiple_of(columns) {
                                 ui.end_row();
                             }
                         });
@@ -295,13 +293,13 @@ impl ViewerApp {
                     self.queue_paths.swap(index, target as usize);
                 }
             }
-            if let Some(index) = open_index {
-                if let Some(path) = self.queue_paths.get(index).cloned() {
-                    if path.is_dir() {
-                        self.show_folder_contents(&path, ctx);
-                    } else {
-                        self.open_queue_in_viewer_at(ctx, index);
-                    }
+            if let Some(index) = open_index
+                && let Some(path) = self.queue_paths.get(index).cloned()
+            {
+                if path.is_dir() {
+                    self.show_folder_contents(&path, ctx);
+                } else {
+                    self.open_queue_in_viewer_at(ctx, index);
                 }
             }
         }
@@ -381,11 +379,11 @@ impl ViewerApp {
             if ui.button("+ current image").clicked() {
                 self.add_current_image_to_favorites();
             }
-            if ui.button("+ files…").clicked() {
-                if let Some(paths) = rfd::FileDialog::new().pick_files() {
-                    for path in paths {
-                        self.add_favorite_path(path);
-                    }
+            if ui.button("+ files…").clicked()
+                && let Some(paths) = rfd::FileDialog::new().pick_files()
+            {
+                for path in paths {
+                    self.add_favorite_path(path);
                 }
             }
         });
@@ -394,10 +392,9 @@ impl ViewerApp {
                 .button("+ folder as entry…")
                 .on_hover_text("Save a folder as one favorite entry")
                 .clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_folder()
             {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.add_favorite_path(path);
-                }
+                self.add_favorite_path(path);
             }
             if crate::app::ui::masonry_button(
                 ui,
@@ -511,7 +508,7 @@ impl ViewerApp {
                                 ui.end_row();
                             }
                         }
-                        if items.len() % columns != 0 {
+                        if !items.len().is_multiple_of(columns) {
                             ui.end_row();
                         }
                     });

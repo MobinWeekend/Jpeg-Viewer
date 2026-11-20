@@ -66,10 +66,7 @@ impl MipmapUploadState {
 
 /// Whether a mipmap task still has CPU preparation or GPU upload work pending.
 pub(crate) fn is_mipmap_state_pending(state: &SharedMipmapState) -> bool {
-    state
-        .lock()
-        .map(|state| !state.is_ready())
-        .unwrap_or(false)
+    state.lock().map(|state| !state.is_ready()).unwrap_or(false)
 }
 
 /// Start preparing mip levels from pixels that are already decoded.
@@ -101,18 +98,9 @@ pub(crate) fn start_mipmap_upload_from_entry(
     if let Err(error) = thread::Builder::new()
         .name("jpeg-viewer-mipmap-decode".to_owned())
         .spawn(move || {
-            match crate::app::loading::load_entry_content(
-                entry,
-                virtual_texture_threshold,
-                false,
-            ) {
+            match crate::app::loading::load_entry_content(entry, virtual_texture_threshold, false) {
                 Ok(LoadedImage::Static(image)) => {
-                    generate_mip_chain(
-                        image.width,
-                        image.height,
-                        Arc::new(image.data),
-                        sender,
-                    );
+                    generate_mip_chain(image.width, image.height, Arc::new(image.data), sender);
                 }
                 // GIF and virtual-texture entries manage their own frame/tile
                 // resources and must not create a full-image mip chain here.
@@ -208,9 +196,8 @@ fn downsample_rgba_egui_premultiplied(
             let mut samples = 0_u64;
             for source_y in y0..y1 {
                 for source_x in x0..x1 {
-                    let offset = ((source_y as usize * source_width as usize)
-                        + source_x as usize)
-                        * 4;
+                    let offset =
+                        ((source_y as usize * source_width as usize) + source_x as usize) * 4;
                     let rgba = if source_is_premultiplied {
                         [
                             source[offset],
@@ -244,7 +231,6 @@ fn downsample_rgba_egui_premultiplied(
     Some((width, height, output))
 }
 
-
 /// Append a callback after painting the texture. egui/Glow has already applied
 /// its base texture update by this point, so the callback can add mip levels to
 /// that same managed texture and leave the TextureHandle/cache intact.
@@ -256,22 +242,13 @@ pub(crate) fn append_mipmap_upload_callback(
     budget: MipUploadBudget,
     ctx: egui::Context,
 ) {
-    let still_working = state
-        .lock()
-        .map(|state| !state.is_ready())
-        .unwrap_or(false);
+    let still_working = state.lock().map(|state| !state.is_ready()).unwrap_or(false);
     if !still_working || !rect.is_positive() {
         return;
     }
 
     let callback = egui_glow::CallbackFn::new(move |_info, glow_painter| {
-        upload_next_mipmap_chunk(
-            glow_painter,
-            texture_id,
-            &state,
-            &budget,
-            &ctx,
-        );
+        upload_next_mipmap_chunk(glow_painter, texture_id, &state, &budget, &ctx);
     });
     painter.add(egui::Shape::Callback(egui::PaintCallback {
         rect,
@@ -287,12 +264,8 @@ fn reserve_upload_budget(budget: &MipUploadBudget, bytes: usize) -> bool {
         let Some(updated) = remaining.checked_sub(bytes) else {
             return false;
         };
-        match budget.compare_exchange_weak(
-            remaining,
-            updated,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-        ) {
+        match budget.compare_exchange_weak(remaining, updated, Ordering::Relaxed, Ordering::Relaxed)
+        {
             Ok(_) => return true,
             Err(actual) => remaining = actual,
         }
@@ -466,11 +439,7 @@ mod tests {
 
     #[test]
     fn odd_source_edges_are_included_in_the_last_mip_sample() {
-        let pixels = vec![
-            0, 0, 0, 255,
-            0, 0, 0, 255,
-            255, 255, 255, 255,
-        ];
+        let pixels = vec![0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255, 255];
         let (width, height, mip) =
             downsample_rgba_egui_premultiplied(3, 1, &pixels, false).unwrap();
         assert_eq!((width, height), (1, 1));

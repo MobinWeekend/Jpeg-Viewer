@@ -57,11 +57,10 @@ impl ViewerApp {
 
                                 let instagram_link = ui.link(instagram_text);
 
-                                if instagram_link.clicked() {
-                                    if let Err(err) = open::that("https://instagram.com/artofweekend") {
+                                if instagram_link.clicked()
+                                    && let Err(err) = open::that("https://instagram.com/artofweekend") {
                                         eprintln!("Failed to open Instagram: {}", err);
                                     }
-                                }
 
                                 ui.add_space(16.0);
 
@@ -72,11 +71,10 @@ impl ViewerApp {
 
                                 let x_link = ui.link(x_text);
 
-                                if x_link.clicked() {
-                                    if let Err(err) = open::that("https://x.com/artofweekend") {
+                                if x_link.clicked()
+                                    && let Err(err) = open::that("https://x.com/artofweekend") {
                                         eprintln!("Failed to open X: {}", err);
                                     }
-                                }
 
                                 ui.add_space(16.0);
 
@@ -87,11 +85,10 @@ impl ViewerApp {
 
                                 let github_link = ui.link(github_text);
 
-                                if github_link.clicked() {
-                                    if let Err(err) = open::that("https://github.com/MobinWeekend/Jpeg-Viewer") {
+                                if github_link.clicked()
+                                    && let Err(err) = open::that("https://github.com/MobinWeekend/Jpeg-Viewer") {
                                         eprintln!("Failed to open GitHub: {}", err);
                                     }
-                                }
 
                                 ui.add_space(8.0);
                             });

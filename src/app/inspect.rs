@@ -111,9 +111,7 @@ impl ViewerApp {
         }
         self.inspect_mipmap_state = if self.settings_manager.get().texture_filter == "mipmap" {
             Some(super::texture_mipmap::start_mipmap_upload(
-                width,
-                height,
-                rgba,
+                width, height, rgba,
             ))
         } else {
             None

@@ -1,10 +1,9 @@
 // preloading governs the range and tasks and duration for preloading
 
-use super::texture_mipmap::{
-    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload,
-    start_mipmap_upload_from_entry,
-};
 use super::loading::load_entry_content_with_metadata_cancellable;
+use super::texture_mipmap::{
+    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload, start_mipmap_upload_from_entry,
+};
 use super::types::{CachedImage, LoadedEntryData, LoadedImage, PreloadTask, ViewerApp};
 use crate::decoder::gif::detection::is_gif_entry;
 use crate::imaging::entry::ImageEntry;
@@ -14,9 +13,9 @@ use rayon::spawn;
 
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::sync::mpsc::channel;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
 const PRELOAD_TIMEOUT: Duration = Duration::from_secs(5);
@@ -108,10 +107,10 @@ impl ViewerApp {
             return false;
         };
         let key = entry.get_id();
-        if let Ok(cache) = self.gif_detection_cache.lock() {
-            if let Some(is_gif) = cache.get(&key) {
-                return *is_gif;
-            }
+        if let Ok(cache) = self.gif_detection_cache.lock()
+            && let Some(is_gif) = cache.get(&key)
+        {
+            return *is_gif;
         }
         let is_gif = is_gif_entry(entry);
         if let Ok(mut cache) = self.gif_detection_cache.lock() {
@@ -249,8 +248,6 @@ impl ViewerApp {
         //let skipped = self.preload_skipped_count();
         if completed < total {
             //println!("Preload: {}/{} ({} skipped)", completed, total, skipped);
-        } else {
-            return;
         }
     }
 
@@ -450,51 +447,47 @@ impl ViewerApp {
 
         // First priority: the image currently on screen. This covers cache hits
         // whose mip preparation was deferred while a previous neighbour finished.
-        if !self.inspect_mode && !self.is_gif && !self.is_preview {
-            if let Some(image_id) = self.get_image_id(self.current_index) {
-                let is_current_texture = self.texture_image_id.as_deref() == Some(image_id.as_str());
-                let needs_mipmaps = self
-                    .image_cache
-                    .peek(&image_id)
-                    .is_some_and(|cached| {
-                        cached.texture_filter == "mipmap"
-                            && !cached.is_gif
-                            && !cached.is_preview
-                            && cached.mipmap_state.is_none()
-                    });
+        if !self.inspect_mode
+            && !self.is_gif
+            && !self.is_preview
+            && let Some(image_id) = self.get_image_id(self.current_index)
+        {
+            let is_current_texture = self.texture_image_id.as_deref() == Some(image_id.as_str());
+            let needs_mipmaps = self.image_cache.peek(&image_id).is_some_and(|cached| {
+                cached.texture_filter == "mipmap"
+                    && !cached.is_gif
+                    && !cached.is_preview
+                    && cached.mipmap_state.is_none()
+            });
 
-                if is_current_texture && needs_mipmaps {
-                    if let Some(entry) = self.image_entries.get(self.current_index).cloned() {
-                        let retained_pixels = self
-                            .current_decoded_pixels
+            if is_current_texture
+                && needs_mipmaps
+                && let Some(entry) = self.image_entries.get(self.current_index).cloned()
+            {
+                let retained_pixels = self
+                    .current_decoded_pixels
+                    .as_ref()
+                    .filter(|(source_id, _, _, _)| source_id == &image_id)
+                    .map(|(_, width, height, pixels)| (*width, *height, Arc::clone(pixels)))
+                    .or_else(|| {
+                        self.preloaded_mipmap_pixels
                             .as_ref()
                             .filter(|(source_id, _, _, _)| source_id == &image_id)
-                            .map(|(_, width, height, pixels)| {
-                                (*width, *height, Arc::clone(pixels))
-                            })
-                            .or_else(|| {
-                                self.preloaded_mipmap_pixels
-                                    .as_ref()
-                                    .filter(|(source_id, _, _, _)| source_id == &image_id)
-                                    .map(|(_, width, height, pixels)| {
-                                        (*width, *height, Arc::clone(pixels))
-                                    })
-                            });
-                        let state = if let Some((width, height, pixels)) = retained_pixels {
-                            start_mipmap_upload(width, height, pixels)
-                        } else {
-                            start_mipmap_upload_from_entry(
-                                entry,
-                                self.settings_manager.get().virtual_texture_threshold,
-                            )
-                        };
-                        if let Some(cached) = self.image_cache.get_mut(&image_id) {
-                            cached.mipmap_state = Some(state.clone());
-                            self.current_mipmap_state = Some(state);
-                            ctx.request_repaint();
-                            return;
-                        }
-                    }
+                            .map(|(_, width, height, pixels)| (*width, *height, Arc::clone(pixels)))
+                    });
+                let state = if let Some((width, height, pixels)) = retained_pixels {
+                    start_mipmap_upload(width, height, pixels)
+                } else {
+                    start_mipmap_upload_from_entry(
+                        entry,
+                        self.settings_manager.get().virtual_texture_threshold,
+                    )
+                };
+                if let Some(cached) = self.image_cache.get_mut(&image_id) {
+                    cached.mipmap_state = Some(state.clone());
+                    self.current_mipmap_state = Some(state);
+                    ctx.request_repaint();
+                    return;
                 }
             }
         }
@@ -516,15 +509,12 @@ impl ViewerApp {
                 let Some(image_id) = self.get_image_id(index) else {
                     continue;
                 };
-                let needs_mipmaps = self
-                    .image_cache
-                    .peek(&image_id)
-                    .is_some_and(|cached| {
-                        cached.texture_filter == "mipmap"
-                            && !cached.is_gif
-                            && !cached.is_preview
-                            && cached.mipmap_state.is_none()
-                    });
+                let needs_mipmaps = self.image_cache.peek(&image_id).is_some_and(|cached| {
+                    cached.texture_filter == "mipmap"
+                        && !cached.is_gif
+                        && !cached.is_preview
+                        && cached.mipmap_state.is_none()
+                });
                 if !needs_mipmaps {
                     continue;
                 }
@@ -696,9 +686,7 @@ impl ViewerApp {
 
     fn cancel_preloads_outside(&mut self, desired: &HashSet<usize>) {
         for task in &self.preload_tasks {
-            if !desired.contains(&task.index)
-                && !task.cancellation.swap(true, Ordering::AcqRel)
-            {
+            if !desired.contains(&task.index) && !task.cancellation.swap(true, Ordering::AcqRel) {
                 crate::io_metrics::preload_cancelled();
             }
         }

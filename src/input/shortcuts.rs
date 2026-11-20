@@ -94,22 +94,22 @@ impl KeyBinding {
             return false;
         }
 
-        if let Some(ctrl) = self.ctrl {
-            if input.modifiers.ctrl != ctrl {
-                return false;
-            }
+        if let Some(ctrl) = self.ctrl
+            && input.modifiers.ctrl != ctrl
+        {
+            return false;
         }
 
-        if let Some(shift) = self.shift {
-            if input.modifiers.shift != shift {
-                return false;
-            }
+        if let Some(shift) = self.shift
+            && input.modifiers.shift != shift
+        {
+            return false;
         }
 
-        if let Some(alt) = self.alt {
-            if input.modifiers.alt != alt {
-                return false;
-            }
+        if let Some(alt) = self.alt
+            && input.modifiers.alt != alt
+        {
+            return false;
         }
 
         true
@@ -136,22 +136,22 @@ impl MouseBinding {
             return false;
         }
 
-        if let Some(ctrl) = self.ctrl {
-            if input.modifiers.ctrl != ctrl {
-                return false;
-            }
+        if let Some(ctrl) = self.ctrl
+            && input.modifiers.ctrl != ctrl
+        {
+            return false;
         }
 
-        if let Some(shift) = self.shift {
-            if input.modifiers.shift != shift {
-                return false;
-            }
+        if let Some(shift) = self.shift
+            && input.modifiers.shift != shift
+        {
+            return false;
         }
 
-        if let Some(alt) = self.alt {
-            if input.modifiers.alt != alt {
-                return false;
-            }
+        if let Some(alt) = self.alt
+            && input.modifiers.alt != alt
+        {
+            return false;
         }
 
         true

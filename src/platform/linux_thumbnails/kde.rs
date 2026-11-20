@@ -49,7 +49,10 @@ fn decode_output(path: &Path) -> Option<image::RgbaImage> {
     if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
         return None;
     }
-    let reader = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+    let reader = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?;
     let (width, height) = reader.into_dimensions().ok()?;
     let pixel_count = (width as u64).checked_mul(height as u64)?;
     if width == 0 || height == 0 || pixel_count > MAX_OUTPUT_PIXELS {
@@ -61,8 +64,7 @@ fn decode_output(path: &Path) -> Option<image::RgbaImage> {
 fn executable_available(executable: &str) -> bool {
     std::env::var_os("PATH")
         .map(|path| {
-            std::env::split_paths(&path)
-                .any(|directory| directory.join(executable).is_file())
+            std::env::split_paths(&path).any(|directory| directory.join(executable).is_file())
         })
         .unwrap_or(false)
 }

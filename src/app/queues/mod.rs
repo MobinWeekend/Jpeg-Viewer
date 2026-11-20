@@ -20,14 +20,10 @@ fn entry_path(entry: &ImageEntry) -> Option<&PathBuf> {
 pub(crate) use actions::collect_folder_images;
 
 pub(crate) use thumbnails::{
-    source_thumbnail_key,
-    thumbnail_fit_rect,
-    thumbnail_request_size,
+    SIDEBAR_CURRENT_PRIORITY, SIDEBAR_HOVER_PRIORITY, SIDEBAR_PLACEHOLDER_SIZE,
+    SIDEBAR_VISIBLE_PRIORITY, remove_attempts_for_cached_source, shared_thumbnail_key,
+    source_thumbnail_key, thumbnail_fit_rect, thumbnail_request_size,
     update_masonry_thumbnail_visibility,
-    SIDEBAR_CURRENT_PRIORITY,
-    SIDEBAR_HOVER_PRIORITY,
-    SIDEBAR_VISIBLE_PRIORITY,
-    SIDEBAR_PLACEHOLDER_SIZE,
 };
 
 pub(crate) use storage::read_queue;

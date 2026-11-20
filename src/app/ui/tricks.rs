@@ -6,8 +6,8 @@ use crate::app::types::ViewerApp;
 use crate::settings::AppSettings;
 use eframe::egui;
 use std::path::PathBuf;
-use std::sync::mpsc::{self, TryRecvError};
 use std::sync::Arc;
+use std::sync::mpsc::{self, TryRecvError};
 use std::time::Duration;
 
 impl ViewerApp {
@@ -159,41 +159,41 @@ impl ViewerApp {
             Some(Err(TryRecvError::Empty)) | None => {}
         }
 
-        if settings.tricks_backdrop_enabled && self.virtual_texture.is_none() {
-            if let Some((path, width, height, pixels)) =
+        if settings.tricks_backdrop_enabled
+            && self.virtual_texture.is_none()
+            && let Some((path, width, height, pixels)) =
                 self.tricks_backdrop_source_preview.as_ref()
-            {
-                let blur = settings.tricks_backdrop_blur.round().clamp(8.0, 64.0) as u8;
-                let key = (path.clone(), blur);
-                if self.tricks_backdrop_key.as_ref() != Some(&key) {
-                    self.tricks_backdrop_key = Some(key.clone());
-                    // Prepare the replacement without interrupting any visible fade.
-                    // When it finishes, it becomes the incoming texture and starts a
-                    // fresh cross-fade from the last committed backdrop.
-                    let result_path = path.clone();
-                    let source = pixels.clone();
-                    let source_width = *width;
-                    let source_height = *height;
-                    let (tx, rx) = mpsc::channel();
-                    self.tricks_backdrop_receiver = Some(rx);
-                    std::thread::spawn(move || {
-                        let result = image::RgbaImage::from_raw(
-                            source_width as u32,
-                            source_height as u32,
-                            source,
-                        )
-                        .map(|preview| {
-                            // The source is capped at 256px, so scale the blur radius too.
-                            image::imageops::blur(&preview, (blur as f32 / 4.0).clamp(1.0, 16.0))
-                        })
-                        .map(|blurred| {
-                            let size = (blurred.width() as usize, blurred.height() as usize);
-                            (size.0, size.1, blurred.into_raw())
-                        })
-                        .ok_or_else(|| "Backdrop preview buffer has an invalid size".to_owned());
-                        let _ = tx.send((result_path, blur, result));
-                    });
-                }
+        {
+            let blur = settings.tricks_backdrop_blur.round().clamp(8.0, 64.0) as u8;
+            let key = (path.clone(), blur);
+            if self.tricks_backdrop_key.as_ref() != Some(&key) {
+                self.tricks_backdrop_key = Some(key.clone());
+                // Prepare the replacement without interrupting any visible fade.
+                // When it finishes, it becomes the incoming texture and starts a
+                // fresh cross-fade from the last committed backdrop.
+                let result_path = path.clone();
+                let source = pixels.clone();
+                let source_width = *width;
+                let source_height = *height;
+                let (tx, rx) = mpsc::channel();
+                self.tricks_backdrop_receiver = Some(rx);
+                std::thread::spawn(move || {
+                    let result = image::RgbaImage::from_raw(
+                        source_width as u32,
+                        source_height as u32,
+                        source,
+                    )
+                    .map(|preview| {
+                        // The source is capped at 256px, so scale the blur radius too.
+                        image::imageops::blur(&preview, (blur as f32 / 4.0).clamp(1.0, 16.0))
+                    })
+                    .map(|blurred| {
+                        let size = (blurred.width() as usize, blurred.height() as usize);
+                        (size.0, size.1, blurred.into_raw())
+                    })
+                    .ok_or_else(|| "Backdrop preview buffer has an invalid size".to_owned());
+                    let _ = tx.send((result_path, blur, result));
+                });
             }
         }
 
@@ -368,14 +368,14 @@ impl ViewerApp {
                 };
             let elapsed = gif.last_update.elapsed();
 
-            if let Some(frame) = gif.get_current_frame() {
-                if self.tricks_watermark_gif_frame != Some(index) {
-                    next_gif_frame = Some((
-                        index,
-                        [frame.width() as usize, frame.height() as usize],
-                        frame.as_raw().clone(),
-                    ));
-                }
+            if let Some(frame) = gif.get_current_frame()
+                && self.tricks_watermark_gif_frame != Some(index)
+            {
+                next_gif_frame = Some((
+                    index,
+                    [frame.width() as usize, frame.height() as usize],
+                    frame.as_raw().clone(),
+                ));
             }
 
             if let Some(delay) = repaint_delay {
@@ -438,7 +438,12 @@ impl ViewerApp {
         let opacity = opacity.clamp(0.0, 1.0);
 
         if let Some(texture) = &self.tricks_backdrop_texture {
-            paint_backdrop_texture(&clip_painter, texture, backdrop_rect, opacity * (1.0 - progress));
+            paint_backdrop_texture(
+                &clip_painter,
+                texture,
+                backdrop_rect,
+                opacity * (1.0 - progress),
+            );
         }
         if let Some(texture) = &self.tricks_backdrop_next_texture {
             paint_backdrop_texture(&clip_painter, texture, backdrop_rect, opacity * progress);
@@ -794,15 +799,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 }
             });
             ui.horizontal(|ui| {
-                if ui.button("Choose logo…").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
+                if ui.button("Choose logo…").clicked()
+                    && let Some(path) = rfd::FileDialog::new()
                         .add_filter("Watermark image", &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"])
                         .pick_file()
                     {
                         let value = path.to_string_lossy().into_owned();
                         let _ = app.settings_manager.update(|s| s.tricks_watermark_image_path = value);
                     }
-                }
                 if !settings.tricks_watermark_image_path.is_empty() && ui.small_button("Clear").clicked() {
                     let _ = app.settings_manager.update(|s| s.tricks_watermark_image_path.clear());
                 }

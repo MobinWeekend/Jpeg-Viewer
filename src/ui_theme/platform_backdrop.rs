@@ -79,7 +79,6 @@ pub fn set_enabled(enabled: bool) {
     let _ = enabled;
 }
 
-
 /// Release any native backdrop resources while the native window/display is still alive.
 pub fn shutdown() {
     set_enabled(false);
@@ -124,7 +123,7 @@ pub fn set_native_window_shape(enabled: bool) {
 pub fn is_active() -> bool {
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     {
-        return NATIVE_BACKDROP_ACTIVE.load(Ordering::Relaxed);
+        NATIVE_BACKDROP_ACTIVE.load(Ordering::Relaxed)
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
@@ -476,7 +475,6 @@ mod macos_backdrop {
         apply_window_shape(view_handle as Obj, enabled);
     }
 }
-
 
 #[cfg(target_os = "linux")]
 mod wayland_backdrop;

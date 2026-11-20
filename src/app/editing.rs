@@ -185,15 +185,18 @@ impl EditSession {
     /// change are discarded at this boundary.
     fn rebase_adjustment_history(&mut self, image: &Arc<RgbaImage>) {
         let current_adjustments = self.adjustments;
-        self.undo.retain(|snapshot| snapshot.adjustments != current_adjustments);
-        self.redo.retain(|snapshot| snapshot.adjustments != current_adjustments);
+        self.undo
+            .retain(|snapshot| snapshot.adjustments != current_adjustments);
+        self.redo
+            .retain(|snapshot| snapshot.adjustments != current_adjustments);
         for snapshot in self.undo.iter_mut().chain(self.redo.iter_mut()) {
             snapshot.image = image.clone();
         }
     }
 
     fn update_dirty(&mut self) {
-        self.dirty = self.image.as_raw() != self.original.as_raw() || !self.adjustments.is_default();
+        self.dirty =
+            self.image.as_raw() != self.original.as_raw() || !self.adjustments.is_default();
     }
 
     pub fn set_adjustments(&mut self, adjustments: ImageAdjustments) {
@@ -230,9 +233,11 @@ impl EditSession {
         if width == 0 || height == 0 {
             return Err("Image width and height must be greater than zero.".into());
         }
-        let pixels = u64::from(width).checked_mul(u64::from(height))
+        let pixels = u64::from(width)
+            .checked_mul(u64::from(height))
             .ok_or_else(|| "The requested dimensions are too large.".to_string())?;
-        let bytes = pixels.checked_mul(4)
+        let bytes = pixels
+            .checked_mul(4)
             .ok_or_else(|| "The requested image would exceed addressable memory.".to_string())?;
         if bytes > usize::MAX as u64 {
             return Err("The requested image would exceed addressable memory.".into());
@@ -394,7 +399,12 @@ impl EditSession {
             };
             self.preview_base = Some((max_pixels, base));
         }
-        let mut image = self.preview_base.as_ref().expect("preview cache initialized").1.clone();
+        let mut image = self
+            .preview_base
+            .as_ref()
+            .expect("preview cache initialized")
+            .1
+            .clone();
         apply_adjustments(&mut image, self.adjustments);
         image
     }
@@ -442,7 +452,9 @@ fn apply_adjustment_bytes(bytes: &mut [u8], adjustments: ImageAdjustments) {
         for index in 0..3 {
             let (c, b) = if adjustments.per_channel {
                 (channel_contrast[index], channel_brightness[index])
-            } else { (contrast, brightness) };
+            } else {
+                (contrast, brightness)
+            };
             rgb[index] = ((rgb[index] - 127.5) * c + 127.5 + b).clamp(0.0, 255.0);
         }
         if adjustments.hue == 0 && adjustments.saturation == 100 {
@@ -468,7 +480,9 @@ fn apply_adjustment_bytes(bytes: &mut [u8], adjustments: ImageAdjustments) {
             60.0 * (((r - g) / delta) + 4.0)
         };
         hue = (hue + adjustments.hue as f32).rem_euclid(360.0);
-        let saturation = if max <= f32::EPSILON { 0.0 } else {
+        let saturation = if max <= f32::EPSILON {
+            0.0
+        } else {
             (delta / max * saturation_multiplier).clamp(0.0, 1.0)
         };
         let value = max;
@@ -476,8 +490,12 @@ fn apply_adjustment_bytes(bytes: &mut [u8], adjustments: ImageAdjustments) {
         let x = chroma * (1.0 - ((hue / 60.0).rem_euclid(2.0) - 1.0).abs());
         let m = value - chroma;
         let (r1, g1, b1) = match (hue / 60.0).floor() as i32 {
-            0 => (chroma, x, 0.0), 1 => (x, chroma, 0.0), 2 => (0.0, chroma, x),
-            3 => (0.0, x, chroma), 4 => (x, 0.0, chroma), _ => (chroma, 0.0, x),
+            0 => (chroma, x, 0.0),
+            1 => (x, chroma, 0.0),
+            2 => (0.0, chroma, x),
+            3 => (0.0, x, chroma),
+            4 => (x, 0.0, chroma),
+            _ => (chroma, 0.0, x),
         };
         pixel[0] = ((r1 + m) * 255.0).round().clamp(0.0, 255.0) as u8;
         pixel[1] = ((g1 + m) * 255.0).round().clamp(0.0, 255.0) as u8;
@@ -571,7 +589,10 @@ pub fn save_image_safely_with_quality(
                 };
             }
             if let Err(e) = fs::remove_file(&backup_path) {
-                eprintln!("Saved image, but could not remove backup {}: {e}", backup_path.display());
+                eprintln!(
+                    "Saved image, but could not remove backup {}: {e}",
+                    backup_path.display()
+                );
             }
         } else {
             fs::rename(&temp_path, destination)
@@ -580,10 +601,13 @@ pub fn save_image_safely_with_quality(
         Ok(())
     })();
 
-    if temp_path.exists() {
-        if let Err(e) = fs::remove_file(&temp_path) {
-            eprintln!("Could not remove temporary file {}: {e}", temp_path.display());
-        }
+    if temp_path.exists()
+        && let Err(e) = fs::remove_file(&temp_path)
+    {
+        eprintln!(
+            "Could not remove temporary file {}: {e}",
+            temp_path.display()
+        );
     }
     write_result
 }
@@ -720,7 +744,10 @@ mod tests {
     fn restore_to_original_size_preserves_adjustments() {
         let mut edit = EditSession::new("sample.png".into(), sample());
         edit.record_current_state();
-        edit.set_adjustments(ImageAdjustments { brightness: 20, ..Default::default() });
+        edit.set_adjustments(ImageAdjustments {
+            brightness: 20,
+            ..Default::default()
+        });
         edit.resize(6, 4).unwrap();
         edit.restore_to_original_size();
         assert_eq!(edit.image.dimensions(), (3, 2));
@@ -736,7 +763,10 @@ mod tests {
     fn crop_is_not_undoable_but_adjustment_history_survives() {
         let mut edit = EditSession::new("sample.png".into(), sample());
         edit.record_current_state();
-        edit.set_adjustments(ImageAdjustments { brightness: 20, ..Default::default() });
+        edit.set_adjustments(ImageAdjustments {
+            brightness: 20,
+            ..Default::default()
+        });
         edit.crop(0, 0, 2, 2).unwrap();
         assert_eq!(edit.image.dimensions(), (2, 2));
         assert!(edit.has_structural_edits());

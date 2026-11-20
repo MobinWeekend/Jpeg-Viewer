@@ -4,18 +4,24 @@ mod app;
 mod decoder;
 mod imaging;
 mod input;
-mod settings;
-mod platform;
-mod ui_theme;
 mod io_metrics;
+mod platform;
+mod settings;
+mod ui_theme;
 
 use app::ViewerApp;
 use eframe::egui;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
-fn open_startup_paths(app: &mut ViewerApp, startup_paths: Vec<std::path::PathBuf>, ctx: &egui::Context) {
+fn open_startup_paths(
+    app: &mut ViewerApp,
+    startup_paths: Vec<std::path::PathBuf>,
+    ctx: &egui::Context,
+) {
     if startup_paths.len() == 1
-        && startup_paths[0].extension().is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"))
+        && startup_paths[0]
+            .extension()
+            .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jvq"))
     {
         app.open_queue_file(&startup_paths[0], ctx, false);
     } else if startup_paths.len() == 1 {
@@ -28,9 +34,13 @@ fn open_startup_paths(app: &mut ViewerApp, startup_paths: Vec<std::path::PathBuf
 fn main() -> eframe::Result<()> {
     let settings_manager = settings::SettingsManager::new();
     let app_settings = settings_manager.get().clone();
-    let startup_paths: Vec<std::path::PathBuf> = std::env::args_os().skip(1).map(Into::into).collect();
+    let startup_paths: Vec<std::path::PathBuf> =
+        std::env::args_os().skip(1).map(Into::into).collect();
     let instance_server = if app_settings.single_instance_enabled {
-        match crate::platform::instance::launch_or_forward(settings_manager.path(), startup_paths.clone()) {
+        match crate::platform::instance::launch_or_forward(
+            settings_manager.path(),
+            startup_paths.clone(),
+        ) {
             Ok(crate::platform::instance::LaunchOutcome::Primary(server)) => Some(server),
             Ok(crate::platform::instance::LaunchOutcome::Forwarded) => return Ok(()),
             Err(error) => {
@@ -74,10 +84,10 @@ fn main() -> eframe::Result<()> {
     // is only applied when starting in the restored state.
     let start_maximized = app_settings.window_maximized && !app_settings.start_fullscreen;
     if !start_maximized {
-        if !app_settings.start_centered {
-            if let Some(pos) = app_settings.window_pos {
-                viewport = viewport.with_position(pos);
-            }
+        if !app_settings.start_centered
+            && let Some(pos) = app_settings.window_pos
+        {
+            viewport = viewport.with_position(pos);
         }
         if let Some(size) = app_settings.window_size {
             viewport = viewport.with_inner_size(size);
@@ -113,9 +123,11 @@ fn main() -> eframe::Result<()> {
                 raw_display_handle,
             );
 
-            crate::ui_theme::platform_backdrop::set_native_window_shape(app_settings.native_window_rounding);
+            crate::ui_theme::platform_backdrop::set_native_window_shape(
+                app_settings.native_window_rounding,
+            );
 
-            let mut app = ViewerApp::default();
+            let mut app = ViewerApp::new(settings_manager);
             app.instance_server = instance_server;
             if let Some(server) = app.instance_server.as_ref() {
                 // Wake the event loop when another process forwards an open request.
@@ -153,7 +165,12 @@ fn main() -> eframe::Result<()> {
                     &cc.egui_ctx,
                     &settings.desktop_menu_bar_preference,
                 );
-                crate::ui_theme::apply_polished_style_with_options(&cc.egui_ctx, &settings.ui_accent_color, settings.ui_scale, settings.ui_text_scale);
+                crate::ui_theme::apply_polished_style_with_options(
+                    &cc.egui_ctx,
+                    &settings.ui_accent_color,
+                    settings.ui_scale,
+                    settings.ui_text_scale,
+                );
             }
 
             Ok(Box::new(app))

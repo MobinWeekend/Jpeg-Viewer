@@ -3,6 +3,7 @@
     <id>com.jpegviewer.JpegViewer</id>
 
     <name>JPEG Viewer</name>
+    <icon type="stock">com.jpegviewer.JpegViewer</icon>
     <summary>Fast and lightweight GPU-accelerated image viewer</summary>
 
     <metadata_license>CC0-1.0</metadata_license>
@@ -50,6 +51,19 @@
     <provides>
         <binary>jpeg_viewer</binary>
     </provides>
+
+    <categories>
+        <category>Graphics</category>
+        <category>Viewer</category>
+    </categories>
+
+    <keywords>
+        <keyword>image</keyword>
+        <keyword>viewer</keyword>
+        <keyword>photo</keyword>
+        <keyword>picture</keyword>
+        <keyword>jpeg</keyword>
+    </keywords>
 
     <url type="homepage">https://github.com/MobinWeekend/Jpeg-Viewer</url>
     <url type="bugtracker">https://github.com/MobinWeekend/Jpeg-Viewer/issues</url>

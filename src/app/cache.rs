@@ -1,6 +1,4 @@
-use super::texture_mipmap::{
-    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload,
-};
+use super::texture_mipmap::{SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload};
 use super::types::{CachedImage, LoadedEntryData, LoadedImage, ViewerApp};
 use crate::app::constants::MAX_TILE_SIZE;
 use crate::imaging::core::DecodedImage;
@@ -76,9 +74,10 @@ impl ViewerApp {
     /// In-progress states are cached too, allowing neighbouring images to finish
     /// preparing while they are not currently displayed.
     pub(crate) fn cache_ready_current_mipmap(&mut self) {
-        let ready = self.current_mipmap_state.as_ref().is_some_and(|state| {
-            state.lock().map(|state| state.is_ready()).unwrap_or(false)
-        });
+        let ready = self
+            .current_mipmap_state
+            .as_ref()
+            .is_some_and(|state| state.lock().map(|state| state.is_ready()).unwrap_or(false));
         if ready {
             self.cache_current_image();
         }
@@ -104,18 +103,30 @@ impl ViewerApp {
                 .file_metadata
                 .as_ref()
                 .and_then(|metadata| metadata.source_stamp.as_ref());
-            let source_is_current = source_path.zip(expected_stamp).is_some_and(|(path, expected)| {
-                crate::io_metrics::metadata_query();
-                std::fs::metadata(path).ok().is_some_and(|actual| {
-                    actual.len() == expected.0 && actual.modified().ok().as_ref() == Some(&expected.1)
-                })
-            });
+            let source_is_current =
+                source_path
+                    .zip(expected_stamp)
+                    .is_some_and(|(path, expected)| {
+                        crate::io_metrics::metadata_query();
+                        std::fs::metadata(path).ok().is_some_and(|actual| {
+                            actual.len() == expected.0
+                                && actual.modified().ok().as_ref() == Some(&expected.1)
+                        })
+                    });
             if !source_is_current {
                 self.image_cache.pop(&image_id);
-                if self.preloaded_mipmap_pixels.as_ref().is_some_and(|(source_id, _, _, _)| source_id == &image_id) {
+                if self
+                    .preloaded_mipmap_pixels
+                    .as_ref()
+                    .is_some_and(|(source_id, _, _, _)| source_id == &image_id)
+                {
                     self.preloaded_mipmap_pixels = None;
                 }
-                if self.current_decoded_pixels.as_ref().is_some_and(|(source_id, _, _, _)| source_id == &image_id) {
+                if self
+                    .current_decoded_pixels
+                    .as_ref()
+                    .is_some_and(|(source_id, _, _, _)| source_id == &image_id)
+                {
                     self.current_decoded_pixels = None;
                 }
                 return false;
@@ -210,13 +221,12 @@ impl ViewerApp {
         let texture_filter = self.settings_manager.get().texture_filter.clone();
         let image_id = self.get_image_id(index);
         const MAX_RETAINED_CURRENT_PIXELS: usize = 128 * 1024 * 1024;
-        if let Some(image_id) = image_id.as_ref().filter(|_| rgba.len() <= MAX_RETAINED_CURRENT_PIXELS) {
-            self.current_decoded_pixels = Some((
-                image_id.clone(),
-                width,
-                height,
-                Arc::clone(&rgba),
-            ));
+        if let Some(image_id) = image_id
+            .as_ref()
+            .filter(|_| rgba.len() <= MAX_RETAINED_CURRENT_PIXELS)
+        {
+            self.current_decoded_pixels =
+                Some((image_id.clone(), width, height, Arc::clone(&rgba)));
         } else {
             self.current_decoded_pixels = None;
         }
@@ -279,20 +289,18 @@ impl ViewerApp {
             None
         };
 
-        if should_cache {
-            if let Some(image_id) = image_id {
-                let cached = CachedImage {
-                    texture: texture.clone(),
-                    texture_filter,
-                    mipmap_state: mipmap_state.clone(),
-                    is_gif: false,
-                    is_preview: false,
-                    index,
-                    file_type_detection: self.file_type_detection.clone(),
-                    file_metadata: self.file_metadata.clone(),
-                };
-                self.image_cache.put(image_id, cached);
-            }
+        if should_cache && let Some(image_id) = image_id {
+            let cached = CachedImage {
+                texture: texture.clone(),
+                texture_filter,
+                mipmap_state: mipmap_state.clone(),
+                is_gif: false,
+                is_preview: false,
+                index,
+                file_type_detection: self.file_type_detection.clone(),
+                file_metadata: self.file_metadata.clone(),
+            };
+            self.image_cache.put(image_id, cached);
         }
 
         self.current_mipmap_state = mipmap_state.clone();
@@ -321,13 +329,13 @@ impl ViewerApp {
         // A completed preload has already examined the source signature and
         // decoded its format. Seed both positive and negative results so later
         // scheduler/progress checks never reopen this entry just for GIF magic.
-        if let Some(image_id) = self.get_image_id(index) {
-            if let Ok(mut cache) = self.gif_detection_cache.lock() {
-                cache.insert(
-                    image_id,
-                    matches!(&loaded_entry.image, LoadedImage::Animated(_, _)),
-                );
-            }
+        if let Some(image_id) = self.get_image_id(index)
+            && let Ok(mut cache) = self.gif_detection_cache.lock()
+        {
+            cache.insert(
+                image_id,
+                matches!(&loaded_entry.image, LoadedImage::Animated(_, _)),
+            );
         }
         let LoadedEntryData {
             image,
@@ -372,12 +380,8 @@ impl ViewerApp {
         );
         const MAX_RETAINED_PRELOAD_PIXELS: usize = 64 * 1024 * 1024;
         if self.preloaded_mipmap_pixels.is_none() && pixels.len() <= MAX_RETAINED_PRELOAD_PIXELS {
-            self.preloaded_mipmap_pixels = Some((
-                image_id.clone(),
-                width,
-                height,
-                Arc::clone(&pixels),
-            ));
+            self.preloaded_mipmap_pixels =
+                Some((image_id.clone(), width, height, Arc::clone(&pixels)));
         }
         self.image_cache.put(
             image_id,
@@ -402,13 +406,9 @@ impl ViewerApp {
 
     fn is_virtual_texture_size(&self, width: u32, height: u32) -> bool {
         let threshold = self.settings_manager.get().virtual_texture_threshold;
-        width > threshold
-            || height > threshold
-            || width > MAX_TILE_SIZE
-            || height > MAX_TILE_SIZE
+        width > threshold || height > threshold || width > MAX_TILE_SIZE || height > MAX_TILE_SIZE
     }
 }
-
 
 impl ViewerApp {
     /// True while any current, inspect, or cached texture still has mip levels
@@ -432,10 +432,7 @@ impl ViewerApp {
     }
 }
 
-fn same_mipmap_state(
-    left: &Option<SharedMipmapState>,
-    right: &Option<SharedMipmapState>,
-) -> bool {
+fn same_mipmap_state(left: &Option<SharedMipmapState>, right: &Option<SharedMipmapState>) -> bool {
     match (left, right) {
         (Some(left), Some(right)) => Arc::ptr_eq(left, right),
         (None, None) => true,

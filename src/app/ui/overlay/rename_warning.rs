@@ -15,7 +15,11 @@ pub fn rename_warning(app: &mut ViewerApp, ctx: &egui::Context) {
         egui::Frame::new()
             .fill(ctx.style().visuals.panel_fill)
             .inner_margin(egui::Margin::symmetric(8, 4))
-            .corner_radius(if crate::ui_theme::current_look_profile(ctx) == "win98" { egui::CornerRadius::ZERO } else { egui::CornerRadius::same(6) })
+            .corner_radius(if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                egui::CornerRadius::ZERO
+            } else {
+                egui::CornerRadius::same(6)
+            })
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(

@@ -1,7 +1,7 @@
 //! Workspace session serialization, restoration, and restore prompts.
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 impl crate::app::types::ViewerApp {
     /// Load the last workspace snapshot once per application launch.
@@ -16,11 +16,18 @@ impl crate::app::types::ViewerApp {
         if !self.image_entries.is_empty() || self.indexing_receiver.is_some() {
             return;
         }
-        let preference = self.settings_manager.get().session_restore_preference.as_str();
+        let preference = self
+            .settings_manager
+            .get()
+            .session_restore_preference
+            .as_str();
         if preference == "never" {
             return;
         }
-        let path = self.settings_manager.path().with_file_name("workspace_session.txt");
+        let path = self
+            .settings_manager
+            .path()
+            .with_file_name("workspace_session.txt");
         let Some(session) = load_workspace_session(&path) else {
             return;
         };
@@ -68,9 +75,13 @@ impl crate::app::types::ViewerApp {
         tabs.retain(|tab| tab.kind != WorkspaceTabKind::Welcome);
         // Older sessions could contain multiple Masonry tabs. Keep the active
         // one when possible, otherwise the first, to migrate to the singleton model.
-        let keep_masonry_id = tabs.iter()
+        let keep_masonry_id = tabs
+            .iter()
             .find(|tab| tab.kind == WorkspaceTabKind::Masonry && tab.id == active_id)
-            .or_else(|| tabs.iter().find(|tab| tab.kind == WorkspaceTabKind::Masonry))
+            .or_else(|| {
+                tabs.iter()
+                    .find(|tab| tab.kind == WorkspaceTabKind::Masonry)
+            })
             .map(|tab| tab.id);
         tabs.retain(|tab| tab.kind != WorkspaceTabKind::Masonry || Some(tab.id) == keep_masonry_id);
         if tabs.iter().all(|tab| tab.kind != WorkspaceTabKind::Viewer) {
@@ -80,19 +91,24 @@ impl crate::app::types::ViewerApp {
         // their explicit entry list, as selected files must not expand to a folder.
         for tab in &mut tabs {
             if tab.kind == WorkspaceTabKind::Masonry {
-                tab.masonry_tile_size = self.settings_manager.get().masonry_thumbnail_size.clamp(76.0, 512.0);
+                tab.masonry_tile_size = self
+                    .settings_manager
+                    .get()
+                    .masonry_thumbnail_size
+                    .clamp(76.0, 512.0);
             }
-            if tab.kind == WorkspaceTabKind::Masonry && tab.folder_masonry {
-                if let Some(directory) = tab.directory.as_ref() {
-                    let paths = if tab.recursive {
-                        let mut paths = crate::app::queues::collect_folder_images(directory);
-                        crate::imaging::sort::sort_images(&mut paths, self.sort_method);
-                        paths
-                    } else {
-                        crate::imaging::loader::load_directory_images(directory, self.sort_method)
-                    };
-                    tab.entries = paths.into_iter().map(ImageEntry::File).collect();
-                }
+            if tab.kind == WorkspaceTabKind::Masonry
+                && tab.folder_masonry
+                && let Some(directory) = tab.directory.as_ref()
+            {
+                let paths = if tab.recursive {
+                    let mut paths = crate::app::queues::collect_folder_images(directory);
+                    crate::imaging::sort::sort_images(&mut paths, self.sort_method);
+                    paths
+                } else {
+                    crate::imaging::loader::load_directory_images(directory, self.sort_method)
+                };
+                tab.entries = paths.into_iter().map(ImageEntry::File).collect();
             }
             if tab.kind == WorkspaceTabKind::Compare {
                 let old_entries = std::mem::take(&mut tab.entries);
@@ -103,30 +119,52 @@ impl crate::app::types::ViewerApp {
                 let old_sync = std::mem::take(&mut tab.pane_sync);
                 let old_size = std::mem::take(&mut tab.pane_size);
                 for (index, entry) in old_entries.into_iter().enumerate() {
-                    if !entry_source_available(&entry) { continue; }
+                    if !entry_source_available(&entry) {
+                        continue;
+                    }
                     tab.entries.push(entry);
                     tab.anchors.push(old_anchors.get(index).copied().flatten());
-                    tab.anchors_second.push(old_anchors_second.get(index).copied().flatten());
-                    tab.offsets.push(old_offsets.get(index).copied().unwrap_or([0.0, 0.0]));
-                    tab.pane_zoom.push(old_zoom.get(index).copied().unwrap_or(1.0));
-                    tab.pane_sync.push(old_sync.get(index).copied().unwrap_or(true));
-                    tab.pane_size.push(old_size.get(index).copied().unwrap_or([1.0, 1.0]));
+                    tab.anchors_second
+                        .push(old_anchors_second.get(index).copied().flatten());
+                    tab.offsets
+                        .push(old_offsets.get(index).copied().unwrap_or([0.0, 0.0]));
+                    tab.pane_zoom
+                        .push(old_zoom.get(index).copied().unwrap_or(1.0));
+                    tab.pane_sync
+                        .push(old_sync.get(index).copied().unwrap_or(true));
+                    tab.pane_size
+                        .push(old_size.get(index).copied().unwrap_or([1.0, 1.0]));
                 }
             } else {
                 tab.entries.retain(entry_source_available);
                 tab.current_index = tab.current_index.min(tab.entries.len().saturating_sub(1));
             }
-            let valid_ids = tab.entries.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
+            let valid_ids = tab
+                .entries
+                .iter()
+                .map(ImageEntry::get_id)
+                .collect::<HashSet<_>>();
             tab.selected.retain(|id| valid_ids.contains(id));
         }
         // Drop restored one-image tabs whose source no longer exists; Compare
         // panes have already been pruned in lockstep with their anchor settings.
         tabs.retain(|tab| tab.kind != WorkspaceTabKind::Image || !tab.entries.is_empty());
-        let last_image_tab_id = last_image_tab_id.filter(|id| tabs.iter().any(|tab| tab.id == *id && tab.kind == WorkspaceTabKind::Image));
+        let last_image_tab_id = last_image_tab_id.filter(|id| {
+            tabs.iter()
+                .any(|tab| tab.id == *id && tab.kind == WorkspaceTabKind::Image)
+        });
         self.workspace.tabs = tabs;
         self.workspace.home_page_visible = false;
         self.workspace.active_index = usize::MAX;
-        self.workspace.next_id = next_id.max(self.workspace.tabs.iter().map(|tab| tab.id).max().unwrap_or(1) + 1);
+        self.workspace.next_id = next_id.max(
+            self.workspace
+                .tabs
+                .iter()
+                .map(|tab| tab.id)
+                .max()
+                .unwrap_or(1)
+                + 1,
+        );
         self.workspace.last_image_tab_id = last_image_tab_id;
         // The Masonry return target is intentionally transient; establish it from
         // the next navigation action instead of retaining an ID from an old session.
@@ -143,25 +181,41 @@ impl crate::app::types::ViewerApp {
     /// worker state are deliberately reconstructed on the next launch.
     pub(crate) fn save_workspace_session(&mut self) {
         self.snapshot_active_viewer_tab();
-        let path = self.settings_manager.path().with_file_name("workspace_session.txt");
+        let path = self
+            .settings_manager
+            .path()
+            .with_file_name("workspace_session.txt");
         if self.settings_manager.get().session_restore_preference == "never" {
             let _ = fs::remove_file(&path);
             return;
         }
-        if let Some(parent) = path.parent() {
-            if let Err(error) = fs::create_dir_all(parent) {
-                eprintln!("Could not create workspace session directory: {error}");
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            eprintln!("Could not create workspace session directory: {error}");
+            return;
         }
         let mut output = String::new();
         let active_tab = self.workspace.tabs.get(self.workspace.active_index);
         let active_id = active_tab
             .filter(|tab| tab.kind != WorkspaceTabKind::Welcome)
             .map(|tab| tab.id)
-            .or_else(|| self.workspace.tabs.iter().find(|tab| tab.kind == WorkspaceTabKind::Viewer).map(|tab| tab.id))
+            .or_else(|| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.kind == WorkspaceTabKind::Viewer)
+                    .map(|tab| tab.id)
+            })
             .unwrap_or(1);
-        output.push_str(&format!("ACTIVE|{active_id}\nNEXT|{}\nLASTIMAGE|{}\n", self.workspace.next_id, self.workspace.last_image_tab_id.map(|id| id.to_string()).unwrap_or_default()));
+        output.push_str(&format!(
+            "ACTIVE|{active_id}\nNEXT|{}\nLASTIMAGE|{}\n",
+            self.workspace.next_id,
+            self.workspace
+                .last_image_tab_id
+                .map(|id| id.to_string())
+                .unwrap_or_default()
+        ));
         for tab in &self.workspace.tabs {
             if tab.kind == WorkspaceTabKind::Welcome {
                 continue;
@@ -172,7 +226,10 @@ impl crate::app::types::ViewerApp {
                 tab_kind_code(tab.kind),
                 encode_field(&tab.title),
                 tab.current_index,
-                tab.directory.as_ref().map(|path| encode_field(&path.to_string_lossy())).unwrap_or_default(),
+                tab.directory
+                    .as_ref()
+                    .map(|path| encode_field(&path.to_string_lossy()))
+                    .unwrap_or_default(),
                 tab.zoom,
                 tab.pan.x,
                 tab.pan.y,
@@ -193,10 +250,30 @@ impl crate::app::types::ViewerApp {
             ));
             for entry in &tab.entries {
                 match entry {
-                    ImageEntry::File(path) => output.push_str(&format!("E|{}|F|{}\n", tab.id, encode_field(&path.to_string_lossy()))),
-                    ImageEntry::Zip(item) => output.push_str(&format!("E|{}|Z|{}|{}|{}\n", tab.id, encode_field(&item.archive_path.to_string_lossy()), item.entry_index, encode_field(&item.name))),
-                    ImageEntry::S7z(item) => output.push_str(&format!("E|{}|7|{}|{}\n", tab.id, encode_field(&item.archive_path.to_string_lossy()), encode_field(&item.name))),
-                    ImageEntry::Rar(item) => output.push_str(&format!("E|{}|R|{}|{}\n", tab.id, encode_field(&item.archive_path.to_string_lossy()), encode_field(&item.name))),
+                    ImageEntry::File(path) => output.push_str(&format!(
+                        "E|{}|F|{}\n",
+                        tab.id,
+                        encode_field(&path.to_string_lossy())
+                    )),
+                    ImageEntry::Zip(item) => output.push_str(&format!(
+                        "E|{}|Z|{}|{}|{}\n",
+                        tab.id,
+                        encode_field(&item.archive_path.to_string_lossy()),
+                        item.entry_index,
+                        encode_field(&item.name)
+                    )),
+                    ImageEntry::S7z(item) => output.push_str(&format!(
+                        "E|{}|7|{}|{}\n",
+                        tab.id,
+                        encode_field(&item.archive_path.to_string_lossy()),
+                        encode_field(&item.name)
+                    )),
+                    ImageEntry::Rar(item) => output.push_str(&format!(
+                        "E|{}|R|{}|{}\n",
+                        tab.id,
+                        encode_field(&item.archive_path.to_string_lossy()),
+                        encode_field(&item.name)
+                    )),
                 }
             }
             for selected in &tab.selected {
@@ -217,8 +294,13 @@ impl crate::app::types::ViewerApp {
             for index in 0..tab.anchors.len().max(tab.offsets.len()) {
                 let anchor = tab.anchors.get(index).copied().flatten();
                 let offset = tab.offsets.get(index).copied().unwrap_or([0.0, 0.0]);
-                let (ax, ay) = anchor.map(|point| (point[0].to_string(), point[1].to_string())).unwrap_or_else(|| ("-".into(), "-".into()));
-                output.push_str(&format!("A|{}|{}|{}|{}|{}|{}\n", tab.id, index, ax, ay, offset[0], offset[1]));
+                let (ax, ay) = anchor
+                    .map(|point| (point[0].to_string(), point[1].to_string()))
+                    .unwrap_or_else(|| ("-".into(), "-".into()));
+                output.push_str(&format!(
+                    "A|{}|{}|{}|{}|{}|{}\n",
+                    tab.id, index, ax, ay, offset[0], offset[1]
+                ));
             }
         }
         let temporary = path.with_extension("txt.tmp");
@@ -231,17 +313,21 @@ impl crate::app::types::ViewerApp {
             // failed replacement never destroys the last known-good session.
             let backup = path.with_extension("txt.bak");
             let had_previous = path.exists();
-            if had_previous {
-                if let Err(backup_error) = fs::rename(&path, &backup) {
-                    eprintln!("Could not back up previous workspace session ({error}; {backup_error})");
-                    let _ = fs::remove_file(&temporary);
-                    return;
-                }
+            if had_previous && let Err(backup_error) = fs::rename(&path, &backup) {
+                eprintln!("Could not back up previous workspace session ({error}; {backup_error})");
+                let _ = fs::remove_file(&temporary);
+                return;
             }
             match fs::rename(&temporary, &path) {
-                Ok(()) => { if had_previous { let _ = fs::remove_file(backup); } }
+                Ok(()) => {
+                    if had_previous {
+                        let _ = fs::remove_file(backup);
+                    }
+                }
                 Err(retry_error) => {
-                    if had_previous { let _ = fs::rename(&backup, &path); }
+                    if had_previous {
+                        let _ = fs::rename(&backup, &path);
+                    }
                     eprintln!("Could not replace workspace session ({error}; {retry_error})");
                 }
             }
@@ -282,8 +368,12 @@ pub(super) fn decode_field(value: &str) -> String {
     let mut bytes = Vec::with_capacity(value.len() / 2);
     let mut chars = value.as_bytes().chunks_exact(2);
     for pair in &mut chars {
-        let Ok(hex) = std::str::from_utf8(pair) else { return String::new(); };
-        let Ok(byte) = u8::from_str_radix(hex, 16) else { return String::new(); };
+        let Ok(hex) = std::str::from_utf8(pair) else {
+            return String::new();
+        };
+        let Ok(byte) = u8::from_str_radix(hex, 16) else {
+            return String::new();
+        };
         bytes.push(byte);
     }
     String::from_utf8_lossy(&bytes).into_owned()
@@ -299,23 +389,38 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
         let fields = line.split('|').collect::<Vec<_>>();
         match fields.first().copied().unwrap_or_default() {
             "ACTIVE" => active_id = fields.get(1)?.parse().ok()?,
-            "NEXT" => next_id = fields.get(1).and_then(|value| value.parse().ok()).unwrap_or(2),
+            "NEXT" => {
+                next_id = fields
+                    .get(1)
+                    .and_then(|value| value.parse().ok())
+                    .unwrap_or(2)
+            }
             "LASTIMAGE" => last_image_tab_id = fields.get(1).and_then(|value| value.parse().ok()),
             "T" if fields.len() >= 21 => {
                 let id = fields[1].parse::<u64>().ok()?;
                 let kind = parse_tab_kind(fields[2])?;
-                if kind == WorkspaceTabKind::Welcome { continue; }
+                if kind == WorkspaceTabKind::Welcome {
+                    continue;
+                }
                 let title = decode_field(fields[3]);
                 let mut tab = WorkspaceTab::new(id, title, kind);
                 tab.current_index = fields[4].parse().unwrap_or(0);
-                tab.directory = if fields[5].is_empty() { None } else { Some(PathBuf::from(decode_field(fields[5]))) };
+                tab.directory = if fields[5].is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(decode_field(fields[5])))
+                };
                 tab.zoom = fields[6].parse::<f32>().unwrap_or(1.0).clamp(0.01, 1000.0);
-                tab.pan = egui::vec2(fields[7].parse().unwrap_or(0.0), fields[8].parse().unwrap_or(0.0));
+                tab.pan = egui::vec2(
+                    fields[7].parse().unwrap_or(0.0),
+                    fields[8].parse().unwrap_or(0.0),
+                );
                 tab.fit_to_window = fields[9] == "true";
                 tab.zoom_used = fields[10] == "true";
                 tab.recursive = fields[11] == "true";
                 tab.folder_masonry = fields[12] == "true";
-                tab.masonry_tile_size = fields[13].parse::<f32>()
+                tab.masonry_tile_size = fields[13]
+                    .parse::<f32>()
                     .ok()
                     .filter(|size| (76.0..=512.0).contains(size))
                     .unwrap_or(220.0);
@@ -326,7 +431,11 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                 tab.sync_pan = fields[18] != "false";
                 tab.sync_zoom = fields[19] != "false";
                 tab.sync_navigation = fields[20] == "true";
-                tab.compare_columns = fields.get(21).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0).min(4);
+                tab.compare_columns = fields
+                    .get(21)
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0)
+                    .min(4);
                 tab.compare_rows = fields.get(22).is_some_and(|value| *value == "true");
                 tabs.push(tab);
             }
@@ -334,41 +443,58 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let entry = match fields[2] {
                     "F" => ImageEntry::File(PathBuf::from(decode_field(fields[3]))),
-                    "Z" if fields.len() >= 6 => ImageEntry::Zip(crate::imaging::entry::ArchiveImage {
-                        archive_path: PathBuf::from(decode_field(fields[3])),
-                        entry_index: fields[4].parse().unwrap_or(0),
-                        name: decode_field(fields[5]),
-                    }),
-                    "7" if fields.len() >= 5 => ImageEntry::S7z(crate::imaging::entry::S7ArchiveImage {
-                        archive_path: PathBuf::from(decode_field(fields[3])),
-                        name: decode_field(fields[4]),
-                    }),
-                    "R" if fields.len() >= 5 => ImageEntry::Rar(crate::imaging::entry::RarArchiveImage {
-                        archive_path: PathBuf::from(decode_field(fields[3])),
-                        name: decode_field(fields[4]),
-                    }),
+                    "Z" if fields.len() >= 6 => {
+                        ImageEntry::Zip(crate::imaging::entry::ArchiveImage {
+                            archive_path: PathBuf::from(decode_field(fields[3])),
+                            entry_index: fields[4].parse().unwrap_or(0),
+                            name: decode_field(fields[5]),
+                        })
+                    }
+                    "7" if fields.len() >= 5 => {
+                        ImageEntry::S7z(crate::imaging::entry::S7ArchiveImage {
+                            archive_path: PathBuf::from(decode_field(fields[3])),
+                            name: decode_field(fields[4]),
+                        })
+                    }
+                    "R" if fields.len() >= 5 => {
+                        ImageEntry::Rar(crate::imaging::entry::RarArchiveImage {
+                            archive_path: PathBuf::from(decode_field(fields[3])),
+                            name: decode_field(fields[4]),
+                        })
+                    }
                     _ => continue,
                 };
-                if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) { tab.entries.push(entry); }
+                if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                    tab.entries.push(entry);
+                }
             }
             "S" if fields.len() >= 3 => {
                 let tab_id = fields[1].parse::<u64>().ok()?;
-                if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) { tab.selected.insert(decode_field(fields[2])); }
+                if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
+                    tab.selected.insert(decode_field(fields[2]));
+                }
             }
             "Z" if fields.len() >= 4 => {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let index = fields[2].parse::<usize>().unwrap_or(0);
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                    if tab.pane_zoom.len() <= index { tab.pane_zoom.resize(index + 1, 1.0); }
-                    tab.pane_zoom[index] = fields[3].parse::<f32>().unwrap_or(1.0).clamp(0.01, 100.0);
+                    if tab.pane_zoom.len() <= index {
+                        tab.pane_zoom.resize(index + 1, 1.0);
+                    }
+                    tab.pane_zoom[index] =
+                        fields[3].parse::<f32>().unwrap_or(1.0).clamp(0.01, 100.0);
                 }
             }
             "R" if fields.len() >= 4 => {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let index = fields[2].parse::<usize>().unwrap_or(0);
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                    if tab.pane_rotation.len() <= index { tab.pane_rotation.resize(index + 1, 0.0); }
-                    tab.pane_rotation[index] = fields[3].parse::<f32>().unwrap_or(0.0)
+                    if tab.pane_rotation.len() <= index {
+                        tab.pane_rotation.resize(index + 1, 0.0);
+                    }
+                    tab.pane_rotation[index] = fields[3]
+                        .parse::<f32>()
+                        .unwrap_or(0.0)
                         .clamp(-std::f32::consts::PI, std::f32::consts::PI);
                 }
             }
@@ -376,7 +502,9 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let index = fields[2].parse::<usize>().unwrap_or(0);
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                    if tab.pane_sync.len() <= index { tab.pane_sync.resize(index + 1, true); }
+                    if tab.pane_sync.len() <= index {
+                        tab.pane_sync.resize(index + 1, true);
+                    }
                     tab.pane_sync[index] = fields[3] != "false";
                 }
             }
@@ -384,7 +512,9 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let index = fields[2].parse::<usize>().unwrap_or(0);
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                    if tab.pane_size.len() <= index { tab.pane_size.resize(index + 1, [1.0, 1.0]); }
+                    if tab.pane_size.len() <= index {
+                        tab.pane_size.resize(index + 1, [1.0, 1.0]);
+                    }
                     tab.pane_size[index] = [
                         fields[3].parse::<f32>().unwrap_or(1.0).clamp(0.5, 1.0),
                         fields[4].parse::<f32>().unwrap_or(1.0).clamp(0.5, 2.0),
@@ -395,19 +525,31 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let index = fields[2].parse::<usize>().unwrap_or(0);
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                    if tab.anchors.len() <= index { tab.anchors.resize(index + 1, None); }
-                    if tab.offsets.len() <= index { tab.offsets.resize(index + 1, [0.0, 0.0]); }
-                    if fields[3] != "-" && fields[4] != "-" {
-                        tab.anchors[index] = Some([fields[3].parse().unwrap_or(0.5), fields[4].parse().unwrap_or(0.5)]);
+                    if tab.anchors.len() <= index {
+                        tab.anchors.resize(index + 1, None);
                     }
-                    tab.offsets[index] = [fields[5].parse().unwrap_or(0.0), fields[6].parse().unwrap_or(0.0)];
+                    if tab.offsets.len() <= index {
+                        tab.offsets.resize(index + 1, [0.0, 0.0]);
+                    }
+                    if fields[3] != "-" && fields[4] != "-" {
+                        tab.anchors[index] = Some([
+                            fields[3].parse().unwrap_or(0.5),
+                            fields[4].parse().unwrap_or(0.5),
+                        ]);
+                    }
+                    tab.offsets[index] = [
+                        fields[5].parse().unwrap_or(0.0),
+                        fields[6].parse().unwrap_or(0.0),
+                    ];
                 }
             }
             "B" if fields.len() >= 5 => {
                 let tab_id = fields[1].parse::<u64>().ok()?;
                 let index = fields[2].parse::<usize>().unwrap_or(0);
                 if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
-                    if tab.anchors_second.len() <= index { tab.anchors_second.resize(index + 1, None); }
+                    if tab.anchors_second.len() <= index {
+                        tab.anchors_second.resize(index + 1, None);
+                    }
                     tab.anchors_second[index] = Some([
                         fields[3].parse().unwrap_or(0.5),
                         fields[4].parse().unwrap_or(0.5),
@@ -417,7 +559,11 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
             _ => {}
         }
     }
-    if tabs.is_empty() { return None; }
-    if tabs.iter().all(|tab| tab.kind != WorkspaceTabKind::Viewer) { tabs.insert(0, WorkspaceTab::viewer()); }
+    if tabs.is_empty() {
+        return None;
+    }
+    if tabs.iter().all(|tab| tab.kind != WorkspaceTabKind::Viewer) {
+        tabs.insert(0, WorkspaceTab::viewer());
+    }
     Some((tabs, active_id, next_id, last_image_tab_id))
 }

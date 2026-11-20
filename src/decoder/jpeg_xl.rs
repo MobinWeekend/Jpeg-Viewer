@@ -77,7 +77,7 @@ impl JpegXlDecoder {
         match channels {
             // RGB
             3 => {
-                for pixel in source.chunks_exact(3) {
+                for pixel in source.as_chunks::<3>().0 {
                     rgba.extend_from_slice(&[pixel[0], pixel[1], pixel[2], 255]);
                 }
             }

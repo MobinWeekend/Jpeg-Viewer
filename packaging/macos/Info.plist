@@ -4,7 +4,6 @@
 
 <plist version="1.0">
 <dict>
-
     <key>CFBundleDisplayName</key>
     <string>JPEG Viewer</string>
 
@@ -24,10 +23,10 @@
     <string>JPEG</string>
 
     <key>CFBundleVersion</key>
-    <string>0.0.0</string>
+    <string>0.1.13</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>0.0.0</string>
+    <string>0.1.13</string>
 
     <key>CFBundleIconFile</key>
     <string>jpeg_viewer.icns</string>
@@ -35,11 +34,76 @@
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
 
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.photography</string>
+
     <key>NSHighResolutionCapable</key>
     <true/>
 
     <key>NSRequiresAquaSystemAppearance</key>
     <false/>
 
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Image</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.image</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Archive</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.archive</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>JPEG Viewer Queue</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.jpegviewer.queue</string>
+            </array>
+        </dict>
+    </array>
+
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.jpegviewer.queue</string>
+            <key>UTTypeDescription</key>
+            <string>JPEG Viewer Queue</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>jvq</string>
+                </array>
+                <key>public.mime-type</key>
+                <string>application/x-jpeg-viewer-queue</string>
+            </dict>
+        </dict>
+    </array>
 </dict>
 </plist>

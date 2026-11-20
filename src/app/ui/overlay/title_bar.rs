@@ -153,7 +153,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
             if settings.tricks_backdrop_enabled {
                 let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, panel_rect);
                 app.paint_tricks_backdrop(
-                    &panel_ui.painter(),
+                    panel_ui.painter(),
                     panel_rect,
                     backdrop_rect,
                     crate::ui_theme::main_accent_color(ctx),

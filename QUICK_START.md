@@ -1,5 +1,12 @@
 # Getting Started
 
+## Installation
+
+- **Windows installer:** choose the installer matching your CPU (x64 or ARM64). It installs for the current Windows user under `%LOCALAPPDATA%\Programs\JPEG Viewer` and does not require administrator rights.
+- **Windows portable:** extract the matching Portable ZIP and run `jpeg_viewer.exe`; no installation is performed.
+- **Linux portable:** extract the archive and run `./jpeg_viewer`, or use the included `install.sh` to add a launcher, icon, and file-type integration for the current user. Run `./uninstall.sh` from the extracted archive to remove that installation; user settings are preserved.
+
+
 This guide covers the common workflows. For the supported formats, build instructions, and project overview, see [README.md](README.md). Press **F1** inside the app for a shortcut reference.
 
 ## Open an image
@@ -23,7 +30,7 @@ Select several supported images in your file manager and open them with JPEG Vie
 | Fit to window / 100% | **S**, **Down**, or **0** / **W** or **Up** |
 | Pan zoomed image / zoom by dragging | Left-drag starting on the image / right-drag |
 | Move window | Left-drag starting outside the image (windowed mode), or **Alt+Left-drag** in the main view |
-| Resize window | **Ctrl+Left-drag** in the main view (windowed mode); custom-frame resize edges/corners when enabled |
+| Resize window | **Shift+Left-drag** in the main view (windowed mode); custom-frame resize edges/corners when enabled |
 | Fullscreen | **F**, **F11**, **Enter**, or middle-click |
 | Settings / Help | **F5** / **F1** |
 | Toggle sidebar | **T** or **F3** |
@@ -104,7 +111,7 @@ If browsing feels slow, reduce **Cache Radius** or **Max Tasks** under Advanced.
 
 ## Linux portable install
 
-For a `.tar.gz` release, extract the archive and run `./jpeg_viewer`. To add an application-menu entry and icon, run `./install.sh` from the extracted directory. The installer places the app under `~/.local/opt/jpeg-viewer` and registers a desktop entry for the current user. AppImage behavior and required libraries depend on the host distribution and desktop environment.
+For a `.tar.gz` release, extract the archive and run `./jpeg_viewer`. To add an application-menu entry and icon, run `./install.sh` from the extracted directory. The installer places the app under `~/.local/opt/jpeg-viewer` and registers a desktop entry, icon, and MIME types for the current user. `uninstall.sh` removes those files without deleting user settings. AppImage behavior and required libraries depend on the host distribution and desktop environment.
 
 ## Troubleshooting
 
@@ -113,7 +120,7 @@ For a `.tar.gz` release, extract the archive and run `./jpeg_viewer`. To add an 
 - **Large image uses too much memory:** check virtual-texture settings.
 - **Thumbnails are slow:** increase thumbnail workers and restart.
 - **Transparent areas are hard to inspect:** enable the checkerboard; it is hidden during slideshows.
-- **Window resizing is difficult without a title bar:** enable the custom frame and adjust its thickness under Advanced → Window. In the main view, Ctrl+Left-drag starts a window resize while the window is in windowed mode.
+- **Window resizing is difficult without a title bar:** enable the custom frame and adjust its thickness under Advanced → Window. In the main view, Shift+Left-drag starts a window resize while the window is in windowed mode.
 - **A file-manager multi-selection opens in separate windows:** enable **Settings → General → Startup → Run only one instance** and restart the application. Subsequent launches are forwarded to the existing window.
 - **Image-driven window resizing does not happen:** automatic fitting is disabled by default and only works in windowed mode. Enable it under **Settings → Viewing → Window sizing**, or use **View → Wrap Window Around Image** / **Ctrl+Alt+W** for a one-time fit.
 - **Linux taskbar icon does not restore the window:** use the latest release package with the matching desktop entry; behavior should be checked on the specific desktop environment if it persists.

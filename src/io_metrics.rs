@@ -2,8 +2,8 @@
 //!
 //! Enable with `JPEG_VIEWER_IO_STATS=1`. Counters intentionally avoid per-file
 //! logging so instrumentation does not itself create noisy disk/console work.
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 static ENABLED: OnceLock<bool> = OnceLock::new();
 static SOURCE_READS: AtomicU64 = AtomicU64::new(0);

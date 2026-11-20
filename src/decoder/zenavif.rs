@@ -54,7 +54,9 @@ impl ZenAvifDecoder {
                 return Err(ImageError::Decode(format!("AVIF metadata probe: {error}")));
             }
             Err(_) => {
-                return Err(ImageError::Decode("AVIF metadata probe panicked".to_string()));
+                return Err(ImageError::Decode(
+                    "AVIF metadata probe panicked".to_string(),
+                ));
             }
         };
 
@@ -78,7 +80,10 @@ impl ZenAvifDecoder {
                 (width, height)
             }
         } else {
-            (metadata.max_frame_width.get(), metadata.max_frame_height.get())
+            (
+                metadata.max_frame_width.get(),
+                metadata.max_frame_height.get(),
+            )
         };
 
         if width == 0 || height == 0 {

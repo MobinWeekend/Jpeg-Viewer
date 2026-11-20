@@ -1,8 +1,8 @@
 //! Native backdrop effects and title-bar surface integration.
 
-use eframe::egui;
 use super::colors::{main_accent_color, main_view_background_color, with_alpha};
 use super::profiles::current_look_profile;
+use eframe::egui;
 
 const OS_BACKGROUND_BLUR_ID: &str = "jpeg_viewer_os_background_blur_preference";
 const OS_BACKGROUND_BLUR_FULLSCREEN_DISABLE_ID: &str =
@@ -101,8 +101,8 @@ pub fn os_background_blur_enabled(ctx: &egui::Context) -> bool {
     let fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
     let suppressed_in_fullscreen =
         fullscreen && disable_os_background_blur_in_fullscreen_preference(ctx);
-    let cosmic_allows_frosted = current_look_profile(ctx) != "cosmic"
-        || super::profiles::cosmic_frosted_preference(ctx);
+    let cosmic_allows_frosted =
+        current_look_profile(ctx) != "cosmic" || super::profiles::cosmic_frosted_preference(ctx);
     requested
         && cosmic_allows_frosted
         && current_look_profile(ctx) != "win98"
@@ -201,4 +201,3 @@ pub(crate) fn paint_win98_bevel(ui: &egui::Ui, rect: egui::Rect, pressed: bool) 
         );
     }
 }
-

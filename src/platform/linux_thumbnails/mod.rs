@@ -63,9 +63,7 @@ pub(crate) fn load_or_request(path: &Path, max_side: u32) -> Option<image::RgbaI
         desktop_detection::Desktop::GnomeCompatible => {
             gnome::generate(path, &uri, max_side, generation_deadline)
         }
-        desktop_detection::Desktop::Kde => {
-            kde::generate(path, &uri, max_side, generation_deadline)
-        }
+        desktop_detection::Desktop::Kde => kde::generate(path, &uri, max_side, generation_deadline),
         desktop_detection::Desktop::Cosmic => {
             cosmic::generate(path, &uri, max_side, generation_deadline)
         }

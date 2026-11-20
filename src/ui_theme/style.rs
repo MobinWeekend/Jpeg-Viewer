@@ -1,13 +1,13 @@
 //! egui visual-style construction and palette application.
 
-use eframe::egui;
 use super::backdrop::os_background_blur_enabled;
 use super::colors::{
-    accessible_accent, contrast_foreground, darken_surface_for_text, set_widget_foreground,
-    tint_with_white, with_alpha, MAIN_ACCENT_COLOR_ID,
+    MAIN_ACCENT_COLOR_ID, accessible_accent, contrast_foreground, darken_surface_for_text,
+    set_widget_foreground, tint_with_white, with_alpha,
 };
-use super::profiles::current_look_profile;
 use super::platform::{detect_cosmic_accent, detect_gnome_accent};
+use super::profiles::current_look_profile;
+use eframe::egui;
 
 pub fn apply_polished_style_with_options(
     ctx: &egui::Context,
