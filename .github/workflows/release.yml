@@ -646,22 +646,25 @@ jobs:
           set -euo pipefail
           ARCH_VERSION='${{ env.JPEG_VIEWER_ARCH_VERSION }}'
           IMAGE='${{ matrix.image }}'
-          CONTAINER_NAME="jpeg-viewer-arch-${{ matrix.arch }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          OUT_DIR="$GITHUB_WORKSPACE/out"
 
-          # Keep build outputs on the container's normal writable filesystem.
-          # Docker cp cannot copy directly from tmpfs mounts such as /tmp.
-          rm -rf out
-          mkdir -p out
-          cleanup_arch_container() {
-            docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-          }
-          trap cleanup_arch_container EXIT
+          # The container writes the finished artifact through this explicit
+          # bind mount. The build itself stays inside the Arch container.
+          rm -rf "$OUT_DIR"
+          mkdir -p "$OUT_DIR"
+          chmod 0777 "$OUT_DIR"
+          OUT_DIR="$(realpath "$OUT_DIR")"
 
-          docker run --name "$CONTAINER_NAME" --user 0:0 \
-            --mount type=bind,source="$PWD",target=/src,readonly \
+          echo "Runner output directory: $OUT_DIR"
+          stat -c '%A %U:%G %n' "$OUT_DIR"
+
+          docker run --rm --user 0:0 \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/src,readonly" \
+            --mount "type=bind,source=$OUT_DIR,target=/output" \
             -e ARCH_VERSION="$ARCH_VERSION" \
             -w /src "$IMAGE" bash -s <<'ARCH_SCRIPT'
           set -euo pipefail
+
           if [ "$(uname -m)" = "aarch64" ]; then
             pacman-key --init
             pacman-key --populate archlinuxarm || true
@@ -669,23 +672,32 @@ jobs:
           fi
 
           pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
-          getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
+          getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account" >&2; exit 1; }
+
+          # Prove the bind mount is present and writable before spending time
+          # compiling. The package is copied here by root after makepkg finishes.
+          test -d /output
+          touch /output/.arch-output-write-test
+          rm /output/.arch-output-write-test
+          echo "Container output mount is writable:"
+          stat -c '%A %U:%G %n' /output
+          grep ' /output ' /proc/self/mountinfo || true
 
           ARCH_ROOT=/var/cache/jpeg-viewer-arch
           BUILD_DIR="$ARCH_ROOT/build"
           HOME_DIR="$ARCH_ROOT/home"
-          OUTPUT_DIR="$ARCH_ROOT/output"
+          PKG_DIR="$ARCH_ROOT/packages"
           rm -rf "$ARCH_ROOT"
-          mkdir -p "$BUILD_DIR" "$HOME_DIR" "$OUTPUT_DIR"
+          mkdir -p "$BUILD_DIR" "$HOME_DIR" "$PKG_DIR"
           cp /src/packaging/arch/PKGBUILD "$BUILD_DIR/PKGBUILD"
           chown -R nobody:nobody "$ARCH_ROOT"
           cd "$BUILD_DIR"
 
           echo "Arch build filesystem:"
           findmnt -T "$ARCH_ROOT" -no TARGET,FSTYPE,SOURCE || true
-          echo "Arch package destination: $OUTPUT_DIR"
 
-          # PKGDEST and PKGEXT are documented makepkg environment overrides.
+          # Keep makepkg's working tree private to the unprivileged build user.
+          # PKGDEST/PKGEXT are explicit makepkg environment overrides.
           runuser -u nobody -- env \
             -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
             -u CARGO_BUILD_RUSTFLAGS \
@@ -694,17 +706,26 @@ jobs:
             -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             HOME="$HOME_DIR" USER=nobody LOGNAME=nobody \
-            PKGDEST="$OUTPUT_DIR" PKGEXT=.pkg.tar.zst \
-            makepkg --noconfirm --cleanbuild
+            makepkg --noconfirm --cleanbuild \
+              "PKGDEST=$PKG_DIR" "PKGEXT=.pkg.tar.zst"
 
-          echo "Package output directory contents:"
-          find "$OUTPUT_DIR" -maxdepth 2 -type f -printf '%M %u:%g %p (%s bytes)\n'
-          mapfile -t BUILT_PACKAGES < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print)
+          echo "Package candidates in PKGDEST:"
+          find "$PKG_DIR" -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar*' -printf '%M %u:%g %p (%s bytes)\n'
+
+          # makepkg defaults to the PKGBUILD directory when PKGDEST is unset.
+          # Search both documented locations to make any config override visible.
+          mapfile -t BUILT_PACKAGES < <(
+            find "$PKG_DIR" "$BUILD_DIR" -maxdepth 1 -type f \
+              -name 'jpeg-viewer-*.pkg.tar.zst' -print | sort -u
+          )
           if [ "${#BUILT_PACKAGES[@]}" -ne 1 ]; then
-            echo "Expected exactly one Arch package, found ${#BUILT_PACKAGES[@]}"
-            echo "Other package archives in build root:"
-            find "$BUILD_DIR" -maxdepth 5 -type f \
-              \( -name '*.pkg.tar' -o -name '*.pkg.tar.*' \) -printf '%M %u:%g %p (%s bytes)\n'
+            echo "Expected exactly one Arch package, found ${#BUILT_PACKAGES[@]}" >&2
+            echo "Package directory:" >&2
+            find "$PKG_DIR" -maxdepth 2 -printf '%M %u:%g %p (%s bytes)\n' >&2
+            echo "Build directory package archives:" >&2
+            find "$BUILD_DIR" -maxdepth 2 -type f \
+              \( -name '*.pkg.tar' -o -name '*.pkg.tar.*' \) \
+              -printf '%M %u:%g %p (%s bytes)\n' >&2
             exit 1
           fi
 
@@ -713,25 +734,24 @@ jobs:
           case "$PACKAGE_NAME" in
             "jpeg-viewer-${ARCH_VERSION}-"*.pkg.tar.zst) ;;
             *)
-              echo "Package version mismatch: expected ${ARCH_VERSION}, got ${PACKAGE_NAME}"
+              echo "Package version mismatch: expected ${ARCH_VERSION}, got ${PACKAGE_NAME}" >&2
               exit 1
               ;;
           esac
-          chmod 0644 "$PACKAGE_FILE"
-          echo "ARCH_PACKAGE_READY=$PACKAGE_NAME"
+
+          test -s "$PACKAGE_FILE"
+          # makepkg must run unprivileged; root performs only the final copy to
+          # the host-mounted output directory to avoid nobody/runner UID issues.
+          install -m 0644 "$PACKAGE_FILE" "/output/$PACKAGE_NAME"
+          test -s "/output/$PACKAGE_NAME"
+          echo "Arch package exported to mounted runner directory: /output/$PACKAGE_NAME"
+          sha256sum "/output/$PACKAGE_NAME"
           ARCH_SCRIPT
 
-          # Copy from /var/cache (container writable layer), not /tmp (which
-          # may be tmpfs and is not supported by docker cp).
-          docker cp "$CONTAINER_NAME:/var/cache/jpeg-viewer-arch/output/." out/
-
-          mapfile -t PACKAGES < <(find out -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print)
+          mapfile -t PACKAGES < <(find "$OUT_DIR" -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print)
           if [ "${#PACKAGES[@]}" -ne 1 ]; then
-            echo "Expected exactly one Arch package in runner output, found ${#PACKAGES[@]}"
-            echo "Container package listing:"
-            docker exec "$CONTAINER_NAME" find /var/cache/jpeg-viewer-arch/output -maxdepth 2 -type f -printf '%M %u:%g %p (%s bytes)\\n' || true
-            echo "Runner output listing:"
-            find out -maxdepth 2 -printf '%M %u:%g %p (%s bytes)'
+            echo "Expected exactly one Arch package in runner output, found ${#PACKAGES[@]}" >&2
+            find "$OUT_DIR" -maxdepth 2 -printf '%M %U:%G %p (%s bytes)\n' >&2
             exit 1
           fi
 
@@ -740,15 +760,12 @@ jobs:
           case "$PACKAGE_NAME" in
             "jpeg-viewer-${ARCH_VERSION}-"*.pkg.tar.zst) ;;
             *)
-              echo "Invalid package name returned by Arch container: $PACKAGE_NAME"
+              echo "Runner package version mismatch: expected ${ARCH_VERSION}, got ${PACKAGE_NAME}" >&2
               exit 1
               ;;
           esac
 
-          test -s "$PACKAGE_FILE" || {
-            echo "docker cp did not produce a non-empty package: $PACKAGE_FILE"
-            exit 1
-          }
+          test -s "$PACKAGE_FILE"
           cp "$PACKAGE_FILE" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst"
           tar -tf "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst" | grep -E 'usr/bin/jpeg_viewer|\.desktop$|metainfo|mime/packages|LICENSE'
 
