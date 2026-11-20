@@ -1,6 +1,6 @@
 # Release guide
 
-The release workflow is tag-driven. It validates the source on Linux and Windows, builds each platform on a native runner, packages the results, verifies every expected asset, generates checksums and an SPDX SBOM, creates GitHub provenance attestations, and publishes the GitHub Release.
+The workflow supports tag-triggered releases and manual builds. Tag pushes and manual full releases validate the source on Linux and Windows, build every platform on native runners, verify the complete asset set, generate checksums and an SPDX SBOM, create GitHub provenance attestations, and publish the GitHub Release. Manual artifacts-only runs can build just the selected platform/architecture targets.
 
 ## Before the first release with this workflow
 
@@ -19,9 +19,22 @@ git status
 
 Commit the lockfile and `.gitignore` before tagging.
 
+## Build artifacts manually or publish a release
+
+The same workflow can be started from **Actions → Build and Release → Run workflow**. Select the branch or commit to build, then choose a mode:
+
+- **Artifacts only** (default): builds the requested platform/architecture targets and uploads them as downloadable GitHub Actions artifacts. It does not create a Git tag or publish a GitHub Release. Artifacts currently remain available for 7 days.
+- **Full release**: ignores platform checkboxes, builds every supported platform and architecture, verifies the complete asset set, generates checksums and an SBOM, and publishes a GitHub Release. Choose a new, unused version for this mode; the workflow checks that the tag does not already exist.
+
+For fast artifact-only tests, set **Platform selection** to `selected` and check only the exact targets you want. Targets can be mixed freely in one run, for example **Arch x64** plus **Debian ARM64**, or just **Windows x64**. The Windows installer is generated only for a selected Windows architecture. macOS targets are listed separately as Intel x64 and Apple Silicon ARM64.
+
+Leave **Run validation** unchecked for the fastest build-only test. Enable it to run the Linux and Windows validation/test jobs before the selected builds. The default **Platform selection = all** preserves the previous behavior. Tag-triggered releases and manual **Full release** runs always build the complete platform set regardless of the checkboxes.
+
+The manual workflow accepts a version and separate Docker image references for x64 and ARM64 Arch builds. It builds the selected commit from the branch/ref selector, so artifact tests do not require a pre-existing version tag. The image fields accept a Docker tag or an immutable `@sha256:` digest.
+
 ## Create a release
 
-Use a SemVer tag beginning with `v`:
+A normal release can still be triggered by pushing a SemVer tag beginning with `v`:
 
 ```powershell
 git tag -a v0.2.0 -m "JPEG Viewer 0.2.0"

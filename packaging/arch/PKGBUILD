@@ -10,7 +10,13 @@ license=('GPL-3.0-only')
 depends=('gcc-libs' 'glibc' 'libx11' 'libxkbcommon' 'wayland' 'mesa' 'dbus' 'zstd' 'unrar')
 makedepends=('rust' 'cargo' 'python' 'pkgconf' 'zstd' 'unrar')
 options=(!debug !lto)
-source=("jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${_release_tag}")
+# In Actions, build the exact commit selected in the workflow UI. For local
+# package builds, retain the normal release-tag source behavior.
+if [[ -n "${JPEG_VIEWER_SOURCE_COMMIT:-}" ]]; then
+  source=("jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#commit=${JPEG_VIEWER_SOURCE_COMMIT}")
+else
+  source=("jpeg-viewer::git+https://github.com/MobinWeekend/Jpeg-Viewer.git#tag=${_release_tag}")
+fi
 sha256sums=('SKIP')
 
 prepare() {

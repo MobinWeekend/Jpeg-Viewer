@@ -4,24 +4,272 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Build downloadable artifacts only, or publish a complete GitHub Release"
+        required: true
+        type: choice
+        default: artifacts-only
+        options:
+          - artifacts-only
+          - full-release
+      version:
+        description: "Application version to build (for example 0.1.14 or v0.1.14)"
+        required: true
+        type: string
+        default: v0.1.13
+      platform_selection:
+        description: "Build all targets, or only the platform/architecture checkboxes below"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - selected
+      build_windows_x64:
+        description: "Windows x64 binary, portable ZIP, and per-user installer"
+        required: true
+        type: boolean
+        default: false
+      build_windows_arm64:
+        description: "Windows ARM64 binary, portable ZIP, and per-user installer"
+        required: true
+        type: boolean
+        default: false
+      build_linux_portable_x64:
+        description: "Linux x64 portable TAR.GZ"
+        required: true
+        type: boolean
+        default: false
+      build_linux_portable_arm64:
+        description: "Linux ARM64 portable TAR.GZ"
+        required: true
+        type: boolean
+        default: false
+      build_debian_x64:
+        description: "Debian / Ubuntu x64 DEB"
+        required: true
+        type: boolean
+        default: false
+      build_debian_arm64:
+        description: "Debian / Ubuntu ARM64 DEB"
+        required: true
+        type: boolean
+        default: false
+      build_macos_intel:
+        description: "macOS Intel x64 ZIP and DMG"
+        required: true
+        type: boolean
+        default: false
+      build_macos_apple_silicon:
+        description: "macOS Apple Silicon ARM64 ZIP and DMG"
+        required: true
+        type: boolean
+        default: false
+      build_appimage_x64:
+        description: "Linux x64 AppImage"
+        required: true
+        type: boolean
+        default: false
+      build_appimage_arm64:
+        description: "Linux ARM64 AppImage"
+        required: true
+        type: boolean
+        default: false
+      build_rpm_x64:
+        description: "Fedora-compatible x64 RPM"
+        required: true
+        type: boolean
+        default: false
+      build_rpm_arm64:
+        description: "Fedora-compatible ARM64 RPM"
+        required: true
+        type: boolean
+        default: false
+      build_arch_x64:
+        description: "Arch Linux x64 package"
+        required: true
+        type: boolean
+        default: false
+      build_arch_arm64:
+        description: "Arch Linux ARM64 package"
+        required: true
+        type: boolean
+        default: false
+      build_flatpak_x64:
+        description: "Linux x64 Flatpak bundle"
+        required: true
+        type: boolean
+        default: false
+      build_flatpak_arm64:
+        description: "Linux ARM64 Flatpak bundle"
+        required: true
+        type: boolean
+        default: false
+      run_validation:
+        description: "Run the Linux and Windows validation/test jobs before building (slower)"
+        required: true
+        type: boolean
+        default: false
+      arch_x64_image:
+        description: "Docker image reference for the x64 Arch build (tag or @sha256 digest)"
+        required: true
+        type: string
+        default: archlinux/archlinux:base-devel-20261120.0.628918
+      arch_arm64_image:
+        description: "Docker image reference for the ARM64 Arch build (tag or @sha256 digest)"
+        required: true
+        type: string
+        default: menci/archlinuxarm:base-devel-20261120.44687052260
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Empty for tag pushes; manual runs use the version entered in workflow_dispatch.
+  JPEG_VIEWER_RELEASE_TAG: ${{ inputs.version && (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) }}
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1. Validate once on both primary desktop platforms before any release build.
+  # 1. Resolve the exact platform/architecture build matrix.
+  # Tag pushes and full releases always select every target.
+  # ---------------------------------------------------------------------------
+  select-builds:
+    name: Select platform build targets
+    runs-on: ubuntu-24.04
+    outputs:
+      windows_matrix: ${{ steps.select.outputs.windows_matrix }}
+      windows_enabled: ${{ steps.select.outputs.windows_enabled }}
+      linux_portable_matrix: ${{ steps.select.outputs.linux_portable_matrix }}
+      linux_portable_enabled: ${{ steps.select.outputs.linux_portable_enabled }}
+      debian_matrix: ${{ steps.select.outputs.debian_matrix }}
+      debian_enabled: ${{ steps.select.outputs.debian_enabled }}
+      macos_matrix: ${{ steps.select.outputs.macos_matrix }}
+      macos_enabled: ${{ steps.select.outputs.macos_enabled }}
+      appimage_matrix: ${{ steps.select.outputs.appimage_matrix }}
+      appimage_enabled: ${{ steps.select.outputs.appimage_enabled }}
+      rpm_matrix: ${{ steps.select.outputs.rpm_matrix }}
+      rpm_enabled: ${{ steps.select.outputs.rpm_enabled }}
+      arch_matrix: ${{ steps.select.outputs.arch_matrix }}
+      arch_enabled: ${{ steps.select.outputs.arch_enabled }}
+      flatpak_matrix: ${{ steps.select.outputs.flatpak_matrix }}
+      flatpak_enabled: ${{ steps.select.outputs.flatpak_enabled }}
+    steps:
+      - name: Generate selected build matrices
+        id: select
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+          PLATFORM_SELECTION: ${{ inputs.platform_selection }}
+          BUILD_WINDOWS_X64: ${{ inputs.build_windows_x64 }}
+          BUILD_WINDOWS_ARM64: ${{ inputs.build_windows_arm64 }}
+          BUILD_LINUX_PORTABLE_X64: ${{ inputs.build_linux_portable_x64 }}
+          BUILD_LINUX_PORTABLE_ARM64: ${{ inputs.build_linux_portable_arm64 }}
+          BUILD_DEBIAN_X64: ${{ inputs.build_debian_x64 }}
+          BUILD_DEBIAN_ARM64: ${{ inputs.build_debian_arm64 }}
+          BUILD_MACOS_INTEL: ${{ inputs.build_macos_intel }}
+          BUILD_MACOS_APPLE_SILICON: ${{ inputs.build_macos_apple_silicon }}
+          BUILD_APPIMAGE_X64: ${{ inputs.build_appimage_x64 }}
+          BUILD_APPIMAGE_ARM64: ${{ inputs.build_appimage_arm64 }}
+          BUILD_RPM_X64: ${{ inputs.build_rpm_x64 }}
+          BUILD_RPM_ARM64: ${{ inputs.build_rpm_arm64 }}
+          BUILD_ARCH_X64: ${{ inputs.build_arch_x64 }}
+          BUILD_ARCH_ARM64: ${{ inputs.build_arch_arm64 }}
+          BUILD_FLATPAK_X64: ${{ inputs.build_flatpak_x64 }}
+          BUILD_FLATPAK_ARM64: ${{ inputs.build_flatpak_arm64 }}
+          RUN_VALIDATION: ${{ inputs.run_validation }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          env = os.environ
+          manual = env.get("EVENT_NAME") == "workflow_dispatch"
+          full_release = not manual or env.get("MODE") == "full-release"
+          all_targets = full_release or env.get("PLATFORM_SELECTION", "all") == "all"
+
+          specs = {
+              "windows": [
+                  ("BUILD_WINDOWS_X64", {"arch": "x64", "runner": "windows-2025"}),
+                  ("BUILD_WINDOWS_ARM64", {"arch": "ARM64", "runner": "windows-11-arm"}),
+              ],
+              "linux_portable": [
+                  ("BUILD_LINUX_PORTABLE_X64", {"arch": "x64", "runner": "ubuntu-22.04", "rust_target": "x86_64-unknown-linux-gnu"}),
+                  ("BUILD_LINUX_PORTABLE_ARM64", {"arch": "ARM64", "runner": "ubuntu-22.04-arm", "rust_target": "aarch64-unknown-linux-gnu"}),
+              ],
+              "debian": [
+                  ("BUILD_DEBIAN_X64", {"arch": "x64", "runner": "ubuntu-22.04", "rust_target": "x86_64-unknown-linux-gnu"}),
+                  ("BUILD_DEBIAN_ARM64", {"arch": "ARM64", "runner": "ubuntu-22.04-arm", "rust_target": "aarch64-unknown-linux-gnu"}),
+              ],
+              "macos": [
+                  ("BUILD_MACOS_INTEL", {"arch": "Intel-x64", "runner": "macos-15-intel", "rust_target": "x86_64-apple-darwin"}),
+                  ("BUILD_MACOS_APPLE_SILICON", {"arch": "Apple-Silicon-ARM64", "runner": "macos-15", "rust_target": "aarch64-apple-darwin"}),
+              ],
+              "appimage": [
+                  ("BUILD_APPIMAGE_X64", {"arch": "x64", "runner": "ubuntu-22.04", "rust_target": "x86_64-unknown-linux-gnu", "appimage_arch": "x86_64"}),
+                  ("BUILD_APPIMAGE_ARM64", {"arch": "ARM64", "runner": "ubuntu-22.04-arm", "rust_target": "aarch64-unknown-linux-gnu", "appimage_arch": "aarch64"}),
+              ],
+              "rpm": [
+                  ("BUILD_RPM_X64", {"arch": "x64", "runner": "ubuntu-22.04", "rust_target": "x86_64-unknown-linux-gnu", "rpm_arch": "x86_64"}),
+                  ("BUILD_RPM_ARM64", {"arch": "ARM64", "runner": "ubuntu-22.04-arm", "rust_target": "aarch64-unknown-linux-gnu", "rpm_arch": "aarch64"}),
+              ],
+              "arch": [
+                  ("BUILD_ARCH_X64", {"arch": "x64", "runner": "ubuntu-24.04"}),
+                  ("BUILD_ARCH_ARM64", {"arch": "ARM64", "runner": "ubuntu-24.04-arm"}),
+              ],
+              "flatpak": [
+                  ("BUILD_FLATPAK_X64", {"arch": "x64", "runner": "ubuntu-24.04"}),
+                  ("BUILD_FLATPAK_ARM64", {"arch": "ARM64", "runner": "ubuntu-24.04-arm"}),
+              ],
+          }
+
+          if not all_targets:
+              selected_count = sum(
+                  env.get(input_name, "false").lower() == "true"
+                  for variants in specs.values()
+                  for input_name, _ in variants
+              )
+              if selected_count == 0:
+                  print(
+                      "::error::No build target selected. Choose 'all', or set "
+                      "Platform selection to 'selected' and check at least one target.",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          output = open(env["GITHUB_OUTPUT"], "a", encoding="utf-8")
+          print("Build selection:")
+          for family, variants in specs.items():
+              include = [
+                  item for input_name, item in variants
+                  if all_targets or env.get(input_name, "false").lower() == "true"
+              ]
+              enabled = bool(include)
+              # Keep a valid inert matrix when no targets in this family were selected;
+              # the job-level condition prevents a runner from being allocated.
+              matrix = {"include": include or [{"arch": "__skip__", "runner": "ubuntu-24.04"}]}
+              output.write(f"{family}_matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+              output.write(f"{family}_enabled={str(enabled).lower()}\n")
+              chosen = ", ".join(item["arch"] for item in include) if include else "skipped"
+              print(f"  {family}: {chosen}")
+          output.close()
+          print(f"  validation: {'required' if full_release or env.get('RUN_VALIDATION') == 'true' else 'skipped for faster artifact testing'}")
+          PY
+  # ---------------------------------------------------------------------------
+  # 2. Optional fast-path validation. Required for tag pushes and full releases.
   # ---------------------------------------------------------------------------
   validate:
     name: Validate (${{ matrix.os }})
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.mode == 'full-release' || inputs.run_validation }}
     strategy:
       fail-fast: false
       matrix:
@@ -71,15 +319,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-windows:
     name: Build Windows ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.windows_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: windows-2025
-          - arch: ARM64
-            runner: windows-11-arm
+      matrix: ${{ fromJSON(needs.select-builds.outputs.windows_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -139,11 +383,11 @@ jobs:
           compression-level: 0
           retention-days: 7
 
-  # Build both installer architectures on one stable x64 Windows runner. Inno
-  # Setup emits architecture-aware installers for native x64 and ARM64 Windows.
+  # Build installers only for the Windows architectures selected by the matrix.
   package-windows-installers:
-    name: Package Windows installers
-    needs: build-windows
+    name: Package selected Windows installers
+    needs: [build-windows, select-builds]
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.windows_enabled == 'true' && needs.build-windows.result == 'success' }}
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
@@ -155,17 +399,11 @@ jobs:
       - name: Prepare release metadata
         uses: ./.github/actions/prepare-release
 
-      - name: Download x64 binary
+      - name: Download selected Windows binaries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: windows-x64
-          path: installer-input/x64
-
-      - name: Download ARM64 binary
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: windows-ARM64
-          path: installer-input/ARM64
+          pattern: windows-*
+          path: installer-input
 
       - name: Install Inno Setup
         shell: pwsh
@@ -176,29 +414,34 @@ jobs:
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found: $iscc" }
 
-      - name: Compile per-user installers
+      - name: Compile selected per-user installers
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-          New-Item -ItemType Directory -Force -Path 'dist\windows-installers' | Out-Null
+          $output = 'dist\windows-installers'
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
 
+          $built = 0
           foreach ($arch in @('x64', 'ARM64')) {
-            $binaryDir = (Resolve-Path (Join-Path 'installer-input' $arch)).Path
-            $expected = Join-Path $binaryDir "JPEG-Viewer-Windows-$arch.exe"
-            if (-not (Test-Path $expected)) {
-              throw "Missing $arch installer input: $expected"
+            $binaryDir = Join-Path 'installer-input' "windows-$arch"
+            $binary = Join-Path $binaryDir "JPEG-Viewer-Windows-$arch.exe"
+            if (-not (Test-Path $binary)) {
+              Write-Host "Skipping $arch installer: that Windows artifact was not selected."
+              continue
             }
 
             $env:JPEG_VIEWER_ARCH = $arch
-            $env:JPEG_VIEWER_BINARY_DIR = $binaryDir
+            $env:JPEG_VIEWER_BINARY_DIR = (Resolve-Path $binaryDir).Path
             & $iscc '/Qp' 'packaging\windows\installer.iss'
             if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $arch (exit $LASTEXITCODE)" }
+            $built++
           }
 
-          Get-ChildItem 'dist\windows-installers' | Format-Table Name, Length
+          if ($built -eq 0) { throw 'No selected Windows binary was available to package.' }
+          Get-ChildItem $output | Format-Table Name, Length
 
-      - name: Upload Windows installers
+      - name: Upload selected Windows installers
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-installers
@@ -212,17 +455,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-linux-portable:
     name: Build Linux portable ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.linux_portable_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
-          - arch: ARM64
-            runner: ubuntu-22.04-arm
-            rust_target: aarch64-unknown-linux-gnu
+      matrix: ${{ fromJSON(needs.select-builds.outputs.linux_portable_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     steps:
@@ -284,17 +521,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-debian:
     name: Build Debian ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.debian_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
-          - arch: ARM64
-            runner: ubuntu-22.04-arm
-            rust_target: aarch64-unknown-linux-gnu
+      matrix: ${{ fromJSON(needs.select-builds.outputs.debian_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -353,17 +584,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-macos:
     name: Build macOS ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.macos_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: Intel-x64
-            runner: macos-15-intel
-            rust_target: x86_64-apple-darwin
-          - arch: Apple-Silicon-ARM64
-            runner: macos-15
-            rust_target: aarch64-apple-darwin
+      matrix: ${{ fromJSON(needs.select-builds.outputs.macos_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     steps:
@@ -433,19 +658,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-appimage:
     name: Build AppImage ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.appimage_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
-            appimage_arch: x86_64
-          - arch: ARM64
-            runner: ubuntu-22.04-arm
-            rust_target: aarch64-unknown-linux-gnu
-            appimage_arch: aarch64
+      matrix: ${{ fromJSON(needs.select-builds.outputs.appimage_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -526,19 +743,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-rpm:
     name: Build Fedora RPM ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.rpm_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
-            rpm_arch: x86_64
-          - arch: ARM64
-            runner: ubuntu-22.04-arm
-            rust_target: aarch64-unknown-linux-gnu
-            rpm_arch: aarch64
+      matrix: ${{ fromJSON(needs.select-builds.outputs.rpm_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     steps:
@@ -618,17 +827,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-arch:
     name: Build Arch Linux ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.arch_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-24.04
-            image: archlinux:latest
-          - arch: ARM64
-            runner: ubuntu-24.04-arm
-            image: menci/archlinuxarm:base-devel
+      matrix: ${{ fromJSON(needs.select-builds.outputs.arch_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
@@ -640,64 +843,99 @@ jobs:
       - name: Prepare release metadata
         uses: ./.github/actions/prepare-release
 
-      - name: Build package inside native Arch container
+      - name: Build package inside selected native Arch container
         shell: bash
+        env:
+          ARCH_IMAGE: ${{ matrix.arch == 'x64' && (inputs.arch_x64_image || 'archlinux/archlinux:base-devel-20261120.0.628918') || (inputs.arch_arm64_image || 'menci/archlinuxarm:base-devel-20261120.44687052260') }}
         run: |
-          set -euo pipefail
-          ARCH_VERSION='${{ env.JPEG_VIEWER_ARCH_VERSION }}'
-          IMAGE='${{ matrix.image }}'
-          OUT_DIR="$GITHUB_WORKSPACE/out"
+          set -Eeuo pipefail
+          ARCH_VERSION="${JPEG_VIEWER_ARCH_VERSION:?prepare-release did not set JPEG_VIEWER_ARCH_VERSION}"
+          IMAGE="${ARCH_IMAGE:?No Arch image reference was supplied}"
+          WORKSPACE="$(realpath "$GITHUB_WORKSPACE")"
+          OUT_DIR="$WORKSPACE/out"
 
-          # The container writes the finished artifact through this explicit
-          # bind mount. The build itself stays inside the Arch container.
+          # Use one writable workspace mount. Do not nest a second mount below
+          # a read-only mount: the package must be visible on the runner after
+          # the container exits.
           rm -rf "$OUT_DIR"
           mkdir -p "$OUT_DIR"
           chmod 0777 "$OUT_DIR"
-          OUT_DIR="$(realpath "$OUT_DIR")"
 
-          echo "Runner output directory: $OUT_DIR"
-          stat -c '%A %U:%G %n' "$OUT_DIR"
+          echo "Arch image: $IMAGE"
+          echo "Expected Arch package version: $ARCH_VERSION"
+          echo "Runner workspace: $WORKSPACE"
+          docker image inspect "$IMAGE" --format 'Image ID: {{.Id}}'
 
           docker run --rm --user 0:0 \
-            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/src,readonly" \
-            --mount "type=bind,source=$OUT_DIR,target=/output" \
+            --mount "type=bind,source=$WORKSPACE,target=/workspace" \
             -e ARCH_VERSION="$ARCH_VERSION" \
-            -w /src "$IMAGE" bash -s <<'ARCH_SCRIPT'
-          set -euo pipefail
+            -e JPEG_VIEWER_SOURCE_COMMIT="$GITHUB_SHA" \
+            -e BUILD_ARCH='${{ matrix.arch }}' \
+            -w /workspace "$IMAGE" bash -s <<'ARCH_SCRIPT'
+          set -Eeuo pipefail
+          on_error() {
+            status=$?
+            trap - ERR
+            echo "::error::Arch container failed (line ${BASH_LINENO[0]}, exit ${status})" >&2
+            exit "$status"
+          }
+          trap on_error ERR
 
-          if [ "$(uname -m)" = "aarch64" ]; then
+          echo '=== Arch container ==='
+          cat /etc/os-release
+          ACTUAL_MACHINE="$(uname -m)"
+          printf 'Architecture: %s\n' "$ACTUAL_MACHINE"
+          if [[ "$BUILD_ARCH" == 'x64' && "$ACTUAL_MACHINE" != 'x86_64' ]]; then
+            echo "Selected x64 image has unexpected architecture: $ACTUAL_MACHINE" >&2
+            exit 1
+          fi
+          if [[ "$BUILD_ARCH" == 'ARM64' && "$ACTUAL_MACHINE" != 'aarch64' ]]; then
+            echo "Selected ARM64 image has unexpected architecture: $ACTUAL_MACHINE" >&2
+            exit 1
+          fi
+          printf 'Image packages: '; pacman -Q base-devel pacman 2>/dev/null || true
+
+          if [[ "$BUILD_ARCH" == "ARM64" ]]; then
             pacman-key --init
-            pacman-key --populate archlinuxarm || true
-            grep -q "^[[:space:]]*DisableSandbox" /etc/pacman.conf || sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
+            pacman-key --populate archlinuxarm
           fi
 
-          pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
-          getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account" >&2; exit 1; }
+          # The pinned images already contain base-devel. Install the packages
+          # required by this PKGBUILD and its native desktop dependencies.
+          pacman -Syu --noconfirm --needed \
+            base-devel rust cargo pkgconf dbus libx11 libxkbcommon \
+            wayland mesa git zstd unrar python
 
-          # Prove the bind mount is present and writable before spending time
-          # compiling. The package is copied here by root after makepkg finishes.
-          test -d /output
-          touch /output/.arch-output-write-test
-          rm /output/.arch-output-write-test
-          echo "Container output mount is writable:"
-          stat -c '%A %U:%G %n' /output
-          grep ' /output ' /proc/self/mountinfo || true
+          for tool in makepkg runuser git cargo rustc; do
+            command -v "$tool" >/dev/null || {
+              echo "Required Arch build tool is missing: $tool" >&2
+              exit 1
+            }
+          done
+          getent passwd nobody >/dev/null || {
+            echo 'The Arch image has no nobody account' >&2
+            exit 1
+          }
 
           ARCH_ROOT=/var/cache/jpeg-viewer-arch
           BUILD_DIR="$ARCH_ROOT/build"
           HOME_DIR="$ARCH_ROOT/home"
           PKG_DIR="$ARCH_ROOT/packages"
           rm -rf "$ARCH_ROOT"
-          mkdir -p "$BUILD_DIR" "$HOME_DIR" "$PKG_DIR"
-          cp /src/packaging/arch/PKGBUILD "$BUILD_DIR/PKGBUILD"
+          install -d -o nobody -g nobody -m 0755 \
+            "$BUILD_DIR" "$HOME_DIR" "$PKG_DIR"
+          install -m 0644 /workspace/packaging/arch/PKGBUILD "$BUILD_DIR/PKGBUILD"
           chown -R nobody:nobody "$ARCH_ROOT"
           cd "$BUILD_DIR"
 
-          echo "Arch build filesystem:"
-          findmnt -T "$ARCH_ROOT" -no TARGET,FSTYPE,SOURCE || true
+          echo '=== PKGBUILD package list ==='
+          runuser -u nobody -- env \
+            HOME="$HOME_DIR" USER=nobody LOGNAME=nobody \
+            JPEG_VIEWER_SOURCE_COMMIT="$JPEG_VIEWER_SOURCE_COMMIT" \
+            PKGDEST="$PKG_DIR" PKGEXT='.pkg.tar.zst' \
+            makepkg --packagelist
 
-          # Keep makepkg's working tree private to the unprivileged build user.
-          # PKGDEST/PKGEXT are explicit makepkg environment overrides.
+          echo '=== Building package ==='
           runuser -u nobody -- env \
             -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
             -u CARGO_BUILD_RUSTFLAGS \
@@ -706,26 +944,25 @@ jobs:
             -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             HOME="$HOME_DIR" USER=nobody LOGNAME=nobody \
-            makepkg --noconfirm --cleanbuild \
-              "PKGDEST=$PKG_DIR" "PKGEXT=.pkg.tar.zst"
+            JPEG_VIEWER_SOURCE_COMMIT="$JPEG_VIEWER_SOURCE_COMMIT" \
+            PKGDEST="$PKG_DIR" PKGEXT='.pkg.tar.zst' \
+            makepkg --noconfirm --cleanbuild --log
 
-          echo "Package candidates in PKGDEST:"
-          find "$PKG_DIR" -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar*' -printf '%M %u:%g %p (%s bytes)\n'
-
-          # makepkg defaults to the PKGBUILD directory when PKGDEST is unset.
-          # Search both documented locations to make any config override visible.
+          echo '=== Package output directory ==='
+          find "$PKG_DIR" -maxdepth 1 -type f -printf '%M %u:%g %p (%s bytes)\n'
           mapfile -t BUILT_PACKAGES < <(
-            find "$PKG_DIR" "$BUILD_DIR" -maxdepth 1 -type f \
-              -name 'jpeg-viewer-*.pkg.tar.zst' -print | sort -u
+            find "$PKG_DIR" -maxdepth 1 -type f \
+              -name 'jpeg-viewer-*.pkg.tar.zst' -print | sort
           )
-          if [ "${#BUILT_PACKAGES[@]}" -ne 1 ]; then
-            echo "Expected exactly one Arch package, found ${#BUILT_PACKAGES[@]}" >&2
-            echo "Package directory:" >&2
-            find "$PKG_DIR" -maxdepth 2 -printf '%M %u:%g %p (%s bytes)\n' >&2
-            echo "Build directory package archives:" >&2
-            find "$BUILD_DIR" -maxdepth 2 -type f \
-              \( -name '*.pkg.tar' -o -name '*.pkg.tar.*' \) \
-              -printf '%M %u:%g %p (%s bytes)\n' >&2
+          if [[ "${#BUILT_PACKAGES[@]}" -ne 1 ]]; then
+            echo "Expected exactly one package in PKGDEST, found ${#BUILT_PACKAGES[@]}" >&2
+            echo 'makepkg expected package path:' >&2
+            runuser -u nobody -- env \
+              HOME="$HOME_DIR" USER=nobody LOGNAME=nobody \
+              JPEG_VIEWER_SOURCE_COMMIT="$JPEG_VIEWER_SOURCE_COMMIT" \
+              PKGDEST="$PKG_DIR" PKGEXT='.pkg.tar.zst' \
+              makepkg --packagelist >&2 || true
+            find "$ARCH_ROOT" -maxdepth 4 -printf '%M %u:%g %p (%s bytes)\n' >&2
             exit 1
           fi
 
@@ -738,18 +975,23 @@ jobs:
               exit 1
               ;;
           esac
-
           test -s "$PACKAGE_FILE"
-          # makepkg must run unprivileged; root performs only the final copy to
-          # the host-mounted output directory to avoid nobody/runner UID issues.
-          install -m 0644 "$PACKAGE_FILE" "/output/$PACKAGE_NAME"
-          test -s "/output/$PACKAGE_NAME"
-          echo "Arch package exported to mounted runner directory: /output/$PACKAGE_NAME"
-          sha256sum "/output/$PACKAGE_NAME"
+
+          # The workspace is the only bind mount, so this file is immediately
+          # visible to the GitHub runner without docker cp or a nested mount.
+          install -d -m 0777 /workspace/out
+          install -m 0644 "$PACKAGE_FILE" "/workspace/out/$PACKAGE_NAME"
+          echo "Package exported: /workspace/out/$PACKAGE_NAME"
+          sha256sum "/workspace/out/$PACKAGE_NAME"
           ARCH_SCRIPT
 
-          mapfile -t PACKAGES < <(find "$OUT_DIR" -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print)
-          if [ "${#PACKAGES[@]}" -ne 1 ]; then
+          echo '=== Runner-side package discovery ==='
+          find "$OUT_DIR" -maxdepth 1 -type f -printf '%M %U:%G %p (%s bytes)\n'
+          mapfile -t PACKAGES < <(
+            find "$OUT_DIR" -maxdepth 1 -type f \
+              -name 'jpeg-viewer-*.pkg.tar.zst' -print | sort
+          )
+          if [[ "${#PACKAGES[@]}" -ne 1 ]]; then
             echo "Expected exactly one Arch package in runner output, found ${#PACKAGES[@]}" >&2
             find "$OUT_DIR" -maxdepth 2 -printf '%M %U:%G %p (%s bytes)\n' >&2
             exit 1
@@ -767,7 +1009,8 @@ jobs:
 
           test -s "$PACKAGE_FILE"
           cp "$PACKAGE_FILE" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst"
-          tar -tf "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst" | grep -E 'usr/bin/jpeg_viewer|\.desktop$|metainfo|mime/packages|LICENSE'
+          tar --zstd -tf "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst" | \
+            grep -E 'usr/bin/jpeg_viewer|\.desktop$|metainfo|mime/packages|LICENSE'
 
       - name: Upload Arch package
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -782,15 +1025,11 @@ jobs:
   # ---------------------------------------------------------------------------
   build-flatpak:
     name: Build Flatpak ${{ matrix.arch }}
-    needs: validate
+    if: ${{ always() && needs.select-builds.result == 'success' && needs.select-builds.outputs.flatpak_enabled == 'true' && (needs.validate.result == 'success' || needs.validate.result == 'skipped') }}
+    needs: [validate, select-builds]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            runner: ubuntu-24.04
-          - arch: ARM64
-            runner: ubuntu-24.04-arm
+      matrix: ${{ fromJSON(needs.select-builds.outputs.flatpak_matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
@@ -852,6 +1091,7 @@ jobs:
   # ---------------------------------------------------------------------------
   release:
     name: Verify and publish GitHub Release
+    if: ${{ github.event_name == 'push' || inputs.mode == 'full-release' }}
     needs:
       - validate
       - build-windows
@@ -879,6 +1119,20 @@ jobs:
 
       - name: Prepare versioned source metadata
         uses: ./.github/actions/prepare-release
+
+      - name: Ensure manual release tag is unused
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_TAG="${JPEG_VIEWER_RELEASE_TAG:?Manual release version is required}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::Git tag ${RELEASE_TAG} already exists. Choose a new version or use artifacts-only mode."
+            exit 1
+          fi
+          echo "Release tag ${RELEASE_TAG} is available."
 
       - name: Generate source dependency SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -908,8 +1162,9 @@ jobs:
             cp "$file" "release-files/$name"
           done < <(find incoming -type f -print0)
           install -m644 JPEG-Viewer-SBOM.spdx.json release-files/JPEG-Viewer-SBOM.spdx.json
+          RELEASE_TAG="${JPEG_VIEWER_RELEASE_TAG:-$GITHUB_REF_NAME}"
           {
-            echo "Tag: $GITHUB_REF_NAME"
+            echo "Tag: $RELEASE_TAG"
             echo "Commit: $GITHUB_SHA"
             echo "Built by: GitHub Actions"
             echo "Windows installers are per-user and do not require administrator privileges."
@@ -969,14 +1224,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          RELEASE_TAG="${JPEG_VIEWER_RELEASE_TAG:-$GITHUB_REF_NAME}"
           GENERATED_NOTES="$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
             --method POST \
-            -f tag_name="$GITHUB_REF_NAME" \
+            -f tag_name="$RELEASE_TAG" \
             -f target_commitish="$GITHUB_SHA" \
             --jq '.body')"
 
           cat > release-notes.md <<EOF
-          # JPEG Viewer ${GITHUB_REF_NAME}
+          # JPEG Viewer ${RELEASE_TAG}
 
           GPU-accelerated desktop image viewer for Windows, Linux, and macOS.
 
@@ -984,30 +1240,30 @@ jobs:
 
           | Platform | Package | Download |
           |---|---|---|
-          | Windows x64 | Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Setup-x64.exe) |
-          | Windows ARM64 | Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Setup-ARM64.exe) |
-          | Windows x64 | Portable | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Portable-x64.zip) |
-          | Windows ARM64 | Portable | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Portable-ARM64.zip) |
-          | macOS Intel | Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-macOS-Intel-x64.dmg) |
-          | macOS Intel | ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-macOS-Intel-x64.zip) |
-          | macOS Apple Silicon | Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.dmg) |
-          | macOS Apple Silicon | ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip) |
-          | Linux x64 | Portable | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-x64.tar.gz) |
-          | Linux ARM64 | Portable | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-ARM64.tar.gz) |
-          | Debian / Ubuntu x64 | Native package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-x64.deb) |
-          | Debian / Ubuntu ARM64 | Native package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-ARM64.deb) |
-          | Fedora x64 | Native package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Fedora-x64.rpm) |
-          | Fedora ARM64 | Native package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Fedora-ARM64.rpm) |
-          | Arch x64 | Native package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Arch-x64.pkg.tar.zst) |
-          | Arch ARM64 | Native package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst) |
-          | Linux x64 | Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-x64.flatpak) |
-          | Linux ARM64 | Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-ARM64.flatpak) |
-          | Linux x64 | AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-x64.AppImage) |
-          | Linux ARM64 | AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-Linux-ARM64.AppImage) |
+          | Windows x64 | Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Setup-x64.exe) |
+          | Windows ARM64 | Per-user installer | [Setup](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Setup-ARM64.exe) |
+          | Windows x64 | Portable | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Portable-x64.zip) |
+          | Windows ARM64 | Portable | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Portable-ARM64.zip) |
+          | macOS Intel | Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Intel-x64.dmg) |
+          | macOS Intel | ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Intel-x64.zip) |
+          | macOS Apple Silicon | Disk image | [DMG](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.dmg) |
+          | macOS Apple Silicon | ZIP | [ZIP](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-macOS-Apple-Silicon-ARM64.zip) |
+          | Linux x64 | Portable | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.tar.gz) |
+          | Linux ARM64 | Portable | [TAR.GZ](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.tar.gz) |
+          | Debian / Ubuntu x64 | Native package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.deb) |
+          | Debian / Ubuntu ARM64 | Native package | [DEB](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.deb) |
+          | Fedora x64 | Native package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Fedora-x64.rpm) |
+          | Fedora ARM64 | Native package | [RPM](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Fedora-ARM64.rpm) |
+          | Arch x64 | Native package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Arch-x64.pkg.tar.zst) |
+          | Arch ARM64 | Native package | [PKG.TAR.ZST](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Arch-ARM64.pkg.tar.zst) |
+          | Linux x64 | Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.flatpak) |
+          | Linux ARM64 | Flatpak bundle | [FLATPAK](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.flatpak) |
+          | Linux x64 | AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-x64.AppImage) |
+          | Linux ARM64 | AppImage | [APPIMAGE](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-Linux-ARM64.AppImage) |
 
-          **Checksums:** [SHA256SUMS](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/SHA256SUMS)
+          **Checksums:** [SHA256SUMS](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/SHA256SUMS)
 
-          **Software bill of materials:** [SPDX JSON](https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/JPEG-Viewer-SBOM.spdx.json)
+          **Software bill of materials:** [SPDX JSON](https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/JPEG-Viewer-SBOM.spdx.json)
 
           Release assets also receive GitHub build-provenance attestations. Verify them with GitHub CLI using `gh attestation verify`.
 
@@ -1028,8 +1284,9 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: JPEG Viewer ${{ github.ref_name }}
+          tag_name: ${{ env.JPEG_VIEWER_RELEASE_TAG || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: JPEG Viewer ${{ env.JPEG_VIEWER_RELEASE_TAG || github.ref_name }}
           body_path: release-notes.md
           files: release-files/*
           fail_on_unmatched_files: true
