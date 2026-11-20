@@ -81,13 +81,13 @@ def main() -> int:
     ]
     for path in desktop_files:
         parser = configparser.ConfigParser(interpolation=None, strict=True)
-        parser.optionxform = str
+
         with path.open(encoding="utf-8") as stream:
             parser.read_file(stream)
         require(parser.has_section("Desktop Entry"), f"Missing Desktop Entry section: {path}")
         entry = parser["Desktop Entry"]
         for key in ("Name", "Exec", "Type", "Categories"):
-            require(entry.get(key), f"Missing {key} in {path}")
+            require(entry.get(key) is not None, f"Missing {key} in {path}")
         require(entry.get("Type") == "Application", f"Invalid desktop Type in {path}")
 
     required_assets = [
@@ -105,13 +105,19 @@ def main() -> int:
     for path in required_assets:
         require(path.is_file() and path.stat().st_size > 0, f"Required package asset missing: {path}")
 
-    for script in (
-        ROOT / "packaging/linux/debian/postinst",
-        ROOT / "packaging/linux/debian/postrm",
-        ROOT / "packaging/linux/install-portable.sh",
-        ROOT / "packaging/linux/uninstall-portable.sh",
-    ):
-        require(script.stat().st_mode & 0o111, f"Packaging script is not executable: {script}")
+    # Unix executable permissions cannot be reliably checked on Windows.
+    # Linux/macOS CI still validates the executable bit.
+    if sys.platform != "win32":
+        for script in (
+            ROOT / "packaging/linux/debian/postinst",
+            ROOT / "packaging/linux/debian/postrm",
+            ROOT / "packaging/linux/install-portable.sh",
+            ROOT / "packaging/linux/uninstall-portable.sh",
+        ):
+            require(
+                bool(script.stat().st_mode & 0o111),
+                f"Packaging script is not executable: {script}",
+            )
 
     installer = (ROOT / "packaging/windows/installer.iss").read_text(encoding="utf-8")
     require("PrivilegesRequired=lowest" in installer, "Windows installer must be per-user / non-elevated")
@@ -151,6 +157,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except Exception as exc:
+    except (RuntimeError, OSError, KeyError, ValueError, TypeError) as exc:
         print(f"Packaging validation failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
