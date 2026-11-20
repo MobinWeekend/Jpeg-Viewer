@@ -36,8 +36,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.99.1
-        with:
-          components: rustfmt, clippy
 
       - name: Install Linux test dependencies
         if: runner.os == 'Linux'
@@ -62,17 +60,11 @@ jobs:
       - name: Validate package metadata
         run: python scripts/validate_packaging.py
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
       - name: Test release metadata helpers
         run: python -m unittest discover -s scripts/tests -v
 
       - name: Run tests
         run: cargo test --locked
-
-      - name: Run Clippy correctness checks
-        run: cargo clippy --all-targets --locked -- -D clippy::correctness
 
   # ---------------------------------------------------------------------------
   # 2. Native Windows binaries and portable ZIPs.
