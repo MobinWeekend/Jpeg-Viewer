@@ -558,8 +558,9 @@ pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &
         }
         app.image_cache.clear();
         app.preloading_indices.clear();
-        app.preload_tasks.clear();
+        app.cancel_all_preload_tasks();
         app.preload_generation = app.preload_generation.wrapping_add(1);
+        app.preloading_indices.clear();
         app.sidebar_last_current_index = None;
         if !app.image_entries.is_empty() {
             app.load_current_image_with_cache();

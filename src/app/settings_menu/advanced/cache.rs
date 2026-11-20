@@ -116,6 +116,23 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.add_space(4.0);
 
     ui.separator();
+    ui.add_space(4.0);
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut publish = app.settings_manager.get().publish_generated_thumbnails;
+        if ui.checkbox(&mut publish, "Publish generated thumbnails to shared desktop cache").changed() {
+            let _ = app.settings_manager.update(|settings| {
+                settings.publish_generated_thumbnails = publish;
+            });
+        }
+        ui.label(egui::RichText::new(
+            "When disabled, existing desktop thumbnails are still used, but Jpeg-Viewer does not publish new thumbnails to the shared XDG cache.",
+        ).weak().small());
+        ui.add_space(4.0);
+    }
+
+    ui.separator();
     ui.add_space(8.0);
 
     // Cache Progress
@@ -175,7 +192,7 @@ fn render_cache_progress(app: &mut ViewerApp, ui: &mut egui::Ui) {
         {
             app.image_cache.clear();
             app.preloading_indices.clear();
-            app.preload_tasks.clear();
+            app.cancel_all_preload_tasks();
         }
     });
 

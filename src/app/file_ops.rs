@@ -56,6 +56,7 @@ impl ViewerApp {
         self.b_fit_to_window = true;
         self.image_rect = None;
         self.gif_animation = None;
+        self.full_gif_source = None;
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
@@ -69,9 +70,10 @@ impl ViewerApp {
         // Reset preload state – discard all pending tasks and invalidate results.
         self.image_cache.clear();
         self.preloading_indices.clear();
-        self.preload_tasks.clear();
-        self.preload_workers = 0;
+        self.cancel_all_preload_tasks();
+
         self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.preloading_indices.clear();
         self.should_stop_caching = false; // ensure caching is re-enabled
 
         if path.is_dir() {
@@ -292,9 +294,10 @@ impl ViewerApp {
                 // Reset preload state
                 self.image_cache.clear();
                 self.preloading_indices.clear();
-                self.preload_tasks.clear();
-                self.preload_workers = 0;
+                self.cancel_all_preload_tasks();
+
                 self.preload_generation = self.preload_generation.wrapping_add(1);
+                self.preloading_indices.clear();
                 self.should_stop_caching = false;
                 self.file_type_detection = None; // Clear file extension detection
             }
@@ -335,6 +338,7 @@ impl ViewerApp {
         self.b_fit_to_window = true;
         self.image_rect = None;
         self.gif_animation = None;
+        self.full_gif_source = None;
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;
@@ -352,9 +356,10 @@ impl ViewerApp {
         // Reset preload state
         self.image_cache.clear();
         self.preloading_indices.clear();
-        self.preload_tasks.clear();
-        self.preload_workers = 0;
+        self.cancel_all_preload_tasks();
+
         self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.preloading_indices.clear();
         self.should_stop_caching = false;
         self.set_file_type_detection(None); // Clear file extension detection
 
@@ -390,6 +395,7 @@ impl ViewerApp {
         self.set_image_entries(entries, 0);
         self.zoom = 1.0;
         self.gif_animation = None;
+        self.full_gif_source = None;
         self.is_gif = false;
         self.is_preview = false;
         self.texture = None;

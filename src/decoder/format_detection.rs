@@ -199,20 +199,16 @@ mod tests {
     }
 }
 
-/// Load an image from raw bytes, with:
-/// - GIF animation detection (returns `LoadedImage::Animated`)
-/// - Virtual‑texture routing for images larger than `threshold` (returns `LoadedImage::VirtualPending`)
-/// - Fallback to static decode (returns `LoadedImage::Static`)
-///
-/// `threshold` is the tile size at which virtual texturing kicks in.
-/// `options` are decoder‑agnostic settings (currently empty).
-pub fn load_bytes_with_detection(
+/// Load bytes and optionally return the original compressed source when a GIF
+/// preview is produced. The caller can retain that bounded source while the
+/// asynchronous full-animation upgrade runs, avoiding a second disk/archive read.
+pub(crate) fn load_bytes_with_detection_and_source(
     bytes: Vec<u8>,
     path_hint: Option<&std::path::Path>,
     threshold: u32,
     options: &DecodeOptions,
-    registry: Option<&DecoderRegistry>, // optional – if None, use default registry
-) -> Result<LoadedImage, String> {
+    registry: Option<&DecoderRegistry>,
+) -> Result<(LoadedImage, Option<Vec<u8>>), String> {
     let registry = match registry {
         Some(r) => r,
         None => &default_registry(),
@@ -221,10 +217,10 @@ pub fn load_bytes_with_detection(
     // 1. GIF animation detection (special case)
     if is_gif_bytes(&bytes) {
         if let Ok(gif) = GifAnimation::from_bytes_preview(&bytes) {
-            return Ok(LoadedImage::Animated(gif, true));
+            return Ok((LoadedImage::Animated(gif, true), Some(bytes)));
         }
         if let Ok(gif) = GifAnimation::from_bytes(&bytes) {
-            return Ok(LoadedImage::Animated(gif, false));
+            return Ok((LoadedImage::Animated(gif, false), None));
         }
         // If we can't parse as GIF, fall through to static decode.
     }
@@ -249,6 +245,7 @@ pub fn load_bytes_with_detection(
     if format == ImageFormat::CameraRaw {
         return registry.decode(&bytes, format, options)
             .map(LoadedImage::Static)
+            .map(|image| (image, None))
             .map_err(|error| error.to_string());
     }
 
@@ -262,12 +259,12 @@ pub fn load_bytes_with_detection(
     // RAW development currently produces a complete developed frame; do not
     // route its source bytes into the generic virtual-texture decoder path.
     if format != ImageFormat::CameraRaw && threshold > 0 && (width >= threshold || height >= threshold) {
-        return Ok(LoadedImage::VirtualPending(bytes, width, height));
+        return Ok((LoadedImage::VirtualPending(bytes, width, height), None));
     }
 
     // 5. Normal static decode
     match registry.decode(&bytes, format, options) {
-        Ok(decoded) => Ok(LoadedImage::Static(decoded)),
+        Ok(decoded) => Ok((LoadedImage::Static(decoded), None)),
         Err(e) => Err(e.to_string()),
     }
 }

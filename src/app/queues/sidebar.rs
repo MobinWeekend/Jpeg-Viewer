@@ -591,8 +591,9 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                         }
                         app.image_cache.clear();
                         app.preloading_indices.clear();
-                        app.preload_tasks.clear();
+                        app.cancel_all_preload_tasks();
                         app.preload_generation = app.preload_generation.wrapping_add(1);
+                        app.preloading_indices.clear();
                         if !app.image_entries.is_empty() {
                             app.load_current_image_with_cache();
                         }
@@ -772,8 +773,9 @@ pub fn render_rename_dialog(app: &mut ViewerApp, ctx: &egui::Context) {
                             app.sidebar_thumbnail_failed.clear();
                             app.image_cache.clear();
                             app.preloading_indices.clear();
-                            app.preload_tasks.clear();
+                            app.cancel_all_preload_tasks();
                             app.preload_generation = app.preload_generation.wrapping_add(1);
+                            app.preloading_indices.clear();
                             app.queue_status = Some(format!(
                                 "Renamed file to {}.",
                                 new_path.file_name().unwrap_or_default().to_string_lossy()

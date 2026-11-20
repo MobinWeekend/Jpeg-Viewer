@@ -34,16 +34,30 @@ impl ViewerApp {
             self.inspect_mode = false;
             return;
         };
-        let decoded = std::fs::read(&path)
-            .ok()
-            .and_then(|bytes| crate::decoder::decode_bytes(&bytes).ok());
-        let Some(decoded) = decoded else {
+        // The current image loader retains one bounded CPU buffer for the
+        // displayed image. Reuse it instead of reopening/decoding the source.
+        let current_id = self.get_image_id(self.current_index);
+        let retained = self
+            .current_decoded_pixels
+            .as_ref()
+            .filter(|(image_id, _, _, _)| Some(image_id) == current_id.as_ref())
+            .map(|(_, width, height, pixels)| (*width, *height, pixels.as_ref().clone()));
+
+        let pixels = if let Some((width, height, pixels)) = retained {
+            Some((width, height, pixels))
+        } else {
+            let decoded = std::fs::read(&path).ok().and_then(|bytes| {
+                crate::io_metrics::source_read(bytes.len());
+                crate::decoder::decode_bytes(&bytes).ok()
+            });
+            decoded.map(|decoded| (decoded.width, decoded.height, decoded.data))
+        };
+        let Some((width, height, pixels)) = pixels else {
             self.edit_status = Some("Could not decode image channels for Inspect.".into());
             self.inspect_mode = false;
             return;
         };
-        let Some(source) = image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.data)
-        else {
+        let Some(source) = image::RgbaImage::from_raw(width, height, pixels) else {
             self.inspect_mode = false;
             return;
         };

@@ -301,6 +301,7 @@ pub(super) fn generate(
             continue;
         }
 
+        crate::io_metrics::metadata_query();
         let Ok(metadata) = std::fs::metadata(&output.file) else {
             continue;
         };
@@ -310,15 +311,14 @@ pub(super) fn generate(
         if metadata.len() == 0 || metadata.len() > 256 * 1024 * 1024 {
             continue;
         }
-        let Ok(reader) = image::ImageReader::open(&output.file) else {
+        let Ok(bytes) = std::fs::read(&output.file) else {
             continue;
         };
-        let Ok(reader) = reader.with_guessed_format() else {
+        crate::io_metrics::thumbnail_temp_read(bytes.len());
+        let Ok(decoded) = image::load_from_memory(&bytes) else {
             continue;
         };
-        let Ok((width, height)) = reader.into_dimensions() else {
-            continue;
-        };
+        let (width, height) = (decoded.width(), decoded.height());
         let Some(pixel_count) = (width as u64).checked_mul(height as u64) else {
             continue;
         };
@@ -328,9 +328,6 @@ pub(super) fn generate(
         if width == 0 || height == 0 || pixel_count > 67_108_864 {
             continue;
         }
-        let Ok(decoded) = image::open(&output.file) else {
-            continue;
-        };
         let rgba = decoded.to_rgba8();
         if rgba.width().max(rgba.height()) >= max_side {
             // Do not return a preview generated from a file that changed while

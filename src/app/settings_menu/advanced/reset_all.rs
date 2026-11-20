@@ -25,7 +25,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             app.max_cache_task = app.settings_manager.get().max_cache_task;
             app.image_cache.clear();
             app.preloading_indices.clear();
-            app.preload_tasks.clear();
+            app.cancel_all_preload_tasks();
             if !app.image_entries.is_empty() {
                 app.load_current_image_with_cache();
             }

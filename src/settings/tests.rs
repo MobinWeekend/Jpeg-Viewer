@@ -1,6 +1,6 @@
 use super::{AppSettings, SettingsManager};
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[test]
 fn test_parse_bool() {
@@ -37,7 +37,7 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=9"));
+    assert!(saved.contains("schema_version=10"));
     let _ = fs::remove_file(path);
 }
 
@@ -197,7 +197,7 @@ fn save_preserves_unknown_keys_and_future_schema_version() {
 
     SettingsManager::save_to_file(&path, &AppSettings::default()).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=9"));
+    assert!(saved.contains("schema_version=10"));
     assert!(saved.contains("future_option=keep-me"));
     assert!(saved.contains("custom=value"));
     let _ = fs::remove_file(path);
@@ -304,7 +304,7 @@ fn test_default_settings() {
     assert_eq!(settings.desktop_menu_bar_preference, "auto");
     assert_eq!(settings.navigation_ui_auto_hide_preference, "auto");
     assert_eq!(settings.navigation_ui_auto_hide_ms, 1400);
-    assert_eq!(settings.main_view_background_opacity, 0.75);
+    assert_eq!(settings.main_view_background_opacity, 0.35);
     assert!(settings.os_background_blur);
     assert!(settings.win98_dialup_enabled);
     assert!(!settings.win98_dialup_preference_configured);
@@ -360,4 +360,57 @@ fn viewing_and_single_instance_settings_round_trip() {
     assert!(!loaded.fit_window_preserve_aspect);
     assert!(!loaded.fit_window_center);
     let _ = fs::remove_file(path);
+}
+
+
+#[test]
+fn settings_updates_are_debounced_and_unchanged_updates_stay_clean() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-debounce-{}.ini", unique));
+    let mut manager = SettingsManager {
+        path: path.clone(),
+        settings: AppSettings::default(),
+        last_error: None,
+        dirty: false,
+        dirty_since: None,
+    };
+
+    manager.update(|settings| settings.cache_radius = 9).unwrap();
+    assert!(manager.is_dirty());
+    assert!(manager.time_until_save().is_some());
+    assert!(manager.save_if_due().is_none());
+    assert!(!path.exists(), "debounced updates must not write immediately");
+
+    // An update that does not change the serialized settings should not
+    // restart the debounce timer or cause a needless rewrite.
+    manager.update(|settings| settings.cache_radius = 9).unwrap();
+    assert!(manager.is_dirty());
+    manager.dirty_since = Some(Instant::now() - Duration::from_secs(1));
+    assert!(manager.save_if_due().is_some());
+    assert!(!manager.is_dirty());
+    assert!(path.exists());
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn unchanged_settings_updates_do_not_mark_the_file_dirty() {
+    let path = std::env::temp_dir().join(format!(
+        "jpeg-viewer-settings-clean-{}.ini",
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    ));
+    let mut manager = SettingsManager {
+        path: path.clone(),
+        settings: AppSettings::default(),
+        last_error: None,
+        dirty: false,
+        dirty_since: None,
+    };
+    manager.update(|_| {}).unwrap();
+    assert!(!manager.is_dirty());
+    assert!(manager.time_until_save().is_none());
+    assert!(!path.exists());
 }

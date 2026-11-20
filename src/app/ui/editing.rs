@@ -76,6 +76,7 @@ impl ViewerApp {
                 return;
             }
         };
+        crate::io_metrics::source_read(bytes.len());
         let decoded = match decode_bytes(&bytes) {
             Ok(decoded) => decoded,
             Err(error) => {
@@ -206,6 +207,7 @@ impl ViewerApp {
         };
         self.virtual_texture = None;
         self.gif_animation = None;
+        self.full_gif_source = None;
         self.is_gif = false;
         self.b_fit_to_window = true;
         self.image_rect = None;
@@ -254,6 +256,7 @@ impl ViewerApp {
         };
         self.virtual_texture = None;
         self.gif_animation = None;
+        self.full_gif_source = None;
         self.is_gif = false;
         self.image_rect = None;
 

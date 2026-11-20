@@ -7,7 +7,7 @@ use crate::ui_theme::scaled_text_size;
 use chrono::{DateTime, Local};
 use eframe::egui;
 use exif::{Reader as ExifReader, Value as ExifValue};
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -34,22 +34,34 @@ pub struct FileMetadata {
     pub exif: Vec<(String, String)>,
     pub mismatch: bool,
     pub current_extension: Option<String>,
+    /// Precise source-file identity used to invalidate cached image metadata
+    /// and textures after an external replacement or modification.
+    pub(crate) source_stamp: Option<(u64, SystemTime)>,
 }
 
 impl ViewerApp {
-    pub fn build_file_metadata(&self) -> FileMetadata {
-        let Some(entry) = self.image_entries.get(self.current_index) else {
-            return FileMetadata::default();
-        };
-
-        let bytes = read_entry_bytes(entry).ok();
-        let format = bytes.as_deref().and_then(detect_format);
-        let dimensions = bytes.as_deref().and_then(|bytes| {
+    /// Construct detailed metadata from bytes already read by the image loader.
+    /// This is deliberately independent of ViewerApp so the current-image load
+    /// worker can share one source read between decoding and metadata extraction.
+    pub(crate) fn build_file_metadata_from_bytes(
+        entry: &ImageEntry,
+        bytes: Option<&[u8]>,
+    ) -> FileMetadata {
+        let format = bytes.and_then(detect_format);
+        let dimensions = bytes.and_then(|bytes| {
             format.and_then(|format| default_registry().dimensions(bytes, format).ok())
         });
-
+        let name = match entry {
+            ImageEntry::File(path) => path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.to_string_lossy().into_owned()),
+            ImageEntry::Zip(zip) => zip.name.clone(),
+            ImageEntry::S7z(s7z) => s7z.name.clone(),
+            ImageEntry::Rar(rar) => rar.name.clone(),
+        };
         let mut metadata = FileMetadata {
-            name: Some(self.get_current_filename()),
+            name: Some(name),
             format,
             dimensions,
             ..Default::default()
@@ -61,93 +73,78 @@ impl ViewerApp {
             ImageEntry::S7z(s7z) => Some(s7z.archive_path.clone()),
             ImageEntry::Rar(rar) => Some(rar.archive_path.clone()),
         };
-
         metadata.source = match entry {
             ImageEntry::File(_) => source_path
                 .as_ref()
-                .map(|p| p.to_string_lossy().into_owned()),
-            ImageEntry::Zip(zip) => Some(format!(
-                "{}#{}",
-                zip.archive_path.to_string_lossy(),
-                zip.name
-            )),
-            ImageEntry::S7z(s7z) => Some(format!(
-                "{}#{}",
-                s7z.archive_path.to_string_lossy(),
-                s7z.name
-            )),
-            ImageEntry::Rar(rar) => Some(format!(
-                "{}#{}",
-                rar.archive_path.to_string_lossy(),
-                rar.name
-            )),
+                .map(|path| path.to_string_lossy().into_owned()),
+            ImageEntry::Zip(zip) => Some(format!("{}#{}", zip.archive_path.to_string_lossy(), zip.name)),
+            ImageEntry::S7z(s7z) => Some(format!("{}#{}", s7z.archive_path.to_string_lossy(), s7z.name)),
+            ImageEntry::Rar(rar) => Some(format!("{}#{}", rar.archive_path.to_string_lossy(), rar.name)),
         };
 
         if let ImageEntry::File(path) = entry {
             metadata.extension = path
                 .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_ascii_lowercase());
-
+                .and_then(|extension| extension.to_str())
+                .map(|extension| extension.to_ascii_lowercase());
             metadata.current_extension = metadata.extension.clone();
-
-            if let Ok(fs) = std::fs::metadata(path) {
-                metadata.file_size = Some(fs.len());
-                metadata.modified = fs.modified().ok().map(Self::format_metadata_system_time);
-                metadata.created = fs.created().ok().map(Self::format_metadata_system_time);
-                metadata.read_only = Some(fs.permissions().readonly());
-            }
         } else {
             metadata.extension = metadata.name.as_deref().and_then(|name| {
                 PathBuf::from(name)
                     .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.to_ascii_lowercase())
+                    .and_then(|extension| extension.to_str())
+                    .map(|extension| extension.to_ascii_lowercase())
             });
-            metadata.file_size = bytes.as_ref().map(|b| b.len() as u64);
+            metadata.file_size = bytes.map(|bytes| bytes.len() as u64);
         }
 
-        if let Some((w, h)) = dimensions {
-            if w > 0 && h > 0 {
-                let pixels = w as u64 * h as u64;
+        // Capture the containing source's exact size/mtime once. For archive
+        // members this identifies the archive, while `file_size` continues to
+        // describe the uncompressed member as before.
+        if let Some(path) = source_path.as_deref() {
+            crate::io_metrics::metadata_query();
+            if let Ok(fs) = std::fs::metadata(path) {
+                let modified = fs.modified().ok();
+                if let Some(modified) = modified {
+                    metadata.source_stamp = Some((fs.len(), modified));
+                    if matches!(entry, ImageEntry::File(_)) {
+                        metadata.modified = Some(Self::format_metadata_system_time(modified));
+                    }
+                }
+                if matches!(entry, ImageEntry::File(_)) {
+                    metadata.file_size = Some(fs.len());
+                    metadata.created = fs.created().ok().map(Self::format_metadata_system_time);
+                    metadata.read_only = Some(fs.permissions().readonly());
+                }
+            }
+        }
+
+        if let Some((width, height)) = dimensions {
+            if width > 0 && height > 0 {
+                let pixels = width as u64 * height as u64;
                 metadata.pixel_count = Some(pixels);
                 metadata.megapixels = Some(pixels as f64 / 1_000_000.0);
                 metadata.estimated_uncompressed_size = Some(pixels.saturating_mul(4));
-
-                if let Some(label) = crate::app::aspect_ratio::AspectRatio::get_label(w, h) {
+                if let Some(label) = crate::app::aspect_ratio::AspectRatio::get_label(width, height) {
                     metadata.aspect_ratio = Some(label.to_string());
                 }
             }
         }
 
-        if let Some(bytes) = bytes.as_deref() {
+        if let Some(bytes) = bytes {
             if let Some(format) = format {
                 if let Ok(Some(color)) = default_registry().color_info(bytes, format) {
                     metadata.decoded_color = Some(color.description);
-                    metadata.decoded_bit_depth =
-                        Some(format!("{}-bit per channel", color.bits_per_channel));
+                    metadata.decoded_bit_depth = Some(format!("{}-bit per channel", color.bits_per_channel));
                 }
             }
-            if matches!(format, Some(ImageFormat::Gif)) {
-                if let Ok(gif) = crate::decoder::gif::animation::GifAnimation::from_bytes(bytes) {
-                    metadata.frame_count = Some(gif.frame_count());
-                    metadata.animated = Some(gif.is_animated());
-                }
-            }
-
+            // GIF frame metadata is populated from the decoded animation result
+            // in the shared loader. Parsing the full animation here would decode
+            // every frame a second time just to fill the File Info panel.
             let (exif_fields, dpi) = read_exif(bytes);
             metadata.exif = exif_fields;
             metadata.dpi = dpi;
         }
-
-        if let Some(detection) = &self.file_type_detection {
-            metadata.mismatch = detection.mismatch;
-            metadata.current_extension = detection.current_extension.clone();
-            if metadata.format.is_none() {
-                metadata.format = Some(detection.detected_format);
-            }
-        }
-
         metadata
     }
 
@@ -307,50 +304,6 @@ fn format_number(value: u64) -> String {
         out.push(c);
     }
     out.chars().rev().collect()
-}
-
-fn read_entry_bytes(entry: &ImageEntry) -> Result<Vec<u8>, String> {
-    match entry {
-        ImageEntry::File(path) => std::fs::read(path).map_err(|e| e.to_string()),
-        ImageEntry::Zip(zip) => {
-            let file = std::fs::File::open(&zip.archive_path).map_err(|e| e.to_string())?;
-            let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-            let mut entry = archive
-                .by_index(zip.entry_index)
-                .map_err(|e| e.to_string())?;
-            let mut bytes = Vec::new();
-            entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-            Ok(bytes)
-        }
-        ImageEntry::S7z(s7z) => {
-            let mut reader = sevenz_rust2::ArchiveReader::open(
-                &s7z.archive_path,
-                sevenz_rust2::Password::empty(),
-            )
-            .map_err(|e| e.to_string())?;
-            reader.read_file(&s7z.name).map_err(|e| e.to_string())
-        }
-        ImageEntry::Rar(rar) => {
-            let mut archive = unrar::Archive::new(&rar.archive_path)
-                .open_for_processing()
-                .map_err(|e| e.to_string())?;
-
-            loop {
-                let header = archive
-                    .read_header()
-                    .map_err(|e| e.to_string())?
-                    .ok_or_else(|| format!("File not found in archive: {}", rar.name))?;
-
-                let filename = header.entry().filename.to_string_lossy().to_string();
-                if filename == rar.name {
-                    let (bytes, _) = header.read().map_err(|e| e.to_string())?;
-                    return Ok(bytes);
-                }
-
-                archive = header.skip().map_err(|e| e.to_string())?;
-            }
-        }
-    }
 }
 
 fn read_exif(bytes: &[u8]) -> (Vec<(String, String)>, Option<(f64, f64)>) {

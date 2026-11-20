@@ -7,6 +7,7 @@ mod input;
 mod settings;
 mod platform;
 mod ui_theme;
+mod io_metrics;
 
 use app::ViewerApp;
 use eframe::egui;

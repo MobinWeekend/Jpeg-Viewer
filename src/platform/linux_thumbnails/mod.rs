@@ -14,6 +14,10 @@ mod thumbnailer;
 mod tumbler;
 mod xdg_cache;
 
+pub(crate) fn set_publish_enabled(enabled: bool) {
+    xdg_cache::set_publish_enabled(enabled);
+}
+
 use std::fs::File;
 use std::path::Path;
 use std::time::{Duration, Instant};

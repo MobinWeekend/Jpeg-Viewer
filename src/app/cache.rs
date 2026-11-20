@@ -1,7 +1,7 @@
 use super::texture_mipmap::{
     SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload,
 };
-use super::types::{CachedImage, LoadedImage, ViewerApp};
+use super::types::{CachedImage, LoadedEntryData, LoadedImage, ViewerApp};
 use crate::app::constants::MAX_TILE_SIZE;
 use crate::imaging::core::DecodedImage;
 use eframe::egui;
@@ -67,6 +67,7 @@ impl ViewerApp {
                 is_preview: self.is_preview,
                 index: self.current_index,
                 file_type_detection: self.file_type_detection.clone(),
+                file_metadata: self.file_metadata.clone(),
             },
         );
     }
@@ -90,6 +91,36 @@ impl ViewerApp {
         };
 
         if let Some(mut cached) = self.image_cache.get(&image_id).cloned() {
+            // A path-based cache key alone cannot detect an external overwrite.
+            // One inexpensive stat on a cache hit protects the GPU texture and
+            // its metadata from being reused for different source contents.
+            let source_path = self.image_entries.get(index).map(|entry| match entry {
+                crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
+                crate::imaging::entry::ImageEntry::Zip(item) => item.archive_path.as_path(),
+                crate::imaging::entry::ImageEntry::S7z(item) => item.archive_path.as_path(),
+                crate::imaging::entry::ImageEntry::Rar(item) => item.archive_path.as_path(),
+            });
+            let expected_stamp = cached
+                .file_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.source_stamp.as_ref());
+            let source_is_current = source_path.zip(expected_stamp).is_some_and(|(path, expected)| {
+                crate::io_metrics::metadata_query();
+                std::fs::metadata(path).ok().is_some_and(|actual| {
+                    actual.len() == expected.0 && actual.modified().ok().as_ref() == Some(&expected.1)
+                })
+            });
+            if !source_is_current {
+                self.image_cache.pop(&image_id);
+                if self.preloaded_mipmap_pixels.as_ref().is_some_and(|(source_id, _, _, _)| source_id == &image_id) {
+                    self.preloaded_mipmap_pixels = None;
+                }
+                if self.current_decoded_pixels.as_ref().is_some_and(|(source_id, _, _, _)| source_id == &image_id) {
+                    self.current_decoded_pixels = None;
+                }
+                return false;
+            }
+
             let active_filter = self.settings_manager.get().texture_filter.as_str();
             if cached.texture_filter != active_filter {
                 // TextureOptions are applied when the GPU texture is created.
@@ -103,7 +134,10 @@ impl ViewerApp {
                 cached.index = index;
                 if let Some(detection) = &mut cached.file_type_detection {
                     detection.index = index;
+                    detection.generation = self.preload_generation;
                 }
+            } else if let Some(detection) = &mut cached.file_type_detection {
+                detection.generation = self.preload_generation;
             }
 
             // Background preparation is scheduled centrally so there is only one
@@ -123,6 +157,24 @@ impl ViewerApp {
             self.is_preview = cached.is_preview;
             self.b_fit_to_window = true;
             self.file_type_detection = cached.file_type_detection.clone();
+            self.file_metadata = cached.file_metadata.clone();
+            let reused_preloaded_pixels = self
+                .preloaded_mipmap_pixels
+                .as_ref()
+                .is_some_and(|(source_id, _, _, _)| source_id == &image_id);
+            self.current_decoded_pixels = self
+                .preloaded_mipmap_pixels
+                .as_ref()
+                .filter(|(source_id, _, _, _)| source_id == &image_id)
+                .map(|(source_id, width, height, pixels)| {
+                    (source_id.clone(), *width, *height, Arc::clone(pixels))
+                });
+            // The one speculative buffer has now become the current image's
+            // retained buffer. Clear its look-ahead slot so the next preload
+            // can retain one neighbour without exceeding the memory budget.
+            if reused_preloaded_pixels {
+                self.preloaded_mipmap_pixels = None;
+            }
             self.image_cache.put(image_id, cached);
             return true;
         }
@@ -157,6 +209,17 @@ impl ViewerApp {
         let rgba = Arc::new(image.data);
         let texture_filter = self.settings_manager.get().texture_filter.clone();
         let image_id = self.get_image_id(index);
+        const MAX_RETAINED_CURRENT_PIXELS: usize = 128 * 1024 * 1024;
+        if let Some(image_id) = image_id.as_ref().filter(|_| rgba.len() <= MAX_RETAINED_CURRENT_PIXELS) {
+            self.current_decoded_pixels = Some((
+                image_id.clone(),
+                width,
+                height,
+                Arc::clone(&rgba),
+            ));
+        } else {
+            self.current_decoded_pixels = None;
+        }
 
         let should_cache = index < self.image_entries.len()
             && !self.current_file_type_mismatch()
@@ -226,6 +289,7 @@ impl ViewerApp {
                     is_preview: false,
                     index,
                     file_type_detection: self.file_type_detection.clone(),
+                    file_metadata: self.file_metadata.clone(),
                 };
                 self.image_cache.put(image_id, cached);
             }
@@ -241,24 +305,41 @@ impl ViewerApp {
     }
 
     /// Add a background-preloaded image to the GPU cache. Its base texture is
-    /// uploaded immediately; mip preparation is scheduled later, one cached
-    /// neighbour at a time, by re-decoding the source on a worker. This avoids
-    /// retaining a full decoded RGBA buffer for every neighbour in the radius.
+    /// uploaded immediately. One bounded speculative RGBA buffer may be kept
+    /// for a neighbour so mipmap preparation can reuse it; other neighbours
+    /// retain the existing worker-side re-decode fallback.
     pub fn add_to_cache(
         &mut self,
         ctx: &egui::Context,
         index: usize,
-        loaded_image: &LoadedImage,
+        loaded_entry: LoadedEntryData,
     ) {
         if index >= self.image_entries.len() || index == self.current_index {
             return;
         }
 
-        let img = match loaded_image {
-            LoadedImage::Static(img) => img,
+        // A completed preload has already examined the source signature and
+        // decoded its format. Seed both positive and negative results so later
+        // scheduler/progress checks never reopen this entry just for GIF magic.
+        if let Some(image_id) = self.get_image_id(index) {
+            if let Ok(mut cache) = self.gif_detection_cache.lock() {
+                cache.insert(
+                    image_id,
+                    matches!(&loaded_entry.image, LoadedImage::Animated(_, _)),
+                );
+            }
+        }
+        let LoadedEntryData {
+            image,
+            metadata,
+            file_type_detection,
+            full_gif_source: _,
+        } = loaded_entry;
+        let img = match image {
+            LoadedImage::Static(image) => image,
             LoadedImage::Animated(_, _) | LoadedImage::VirtualPending(_, _, _) => return,
         };
-        if self.is_virtual_texture_size(img.width(), img.height()) {
+        if self.is_virtual_texture_size(img.width, img.height) {
             return;
         }
 
@@ -275,15 +356,29 @@ impl ViewerApp {
         }
         self.image_cache.pop(&image_id);
 
+        // Move the decoded buffer into an Arc instead of cloning it. Keep at
+        // most one speculative neighbour buffer for mipmap/Inspect reuse.
+        let width = img.width;
+        let height = img.height;
+        let pixels = Arc::new(img.data);
         let color = egui::ColorImage::from_rgba_unmultiplied(
-            [img.width() as usize, img.height() as usize],
-            img.data(),
+            [width as usize, height as usize],
+            pixels.as_slice(),
         );
         let texture = ctx.load_texture(
             format!("image_cache_{image_id}"),
             color,
             self.get_texture_base_options(),
         );
+        const MAX_RETAINED_PRELOAD_PIXELS: usize = 64 * 1024 * 1024;
+        if self.preloaded_mipmap_pixels.is_none() && pixels.len() <= MAX_RETAINED_PRELOAD_PIXELS {
+            self.preloaded_mipmap_pixels = Some((
+                image_id.clone(),
+                width,
+                height,
+                Arc::clone(&pixels),
+            ));
+        }
         self.image_cache.put(
             image_id,
             CachedImage {
@@ -293,7 +388,8 @@ impl ViewerApp {
                 is_gif: false,
                 is_preview: false,
                 index,
-                file_type_detection: None,
+                file_type_detection,
+                file_metadata: Some(metadata),
             },
         );
     }

@@ -29,23 +29,29 @@ impl ViewerApp {
 
     /// Detect the current file type, using the cached result when available.
     pub fn detect_current_file_type(&mut self) {
+        // Detection is produced by the background image loader from the same
+        // source bytes used for decoding. Never reopen the file from navigation
+        // or a UI update merely to repeat this check.
+        if let Some(detection) = self.file_type_detection.clone() {
+            if detection.index == self.current_index
+                && detection.generation == self.preload_generation
+            {
+                return;
+            }
+        }
+
         let cached_detection = self.get_image_id(self.current_index).and_then(|image_id| {
             self.image_cache
                 .get(&image_id)
                 .and_then(|cached| cached.file_type_detection.clone())
         });
-
-        if let Some(detection) = cached_detection {
-            // Cached detections may belong to an older navigation generation.
-            if detection.index == self.current_index
-                && detection.generation == self.preload_generation
-            {
-                self.set_file_type_detection(Some(detection));
-                return;
-            }
+        if let Some(mut detection) = cached_detection {
+            detection.index = self.current_index;
+            detection.generation = self.preload_generation;
+            self.set_file_type_detection(Some(detection));
+        } else {
+            self.set_file_type_detection(None);
         }
-
-        self.detect_from_disk();
     }
 
     /// Detect the actual file format from disk.
@@ -83,6 +89,7 @@ impl ViewerApp {
             }
         };
 
+        crate::io_metrics::source_read(bytes.len());
         let detected_format = match detect_format(&bytes) {
             Some(format) => format,
             None => {
@@ -213,6 +220,7 @@ impl ViewerApp {
 
                 // Reset image/loading state.
                 self.gif_animation = None;
+                self.full_gif_source = None;
                 self.is_gif = false;
                 self.is_preview = false;
 

@@ -80,6 +80,10 @@ impl SettingsManager {
         );
         section.set("max_cache_task", settings.max_cache_task.to_string());
         section.set("thumbnail_workers", settings.thumbnail_workers.to_string());
+        section.set(
+            "publish_generated_thumbnails",
+            if settings.publish_generated_thumbnails { "true" } else { "false" },
+        );
         section.set("texture_filter", &settings.texture_filter);
         section.set(
             "preload_throttle_ms",

@@ -182,10 +182,10 @@ impl crate::app::types::ViewerApp {
 
     pub(super) fn stop_preloading_for_workspace(&mut self) {
         self.should_stop_caching = true;
-        self.preload_tasks.clear();
+        self.cancel_all_preload_tasks();
         self.preloading_indices.clear();
         self.preload_skipped.clear();
-        self.preload_workers = 0;
+
         self.preload_working = false;
         self.preload_generation = self.preload_generation.wrapping_add(1);
     }

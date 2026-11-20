@@ -1,16 +1,12 @@
 // preloading governs the range and tasks and duration for preloading
 
 use super::texture_mipmap::{
-    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload_from_entry,
+    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload,
+    start_mipmap_upload_from_entry,
 };
-use super::types::{CachedImage, LoadedImage, PreloadTask, ViewerApp};
-use crate::decoder::default_registry;
-use crate::decoder::format_detection::load_bytes_with_detection;
+use super::loading::load_entry_content_with_metadata_cancellable;
+use super::types::{CachedImage, LoadedEntryData, LoadedImage, PreloadTask, ViewerApp};
 use crate::decoder::gif::detection::is_gif_entry;
-use crate::decoder::gif::loader::{
-    load_gif_preview_from_7z, load_gif_preview_from_rar, load_gif_preview_from_zip,
-};
-use crate::imaging::core::DecodeOptions;
 use crate::imaging::entry::ImageEntry;
 
 use eframe::egui;
@@ -19,6 +15,7 @@ use rayon::spawn;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::sync::mpsc::channel;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -107,7 +104,20 @@ impl ViewerApp {
 
     /// Returns true if an index points to a GIF.
     fn is_gif_index(&self, idx: usize) -> bool {
-        self.image_entries.get(idx).is_some_and(is_gif_entry)
+        let Some(entry) = self.image_entries.get(idx) else {
+            return false;
+        };
+        let key = entry.get_id();
+        if let Ok(cache) = self.gif_detection_cache.lock() {
+            if let Some(is_gif) = cache.get(&key) {
+                return *is_gif;
+            }
+        }
+        let is_gif = is_gif_entry(entry);
+        if let Ok(mut cache) = self.gif_detection_cache.lock() {
+            cache.insert(key, is_gif);
+        }
+        is_gif
     }
 
     /// Returns true if an entry has already been intentionally skipped.
@@ -153,6 +163,7 @@ impl ViewerApp {
     /// Moving the origin starts a new preload cycle, allowing previously
     /// skipped entries to become eligible again.
     fn move_preload_origin(&mut self) {
+        self.cancel_all_preload_tasks();
         self.preload_origin = self.current_index;
 
         // New preload cycle. Mipmap lookahead is no longer delayed by a
@@ -161,6 +172,7 @@ impl ViewerApp {
 
         // Invalidate results from the previous cycle.
         self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.preloading_indices.clear();
     }
 
     /// Update the preload origin when navigation moved far enough.
@@ -270,56 +282,29 @@ impl ViewerApp {
     fn load_preload_entry(
         entry: ImageEntry,
         virtual_texture_threshold: u32,
-    ) -> Result<LoadedImage, String> {
-        match entry {
-            ImageEntry::File(path) => {
-                let bytes =
-                    std::fs::read(&path).map_err(|e| format!("Failed to read image: {e}"))?;
-                load_bytes_with_detection(
-                    bytes,
-                    Some(&path),
-                    virtual_texture_threshold,
-                    &DecodeOptions::default(),
-                    Some(&default_registry()),
-                )
-            }
-
-            ImageEntry::Zip(zip) => {
-                if zip.name.to_lowercase().ends_with(".gif") {
-                    return load_gif_preview_from_zip(zip)
-                        .map(|gif| LoadedImage::Animated(gif, true))
-                        .ok_or_else(|| "Failed to load GIF preview from ZIP".to_string());
-                }
-
-                crate::imaging::loader::load_zip_image(zip)
-                    .map(LoadedImage::Static)
-                    .map_err(|err| err.to_string())
-            }
-
-            ImageEntry::S7z(s7z) => {
-                if s7z.name.to_lowercase().ends_with(".gif") {
-                    return load_gif_preview_from_7z(s7z)
-                        .map(|gif| LoadedImage::Animated(gif, true))
-                        .ok_or_else(|| "Failed to load GIF preview from 7z".to_string());
-                }
-
-                crate::imaging::loader::load_7z_image(s7z)
-                    .map(LoadedImage::Static)
-                    .map_err(|err| err.to_string())
-            }
-
-            ImageEntry::Rar(rar) => {
-                if rar.name.to_lowercase().ends_with(".gif") {
-                    return load_gif_preview_from_rar(rar)
-                        .map(|gif| LoadedImage::Animated(gif, true))
-                        .ok_or_else(|| "Failed to load GIF preview from RAR".to_string());
-                }
-
-                crate::imaging::loader::load_rar_image(rar)
-                    .map(LoadedImage::Static)
-                    .map_err(|err| err.to_string())
-            }
+        index: usize,
+        generation: u64,
+        cancellation: &AtomicBool,
+    ) -> Result<LoadedEntryData, String> {
+        if cancellation.load(Ordering::Acquire) {
+            return Err("Preload cancelled".to_owned());
         }
+        // Preserve the existing behavior: standalone files may enter the
+        // virtual-texture path, while archive members are preloaded as regular
+        // decoded images just as they were before this shared-loading change.
+        let threshold = if matches!(&entry, ImageEntry::File(_)) {
+            virtual_texture_threshold
+        } else {
+            u32::MAX
+        };
+        load_entry_content_with_metadata_cancellable(
+            entry,
+            threshold,
+            false,
+            index,
+            generation,
+            Some(cancellation),
+        )
     }
 
     //  ====== PRELOAD START ======
@@ -345,17 +330,28 @@ impl ViewerApp {
         let virtual_texture_threshold = self.settings_manager.get().virtual_texture_threshold;
 
         let (tx, rx) = channel();
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let worker_cancellation = Arc::clone(&cancellation);
 
         spawn(move || {
-            let result = Self::load_preload_entry(entry, virtual_texture_threshold);
-
-            let _ = tx.send((idx, result, generation));
+            let result = Self::load_preload_entry(
+                entry,
+                virtual_texture_threshold,
+                idx,
+                generation,
+                worker_cancellation.as_ref(),
+            );
+            if !worker_cancellation.load(Ordering::Acquire) {
+                let _ = tx.send((idx, result, generation));
+            }
         });
 
         self.preload_tasks.push(PreloadTask {
             receiver: rx,
             index: idx,
+            generation,
             start_time: Instant::now(),
+            cancellation,
         });
     }
 
@@ -469,10 +465,29 @@ impl ViewerApp {
 
                 if is_current_texture && needs_mipmaps {
                     if let Some(entry) = self.image_entries.get(self.current_index).cloned() {
-                        let state = start_mipmap_upload_from_entry(
-                            entry,
-                            self.settings_manager.get().virtual_texture_threshold,
-                        );
+                        let retained_pixels = self
+                            .current_decoded_pixels
+                            .as_ref()
+                            .filter(|(source_id, _, _, _)| source_id == &image_id)
+                            .map(|(_, width, height, pixels)| {
+                                (*width, *height, Arc::clone(pixels))
+                            })
+                            .or_else(|| {
+                                self.preloaded_mipmap_pixels
+                                    .as_ref()
+                                    .filter(|(source_id, _, _, _)| source_id == &image_id)
+                                    .map(|(_, width, height, pixels)| {
+                                        (*width, *height, Arc::clone(pixels))
+                                    })
+                            });
+                        let state = if let Some((width, height, pixels)) = retained_pixels {
+                            start_mipmap_upload(width, height, pixels)
+                        } else {
+                            start_mipmap_upload_from_entry(
+                                entry,
+                                self.settings_manager.get().virtual_texture_threshold,
+                            )
+                        };
                         if let Some(cached) = self.image_cache.get_mut(&image_id) {
                             cached.mipmap_state = Some(state.clone());
                             self.current_mipmap_state = Some(state);
@@ -517,10 +532,22 @@ impl ViewerApp {
                 let Some(entry) = self.image_entries.get(index).cloned() else {
                     continue;
                 };
-                let state = start_mipmap_upload_from_entry(
-                    entry,
-                    self.settings_manager.get().virtual_texture_threshold,
-                );
+                let retained_pixels = self
+                    .preloaded_mipmap_pixels
+                    .as_ref()
+                    .filter(|(source_id, _, _, _)| source_id == &image_id)
+                    .map(|(_, width, height, pixels)| (*width, *height, Arc::clone(pixels)));
+                let state = if let Some((width, height, pixels)) = retained_pixels {
+                    // Keep the single speculative Arc until this image becomes
+                    // current or leaves the cache window. The mip worker shares
+                    // it, and Inspect can reuse it later without another read.
+                    start_mipmap_upload(width, height, pixels)
+                } else {
+                    start_mipmap_upload_from_entry(
+                        entry,
+                        self.settings_manager.get().virtual_texture_threshold,
+                    )
+                };
                 if let Some(cached) = self.image_cache.get_mut(&image_id) {
                     cached.mipmap_state = Some(state);
                     ctx.request_repaint();
@@ -618,6 +645,7 @@ impl ViewerApp {
 
         // Build current desired window.
         let desired_set = self.desired_set_from_origin();
+        self.cancel_preloads_outside(&desired_set);
 
         // Remove cache entries that are no longer wanted.
         self.clean_cache_outside_set(&desired_set);
@@ -652,6 +680,30 @@ impl ViewerApp {
         self.update_preload_working();
     }
 
+    pub(crate) fn cancel_all_preload_tasks(&mut self) {
+        for task in &self.preload_tasks {
+            if !task.cancellation.swap(true, Ordering::AcqRel) {
+                crate::io_metrics::preload_cancelled();
+            }
+        }
+        self.preloading_indices = self
+            .preload_tasks
+            .iter()
+            .filter(|task| task.generation == self.preload_generation)
+            .map(|task| task.index)
+            .collect();
+    }
+
+    fn cancel_preloads_outside(&mut self, desired: &HashSet<usize>) {
+        for task in &self.preload_tasks {
+            if !desired.contains(&task.index)
+                && !task.cancellation.swap(true, Ordering::AcqRel)
+            {
+                crate::io_metrics::preload_cancelled();
+            }
+        }
+    }
+
     // ====== CACHE MANAGEMENT ======
 
     /// Remove cached images outside the desired set.
@@ -675,6 +727,13 @@ impl ViewerApp {
         for id in to_remove {
             self.image_cache.pop(&id);
         }
+        let retained_is_still_cached = self
+            .preloaded_mipmap_pixels
+            .as_ref()
+            .is_some_and(|(image_id, _, _, _)| self.image_cache.contains(image_id));
+        if !retained_is_still_cached {
+            self.preloaded_mipmap_pixels = None;
+        }
     }
 
     // ====== PRELOAD RESULT PROCESSING ======
@@ -682,52 +741,56 @@ impl ViewerApp {
     /// Collect workers that have finished normally.
     fn collect_completed_preload_tasks(
         &mut self,
-    ) -> Vec<(usize, Result<LoadedImage, String>, u64)> {
+    ) -> Vec<(usize, Result<LoadedEntryData, String>, u64)> {
         let mut completed = Vec::new();
         let mut remove_indices = Vec::new();
 
         for (task_idx, task) in self.preload_tasks.iter_mut().enumerate() {
-            if let Ok((idx, result, generation)) = task.receiver.try_recv() {
-                self.preload_workers = self.preload_workers.saturating_sub(1);
-
-                self.preloading_indices.remove(&idx);
-
-                completed.push((idx, result, generation));
-                remove_indices.push(task_idx);
+            match task.receiver.try_recv() {
+                Ok((idx, result, generation)) => {
+                    self.preload_workers = self.preload_workers.saturating_sub(1);
+                    completed.push((idx, result, generation));
+                    remove_indices.push(task_idx);
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // Cancelled workers intentionally drop their sender instead
+                    // of publishing stale results. Release their slot only now,
+                    // after any non-interruptible archive operation has returned.
+                    self.preload_workers = self.preload_workers.saturating_sub(1);
+                    remove_indices.push(task_idx);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
 
         for task_idx in remove_indices.into_iter().rev() {
             self.preload_tasks.remove(task_idx);
         }
+        self.preloading_indices = self
+            .preload_tasks
+            .iter()
+            .filter(|task| task.generation == self.preload_generation)
+            .map(|task| task.index)
+            .collect();
 
         completed
     }
 
     /// Remove and mark preload tasks that exceeded the timeout.
     fn process_preload_timeouts(&mut self) {
-        let timed_out: Vec<usize> = self
-            .preload_tasks
-            .iter()
-            .enumerate()
-            .filter_map(|(task_idx, task)| {
-                (task.start_time.elapsed() >= PRELOAD_TIMEOUT).then_some(task_idx)
-            })
-            .collect();
-
-        for task_idx in timed_out.into_iter().rev() {
-            let task = self.preload_tasks.remove(task_idx);
-
-            self.preload_workers = self.preload_workers.saturating_sub(1);
-
-            self.preloading_indices.remove(&task.index);
-
-            self.preload_skipped.insert(task.index);
-
-            println!(
-                "Preload: index {} timed out after {:?} — skipped",
-                task.index, PRELOAD_TIMEOUT
-            );
+        for task in &self.preload_tasks {
+            if task.start_time.elapsed() >= PRELOAD_TIMEOUT
+                && !task.cancellation.swap(true, Ordering::AcqRel)
+            {
+                crate::io_metrics::preload_cancelled();
+                if task.generation == self.preload_generation {
+                    self.preload_skipped.insert(task.index);
+                }
+                eprintln!(
+                    "Preload: cancelled index {} after {:?}; worker slot remains occupied until it exits",
+                    task.index, PRELOAD_TIMEOUT
+                );
+            }
         }
     }
 
@@ -736,33 +799,27 @@ impl ViewerApp {
         &mut self,
         ctx: &egui::Context,
         idx: usize,
-        result: Result<LoadedImage, String>,
+        result: Result<LoadedEntryData, String>,
     ) {
         match result {
-            // Virtual texture
-            Ok(LoadedImage::VirtualPending(_, width, height)) => {
-                // VT images do not enter the normal cache.
-                self.preload_skipped.insert(idx);
-
-                println!(
-                    "Preload: index {} skipped for virtual \
-                     texturing ({}x{})",
-                    idx, width, height
-                );
+            Ok(loaded_entry) => {
+                if let LoadedImage::VirtualPending(_, width, height) = &loaded_entry.image {
+                    self.preload_skipped.insert(idx);
+                    println!(
+                        "Preload: index {} skipped for virtual texturing ({}x{})",
+                        idx, width, height
+                    );
+                } else {
+                    self.preload_skipped.remove(&idx);
+                    self.add_to_cache(ctx, idx, loaded_entry);
+                }
             }
-
-            // Normal image / GIF
-            Ok(loaded_image) => {
-                self.preload_skipped.remove(&idx);
-
-                self.add_to_cache(ctx, idx, &loaded_image);
+            Err(err) if err == "Preload cancelled" => {
+                // A superseded speculative task is not a failed or skipped image.
             }
-
-            // Failed preload
             Err(err) => {
                 eprintln!("Preload: failed to load index {}: {}", idx, err);
                 self.preload_skipped.insert(idx);
-                // Failded preloads Marked as skipped for now
             }
         }
     }
@@ -865,15 +922,15 @@ impl ViewerApp {
     pub fn stop_caching(&mut self) {
         self.should_stop_caching = true;
 
-        // Invalidate all currently running workers.
+        // Invalidate results and cooperatively stop all speculative workers.
+        // Archive APIs that only support whole-entry extraction may finish
+        // their current operation before observing cancellation.
         self.preload_generation = self.preload_generation.wrapping_add(1);
+        self.cancel_all_preload_tasks();
 
         // Clear normal cache.
         self.image_cache.clear();
-
-        // Rayon workers cannot be forcibly cancelled.
-        //
-        // Their generation is now stale, so their results will be ignored.
+        self.preloaded_mipmap_pixels = None;
         self.preload_working = false;
     }
 }

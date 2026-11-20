@@ -1,5 +1,5 @@
 use crate::decoder::gif::animation::GifAnimation;
-use crate::imaging::entry::{ArchiveImage, ImageEntry, RarArchiveImage, S7ArchiveImage};
+use crate::imaging::entry::ImageEntry;
 use sevenz_rust2::{ArchiveReader, Password};
 use std::fs::File;
 use std::io::Read;
@@ -16,37 +16,6 @@ pub fn load_gif_preview_from_path(path: PathBuf) -> Option<GifAnimation> {
 }
  */
 
-pub fn load_gif_preview_from_zip(image: ArchiveImage) -> Option<GifAnimation> {
-    let file = File::open(&image.archive_path).ok()?;
-    let mut archive = ZipArchive::new(file).ok()?;
-    let mut entry = archive.by_index(image.entry_index).ok()?;
-    let mut bytes = Vec::new();
-    entry.read_to_end(&mut bytes).ok()?;
-    GifAnimation::from_bytes_preview(&bytes).ok()
-}
-
-pub fn load_gif_preview_from_7z(image: S7ArchiveImage) -> Option<GifAnimation> {
-    let mut reader = ArchiveReader::open(&image.archive_path, Password::empty()).ok()?;
-    let bytes = reader.read_file(&image.name).ok()?;
-    GifAnimation::from_bytes_preview(&bytes).ok()
-}
-
-pub fn load_gif_preview_from_rar(image: RarArchiveImage) -> Option<GifAnimation> {
-    let archive = RarArchive::new(&image.archive_path)
-        .open_for_processing()
-        .ok()?;
-    let mut archive = archive;
-    loop {
-        let header = archive.read_header().ok()??;
-        let filename = header.entry().filename.to_string_lossy().to_string();
-        if filename == image.name {
-            let (bytes, _) = header.read().ok()?;
-            return GifAnimation::from_bytes_preview(&bytes).ok();
-        }
-        archive = header.skip().ok()?;
-    }
-}
-
 // ---------- Full GIF loader (from ImageEntry) ----------
 // This was load_entry_content_full_gif in loading.rs
 
@@ -58,6 +27,7 @@ pub fn load_full_gif_from_entry(
         ImageEntry::File(path) => {
             println!("[FULL GIF] File variant, path: {:?}", path);
             let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+            crate::io_metrics::source_read(bytes.len());
             println!("[FULL GIF] Read {} bytes from file", bytes.len());
             let gif = GifAnimation::from_bytes(&bytes)?;
             println!("[FULL GIF] Decoded {} frames", gif.frame_count());
@@ -76,6 +46,7 @@ pub fn load_full_gif_from_entry(
             entry
                 .read_to_end(&mut bytes)
                 .map_err(|e| format!("Failed to read data: {}", e))?;
+            crate::io_metrics::archive_extraction(bytes.len());
             println!("[FULL GIF] Read {} bytes from ZIP", bytes.len());
             let gif = GifAnimation::from_bytes(&bytes)?;
             println!("[FULL GIF] Decoded {} frames from ZIP", gif.frame_count());
@@ -88,6 +59,7 @@ pub fn load_full_gif_from_entry(
             let bytes = reader
                 .read_file(&s7z.name)
                 .map_err(|e| format!("Failed to read file from 7z: {}", e))?;
+            crate::io_metrics::archive_extraction(bytes.len());
             println!("[FULL GIF] Read {} bytes from 7z", bytes.len());
             let gif = GifAnimation::from_bytes(&bytes)?;
             println!("[FULL GIF] Decoded {} frames from 7z", gif.frame_count());
@@ -109,6 +81,7 @@ pub fn load_full_gif_from_entry(
                     let (bytes, _) = header
                         .read()
                         .map_err(|e| format!("Failed to read file from RAR: {}", e))?;
+                    crate::io_metrics::archive_extraction(bytes.len());
                     println!("[FULL GIF] Read {} bytes from RAR", bytes.len());
                     let gif = GifAnimation::from_bytes(&bytes)?;
                     println!("[FULL GIF] Decoded {} frames from RAR", gif.frame_count());

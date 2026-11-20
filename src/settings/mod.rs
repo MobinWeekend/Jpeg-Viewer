@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 9;
+const SETTINGS_SCHEMA_VERSION: u32 = 10;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -13,7 +13,7 @@ mod save;
 mod tests;
 
 /// Application settings stored in INI format
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AppSettings {
     pub b_ctrl_invert: bool,
     /// Enable Alt + left-drag anywhere in the app to move the window.
@@ -33,6 +33,9 @@ pub struct AppSettings {
     pub max_cache_task: u8,
     /// Thumbnail worker multiplier (1-8): 3x dimensions, 2x native OS/DE, and 1x Jpeg-Viewer decoder workers.
     pub thumbnail_workers: usize,
+    /// Publish Jpeg-Viewer-generated thumbnails into the shared Linux XDG cache.
+    /// Existing shared-cache thumbnails are still read when publishing is disabled.
+    pub publish_generated_thumbnails: bool,
     pub texture_filter: String,   // "nearest", "linear", "mipmap"
     pub preload_throttle_ms: u64, // Delay between preload batches
     // Frame limiter settings
@@ -191,6 +194,7 @@ impl Default for AppSettings {
             cache_delta_factor: 0.6,
             max_cache_task: 4,
             thumbnail_workers: 3,
+            publish_generated_thumbnails: true,
             texture_filter: "mipmap".to_string(),
             preload_throttle_ms: 100,
             max_fps: 30.0,
@@ -297,6 +301,9 @@ pub struct SettingsManager {
     pub settings: AppSettings,
     /// Last read/write error, if any. Cleared on a successful save.
     last_error: Option<String>,
+    /// Settings mutations are kept in memory and coalesced into one atomic save.
+    dirty: bool,
+    dirty_since: Option<std::time::Instant>,
 }
 
 impl SettingsManager {
@@ -349,6 +356,8 @@ impl SettingsManager {
             path,
             settings,
             last_error: error,
+            dirty: false,
+            dirty_since: None,
         }
     }
 
@@ -402,25 +411,76 @@ impl SettingsManager {
     pub fn save(&mut self) -> Result<(), String> {
         let result = Self::save_to_file(&self.path, &self.settings);
         match &result {
-            Ok(()) => self.last_error = None,
+            Ok(()) => {
+                self.last_error = None;
+                self.dirty = false;
+                self.dirty_since = None;
+                // Instrumentation must not add a metadata query to every
+                // ordinary settings save when the counters are disabled.
+                if crate::io_metrics::enabled() {
+                    crate::io_metrics::metadata_query();
+                    let bytes = std::fs::metadata(&self.path)
+                        .map(|metadata| metadata.len() as usize)
+                        .unwrap_or(0);
+                    crate::io_metrics::settings_save(bytes);
+                }
+            }
             Err(e) => {
                 self.last_error = Some(format!("Could not write {}: {}", self.path.display(), e));
+                self.dirty = true;
+                // Back off after a failed save instead of scheduling an
+                // immediate retry on every repaint.
+                self.dirty_since = Some(std::time::Instant::now());
             }
         }
         result
     }
 
-    /// Update a setting and save automatically
+    /// Update in-memory settings and schedule one persistence operation after
+    /// the user has stopped changing controls for the debounce interval.
     pub fn update<F>(&mut self, f: F) -> Result<(), String>
     where
         F: FnOnce(&mut AppSettings),
     {
+        let previous = self.settings.clone();
         f(&mut self.settings);
-        let result = self.save();
-        if let Err(error) = &result {
-            eprintln!("Failed to persist updated settings: {}", error);
+        if self.settings != previous {
+            self.dirty = true;
+            self.dirty_since = Some(std::time::Instant::now());
         }
-        result
+        Ok(())
+    }
+
+    /// Persist pending updates once the debounce interval has elapsed.
+    /// Returns `None` when no save was due, otherwise the save result.
+    pub fn save_if_due(&mut self) -> Option<Result<(), String>> {
+        const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(750);
+        let due = self.dirty
+            && self.dirty_since.is_some_and(|since| since.elapsed() >= DEBOUNCE);
+        due.then(|| self.save())
+    }
+
+    /// Time until the debounced save should run. The app uses this to request
+    /// one repaint even when the window becomes otherwise idle after an edit.
+    pub fn time_until_save(&self) -> Option<std::time::Duration> {
+        const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(750);
+        if !self.dirty {
+            return None;
+        }
+        self.dirty_since.map(|since| DEBOUNCE.saturating_sub(since.elapsed()))
+    }
+
+    /// Flush pending settings immediately, but do not rewrite a clean file.
+    pub fn save_if_dirty(&mut self) -> Result<(), String> {
+        if self.is_dirty() {
+            self.save()
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
     pub fn update_window_state(&mut self, pos: [f32; 2], size: [f32; 2]) -> Result<(), String> {

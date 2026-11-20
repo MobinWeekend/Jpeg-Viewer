@@ -28,6 +28,16 @@ pub enum LoadedImage {
     VirtualPending(Vec<u8>, u32, u32),
 }
 
+/// Image result produced by the current-image/preload worker. Metadata and
+/// format detection are extracted from the same source bytes as decoding.
+pub(crate) struct LoadedEntryData {
+    pub image: LoadedImage,
+    pub metadata: FileMetadata,
+    pub file_type_detection: Option<FileTypeDetection>,
+    /// Compressed source retained only for a bounded GIF preview-to-full upgrade.
+    pub full_gif_source: Option<Arc<Vec<u8>>>,
+}
+
 /// Result of a background thumbnail job. When original dimensions are known,
 /// preview pixels are normalized to the source image's aspect ratio before they
 /// enter the shared texture cache, so every consumer (Masonry, Browse, Queue,
@@ -61,6 +71,8 @@ pub struct CachedImage {
     pub is_preview: bool,
     pub index: usize,
     pub file_type_detection: Option<FileTypeDetection>,
+    /// Detailed metadata obtained from the same bytes used to decode this entry.
+    pub file_metadata: Option<FileMetadata>,
 }
 
 // ====== FILE TYPE DETECTION ======
@@ -77,9 +89,20 @@ pub struct FileTypeDetection {
 // ====== PRELOAD ======
 
 pub struct PreloadTask {
-    pub receiver: Receiver<(usize, Result<LoadedImage, String>, u64)>,
+    pub receiver: Receiver<(usize, Result<LoadedEntryData, String>, u64)>,
     pub index: usize,
+    pub generation: u64,
     pub start_time: Instant,
+    /// Cooperative cancellation for obsolete speculative work.
+    pub cancellation: Arc<AtomicBool>,
+}
+
+impl Drop for PreloadTask {
+    fn drop(&mut self) {
+        // Dropping/clearing a preload task is itself a cancellation request.
+        // Workers check this flag between bounded reads and before publishing.
+        self.cancellation.store(true, std::sync::atomic::Ordering::Release);
+    }
 }
 
 // ====== LOADING STATE ======
@@ -103,9 +126,15 @@ pub struct ViewerApp {
     /// alone cannot safely identify the texture being displayed or cached.
     pub(crate) texture_image_id: Option<String>,
     pub gif_animation: Option<GifAnimation>,
-    pub receiver: Option<Receiver<Result<LoadedImage, String>>>,
+    pub receiver: Option<Receiver<Result<LoadedEntryData, String>>>,
+    /// One retained CPU-side copy for the currently displayed image. It lets
+    /// Inspect reuse decoded pixels instead of reopening the source file.
+    pub(crate) current_decoded_pixels: Option<(String, u32, u32, Arc<Vec<u8>>)>,
     pub full_image_receiver: Option<Receiver<DecodedImage>>,
     pub full_gif_receiver: Option<Receiver<Result<LoadedImage, String>>>,
+    /// Reuses the original compressed GIF bytes while upgrading a preview to
+    /// the full animation. Bounded by the loader to avoid pinning huge sources.
+    pub(crate) full_gif_source: Option<Arc<Vec<u8>>>,
 
     pub current_directory: Option<PathBuf>,
     pub image_entries: Vec<ImageEntry>,
@@ -142,6 +171,9 @@ pub struct ViewerApp {
 
     // ====== CACHE ======
     pub image_cache: LruCache<String, CachedImage>,
+    /// At most one preloaded neighbour retains decoded CPU pixels for mipmap
+    /// generation. The buffer is consumed when that neighbour's mip job starts.
+    pub(crate) preloaded_mipmap_pixels: Option<(String, u32, u32, Arc<Vec<u8>>)>,
     /// Progressive mip uploads share a single GPU upload allowance per frame.
     pub(crate) mipmap_upload_budget: Arc<AtomicUsize>,
     /// Mipmap preparation associated with the currently displayed texture.
@@ -151,6 +183,9 @@ pub struct ViewerApp {
     // ====== PRELOAD ======
     pub preload_tasks: Vec<PreloadTask>,
     pub preloading_indices: HashSet<usize>,
+    /// GIF detection is performed once per stable entry identity and shared by
+    /// preload scheduling/progress checks rather than reopening entries per frame.
+    pub(crate) gif_detection_cache: Arc<Mutex<HashMap<String, bool>>>,
     pub preload_skipped: HashSet<usize>,
 
     pub preload_generation: u64,
@@ -426,8 +461,10 @@ impl Default for ViewerApp {
             texture_image_id: None,
             gif_animation: None,
             receiver: None,
+            current_decoded_pixels: None,
             full_image_receiver: None,
             full_gif_receiver: None,
+            full_gif_source: None,
 
             current_directory: None,
             image_entries: Vec::new(),
@@ -461,6 +498,7 @@ impl Default for ViewerApp {
                 NonZeroUsize::new(cache_capacity)
                     .expect("cache capacity must be greater than zero"),
             ),
+            preloaded_mipmap_pixels: None,
             mipmap_upload_budget: Arc::new(AtomicUsize::new(
                 super::texture_mipmap::MAX_MIP_UPLOAD_BYTES_PER_FRAME,
             )),
@@ -470,6 +508,7 @@ impl Default for ViewerApp {
             // ====== PRELOAD ======
             preload_tasks: Vec::new(),
             preloading_indices: HashSet::new(),
+            gif_detection_cache: Arc::new(Mutex::new(HashMap::new())),
             preload_skipped: HashSet::new(),
 
             preload_generation: 0,
@@ -929,6 +968,11 @@ impl ViewerApp {
 
         println!("[spawn_full_gif_loading] spawning task for index {}", index);
 
+        // Keep the compressed source only while a bounded preview upgrade is
+        // active. This avoids a second file read or archive extraction for GIFs
+        // whose source was small enough to retain during the preview load.
+        let retained_source = self.full_gif_source.clone();
+
         // ====== BACKGROUND TASK ======
 
         rayon::spawn(move || {
@@ -938,8 +982,13 @@ impl ViewerApp {
             );
 
             let result = std::panic::catch_unwind(|| {
-                crate::decoder::gif::loader::load_full_gif_from_entry(entry)
-                    .map(|gif| LoadedImage::Animated(gif, false))
+                if let Some(bytes) = retained_source {
+                    crate::decoder::gif::animation::GifAnimation::from_bytes(bytes.as_slice())
+                        .map(|gif| LoadedImage::Animated(gif, false))
+                } else {
+                    crate::decoder::gif::loader::load_full_gif_from_entry(entry)
+                        .map(|gif| LoadedImage::Animated(gif, false))
+                }
             });
 
             match result {

@@ -6,6 +6,17 @@ use std::time::Instant;
 
 impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        if let Some(Err(error)) = self.settings_manager.save_if_due() {
+            eprintln!("Could not persist updated settings: {error}");
+        }
+        if let Some(delay) = self.settings_manager.time_until_save() {
+            ctx.request_repaint_after(delay.max(std::time::Duration::from_millis(1)));
+        }
+        #[cfg(target_os = "linux")]
+        crate::platform::linux_thumbnails::set_publish_enabled(
+            self.settings_manager.get().publish_generated_thumbnails,
+        );
+
         // Reset a shared upload allowance once per UI frame. Every current-image
         // and virtual-tile callback spends from this same budget.
         self.mipmap_upload_budget.store(
@@ -269,10 +280,25 @@ impl eframe::App for ViewerApp {
                 self.file_type_detection = None;
 
                 match result {
-                    Ok(loaded_image) => {
-                        self.detect_current_file_type();
+                    Ok(loaded_entry) => {
+                        // The shared loader has already identified GIFs from the
+                        // source bytes. Seed the look-ahead cache so preload
+                        // scheduling does not reopen the same entry for its header.
+                        if let Some(image_id) = self.get_image_id(self.current_index) {
+                            if let Ok(mut cache) = self.gif_detection_cache.lock() {
+                                cache.insert(
+                                    image_id,
+                                    matches!(&loaded_entry.image, super::types::LoadedImage::Animated(_, _)),
+                                );
+                            }
+                        }
+                        // Metadata, format detection, and pixels were all derived
+                        // from the same source read by the background loader.
+                        self.file_metadata = Some(loaded_entry.metadata);
+                        self.set_file_type_detection(loaded_entry.file_type_detection);
+                        self.full_gif_source = loaded_entry.full_gif_source;
                         let mut should_spawn_full_gif = false;
-                        match loaded_image {
+                        match loaded_entry.image {
                             super::types::LoadedImage::Static(img) => {
                                 // Reuse a preloaded base texture when available. Otherwise
                                 // create it once, without egui's synchronous generate_mipmap.
@@ -312,10 +338,6 @@ impl eframe::App for ViewerApp {
                                 self.b_fit_to_window = true;
                                 ctx.request_repaint();
                                 self.set_loading_state(LoadingState::Idle);
-                                // Update meta data
-                                self.file_metadata = Some(self.build_file_metadata());
-                                // Detect file type after successful load
-                                self.detect_current_file_type();
                             }
                             super::types::LoadedImage::Animated(gif, is_preview) => {
                                 self.current_mipmap_state = None;
@@ -414,7 +436,11 @@ impl eframe::App for ViewerApp {
                         }
                     }
                     Err(error) => {
-                        self.detect_current_file_type();
+                        // The normal loader supplies detection from its shared
+                        // byte buffer. Keep the legacy disk check only for the
+                        // uncommon decode-failure path so rename suggestions
+                        // remain available when a decoder rejects the file.
+                        self.detect_from_disk();
                         self.current_mipmap_state = None;
                         self.texture = None;
                         self.texture_image_id = None;
@@ -424,9 +450,6 @@ impl eframe::App for ViewerApp {
                         self.is_preview = false;
                         self.virtual_texture = None;
                         self.set_loading_state(LoadingState::Idle);
-
-                        // Detect file type even on error (so we can suggest rename)
-                        self.detect_current_file_type();
 
                         eprintln!(
                             "Error loading image: {}",
@@ -548,6 +571,11 @@ impl eframe::App for ViewerApp {
                                     loaded_image
                                 {
                                     let frame_count = full_gif.frame_count();
+                                    if let Some(metadata) = self.file_metadata.as_mut() {
+                                        metadata.frame_count = Some(frame_count);
+                                        metadata.animated = Some(full_gif.is_animated());
+                                    }
+                                    self.full_gif_source = None;
                                     println!(
                                         "Full GIF loaded with {} frames, upgrading...",
                                         frame_count
@@ -582,6 +610,7 @@ impl eframe::App for ViewerApp {
                             }
                         }
                         Err(error) => {
+                            self.full_gif_source = None;
                             self.detect_current_file_type();
                             eprintln!("Failed to load full GIF: {}", error);
                             self.is_preview = false;
@@ -593,6 +622,7 @@ impl eframe::App for ViewerApp {
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.full_gif_receiver = None;
+                    self.full_gif_source = None;
                     eprintln!("Full GIF loading task was cancelled");
                 }
             }
@@ -733,9 +763,10 @@ impl Drop for ViewerApp {
         if let Some(handle) = self.virtual_texture_thread.take() {
             let _ = handle.join();
         }
-        if let Err(e) = self.settings_manager.save() {
+        if let Err(e) = self.settings_manager.save_if_dirty() {
             eprintln!("Failed to save settings: {}", e);
         }
+        crate::io_metrics::report();
     }
 }
 

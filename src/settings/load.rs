@@ -130,6 +130,9 @@ impl SettingsManager {
                             }
                         }
                     }
+                    if let Some(value) = section.get("publish_generated_thumbnails") {
+                        settings.publish_generated_thumbnails = SettingsManager::parse_bool(value);
+                    }
                     // Read texture_filter
                     if let Some(value) = section.get("texture_filter") {
                         if matches!(value, "nearest" | "linear" | "mipmap") {

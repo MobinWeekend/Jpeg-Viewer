@@ -150,20 +150,28 @@ pub fn sort_natural<T: AsPath>(images: &mut [T]) {
 
 /// Sort images by modification date (newest first)
 pub fn sort_by_date_newest<T: AsPath>(images: &mut [T]) {
-    images.sort_by(|a, b| {
-        let a_time = get_modified_time(a.as_path()).unwrap_or(SystemTime::UNIX_EPOCH);
-        let b_time = get_modified_time(b.as_path()).unwrap_or(SystemTime::UNIX_EPOCH);
-        b_time.cmp(&a_time) // Newest first (descending)
-    });
+    sort_by_cached_modified_time(images, true);
 }
 
 /// Sort images by modification date (oldest first)
 pub fn sort_by_date_oldest<T: AsPath>(images: &mut [T]) {
-    images.sort_by(|a, b| {
-        let a_time = get_modified_time(a.as_path()).unwrap_or(SystemTime::UNIX_EPOCH);
-        let b_time = get_modified_time(b.as_path()).unwrap_or(SystemTime::UNIX_EPOCH);
-        a_time.cmp(&b_time) // Oldest first (ascending)
-    });
+    sort_by_cached_modified_time(images, false);
+}
+
+/// Fetch each modification timestamp exactly once, then sort using the cached
+/// values. `sort_by_cached_key` moves the original entries without cloning them.
+fn sort_by_cached_modified_time<T: AsPath>(images: &mut [T], newest_first: bool) {
+    if newest_first {
+        images.sort_by_cached_key(|image| {
+            std::cmp::Reverse(
+                get_modified_time(image.as_path()).unwrap_or(SystemTime::UNIX_EPOCH),
+            )
+        });
+    } else {
+        images.sort_by_cached_key(|image| {
+            get_modified_time(image.as_path()).unwrap_or(SystemTime::UNIX_EPOCH)
+        });
+    }
 }
 
 /// Shuffle images randomly
@@ -174,6 +182,7 @@ pub fn sort_shuffle<T: AsPath>(images: &mut [T]) {
 
 /// Get file modification time, falling back to system start time if metadata fails
 fn get_modified_time(path: &Path) -> Option<SystemTime> {
+    crate::io_metrics::metadata_query();
     std::fs::metadata(path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())

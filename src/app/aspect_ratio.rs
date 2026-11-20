@@ -22,7 +22,9 @@ impl AspectRatio {
             (8, 5) => Some("8:5 (Standard)"),
             (16, 9) => Some("16:9 (Widescreen)"),
             (16, 10) => Some("16:10 (Widescreen)"),
-            (21, 9) => Some("21:9 (Ultrawide)"),
+            // 2560x1080 is commonly marketed as 21:9, although its exact
+            // reduced fraction is 64:27.
+            (21, 9) | (64, 27) => Some("21:9 (Ultrawide)"),
             (32, 9) => Some("32:9 (Super Ultrawide)"),
             (32, 10) => Some("32:10 (Super Ultrawide)"),
 

@@ -236,8 +236,9 @@ impl ViewerApp {
                 .update(|settings| settings.slideshow_random = false);
             self.image_cache.clear();
             self.preloading_indices.clear();
-            self.preload_tasks.clear();
+            self.cancel_all_preload_tasks();
             self.preload_generation = self.preload_generation.wrapping_add(1);
+            self.preloading_indices.clear();
             self.sidebar_last_current_index = None;
             if !self.image_entries.is_empty() {
                 self.load_current_image_with_cache();

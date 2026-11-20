@@ -688,6 +688,7 @@ fn source_dimensions_from_bytes(bytes: &[u8]) -> Option<(u32, u32)> {
 /// formats; keeping this fast is important because native desktop thumbnails
 /// should be usable without first loading large source files into memory.
 fn source_dimensions_from_file(path: &std::path::Path) -> Option<(u32, u32)> {
+    crate::io_metrics::metadata_query();
     // Probe the image header first. This is normally a small, sequential read
     // and avoids parsing the full EXIF container on the common path. EXIF is
     // still read for orientation and as a fallback for formats whose dimensions
@@ -722,7 +723,9 @@ fn read_archive_entry_bytes(
     use std::io::Read;
     match entry {
         crate::imaging::entry::ImageEntry::File(path) => {
-            fs::read(path).map_err(|error| format!("Failed to read {}: {error}", path.display()))
+            let bytes = fs::read(path).map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+            crate::io_metrics::source_read(bytes.len());
+            Ok(bytes)
         }
         crate::imaging::entry::ImageEntry::Zip(item) => {
             let file = File::open(&item.archive_path).map_err(|error| error.to_string())?;
@@ -730,6 +733,7 @@ fn read_archive_entry_bytes(
             let mut item_file = archive.by_index(item.entry_index).map_err(|error| error.to_string())?;
             let mut bytes = Vec::new();
             item_file.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+            crate::io_metrics::archive_extraction(bytes.len());
             Ok(bytes)
         }
         crate::imaging::entry::ImageEntry::S7z(item) => {
@@ -737,7 +741,9 @@ fn read_archive_entry_bytes(
                 &item.archive_path,
                 sevenz_rust2::Password::empty(),
             ).map_err(|error| error.to_string())?;
-            archive.read_file(&item.name).map_err(|error| error.to_string())
+            let bytes = archive.read_file(&item.name).map_err(|error| error.to_string())?;
+            crate::io_metrics::archive_extraction(bytes.len());
+            Ok(bytes)
         }
         crate::imaging::entry::ImageEntry::Rar(item) => {
             let mut archive = unrar::Archive::new(&item.archive_path)
@@ -747,6 +753,7 @@ fn read_archive_entry_bytes(
                     .ok_or_else(|| format!("Entry not found: {}", item.name))?;
                 if header.entry().filename.to_string_lossy() == item.name {
                     let (bytes, _next) = header.read().map_err(|error| error.to_string())?;
+                    crate::io_metrics::archive_extraction(bytes.len());
                     break Ok(bytes);
                 }
                 archive = header.skip().map_err(|error| error.to_string())?;
@@ -944,7 +951,10 @@ fn decode_file_thumbnail_fallback(
             return Err("__masonry_thumbnail_cancelled__".into());
         }
         match fs::read(path) {
-            Ok(bytes) => bytes,
+            Ok(bytes) => {
+                crate::io_metrics::source_read(bytes.len());
+                bytes
+            }
             Err(error) => {
                 if let Some(candidate) = best_candidate.take() {
                     eprintln!(

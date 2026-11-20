@@ -207,18 +207,25 @@ pub(super) fn commit_staged_file(staged: &Path, destination: &Path, allow_replac
 
 pub(super) fn read_archive_entry(entry: &ImageEntry) -> Result<Vec<u8>, String> {
     match entry {
-        ImageEntry::File(path) => fs::read(path).map_err(|error| error.to_string()),
+        ImageEntry::File(path) => {
+            let bytes = fs::read(path).map_err(|error| error.to_string())?;
+            crate::io_metrics::source_read(bytes.len());
+            Ok(bytes)
+        }
         ImageEntry::Zip(item) => {
             let file = fs::File::open(&item.archive_path).map_err(|error| error.to_string())?;
             let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
             let mut source = archive.by_index(item.entry_index).map_err(|error| error.to_string())?;
             let mut bytes = Vec::new();
             source.read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+            crate::io_metrics::archive_extraction(bytes.len());
             Ok(bytes)
         }
         ImageEntry::S7z(item) => {
             let mut archive = sevenz_rust2::ArchiveReader::open(&item.archive_path, sevenz_rust2::Password::empty()).map_err(|error| error.to_string())?;
-            archive.read_file(&item.name).map_err(|error| error.to_string())
+            let bytes = archive.read_file(&item.name).map_err(|error| error.to_string())?;
+            crate::io_metrics::archive_extraction(bytes.len());
+            Ok(bytes)
         }
         ImageEntry::Rar(item) => {
             let archive = unrar::Archive::new(&item.archive_path).open_for_processing().map_err(|error| error.to_string())?;
@@ -228,6 +235,7 @@ pub(super) fn read_archive_entry(entry: &ImageEntry) -> Result<Vec<u8>, String> 
                 let name = header.entry().filename.to_string_lossy().to_string();
                 if name == item.name {
                     let (bytes, _) = header.read().map_err(|error| error.to_string())?;
+                    crate::io_metrics::archive_extraction(bytes.len());
                     return Ok(bytes);
                 }
                 archive = header.skip().map_err(|error| error.to_string())?;

@@ -67,9 +67,19 @@ pub(crate) fn contrast_foreground(background: egui::Color32) -> egui::Color32 {
     let black_contrast = (luminance + 0.05) / 0.05;
     let white_contrast = 1.05 / (luminance + 0.05);
     if white_contrast >= black_contrast {
-        egui::Color32::from_rgb(248, 249, 250)
+        let foreground = egui::Color32::from_rgb(248, 249, 250);
+        if contrast_ratio(foreground, background) >= 4.5 {
+            foreground
+        } else {
+            egui::Color32::WHITE
+        }
     } else {
-        egui::Color32::from_rgb(24, 26, 28)
+        let foreground = egui::Color32::from_rgb(24, 26, 28);
+        if contrast_ratio(foreground, background) >= 4.5 {
+            foreground
+        } else {
+            egui::Color32::BLACK
+        }
     }
 }
 

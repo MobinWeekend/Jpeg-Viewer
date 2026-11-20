@@ -53,7 +53,7 @@ impl ViewerApp {
         self.update_current_image_path();
         self.detect_current_file_type();
         self.sidebar_last_current_index = None;
-        self.file_metadata = Some(self.build_file_metadata());
+        self.file_metadata = None;
         self.load_frame_limiter_settings();
         ctx.request_repaint_after(std::time::Duration::from_millis(16));
     }
@@ -106,6 +106,7 @@ impl ViewerApp {
 
         // Reset GIF state
         self.gif_animation = None;
+        self.full_gif_source = None;
         self.is_gif = false;
         self.is_preview = false;
         self.showing_raw_developed = false;
@@ -143,8 +144,8 @@ impl ViewerApp {
         // Clear file type detection before changing image
         //self.set_file_type_detection(None);
 
-        // Update meta data
-        self.file_metadata = Some(self.build_file_metadata());
+        // Metadata is produced asynchronously from the same source bytes as decoding.
+        self.file_metadata = None;
 
         // Update UI
         ctx.request_repaint_after(std::time::Duration::from_millis(16));

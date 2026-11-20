@@ -7,9 +7,16 @@
 use std::path::{Path, PathBuf};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::time::UNIX_EPOCH;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 static NEXT_CACHE_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+static PUBLISH_ENABLED: AtomicBool = AtomicBool::new(true);
+static CACHE_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+pub(super) fn set_publish_enabled(enabled: bool) {
+    PUBLISH_ENABLED.store(enabled, Ordering::Release);
+}
 
 pub(super) fn file_uri(path: &Path) -> Option<String> {
     let absolute = path.canonicalize().ok()?;
@@ -28,6 +35,7 @@ fn cache_root() -> Option<PathBuf> {
 }
 
 pub(super) fn source_stamp(path: &Path) -> Option<(u64, u64)> {
+    crate::io_metrics::metadata_query();
     let metadata = path.metadata().ok()?;
     let mtime = metadata
         .modified()
@@ -97,57 +105,80 @@ fn standard_cache_flavors() -> [&'static str; 4] {
     ["normal", "large", "x-large", "xx-large"]
 }
 
-fn cached_paths(uri: &str, source_stamp: (u64, u64)) -> Vec<PathBuf> {
+fn preferred_cache_flavor_index(requested_side: u32) -> usize {
+    match requested_side {
+        0..=128 => 0,
+        129..=256 => 1,
+        257..=512 => 2,
+        _ => 3,
+    }
+}
+
+fn cached_candidates(uri: &str, requested_side: u32) -> Vec<PathBuf> {
     let Some(root) = cache_root() else {
         return Vec::new();
     };
-    let (mtime, source_size) = source_stamp;
     let digest = format!("{:x}", md5::compute(uri.as_bytes()));
+    let flavors = standard_cache_flavors();
+    let preferred = preferred_cache_flavor_index(requested_side);
 
-    // Prefer the smallest standard flavor first. It avoids decoding a 512px or
-    // 1024px cache entry when a 128px preview already satisfies the widget.
-    standard_cache_flavors()
+    // Start at the smallest flavor capable of satisfying this request, then
+    // consider larger flavors. Smaller flavors cannot pass the size check, so
+    // opening them first would be guaranteed extra I/O.
+    flavors[preferred..]
+        .iter()
+        .map(|size| root.join(size).join(format!("{digest}.png")))
+        .collect()
+}
+
+/// Lightweight candidate signatures let wait_for_cached poll for desktop
+/// output without rereading unchanged PNG files every interval.
+fn cached_candidate_state(uri: &str, requested_side: u32) -> Vec<Option<(u64, std::time::SystemTime)>> {
+    cached_candidates(uri, requested_side)
         .into_iter()
-        .filter_map(|size| {
-            let candidate = root.join(size).join(format!("{digest}.png"));
-            let metadata = std::fs::metadata(&candidate).ok()?;
-            // Shared caches can contain files created by other applications.
-            // Bound the read/decode cost even when a malformed cache entry is
-            // unexpectedly large.
-            if metadata.len() == 0 || metadata.len() > 64 * 1024 * 1024 {
-                return None;
-            }
-            let bytes = std::fs::read(&candidate).ok()?;
-            valid_thumbnail_metadata(&bytes, uri, mtime, source_size).then_some(candidate)
+        .map(|candidate| {
+            crate::io_metrics::metadata_query();
+            std::fs::metadata(candidate).ok().and_then(|metadata| {
+                Some((metadata.len(), metadata.modified().ok()?))
+            })
         })
         .collect()
 }
 
 pub(super) fn read_cached(path: &Path, uri: &str, requested_side: u32) -> Option<image::RgbaImage> {
     let expected_stamp = source_stamp(path)?;
-    for candidate in cached_paths(uri, expected_stamp) {
-        let Ok(reader) = image::ImageReader::open(&candidate) else {
+    for candidate in cached_candidates(uri, requested_side) {
+        crate::io_metrics::metadata_query();
+        let Ok(metadata) = std::fs::metadata(&candidate) else {
             continue;
         };
-        let Ok(reader) = reader.with_guessed_format() else {
+        // Shared caches can contain files created by other applications. Bound
+        // the read/decode cost even when a malformed entry is unexpectedly large.
+        if metadata.len() == 0 || metadata.len() > 64 * 1024 * 1024 {
+            continue;
+        }
+        let bytes = match std::fs::read(&candidate) {
+            Ok(bytes) => bytes,
+            Err(_) => continue,
+        };
+        crate::io_metrics::thumbnail_cache_read(bytes.len());
+        if !valid_thumbnail_metadata(&bytes, uri, expected_stamp.0, expected_stamp.1) {
+            continue;
+        }
+        // Decode the same in-memory bytes that were just validated. This avoids
+        // separate ImageReader/open calls for dimensions and pixel decoding.
+        let Ok(decoded) = image::load_from_memory(&bytes) else {
             continue;
         };
-        let Ok((width, height)) = reader.into_dimensions() else {
-            continue;
-        };
+        let (width, height) = (decoded.width(), decoded.height());
         let Some(pixel_count) = (width as u64).checked_mul(height as u64) else {
             continue;
         };
-        if width == 0
-            || height == 0
-            || pixel_count > 16_777_216
+        if width == 0 || height == 0 || pixel_count > 16_777_216
             || width.max(height) < requested_side
         {
             continue;
         }
-        let Ok(decoded) = image::open(candidate) else {
-            continue;
-        };
         if source_stamp(path) != Some(expected_stamp) {
             continue;
         }
@@ -167,6 +198,11 @@ pub(super) fn store_generated(
     expected_source_size: u64,
     rgba: &image::RgbaImage,
 ) {
+    // Publishing is optional. Existing XDG entries are still read when this is
+    // disabled; only Jpeg-Viewer's own persistent cache writes are suppressed.
+    if !PUBLISH_ENABLED.load(Ordering::Acquire) {
+        return;
+    }
     // Do not publish a thumbnail if the source changed while it was being made.
     if source_stamp(path) != Some((expected_source_mtime, expected_source_size)) {
         return;
@@ -203,6 +239,26 @@ pub(super) fn store_generated(
     }
     let digest = format!("{:x}", md5::compute(uri.as_bytes()));
     let destination = directory.join(format!("{digest}.png"));
+
+    // Serialize publish checks so concurrent requests for the same source do
+    // not each rewrite the same shared cache file. A valid existing entry wins.
+    let _write_guard = CACHE_WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::io_metrics::metadata_query();
+    if std::fs::metadata(&destination)
+        .is_ok_and(|metadata| metadata.len() > 0 && metadata.len() <= 64 * 1024 * 1024)
+    {
+        if let Ok(existing) = std::fs::read(&destination) {
+            crate::io_metrics::thumbnail_cache_read(existing.len());
+            if valid_thumbnail_metadata(
+                &existing,
+                uri,
+                expected_source_mtime,
+                expected_source_size,
+            ) {
+                return;
+            }
+        }
+    }
 
     let thumbnail = image::imageops::thumbnail(rgba, flavor_size, flavor_size);
     if thumbnail.width() == 0 || thumbnail.height() == 0 {
@@ -248,6 +304,8 @@ pub(super) fn store_generated(
     // Atomic rename prevents other applications from observing a partial PNG.
     if std::fs::rename(&temporary, &destination).is_err() {
         let _ = std::fs::remove_file(&temporary);
+    } else {
+        crate::io_metrics::thumbnail_cache_write();
     }
 }
 
@@ -258,14 +316,21 @@ pub(super) fn wait_for_cached(
     timeout: std::time::Duration,
 ) -> Option<image::RgbaImage> {
     let deadline = std::time::Instant::now() + timeout;
+    let mut previous_state: Option<Vec<Option<(u64, std::time::SystemTime)>>> = None;
     loop {
-        if let Some(image) = read_cached(path, uri, requested_side) {
-            return Some(image);
+        let state = cached_candidate_state(uri, requested_side);
+        if previous_state.as_ref() != Some(&state) {
+            if let Some(image) = read_cached(path, uri, requested_side) {
+                return Some(image);
+            }
+            previous_state = Some(state);
         }
         if std::time::Instant::now() >= deadline {
             return None;
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Desktop thumbnail services are asynchronous. Poll metadata at 250ms,
+        // but only reopen/decode candidates when their size/mtime changes.
+        std::thread::sleep(std::time::Duration::from_millis(250));
     }
 }
 
@@ -320,13 +385,21 @@ mod tests {
 
 #[cfg(test)]
 mod cache_flavor_tests {
-    use super::standard_cache_flavors;
+    use super::{preferred_cache_flavor_index, standard_cache_flavors};
 
     #[test]
-    fn cache_flavors_are_checked_from_smallest_to_largest() {
+    fn standard_flavors_are_ordered_from_smallest_to_largest() {
         assert_eq!(
             standard_cache_flavors(),
             ["normal", "large", "x-large", "xx-large"],
         );
+    }
+
+    #[test]
+    fn candidate_lookup_starts_at_the_smallest_suitable_flavor() {
+        assert_eq!(preferred_cache_flavor_index(128), 0);
+        assert_eq!(preferred_cache_flavor_index(256), 1);
+        assert_eq!(preferred_cache_flavor_index(512), 2);
+        assert_eq!(preferred_cache_flavor_index(1024), 3);
     }
 }
