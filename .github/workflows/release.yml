@@ -918,7 +918,11 @@ jobs:
 
           # The pinned images already contain base-devel. Install the packages
           # required by this PKGBUILD and its native desktop dependencies.
-          pacman -Syu --noconfirm --needed \
+          # Arch Linux ARM containers may run on a GitHub-hosted Docker kernel
+          # that does not expose the Landlock feature pacman uses for download
+          # sandboxing. Disable only pacman's downloader sandbox for this
+          # container package-install transaction; Docker isolation remains on.
+          pacman --disable-sandbox -Syu --noconfirm --needed \
             base-devel rust cargo pkgconf dbus libx11 libxkbcommon \
             wayland mesa git zstd unrar python
 
