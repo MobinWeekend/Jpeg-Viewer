@@ -481,7 +481,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p AppDir/usr/bin AppDir/usr/share/applications \
-            AppDir/usr/share/icons/hicolor/512x512/apps
+            AppDir/usr/share/icons/hicolor/512x512/apps \
+            AppDir/usr/share/mime/packages
           install -m755 "target/${{ matrix.rust_target }}/release/jpeg_viewer" AppDir/usr/bin/jpeg_viewer
           install -m644 packaging/linux/com.jpegviewer.JpegViewer.desktop AppDir/usr/share/applications/com.jpegviewer.JpegViewer.desktop
           install -m644 packaging/icons/512x512/com.jpegviewer.JpegViewer.png AppDir/usr/share/icons/hicolor/512x512/apps/com.jpegviewer.JpegViewer.png
@@ -651,37 +652,29 @@ jobs:
             -e GITHUB_REF_NAME="$GITHUB_REF_NAME" \
             -e VERSION="$VERSION" \
             -e ARCH_VERSION="$ARCH_VERSION" \
-            -v "$PWD:/src" -w /src "$IMAGE" bash -lc '
-              set -euo pipefail
-              if [ "$(uname -m)" = "aarch64" ]; then
-                pacman-key --init
-                pacman-key --populate archlinuxarm || true
-                grep -q "^[[:space:]]*DisableSandbox" /etc/pacman.conf || sed -i "/^\\[options\\]/a DisableSandbox" /etc/pacman.conf
-              fi
-              pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
-              printf "\\nPKGEXT=\".pkg.tar.zst\"\\n" >> /etc/makepkg.conf
-              getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
-              mkdir -p /tmp/arch-build /tmp/arch-home
-              cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
-              chown -R nobody:nobody /tmp/arch-build /tmp/arch-home
-              cd /tmp/arch-build
-              runuser -u nobody -- env \\
-                -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \\
-                -u CARGO_BUILD_RUSTFLAGS \\
-                -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER \\
-                -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER \\
-                -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \\
-                -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \\
-                HOME=/tmp/arch-home USER=nobody LOGNAME=nobody \\
-                makepkg --noconfirm --cleanbuild
-              PACKAGE_FILE="$(find /tmp/arch-build -maxdepth 1 -type f -name "jpeg-viewer-${ARCH_VERSION}-*.pkg.tar.zst" -print -quit)"
-              if [ -z "$PACKAGE_FILE" ]; then
-                echo "No .pkg.tar.zst generated; contents:"
-                find /tmp/arch-build -maxdepth 1 -type f -print
-                exit 1
-              fi
-              cp "$PACKAGE_FILE" /src/out/
-            '
+            -v "$PWD:/src" -w /src "$IMAGE" bash -s <<'ARCH_SCRIPT'
+          set -euo pipefail
+          if [ "$(uname -m)" = "aarch64" ]; then
+            pacman-key --init
+            pacman-key --populate archlinuxarm || true
+            grep -q "^[[:space:]]*DisableSandbox" /etc/pacman.conf || sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
+          fi
+          pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
+          printf '\nPKGEXT=".pkg.tar.zst"\n' >> /etc/makepkg.conf
+          getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
+          mkdir -p /tmp/arch-build /tmp/arch-home
+          cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
+          chown -R nobody:nobody /tmp/arch-build /tmp/arch-home
+          cd /tmp/arch-build
+          runuser -u nobody -- env -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_RUSTFLAGS -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS HOME=/tmp/arch-home USER=nobody LOGNAME=nobody makepkg --noconfirm --cleanbuild
+          PACKAGE_FILE="$(find /tmp/arch-build -maxdepth 1 -type f -name "jpeg-viewer-${ARCH_VERSION}-*.pkg.tar.zst" -print -quit)"
+          if [ -z "$PACKAGE_FILE" ]; then
+            echo "No .pkg.tar.zst generated; contents:"
+            find /tmp/arch-build -maxdepth 1 -type f -print
+            exit 1
+          fi
+          cp "$PACKAGE_FILE" /src/out/
+          ARCH_SCRIPT
           PACKAGE_FILE="$(find out -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
           test -n "$PACKAGE_FILE" || { echo 'Arch package was not copied from container'; exit 1; }
           cp "$PACKAGE_FILE" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst"
@@ -742,8 +735,15 @@ jobs:
         run: |
           flatpak-builder --force-clean --install-deps-from=flathub --repo=repo \
             build-dir packaging/flatpak/com.jpegviewer.JpegViewer.yml
-          flatpak build-bundle repo "JPEG-Viewer-Linux-${{ matrix.arch }}.flatpak" \
-            com.jpegviewer.JpegViewer stable
+          FLATPAK_ARCH="$(uname -m)"
+          REF="app/com.jpegviewer.JpegViewer/${FLATPAK_ARCH}/stable"
+          echo "Bundling Flatpak ref: $REF"
+          if ! flatpak build-bundle repo "JPEG-Viewer-Linux-${{ matrix.arch }}.flatpak" "$REF"; then
+            echo "Available refs in repository:"
+            flatpak build-repo --help >/dev/null 2>&1 || true
+            find repo -maxdepth 4 -type f | head -100
+            exit 1
+          fi
 
       - name: Upload Flatpak
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
