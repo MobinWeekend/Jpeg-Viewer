@@ -283,7 +283,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
 
       - name: Install Linux test dependencies
         if: runner.os == 'Linux'
@@ -333,7 +333,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
 
       - name: Prepare release metadata
         uses: ./.github/actions/prepare-release
@@ -476,7 +476,7 @@ jobs:
             libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: ${{ matrix.rust_target }}
 
@@ -542,7 +542,7 @@ jobs:
             libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
 
       - name: Prepare release metadata
         uses: ./.github/actions/prepare-release
@@ -598,7 +598,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: ${{ matrix.rust_target }}
 
@@ -680,7 +680,7 @@ jobs:
             wget file libfuse2
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: ${{ matrix.rust_target }}
 
@@ -764,7 +764,7 @@ jobs:
             libx11-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: ${{ matrix.rust_target }}
 
