@@ -15,6 +15,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
+use std::sync::Arc;
 
 const WELCOME_RECENT_LIMIT: usize = 8;
 
@@ -25,6 +26,22 @@ pub(crate) enum WorkspaceTabKind {
     Masonry,
     Compare,
     Welcome,
+}
+
+pub(crate) struct MasonryGroupLayoutCache {
+    pub fingerprint: u64,
+    pub local_tile_rects: Arc<Vec<egui::Rect>>,
+    /// Entry indices grouped by column and ordered from top to bottom. This
+    /// makes viewport lookup logarithmic instead of walking every off-screen card.
+    pub column_indices: Arc<Vec<Vec<usize>>>,
+    pub content_height: f32,
+}
+
+pub(crate) struct MasonryGroupsCache {
+    pub fingerprint: u64,
+    /// Filtered/grouped source indices. Keeping indices instead of borrowed
+    /// entries lets the immediate-mode renderer reuse this across frames.
+    pub groups: Arc<Vec<(String, Vec<usize>)>>,
 }
 
 pub(crate) struct WorkspaceTab {
@@ -61,6 +78,16 @@ pub(crate) struct WorkspaceTab {
     /// Original pixel dimensions discovered in the fast metadata-first pass.
     /// Kept separately from thumbnail texture residency and aspect ratios.
     pub masonry_dimensions: HashMap<String, (u32, u32)>,
+    /// Per-folder geometry retained between frames. Fingerprints include the
+    /// entry order, aspect ratios, viewport width, and tile settings.
+    pub masonry_layout_cache: HashMap<String, MasonryGroupLayoutCache>,
+    /// Filtered/grouped entries retained between frames so scrolling does not
+    /// lowercase names, walk folder paths, or rebuild group vectors each frame.
+    pub masonry_groups_cache: Option<MasonryGroupsCache>,
+    /// Incremented whenever the Masonry source order or aspect ratios change.
+    pub masonry_layout_revision: u64,
+    /// Incremented only when the filtered/grouped source-index list can change.
+    pub masonry_groups_revision: u64,
 
     // Compare state. Anchor coordinates are normalized image coordinates.
     pub anchors: Vec<Option<[f32; 2]>>,
@@ -88,6 +115,20 @@ pub(crate) struct WorkspaceTab {
 }
 
 impl WorkspaceTab {
+    pub(crate) fn invalidate_masonry_layout(&mut self) {
+        self.masonry_layout_revision = self.masonry_layout_revision.wrapping_add(1);
+        self.masonry_groups_revision = self.masonry_groups_revision.wrapping_add(1);
+        self.masonry_layout_cache.clear();
+        self.masonry_groups_cache = None;
+    }
+
+    /// Invalidate only tile geometry when a visible source's dimensions change.
+    /// Folder grouping and text filtering remain valid and should stay cached.
+    pub(crate) fn invalidate_masonry_geometry(&mut self) {
+        self.masonry_layout_revision = self.masonry_layout_revision.wrapping_add(1);
+        self.masonry_layout_cache.clear();
+    }
+
     fn viewer() -> Self {
         Self {
             id: 1,
@@ -111,6 +152,10 @@ impl WorkspaceTab {
             masonry_tile_size: 220.0,
             masonry_aspect_ratios: HashMap::new(),
             masonry_dimensions: HashMap::new(),
+            masonry_layout_cache: HashMap::new(),
+            masonry_groups_cache: None,
+            masonry_layout_revision: 0,
+            masonry_groups_revision: 0,
             anchors: Vec::new(),
             anchors_second: Vec::new(),
             offsets: Vec::new(),
@@ -166,7 +211,15 @@ pub(crate) struct WorkspaceManager {
     /// Resolved Masonry entries for Home card previews, cached to avoid rescanning
     /// folders, archives, and queue lists on every immediate-mode UI frame.
     pub(crate) welcome_thumbnail_sources: HashMap<PathBuf, Option<ImageEntry>>,
+    /// Directory/file kind detected alongside preview discovery on a worker.
+    pub(crate) welcome_path_is_directory: HashMap<PathBuf, bool>,
+    /// Prevent duplicate Home preview scans while their background jobs run.
+    pub(crate) welcome_preview_pending: HashSet<PathBuf>,
     welcome_data_loaded: bool,
+    welcome_data_pending: bool,
+    /// Let the first Home frame reach the platform before starting its worker pool.
+    pub(crate) welcome_first_frame_rendered: bool,
+    welcome_data_receiver: Option<Receiver<(Vec<PathBuf>, Vec<PathBuf>, bool)>>,
     /// The Home surface is shown inside the primary Viewer workspace, never as a tab.
     pub(crate) home_page_visible: bool,
 }
@@ -193,7 +246,12 @@ impl Default for WorkspaceManager {
             welcome_recent: Vec::new(),
             welcome_pinned: Vec::new(),
             welcome_thumbnail_sources: HashMap::new(),
+            welcome_path_is_directory: HashMap::new(),
+            welcome_preview_pending: HashSet::new(),
             welcome_data_loaded: false,
+            welcome_data_pending: false,
+            welcome_first_frame_rendered: false,
+            welcome_data_receiver: None,
             home_page_visible: true,
         }
     }

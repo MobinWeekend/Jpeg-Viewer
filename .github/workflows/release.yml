@@ -648,6 +648,7 @@ jobs:
           ARCH_VERSION='${{ env.JPEG_VIEWER_ARCH_VERSION }}'
           IMAGE='${{ matrix.image }}'
           CONTAINER_NAME="jpeg-viewer-arch-${{ matrix.arch }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          rm -rf out
           mkdir -p out
           cleanup_arch_container() {
             docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -671,9 +672,9 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
           printf '\nPKGEXT=".pkg.tar.zst"\n' >> /etc/makepkg.conf
           getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
-          mkdir -p /tmp/arch-build /tmp/arch-home
+          mkdir -p /tmp/arch-build /tmp/arch-home /tmp/arch-output
           cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
-          chown -R nobody:nobody /tmp/arch-build /tmp/arch-home
+          chown -R nobody:nobody /tmp/arch-build /tmp/arch-home /tmp/arch-output
           cd /tmp/arch-build
           runuser -u nobody -- env \
             -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
@@ -683,13 +684,15 @@ jobs:
             -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             HOME=/tmp/arch-home USER=nobody LOGNAME=nobody \
-            PKGDEST=/tmp/arch-build makepkg --noconfirm --cleanbuild
+            PKGDEST=/tmp/arch-output makepkg --noconfirm --cleanbuild
 
-          PACKAGE_FILE="$(find /tmp/arch-build -maxdepth 1 -type f \
+          PACKAGE_FILE="$(find /tmp/arch-output -maxdepth 1 -type f \
             -name 'jpeg-viewer-*.pkg.tar.zst' -print -quit)"
           if [ -z "$PACKAGE_FILE" ]; then
-            echo "No Arch package was generated; build directory contents:"
-            find /tmp/arch-build -maxdepth 2 -type f -printf '%p (%s bytes)\n'
+            echo "No Arch package was generated; package output directory contents:"
+            find /tmp/arch-output -maxdepth 2 -type f -printf '%p (%s bytes)\n'
+            echo "Build directory top-level contents:"
+            find /tmp/arch-build -maxdepth 1 -mindepth 1 -printf '%p\n'
             exit 1
           fi
           PACKAGE_NAME="$(basename "$PACKAGE_FILE")"
@@ -700,19 +703,12 @@ jobs:
               exit 1
               ;;
           esac
-          # The host reads this manifest and uses docker cp after the container exits.
-          printf '%s\n' "$PACKAGE_FILE" > /tmp/arch-build/package-path.txt
           printf 'ARCH_PACKAGE_PATH=%s\n' "$PACKAGE_FILE"
           ARCH_SCRIPT
 
-          docker cp "$CONTAINER_NAME:/tmp/arch-build/package-path.txt" out/package-path.txt
-          PACKAGE_PATH="$(cat out/package-path.txt)"
-          case "$PACKAGE_PATH" in
-            /tmp/arch-build/jpeg-viewer-*.pkg.tar.zst) ;;
-            *) echo "Invalid package path reported by container: $PACKAGE_PATH"; exit 1 ;;
-          esac
-          docker cp "$CONTAINER_NAME:$PACKAGE_PATH" out/
-          rm -f out/package-path.txt
+          # Copy only the dedicated package output directory, not the source
+          # tree or Cargo target directory. This avoids a separate path marker.
+          docker cp "$CONTAINER_NAME:/tmp/arch-output/." out/
 
           PACKAGE_FILE="$(find out -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print -quit)"
           test -n "$PACKAGE_FILE" || {

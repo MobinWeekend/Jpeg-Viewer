@@ -4,6 +4,39 @@ use super::helpers::*;
 use super::session::*;
 use super::*;
 
+fn read_welcome_data(path: &Path) -> (Vec<PathBuf>, Vec<PathBuf>, bool) {
+    let Ok(contents) = fs::read_to_string(path) else {
+        return (Vec::new(), Vec::new(), false);
+    };
+    let mut recent: Vec<PathBuf> = Vec::new();
+    let mut pinned: Vec<PathBuf> = Vec::new();
+    for line in contents.lines() {
+        let Some((kind, encoded)) = line.split_once('|') else {
+            continue;
+        };
+        let decoded = decode_field(encoded);
+        if decoded.is_empty() {
+            continue;
+        }
+        let item = PathBuf::from(decoded);
+        match kind {
+            "R" if !recent.iter().any(|path| welcome_paths_equal(path, &item)) => {
+                recent.push(item);
+            }
+            "P" if !pinned.iter().any(|path| welcome_paths_equal(path, &item)) => {
+                pinned.push(item);
+            }
+            _ => {}
+        }
+    }
+    let original_recent_len = recent.len();
+    recent.retain(|item| is_welcome_recent_path(item));
+    recent.truncate(WELCOME_RECENT_LIMIT);
+    pinned.truncate(24);
+    let recent_was_cleaned = recent.len() != original_recent_len;
+    (recent, pinned, recent_was_cleaned)
+}
+
 impl crate::app::types::ViewerApp {
     pub(super) fn welcome_data_path(&self) -> PathBuf {
         self.settings_manager
@@ -15,48 +48,66 @@ impl crate::app::types::ViewerApp {
         if self.workspace.welcome_data_loaded {
             return;
         }
+        // Mutating Home actions still need an immediate, authoritative list.
+        // If the first-frame background load is running, abandon its receiver
+        // and perform this rare action-path fallback synchronously.
+        self.workspace.welcome_data_receiver = None;
+        self.workspace.welcome_data_pending = false;
         self.workspace.welcome_data_loaded = true;
         let path = self.welcome_data_path();
-        let Ok(contents) = fs::read_to_string(path) else {
-            return;
-        };
-        for line in contents.lines() {
-            let Some((kind, encoded)) = line.split_once('|') else {
-                continue;
-            };
-            let decoded = decode_field(encoded);
-            if decoded.is_empty() {
-                continue;
-            }
-            let item = PathBuf::from(decoded);
-            match kind {
-                "R" if !self
-                    .workspace
-                    .welcome_recent
-                    .iter()
-                    .any(|p| welcome_paths_equal(p, &item)) =>
-                {
-                    self.workspace.welcome_recent.push(item);
-                }
-                "P" if !self
-                    .workspace
-                    .welcome_pinned
-                    .iter()
-                    .any(|p| welcome_paths_equal(p, &item)) =>
-                {
-                    self.workspace.welcome_pinned.push(item);
-                }
-                _ => {}
-            }
-        }
-        let original_recent_len = self.workspace.welcome_recent.len();
-        self.workspace
-            .welcome_recent
-            .retain(|item| is_welcome_recent_path(item));
-        self.workspace.welcome_recent.truncate(WELCOME_RECENT_LIMIT);
-        self.workspace.welcome_pinned.truncate(24);
-        if self.workspace.welcome_recent.len() != original_recent_len {
+        let (recent, pinned, recent_was_cleaned) = read_welcome_data(&path);
+        self.workspace.welcome_recent = recent;
+        self.workspace.welcome_pinned = pinned;
+        if recent_was_cleaned {
             self.save_welcome_data();
+        }
+    }
+
+    /// Start loading saved Home links without blocking the first Home frame.
+    /// File parsing and checking stale recent paths happen on a worker because
+    /// those paths may point to a removable or network-backed location.
+    pub(crate) fn request_welcome_data_load(&mut self, ctx: &egui::Context) {
+        if self.workspace.welcome_data_loaded || self.workspace.welcome_data_pending {
+            return;
+        }
+        self.workspace.welcome_data_pending = true;
+        let path = self.welcome_data_path();
+        let repaint_ctx = ctx.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        crate::app::home_thumbnail_cache::spawn(move || {
+            let result = read_welcome_data(&path);
+            let _ = tx.send(result);
+            repaint_ctx.request_repaint();
+        });
+        self.workspace.welcome_data_receiver = Some(rx);
+    }
+
+    /// Install the saved lists when the worker finishes. Until then Home can
+    /// render its basic launch surface without waiting for path metadata I/O.
+    pub(crate) fn collect_welcome_data_load(&mut self) {
+        let result = self
+            .workspace
+            .welcome_data_receiver
+            .as_ref()
+            .map(|receiver| receiver.try_recv());
+        match result {
+            None => {}
+            Some(Ok((recent, pinned, recent_was_cleaned))) => {
+                self.workspace.welcome_recent = recent;
+                self.workspace.welcome_pinned = pinned;
+                self.workspace.welcome_data_loaded = true;
+                self.workspace.welcome_data_pending = false;
+                self.workspace.welcome_data_receiver = None;
+                if recent_was_cleaned {
+                    self.save_welcome_data();
+                }
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Empty)) => {}
+            Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
+                self.workspace.welcome_data_loaded = true;
+                self.workspace.welcome_data_pending = false;
+                self.workspace.welcome_data_receiver = None;
+            }
         }
     }
 
@@ -90,12 +141,10 @@ impl crate::app::types::ViewerApp {
     }
 
     pub(crate) fn welcome_recent_paths(&mut self) -> Vec<PathBuf> {
-        self.ensure_welcome_data_loaded();
         self.workspace.welcome_recent.clone()
     }
 
     pub(crate) fn welcome_pinned_paths(&mut self) -> Vec<PathBuf> {
-        self.ensure_welcome_data_loaded();
         self.workspace.welcome_pinned.clone()
     }
 

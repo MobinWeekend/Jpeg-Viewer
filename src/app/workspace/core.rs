@@ -147,6 +147,7 @@ impl crate::app::types::ViewerApp {
             let tab = &mut self.workspace.tabs[index];
             tab.title = title;
             tab.entries = entries;
+            tab.invalidate_masonry_layout();
             // Keep known tile dimensions for entries that survive a collection
             // switch. A thumbnail LRU eviction or a source switch must not make
             // an already-sized tile collapse to the square loading placeholder.
@@ -210,6 +211,7 @@ impl crate::app::types::ViewerApp {
             let tab = &mut self.workspace.tabs[index];
             tab.title = "Masonry · Folder".into();
             tab.entries = entries;
+            tab.invalidate_masonry_layout();
             tab.masonry_aspect_ratios
                 .retain(|id, _| valid_ids.contains(id));
             tab.masonry_dimensions

@@ -44,6 +44,7 @@ pub(crate) struct LoadedEntryData {
 /// Favorites, and New Tab) can use the texture dimensions for contain rendering.
 /// `source_aspect_ratio` remains separate because Masonry's tile layout must
 /// stay stable even when a texture is evicted or replaced.
+#[derive(Clone)]
 pub(crate) struct GeneratedThumbnail {
     pub width: usize,
     pub height: usize,
@@ -419,6 +420,13 @@ pub struct ViewerApp {
     pub(crate) home_thumbnail_cache_paths: HashMap<String, PathBuf>,
     /// Home card/source-size pairs whose persistent cache was already checked.
     pub(crate) home_thumbnail_cache_checked: HashSet<String>,
+    /// Cache reads and Home preview-source discovery currently in flight.
+    pub(crate) home_thumbnail_cache_pending: HashSet<String>,
+    pub(crate) home_preview_receivers: Vec<(
+        Option<PathBuf>,
+        Option<String>,
+        Receiver<super::home_thumbnail_cache::HomePreviewTaskResult>,
+    )>,
     pub sidebar_thumbnail_receivers: Vec<(
         String,
         Option<String>,
@@ -462,7 +470,14 @@ pub struct ViewerApp {
 
 impl Default for ViewerApp {
     fn default() -> Self {
-        let settings_manager = SettingsManager::new();
+        Self::new(SettingsManager::new())
+    }
+}
+
+impl ViewerApp {
+    /// Construct the application from the settings already loaded by the native
+    /// bootstrap. This avoids reading/migrating settings.ini twice on startup.
+    pub(crate) fn new(settings_manager: SettingsManager) -> Self {
         let settings = settings_manager.get().clone();
 
         // ====== CACHE SIZE ======
@@ -717,6 +732,8 @@ impl Default for ViewerApp {
             home_thumbnail_cache_writes: HashMap::new(),
             home_thumbnail_cache_paths: HashMap::new(),
             home_thumbnail_cache_checked: HashSet::new(),
+            home_thumbnail_cache_pending: HashSet::new(),
+            home_preview_receivers: Vec::new(),
             sidebar_thumbnail_receivers: Vec::new(),
             sidebar_visible_sources: HashSet::new(),
             sidebar_prefetch_sources: HashSet::new(),

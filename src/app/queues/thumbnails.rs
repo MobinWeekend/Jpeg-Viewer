@@ -1694,6 +1694,9 @@ impl ViewerApp {
                     tab.masonry_aspect_ratios.insert(entry_id, ratio);
                 }
                 if changed {
+                    if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
+                        tab.invalidate_masonry_geometry();
+                    }
                     // The layout pass already ran before visible cards consume
                     // this lazy cache entry. Schedule one more pass so the new
                     // ratio affects shortest-column placement immediately.
@@ -1713,6 +1716,9 @@ impl ViewerApp {
                 tab.masonry_aspect_ratios.insert(entry_id, aspect_ratio);
             }
             if changed {
+                if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
+                    tab.invalidate_masonry_geometry();
+                }
                 ctx.request_repaint();
             }
         }
@@ -2632,6 +2638,7 @@ impl ViewerApp {
     }
 
     pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
+        const MAX_COMPLETIONS_PER_FRAME: usize = 3;
         self.collect_masonry_dimensions();
         if self.sidebar_thumbnail_receivers.is_empty() {
             return;
@@ -2640,6 +2647,7 @@ impl ViewerApp {
         let mut cancelled = Vec::new();
         let mut disconnected = Vec::new();
         let mut timed_out = Vec::new();
+        let mut completion_limit_reached = false;
         self.sidebar_thumbnail_receivers.retain(
             |(
                 job_key,
@@ -2651,6 +2659,10 @@ impl ViewerApp {
                 cancellation,
                 receiver,
             )| {
+                if completed.len() >= MAX_COMPLETIONS_PER_FRAME {
+                    completion_limit_reached = true;
+                    return true;
+                }
                 if cancellation.load(Ordering::Acquire) {
                     cancelled.push(job_key.clone());
                     return false;
@@ -2708,11 +2720,14 @@ impl ViewerApp {
             self.sidebar_thumbnail_attempted.insert(key.clone());
             self.sidebar_thumbnail_failed.insert(key);
         }
+        let mut home_cache_writes = Vec::new();
         for (key, masonry_source, sidebar_managed, result) in completed {
             self.sidebar_thumbnail_pending.remove(&key);
             let home_cache_path = self.home_thumbnail_cache_writes.remove(&key);
             if let (Some(cache_path), Ok(thumbnail)) = (home_cache_path, &result) {
-                crate::app::home_thumbnail_cache::store(&cache_path, thumbnail);
+                // Persistent cache writes include directory pruning and can
+                // touch slow/removable storage. Keep that work off the UI thread.
+                home_cache_writes.push((cache_path, thumbnail.clone()));
             }
             if let Ok(thumbnail) = &result
                 && let Some(source_key) = thumbnail_source_key_from_cache_key(&key)
@@ -2821,6 +2836,18 @@ impl ViewerApp {
                     self.sidebar_thumbnail_failed.insert(key);
                 }
             }
+        }
+        if !home_cache_writes.is_empty() {
+            crate::app::home_thumbnail_cache::spawn(move || {
+                for (cache_path, thumbnail) in home_cache_writes {
+                    crate::app::home_thumbnail_cache::store(&cache_path, &thumbnail);
+                }
+            });
+        }
+        if completion_limit_reached {
+            // More results may already be waiting in their channels. Drain a
+            // bounded batch next frame instead of uploading all textures at once.
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
     }
 }

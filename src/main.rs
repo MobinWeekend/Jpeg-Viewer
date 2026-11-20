@@ -127,7 +127,7 @@ fn main() -> eframe::Result<()> {
                 app_settings.native_window_rounding,
             );
 
-            let mut app = ViewerApp::default();
+            let mut app = ViewerApp::new(settings_manager);
             app.instance_server = instance_server;
             if let Some(server) = app.instance_server.as_ref() {
                 // Wake the event loop when another process forwards an open request.

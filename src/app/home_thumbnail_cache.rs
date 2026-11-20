@@ -10,6 +10,7 @@ use crate::imaging::entry::ImageEntry;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::UNIX_EPOCH;
 
 const MAGIC: &[u8; 8] = b"JVHTHMB1";
@@ -18,11 +19,58 @@ const MAX_THUMBNAIL_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_CACHE_ENTRIES: usize = 512;
 
+type HomeWorkerTask = Box<dyn FnOnce() + Send + 'static>;
+static HOME_WORKERS: OnceLock<mpsc::Sender<HomeWorkerTask>> = OnceLock::new();
+
+/// Submit filesystem-heavy Home work to a small, dedicated pool. This avoids
+/// initializing Rayon’s machine-wide CPU pool while the first Home frame is
+/// being built, and keeps Home metadata/cache I/O isolated from image decoding.
+pub(crate) fn spawn(task: impl FnOnce() + Send + 'static) {
+    let sender = HOME_WORKERS.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel::<HomeWorkerTask>();
+        let receiver = Arc::new(Mutex::new(receiver));
+        for worker_index in 0..2 {
+            let receiver = Arc::clone(&receiver);
+            let result = std::thread::Builder::new()
+                .name(format!("home-worker-{worker_index}"))
+                .spawn(move || loop {
+                    let task = receiver.lock().ok().and_then(|queue| queue.recv().ok());
+                    let Some(task) = task else {
+                        break;
+                    };
+                    task();
+                });
+            if let Err(error) = result {
+                eprintln!("[home worker] could not start worker: {error}");
+            }
+        }
+        sender
+    });
+
+    if let Err(error) = sender.send(Box::new(task)) {
+        // This is only expected if the operating system refused both worker
+        // threads. Preserve functionality in that exceptional case.
+        (error.0)();
+    }
+}
+
 pub(crate) struct CachedHomeThumbnail {
     pub width: usize,
     pub height: usize,
     pub resolution: u32,
     pub pixels: Vec<u8>,
+}
+
+/// Result of resolving a Home card's preview source and loading its optional
+/// persistent thumbnail. Discovery and disk reads happen off the UI thread;
+/// only the final egui texture upload is performed by the UI thread.
+pub(crate) struct HomePreviewTaskResult {
+    pub source_path: Option<PathBuf>,
+    pub source_is_directory: bool,
+    pub target_size: u32,
+    pub entry: Option<ImageEntry>,
+    pub cache_path: Option<PathBuf>,
+    pub cached: Option<CachedHomeThumbnail>,
 }
 
 /// Resolve a persistent cache file for this exact source revision and requested

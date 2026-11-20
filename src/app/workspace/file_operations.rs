@@ -235,6 +235,7 @@ impl crate::app::types::ViewerApp {
                         .retain(|id, _| valid_ids.contains(id));
                     tab.masonry_dimensions
                         .retain(|id, _| valid_ids.contains(id));
+                    tab.invalidate_masonry_layout();
                 }
                 tab.selected.clear();
                 tab.current_index = tab.current_index.min(tab.entries.len().saturating_sub(1));
@@ -384,6 +385,7 @@ impl crate::app::types::ViewerApp {
                                 .retain(|id, _| valid_ids.contains(id));
                             tab.masonry_dimensions
                                 .retain(|id, _| valid_ids.contains(id));
+                            tab.invalidate_masonry_layout();
                         }
                         tab.current_index =
                             tab.current_index.min(tab.entries.len().saturating_sub(1));

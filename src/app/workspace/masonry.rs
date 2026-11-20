@@ -2,6 +2,8 @@
 
 use super::helpers::*;
 use super::*;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 impl crate::app::types::ViewerApp {
     /// Returns true when a non-viewer workspace rendered the central surface.
@@ -143,7 +145,7 @@ impl crate::app::types::ViewerApp {
                                 let content_width = (viewport_width - 24.0).max(1.0);
                                 grid_ui.set_min_width(content_width);
                                 grid_ui.set_max_width(content_width);
-                                let entries = &masonry_entries;
+                                let entries = masonry_entries.as_slice();
                                 let (
                                     selected,
                                     search,
@@ -152,6 +154,7 @@ impl crate::app::types::ViewerApp {
                                     recursive,
                                     directory,
                                     preferred_size,
+                                    groups_revision,
                                 ) = {
                                     let tab = &self.workspace.tabs[tab_index];
                                     (
@@ -162,11 +165,9 @@ impl crate::app::types::ViewerApp {
                                         tab.recursive,
                                         tab.directory.clone(),
                                         tab.masonry_tile_size,
+                                        tab.masonry_groups_revision,
                                     )
                                 };
-                                // Keep references into the one required snapshot rather
-                                // than moving/cloning every ImageEntry again during filtering
-                                // and folder grouping.
                                 let selected_entries = if selected.is_empty() {
                                     Vec::new()
                                 } else {
@@ -175,29 +176,120 @@ impl crate::app::types::ViewerApp {
                                         .filter(|entry| selected.contains(&entry.get_id()))
                                         .collect::<Vec<_>>()
                                 };
-                                let filtered = if search.is_empty() && extension_filter.is_empty() {
-                                    // The default view displays the entire collection.
-                                    // Avoid allocating/lowercasing every filename just to
-                                    // discover that no filter removes anything.
-                                    entries.iter().collect::<Vec<_>>()
-                                } else {
-                                    entries
-                                        .iter()
-                                        .filter(|entry| {
-                                            let name = entry_display_name(entry).to_lowercase();
-                                            let ext = Path::new(&name)
-                                                .extension()
-                                                .and_then(|value| value.to_str())
-                                                .unwrap_or("")
-                                                .to_owned();
-                                            (search.is_empty() || name.contains(&search))
-                                                && (extension_filter.is_empty()
-                                                    || ext == extension_filter)
-                                        })
-                                        .collect::<Vec<_>>()
+                                let headers_enabled =
+                                    self.settings_manager.get().masonry_show_folder_headers;
+                                let groups_fingerprint = {
+                                    let mut hasher =
+                                        std::collections::hash_map::DefaultHasher::new();
+                                    groups_revision.hash(&mut hasher);
+                                    search.hash(&mut hasher);
+                                    extension_filter.hash(&mut hasher);
+                                    folder_masonry.hash(&mut hasher);
+                                    recursive.hash(&mut hasher);
+                                    directory.hash(&mut hasher);
+                                    headers_enabled.hash(&mut hasher);
+                                    entries.len().hash(&mut hasher);
+                                    hasher.finish()
                                 };
 
-                                if filtered.is_empty() {
+                                // Filtering and grouping used to walk every entry and
+                                // allocate a new set of folder vectors on every scroll
+                                // repaint. Cache source indices instead; the entries
+                                // themselves stay in their existing collection vector.
+                                let cached_groups = self.workspace.tabs[tab_index]
+                                    .masonry_groups_cache
+                                    .as_ref()
+                                    .filter(|cache| cache.fingerprint == groups_fingerprint)
+                                    .map(|cache| Arc::clone(&cache.groups));
+                                let groups = if let Some(groups) = cached_groups {
+                                    groups
+                                } else {
+                                    let filtered_indices = if search.is_empty()
+                                        && extension_filter.is_empty()
+                                    {
+                                        (0..entries.len()).collect::<Vec<_>>()
+                                    } else {
+                                        entries
+                                            .iter()
+                                            .enumerate()
+                                            .filter_map(|(index, entry)| {
+                                                let name = entry_display_name(entry).to_lowercase();
+                                                let ext = Path::new(&name)
+                                                    .extension()
+                                                    .and_then(|value| value.to_str())
+                                                    .unwrap_or("");
+                                                ((search.is_empty() || name.contains(&search))
+                                                    && (extension_filter.is_empty()
+                                                        || ext == extension_filter))
+                                                    .then_some(index)
+                                            })
+                                            .collect::<Vec<_>>()
+                                    };
+
+                                    // Recursive Folder Masonry always benefits from
+                                    // folder sections. Otherwise detect the first
+                                    // different parent only once per collection/filter.
+                                    let show_folder_headers = if !headers_enabled {
+                                        false
+                                    } else if folder_masonry && recursive {
+                                        true
+                                    } else if let Some(first_index) = filtered_indices.first() {
+                                        let first = entry_folder_parts(
+                                            &entries[*first_index],
+                                            directory.as_deref(),
+                                        );
+                                        filtered_indices.iter().skip(1).any(|index| {
+                                            entry_folder_parts(
+                                                &entries[*index],
+                                                directory.as_deref(),
+                                            ) != first
+                                        })
+                                    } else {
+                                        false
+                                    };
+
+                                    let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+                                    if show_folder_headers {
+                                        let mut group_indices = HashMap::<String, usize>::new();
+                                        for entry_index in filtered_indices {
+                                            let label = entry_breadcrumb(
+                                                &entries[entry_index],
+                                                directory.as_deref(),
+                                            );
+                                            if let Some(group_index) =
+                                                group_indices.get(&label).copied()
+                                            {
+                                                groups[group_index].1.push(entry_index);
+                                            } else {
+                                                let group_index = groups.len();
+                                                group_indices.insert(label.clone(), group_index);
+                                                groups.push((label, vec![entry_index]));
+                                            }
+                                        }
+                                    } else {
+                                        groups.push((String::new(), filtered_indices));
+                                    }
+
+                                    let groups = Arc::new(groups);
+                                    let active_layout_keys = groups
+                                        .iter()
+                                        .map(|(label, _)| label.clone())
+                                        .collect::<HashSet<_>>();
+                                    self.workspace.tabs[tab_index]
+                                        .masonry_layout_cache
+                                        .retain(|key, _| active_layout_keys.contains(key));
+                                    self.workspace.tabs[tab_index].masonry_groups_cache =
+                                        Some(MasonryGroupsCache {
+                                            fingerprint: groups_fingerprint,
+                                            groups: Arc::clone(&groups),
+                                        });
+                                    groups
+                                };
+
+                                let no_matches = groups
+                                    .first()
+                                    .is_none_or(|(_, indices)| indices.is_empty());
+                                if no_matches {
                                     grid_ui.allocate_ui_with_layout(
                                         egui::vec2(
                                             content_width,
@@ -216,60 +308,16 @@ impl crate::app::types::ViewerApp {
                                         },
                                     );
                                 } else {
-                                    let headers_enabled =
-                                        self.settings_manager.get().masonry_show_folder_headers;
-                                    // Recursive Folder Masonry always benefits from folder sections.
-                                    // Local collections also get grouped when they contain images
-                                    // from more than one source folder (or archive subfolder), so
-                                    // the user can tell where each entry belongs while scrolling.
-                                    // Most local collections contain images from one
-                                    // directory. Detect the first differing folder and
-                                    // stop immediately instead of allocating a HashSet
-                                    // of breadcrumb Strings for the entire list each frame.
-                                    let show_folder_headers = if !headers_enabled {
-                                        false
-                                    } else if folder_masonry && recursive {
-                                        true
-                                    } else if let Some(first) = filtered.first() {
-                                        let first = entry_folder_parts(first, directory.as_deref());
-                                        filtered.iter().skip(1).any(|entry| {
-                                            entry_folder_parts(entry, directory.as_deref()) != first
-                                        })
-                                    } else {
-                                        false
-                                    };
-                                    let mut groups: Vec<(String, Vec<&ImageEntry>)> = Vec::new();
-                                    if show_folder_headers {
-                                        // Preserve first-seen group order while using O(1)
-                                        // average lookup instead of scanning all existing
-                                        // groups for every image in a large collection.
-                                        let mut group_indices = HashMap::<String, usize>::new();
-                                        for entry in filtered {
-                                            let label =
-                                                entry_breadcrumb(entry, directory.as_deref());
-                                            if let Some(index) = group_indices.get(&label).copied()
-                                            {
-                                                groups[index].1.push(entry);
-                                            } else {
-                                                let index = groups.len();
-                                                group_indices.insert(label.clone(), index);
-                                                groups.push((label, vec![entry]));
-                                            }
-                                        }
-                                    } else {
-                                        groups.push((String::new(), filtered));
-                                    }
-
                                     let group_count = groups.len();
-                                    for (group_index, (folder_label, group_entries)) in
-                                        groups.into_iter().enumerate()
+                                    for (group_index, (folder_label, group_entry_indices)) in
+                                        groups.iter().enumerate()
                                     {
                                         let mut render_group = true;
                                         if !folder_label.is_empty() {
                                             let header_width = grid_ui.available_width();
                                             let collapsed = self.workspace.tabs[tab_index]
                                                 .collapsed_folders
-                                                .contains(&folder_label);
+                                                .contains(folder_label);
                                             let (header_rect, header_response) = grid_ui
                                                 .allocate_exact_size(
                                                     egui::vec2(header_width, 26.0),
@@ -321,7 +369,7 @@ impl crate::app::types::ViewerApp {
                                                     header_rect.center().y,
                                                 ),
                                                 egui::Align2::RIGHT_CENTER,
-                                                format!("{} images", group_entries.len()),
+                                                format!("{} images", group_entry_indices.len()),
                                                 egui::FontId::proportional(11.0),
                                                 visuals.weak_text_color(),
                                             );
@@ -330,9 +378,9 @@ impl crate::app::types::ViewerApp {
                                                     [tab_index]
                                                     .collapsed_folders;
                                                 if collapsed {
-                                                    collapsed_folders.remove(&folder_label);
+                                                    collapsed_folders.remove(folder_label);
                                                 } else {
-                                                    collapsed_folders.insert(folder_label.clone());
+                                                    collapsed_folders.insert(folder_label.to_owned());
                                                 }
                                             }
                                             render_group = !collapsed;
@@ -345,10 +393,12 @@ impl crate::app::types::ViewerApp {
                                                 grid_ui,
                                                 tab_index,
                                                 tab_id,
-                                                &group_entries,
+                                                entries,
+                                                group_entry_indices,
                                                 &selected,
                                                 &selected_entries,
                                                 preferred_size,
+                                                folder_label,
                                                 &mut visible_masonry_sources,
                                                 ctx,
                                                 &mut action,
@@ -560,10 +610,9 @@ impl crate::app::types::ViewerApp {
 
         if selected_sort_method != self.sort_method {
             self.sort_method = selected_sort_method;
-            crate::imaging::sort::sort_images(
-                &mut self.workspace.tabs[tab_index].entries,
-                self.sort_method,
-            );
+            let tab = &mut self.workspace.tabs[tab_index];
+            crate::imaging::sort::sort_images(&mut tab.entries, self.sort_method);
+            tab.invalidate_masonry_layout();
         }
 
         if reload_folder {
@@ -588,6 +637,7 @@ impl crate::app::types::ViewerApp {
                     .collect::<HashSet<_>>();
                 let tab = &mut self.workspace.tabs[tab_index];
                 tab.entries = refreshed;
+                tab.invalidate_masonry_layout();
                 tab.masonry_aspect_ratios
                     .retain(|id, _| valid_ids.contains(id));
                 tab.masonry_dimensions
