@@ -124,9 +124,9 @@ impl ThumbnailSchedulerState {
 /// - native OS/DE thumbnails: 2 workers per configured base worker
 /// - Jpeg-Viewer decoding: 1 worker per configured base worker
 ///
-/// Lower stages only start when all queued and running work in higher-priority
-/// stages has drained. This keeps source metadata responsive and stops our own
-/// decoder from competing with native desktop thumbnail services.
+/// Jobs may optionally establish a stage barrier. Only operations which truly
+/// need exclusive priority use it; visible Masonry dimension probes are
+/// non-blocking so native previews can appear while metadata is being measured.
 struct ThumbnailScheduler {
     state: Mutex<ThumbnailSchedulerState>,
     ready: Condvar,
@@ -142,6 +142,7 @@ impl ThumbnailScheduler {
         priority: u8,
         source_key: String,
         cancelled: Arc<AtomicBool>,
+        blocks_lower_stages: bool,
         job: ThumbnailJob,
     ) -> bool {
         {
@@ -155,7 +156,7 @@ impl ThumbnailScheduler {
             priority,
             Some(source_key),
             Some(Arc::clone(&cancelled)),
-            pool == ThumbnailPool::Dimensions,
+            blocks_lower_stages,
             job,
         ).is_ok();
         if !submitted {
@@ -444,10 +445,11 @@ fn thumbnail_scheduler(base_worker_count: usize) -> &'static Arc<ThumbnailSchedu
 mod thumbnail_scheduler_tests {
     use super::{
         thumbnail_pool_worker_counts, QueuedThumbnailJob, ThumbnailPool,
-        ThumbnailSchedulerState,
+        ThumbnailScheduler, ThumbnailSchedulerState,
     };
-    use std::sync::atomic::AtomicBool;
-    use std::sync::{Arc, Mutex};
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+    use std::sync::{Arc, Condvar, Mutex};
 
     fn empty_state() -> ThumbnailSchedulerState {
         ThumbnailSchedulerState {
@@ -525,6 +527,30 @@ mod thumbnail_scheduler_tests {
         assert!(state.can_start(ThumbnailPool::Native));
         state.active[ThumbnailPool::Native.index()] = 0;
         assert!(state.can_start(ThumbnailPool::Decoder));
+    }
+
+    #[test]
+    fn visible_masonry_dimension_probe_does_not_block_native_thumbnails() {
+        let scheduler = ThumbnailScheduler {
+            state: Mutex::new(empty_state()),
+            ready: Condvar::new(),
+            next_sequence: AtomicU64::new(0),
+            masonry_jobs: Arc::new(Mutex::new(HashMap::new())),
+        };
+        let cancellation = Arc::new(AtomicBool::new(false));
+        assert!(scheduler.submit_masonry(
+            ThumbnailPool::Dimensions,
+            "masonry-dimensions:visible-file".into(),
+            20,
+            "visible-file".into(),
+            cancellation,
+            false,
+            Box::new(|| {}),
+        ));
+
+        let state = scheduler.state.lock().unwrap();
+        assert!(!state.dimension_queue[0].blocks_lower_stages);
+        assert!(state.can_start(ThumbnailPool::Native));
     }
 
     #[test]
@@ -689,10 +715,10 @@ fn source_dimensions_from_bytes(bytes: &[u8]) -> Option<(u32, u32)> {
 /// should be usable without first loading large source files into memory.
 fn source_dimensions_from_file(path: &std::path::Path) -> Option<(u32, u32)> {
     crate::io_metrics::metadata_query();
-    // Probe the image header first. This is normally a small, sequential read
-    // and avoids parsing the full EXIF container on the common path. EXIF is
-    // still read for orientation and as a fallback for formats whose dimensions
-    // are not understood by image's lightweight header reader.
+    // Use image's optimized path-based header probe. It avoids the additional
+    // format-guessing and buffered-reader setup required by a generic reader.
+    // EXIF is read separately because orientation is needed to keep Masonry's
+    // layout consistent with the displayed image.
     let header_dimensions = image::image_dimensions(path).ok();
     let exif = File::open(path).ok().and_then(|file| {
         let mut reader = BufReader::new(file);
@@ -893,6 +919,7 @@ fn submit_pipeline_stage(
                 priority,
                 source_key.to_owned(),
                 Arc::clone(cancellation),
+                blocks_lower_stages,
                 job,
             );
         }
@@ -1482,102 +1509,141 @@ fn remove_attempts_for_cached_source(attempted: &mut HashSet<String>, cache_key:
 }
 
 impl ViewerApp {
-    /// Queue a dimension pass for every entry in the filtered Masonry
-    /// collection. These jobs outrank thumbnail work so all tile
-    /// geometry can be established before expensive preview generation begins.
-    pub(crate) fn prepare_masonry_dimensions(
+    /// Queue a cheap source-dimension probe only when a filesystem image enters
+    /// the visible Masonry viewport. Probing the entire filtered collection before
+    /// requesting thumbnails made large folders wait for off-screen metadata work.
+    /// Archive entries intentionally skip this pass: their thumbnail pipeline
+    /// already reads/decompresses the member and obtains dimensions from those bytes.
+    pub(crate) fn request_masonry_dimensions(
         &mut self,
-        entries: &[&crate::imaging::entry::ImageEntry],
+        entry: &crate::imaging::entry::ImageEntry,
         ctx: &egui::Context,
     ) {
-        let scheduler = thumbnail_scheduler(self.settings_manager.get().thumbnail_workers);
-        for entry in entries {
-            let source_key = source_thumbnail_key(entry);
-            let entry_id = entry.get_id();
-            if let Some(dimensions) = self.masonry_dimension_results.get(&source_key).copied() {
-                if let Some((width, height)) = dimensions {
-                    if width > 0 && height > 0 {
-                        if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
-                            tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
-                            tab.masonry_aspect_ratios.insert(entry_id, width as f32 / height as f32);
-                        }
-                    }
-                }
-                self.masonry_dimension_attempted.insert(source_key);
-                continue;
-            }
-            if self.masonry_dimension_attempted.contains(&source_key)
-                || self.masonry_dimension_pending.contains(&source_key)
-            {
-                continue;
-            }
+        let source_key = source_thumbnail_key(entry);
+        let entry_id = entry.get_id();
 
-            let (tx, rx) = std::sync::mpsc::channel();
-            let worker_entry = (*entry).clone();
-            let worker_ctx = ctx.clone();
-            let started_at = Arc::new(Mutex::new(None));
-            let worker_started_at = Arc::clone(&started_at);
-            let cancellation = Arc::new(AtomicBool::new(false));
-            let worker_cancellation = Arc::clone(&cancellation);
-            let job = Box::new(move || {
-                if worker_cancellation.load(Ordering::Acquire) {
-                    return;
+        // Reuse dimensions already attached to this tab before consulting the
+        // shared caches. This avoids probing again when a tab is restored or
+        // when another thumbnail pipeline already populated its layout data.
+        let tab_dimensions = self.workspace.tabs
+            .get(self.workspace.active_index)
+            .and_then(|tab| tab.masonry_dimensions.get(&entry_id).copied())
+            .filter(|(width, height)| *width > 0 && *height > 0);
+        if let Some((width, height)) = tab_dimensions {
+            self.masonry_dimension_results
+                .insert(source_key.clone(), Some((width, height)));
+            self.masonry_aspect_ratio_results.remove(&source_key);
+            self.masonry_dimension_attempted.insert(source_key);
+            return;
+        }
+
+        // Exact source dimensions win. If a provider only supplied a preview
+        // ratio, apply that immediately as a fallback while the filesystem
+        // dimension probe continues in the background.
+        if let Some(Some((width, height))) = self.masonry_dimension_results.get(&source_key).copied() {
+            if width > 0 && height > 0 {
+                let mut changed = false;
+                if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
+                    let ratio = width as f32 / height as f32;
+                    changed = tab.masonry_dimensions.get(&entry_id) != Some(&(width, height))
+                        || tab.masonry_aspect_ratios.get(&entry_id) != Some(&ratio);
+                    tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
+                    tab.masonry_aspect_ratios.insert(entry_id, ratio);
                 }
-                mark_thumbnail_started(&worker_started_at);
-                let dimensions = source_dimensions_from_entry(&worker_entry);
-                if !worker_cancellation.load(Ordering::Acquire) {
-                    let _ = tx.send(dimensions);
-                    worker_ctx.request_repaint();
+                if changed {
+                    // The layout pass already ran before visible cards consume
+                    // this lazy cache entry. Schedule one more pass so the new
+                    // ratio affects shortest-column placement immediately.
+                    ctx.request_repaint();
                 }
-            }) as ThumbnailJob;
-            let scheduler_key = format!("masonry-dimensions:{source_key}");
-            match scheduler.submit_stage(
-                ThumbnailPool::Dimensions,
-                scheduler_key,
-                MASONRY_DIMENSION_PRIORITY,
-                None,
-                Some(Arc::clone(&cancellation)),
-                true,
-                job,
-            ) {
-                Ok(()) => {
-                    self.masonry_dimension_attempted.insert(source_key.clone());
-                    self.masonry_dimension_pending.insert(source_key.clone());
-                    self.masonry_dimension_receivers.push((
-                        source_key,
-                        false,
-                        Instant::now(),
-                        started_at,
-                        cancellation,
-                        rx,
-                    ));
+            }
+            self.masonry_dimension_attempted.insert(source_key);
+            return;
+        }
+        if let Some(aspect_ratio) = self.masonry_aspect_ratio_results.get(&source_key).copied() {
+            if aspect_ratio.is_finite() && aspect_ratio > 0.0 {
+                let mut changed = false;
+                if let Some(tab) = self.workspace.tabs.get_mut(self.workspace.active_index) {
+                    changed = tab.masonry_aspect_ratios.get(&entry_id) != Some(&aspect_ratio);
+                    tab.masonry_aspect_ratios.insert(entry_id, aspect_ratio);
                 }
-                Err(_job) => {
-                    // Keep this recovery path if scheduler submission ever
-                    // gains an explicit back-pressure policy.
-                    break;
+                if changed {
+                    ctx.request_repaint();
                 }
             }
         }
+
+        // Archive thumbnail generation already extracts its member once and
+        // reports source dimensions/aspect ratio from that same byte buffer.
+        // Only ordinary files need the independent header/EXIF probe.
+        if !matches!(entry, crate::imaging::entry::ImageEntry::File(_)) {
+            return;
+        }
+        if self.masonry_dimension_attempted.contains(&source_key)
+            || self.masonry_dimension_pending.contains(&source_key)
+        {
+            return;
+        }
+
+        // Enqueue only visible entries (the caller guarantees viewport
+        // intersection) and let the existing Dimensions pool enforce the
+        // configured worker limit. The old four-job cap serialized the first
+        // viewport unnecessarily on fast SSDs; this queue remains bounded by
+        // the visible cards, not by the total folder size.
+        let worker_limit = self.settings_manager.get().thumbnail_workers.clamp(1, 8);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let worker_entry = entry.clone();
+        let worker_ctx = ctx.clone();
+        let started_at = Arc::new(Mutex::new(None));
+        let worker_started_at = Arc::clone(&started_at);
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let worker_cancellation = Arc::clone(&cancellation);
+        let scheduler_key = format!("masonry-dimensions:{source_key}");
+        let scheduler = Arc::clone(thumbnail_scheduler(worker_limit));
+        let worker_scheduler = Arc::clone(&scheduler);
+        let worker_scheduler_key = scheduler_key.clone();
+        let job = Box::new(move || {
+            if worker_cancellation.load(Ordering::Acquire) {
+                return;
+            }
+            mark_thumbnail_started(&worker_started_at);
+            let dimensions = source_dimensions_from_entry(&worker_entry);
+            if !worker_cancellation.load(Ordering::Acquire) {
+                let _ = tx.send(dimensions);
+                worker_ctx.request_repaint();
+            }
+            // Dimension probes are single-stage jobs. Remove their visibility
+            // registration immediately on success instead of retaining one
+            // registry entry per image until it scrolls off-screen.
+            worker_scheduler.finish_masonry(&worker_scheduler_key, &worker_cancellation);
+        }) as ThumbnailJob;
+
+        if scheduler.submit_masonry(
+            ThumbnailPool::Dimensions,
+            scheduler_key,
+            MASONRY_DIMENSION_PRIORITY,
+            source_key.clone(),
+            Arc::clone(&cancellation),
+            false, // Dimension discovery must not hold native thumbnail workers.
+            job,
+        ) {
+            self.masonry_dimension_attempted.insert(source_key.clone());
+            self.masonry_dimension_pending.insert(source_key.clone());
+            self.masonry_dimension_receivers.push((
+                source_key,
+                true, // If this item scrolls away, it can be retried when visible again.
+                Instant::now(),
+                started_at,
+                cancellation,
+                rx,
+            ));
+        }
     }
 
-    /// True once every entry in this filtered Masonry collection has
-    /// completed (successfully or unsuccessfully) its lightweight dimensions
-    /// probe. Unknown formats still get laid out with the neutral fallback ratio.
-    pub(crate) fn masonry_dimensions_ready(
-        &self,
-        entries: &[&crate::imaging::entry::ImageEntry],
-    ) -> bool {
-        entries.iter().all(|entry| {
-            let source_key = source_thumbnail_key(entry);
-            self.masonry_dimension_attempted.contains(&source_key)
-                && !self.masonry_dimension_pending.contains(&source_key)
-        })
-    }
-
-    /// Update the Masonry aspect-ratio/dimension maps from the metadata pass.
-    /// A single source can appear in several open tabs, so propagate the result
-    /// to every matching entry instead of rescanning the same file per tab.
+    /// Collect completed visible-item dimension probes into the shared cache.
+    /// Workspace tabs apply these results lazily when their cards are visible,
+    /// avoiding a full scan of every open tab for each completed source.
     pub(crate) fn collect_masonry_dimensions(&mut self) {
         let mut remaining = Vec::with_capacity(self.masonry_dimension_receivers.len());
         let mut completed = Vec::new();
@@ -1642,21 +1708,18 @@ impl ViewerApp {
 
         for (source_key, dimensions) in completed {
             self.masonry_dimension_pending.remove(&source_key);
-            self.masonry_dimension_results.insert(source_key.clone(), dimensions);
-            let Some((width, height)) = dimensions.filter(|(width, height)| *width > 0 && *height > 0) else {
-                continue;
-            };
-            let aspect_ratio = width as f32 / height as f32;
-            for tab in &mut self.workspace.tabs {
-                let matching_ids = tab.entries.iter()
-                    .filter(|entry| source_thumbnail_key(entry) == source_key)
-                    .map(crate::imaging::entry::ImageEntry::get_id)
-                    .collect::<Vec<_>>();
-                for id in matching_ids {
-                    tab.masonry_dimensions.insert(id.clone(), (width, height));
-                    tab.masonry_aspect_ratios.insert(id, aspect_ratio);
-                }
+            if let Some(dimensions) = dimensions.filter(|(width, height)| *width > 0 && *height > 0) {
+                self.masonry_dimension_results.insert(source_key.clone(), Some(dimensions));
+                self.masonry_aspect_ratio_results.remove(&source_key);
+            } else {
+                // A parallel thumbnail decode may already have discovered valid
+                // dimensions from its source bytes. Never replace those with a
+                // failed/empty header probe result.
+                self.masonry_dimension_results.entry(source_key).or_insert(None);
             }
+            // Do not scan every open tab's complete entry list for each result.
+            // The active Masonry card applies this shared result lazily when it
+            // next becomes visible; other tabs do the same when activated.
         }
     }
 
@@ -2318,7 +2381,7 @@ impl ViewerApp {
             masonry_source_key.as_deref(),
             &cancellation,
             true,
-            masonry_only,
+            false,
             dimension_job,
         );
         if submitted {
@@ -2437,11 +2500,20 @@ impl ViewerApp {
             self.sidebar_thumbnail_pending.remove(&key);
             if let Ok(thumbnail) = &result {
                 if let Some(source_key) = thumbnail_source_key_from_cache_key(&key) {
-                    self.masonry_dimension_results.insert(
-                        source_key.to_owned(),
-                        thumbnail.source_dimensions,
-                    );
-                    self.masonry_dimension_attempted.insert(source_key.to_owned());
+                    if let Some(dimensions) = thumbnail.source_dimensions
+                        .filter(|(width, height)| *width > 0 && *height > 0)
+                    {
+                        self.masonry_dimension_results.insert(source_key.to_owned(), Some(dimensions));
+                        self.masonry_dimension_attempted.insert(source_key.to_owned());
+                        self.masonry_aspect_ratio_results.remove(source_key);
+                    } else if let Some(aspect_ratio) = thumbnail.source_aspect_ratio
+                        .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+                    {
+                        // Cache the provider's preview ratio without walking every
+                        // entry in every tab. Visible Masonry cards consume it
+                        // lazily; a real source-dimension probe may refine it later.
+                        self.masonry_aspect_ratio_results.insert(source_key.to_owned(), aspect_ratio);
+                    }
                 }
             }
             let sidebar_source_visible = !sidebar_managed
@@ -2460,25 +2532,9 @@ impl ViewerApp {
             }
             match result {
                 Ok(thumbnail) => {
-                    if let Some(aspect_ratio) = thumbnail.source_aspect_ratio.filter(|ratio| {
-                        ratio.is_finite() && *ratio > 0.0
-                    }) {
-                        // The job key is thumb:<requested-size>:<stable-source-key>.
-                        // Propagate the source ratio to every open workspace tab
-                        // containing that same entry, including jobs initially
-                        // queued by Browse/Queue/Favorites.
-                        if let Some(source_key) = thumbnail_source_key_from_cache_key(&key) {
-                            for tab in &mut self.workspace.tabs {
-                                let matching_ids = tab.entries.iter()
-                                    .filter(|entry| source_thumbnail_key(entry) == source_key)
-                                    .map(|entry| entry.get_id())
-                                    .collect::<Vec<_>>();
-                                for id in matching_ids {
-                                    tab.masonry_aspect_ratios.insert(id, aspect_ratio);
-                                }
-                            }
-                        }
-                    }
+                    // Aspect ratios were placed in the shared source-key cache
+                    // above. Masonry applies them only when the matching card is
+                    // visible, avoiding an O(all-files) scan for every thumbnail.
                     let color = egui::ColorImage::from_rgba_unmultiplied(
                         [thumbnail.width, thumbnail.height],
                         &thumbnail.pixels,

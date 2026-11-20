@@ -13,7 +13,6 @@ impl crate::app::types::ViewerApp {
         selected: &HashSet<String>,
         selected_entries: &[&ImageEntry],
         preferred_tile_width: f32,
-        dimensions_ready: bool,
         visible_sources: &mut HashSet<String>,
         ctx: &egui::Context,
         action: &mut Option<MasonryAction>,
@@ -103,6 +102,10 @@ impl crate::app::types::ViewerApp {
             let key = entry.get_id();
             let thumbnail_source_key = crate::app::queues::source_thumbnail_key(entry);
             visible_sources.insert(thumbnail_source_key.clone());
+            // Header/EXIF dimensions are requested only for visible filesystem
+            // images. Archive dimensions arrive from the bytes already read by
+            // their thumbnail pipeline, avoiding a second archive extraction.
+            self.request_masonry_dimensions(entry, ctx);
             let image_rect = tile_rect.shrink(TILE_MARGIN);
             // Request exactly the largest physical dimension needed by this
             // entry's image viewport. This is not restricted to fixed 64/128/
@@ -128,8 +131,7 @@ impl crate::app::types::ViewerApp {
             // remains visible while its high-resolution upgrade is generated.
             let texture = self.get_shared_thumbnail(&thumbnail_source_key, target_thumbnail_size);
 
-            if dimensions_ready {
-                match best_cached_resolution {
+            match best_cached_resolution {
                     None => {
                         // Stage one: populate every visible tile with a quick
                         // native/embedded preview before requesting full detail.
@@ -155,7 +157,6 @@ impl crate::app::types::ViewerApp {
                         );
                     }
                     _ => {}
-                }
             }
 
             if let Some(texture) = texture {

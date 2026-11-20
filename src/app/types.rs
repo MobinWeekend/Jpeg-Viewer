@@ -278,6 +278,9 @@ pub struct ViewerApp {
     pub startup_window_placement_handled: bool,
     /// Keep the saved maximized state until the native window manager confirms restoration.
     pub startup_restore_maximize_pending: bool,
+    /// Keep reset window-geometry defaults from being overwritten by the
+    /// current session's native viewport when it closes. Cleared on next launch.
+    pub preserve_reset_window_geometry: bool,
     pub sidebar_width_needs_save: bool,
     /// Actual width allocated to the left sidebar this frame, used to position overlays.
     pub sidebar_actual_width: f32,
@@ -436,6 +439,10 @@ pub struct ViewerApp {
     pub masonry_dimension_pending: HashSet<String>,
     /// Shared, EXIF-oriented source dimensions keyed by stable source identity.
     pub masonry_dimension_results: HashMap<String, Option<(u32, u32)>>,
+    /// Best-known fallback aspect ratios from thumbnail providers. These are
+    /// applied lazily by visible Masonry cards instead of scanning every tab
+    /// whenever one thumbnail finishes. Exact source dimensions take priority.
+    pub masonry_aspect_ratio_results: HashMap<String, f32>,
     pub masonry_dimension_receivers:
         Vec<(String, bool, Instant, Arc<Mutex<Option<Instant>>>, Arc<AtomicBool>, Receiver<Option<(u32, u32)>>)>,
 }
@@ -596,6 +603,7 @@ impl Default for ViewerApp {
             startup_fullscreen_handled: false,
             startup_window_placement_handled: false,
             startup_restore_maximize_pending: settings.window_maximized && !settings.start_fullscreen,
+            preserve_reset_window_geometry: false,
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
             right_sidebar_actual_width: 0.0,
@@ -700,6 +708,7 @@ impl Default for ViewerApp {
             masonry_dimension_attempted: HashSet::new(),
             masonry_dimension_pending: HashSet::new(),
             masonry_dimension_results: HashMap::new(),
+            masonry_aspect_ratio_results: HashMap::new(),
             masonry_dimension_receivers: Vec::new(),
         }
     }

@@ -181,6 +181,16 @@ impl ViewerApp {
     }
 
     pub fn save_window_state(&mut self, ctx: &egui::Context) {
+        if self.preserve_reset_window_geometry {
+            // Reset All cleared the persisted window geometry. Do not overwrite
+            // those defaults with the old in-session native window bounds. Any
+            // other pending preferences are still flushed before closing.
+            if let Err(error) = self.settings_manager.save_if_dirty() {
+                eprintln!("Failed to save settings after window-geometry reset: {error}");
+            }
+            return;
+        }
+
         // ViewportInfo geometry is reported in egui UI points, which include the
         // global egui zoom factor. ViewportBuilder::with_position/with_inner_size
         // expects native logical points (excluding that egui zoom). Normalize here

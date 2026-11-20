@@ -165,13 +165,6 @@ impl crate::app::types::ViewerApp {
                                     }).collect::<Vec<_>>()
                                 };
 
-                                // Run lightweight file-header/property metadata probes
-                                // for the entire filtered collection first. Their scheduler
-                                // priority is higher than thumbnail work, establishing stable
-                                // Masonry tile dimensions before pixel generation begins.
-                                self.prepare_masonry_dimensions(&filtered, ctx);
-                                let masonry_dimensions_ready = self.masonry_dimensions_ready(&filtered);
-
                                 if filtered.is_empty() {
                                     grid_ui.allocate_ui_with_layout(
                                         egui::vec2(content_width, (content_rect.height() - 32.0).max(60.0)),
@@ -298,7 +291,6 @@ impl crate::app::types::ViewerApp {
                                                 &selected,
                                                 &selected_entries,
                                                 preferred_size,
-                                                masonry_dimensions_ready,
                                                 &mut visible_masonry_sources,
                                                 ctx,
                                                 &mut action,
