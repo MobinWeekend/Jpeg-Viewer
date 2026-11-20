@@ -648,21 +648,25 @@ jobs:
           ARCH_VERSION='${{ env.JPEG_VIEWER_ARCH_VERSION }}'
           IMAGE='${{ matrix.image }}'
           CONTAINER_NAME="jpeg-viewer-arch-${{ matrix.arch }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          # Write package output directly to the runner through a dedicated bind
+          # mount. This avoids docker cp against a stopped container, where the
+          # output directory has proven unreliable across the x64/ARM image variants.
           rm -rf out
           mkdir -p out
+          chmod 0777 out
           cleanup_arch_container() {
             docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
           }
           trap cleanup_arch_container EXIT
 
-          # Keep the stopped container until its package has been copied out.
-          # docker cp is more reliable here than writing build output through a
-          # bind-mounted workspace from inside a root-owned container.
           docker run --name "$CONTAINER_NAME" --user 0:0 \
             -e GITHUB_REF_NAME="$GITHUB_REF_NAME" \
             -e VERSION="$VERSION" \
             -e ARCH_VERSION="$ARCH_VERSION" \
-            -v "$PWD:/src" -w /src "$IMAGE" bash -s <<'ARCH_SCRIPT'
+            -v "$PWD:/src" \
+            -v "$PWD/out:/arch-output" \
+            -w /src "$IMAGE" bash -s <<'ARCH_SCRIPT'
           set -euo pipefail
           if [ "$(uname -m)" = "aarch64" ]; then
             pacman-key --init
@@ -670,11 +674,12 @@ jobs:
             grep -q "^[[:space:]]*DisableSandbox" /etc/pacman.conf || sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
           fi
           pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
-          printf '\nPKGEXT=".pkg.tar.zst"\n' >> /etc/makepkg.conf
+          printf '\nPKGEXT=".pkg.tar.zst"\nPKGDEST="/arch-output"\n' >> /etc/makepkg.conf
           getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
-          mkdir -p /tmp/arch-build /tmp/arch-home /tmp/arch-output
+          mkdir -p /tmp/arch-build /tmp/arch-home /arch-output
           cp packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
-          chown -R nobody:nobody /tmp/arch-build /tmp/arch-home /tmp/arch-output
+          chown -R nobody:nobody /tmp/arch-build /tmp/arch-home
+          chmod 0777 /arch-output
           cd /tmp/arch-build
           runuser -u nobody -- env \
             -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
@@ -684,13 +689,13 @@ jobs:
             -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             HOME=/tmp/arch-home USER=nobody LOGNAME=nobody \
-            PKGDEST=/tmp/arch-output makepkg --noconfirm --cleanbuild
+            makepkg --noconfirm --cleanbuild
 
-          PACKAGE_FILE="$(find /tmp/arch-output -maxdepth 1 -type f \
+          PACKAGE_FILE="$(find /arch-output -maxdepth 1 -type f \
             -name 'jpeg-viewer-*.pkg.tar.zst' -print -quit)"
           if [ -z "$PACKAGE_FILE" ]; then
             echo "No Arch package was generated; package output directory contents:"
-            find /tmp/arch-output -maxdepth 2 -type f -printf '%p (%s bytes)\n'
+            find /arch-output -maxdepth 2 -printf '%M %u:%g %p (%s bytes)\n'
             echo "Build directory top-level contents:"
             find /tmp/arch-build -maxdepth 1 -mindepth 1 -printf '%p\n'
             exit 1
@@ -703,19 +708,22 @@ jobs:
               exit 1
               ;;
           esac
-          printf 'ARCH_PACKAGE_PATH=%s\n' "$PACKAGE_FILE"
+          # Ensure the runner user can read the package produced by nobody.
+          chmod 0644 "$PACKAGE_FILE"
+          printf 'Created Arch package: %s\n' "$PACKAGE_FILE"
           ARCH_SCRIPT
-
-          # Copy only the dedicated package output directory, not the source
-          # tree or Cargo target directory. This avoids a separate path marker.
-          docker cp "$CONTAINER_NAME:/tmp/arch-output/." out/
 
           PACKAGE_FILE="$(find out -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print -quit)"
           test -n "$PACKAGE_FILE" || {
-            echo 'Arch package copy failed; output directory contents:'
-            find out -maxdepth 1 -type f -printf '%f (%s bytes)\n'
+            echo 'Arch package is missing from the runner output directory:'
+            find out -maxdepth 1 -printf '%M %u:%g %p (%s bytes)\n'
             exit 1
           }
+          PACKAGE_NAME="$(basename "$PACKAGE_FILE")"
+          case "$PACKAGE_NAME" in
+            "jpeg-viewer-${ARCH_VERSION}-"*.pkg.tar.zst) ;;
+            *) echo "Runner package version mismatch: expected ${ARCH_VERSION}, got ${PACKAGE_NAME}"; exit 1 ;;
+          esac
           cp "$PACKAGE_FILE" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst"
           tar -tf "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst" | grep -E 'usr/bin/jpeg_viewer|\.desktop$|metainfo|mime/packages|LICENSE'
 

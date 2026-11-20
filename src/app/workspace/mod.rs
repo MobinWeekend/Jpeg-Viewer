@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
@@ -78,6 +78,17 @@ pub(crate) struct WorkspaceTab {
     /// Original pixel dimensions discovered in the fast metadata-first pass.
     /// Kept separately from thumbnail texture residency and aspect ratios.
     pub masonry_dimensions: HashMap<String, (u32, u32)>,
+    /// Collection revision whose initial fast-dimension pass has completed.
+    /// Masonry waits for this pass before its first geometry build, so visible
+    /// scrolling never triggers a succession of full shortest-column rebuilds.
+    pub masonry_dimensions_prepared_revision: Option<u64>,
+    /// Revision currently being scanned for fast source dimensions.
+    pub masonry_dimensions_scan_pending_revision: Option<u64>,
+    /// Cancellation for a superseded collection-wide dimensions scan.
+    pub masonry_dimensions_scan_cancellation: Option<Arc<AtomicBool>>,
+    /// Background header/EXIF scan; the result is applied to every entry at once.
+    pub masonry_dimensions_scan_receiver:
+        Option<Receiver<Vec<(String, String, Option<(u32, u32)>)>>>,
     /// Per-folder geometry retained between frames. Fingerprints include the
     /// entry order, aspect ratios, viewport width, and tile settings.
     pub masonry_layout_cache: HashMap<String, MasonryGroupLayoutCache>,
@@ -152,6 +163,10 @@ impl WorkspaceTab {
             masonry_tile_size: 220.0,
             masonry_aspect_ratios: HashMap::new(),
             masonry_dimensions: HashMap::new(),
+            masonry_dimensions_prepared_revision: None,
+            masonry_dimensions_scan_pending_revision: None,
+            masonry_dimensions_scan_cancellation: None,
+            masonry_dimensions_scan_receiver: None,
             masonry_layout_cache: HashMap::new(),
             masonry_groups_cache: None,
             masonry_layout_revision: 0,

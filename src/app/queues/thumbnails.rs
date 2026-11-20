@@ -12,6 +12,15 @@ use std::time::{Duration, Instant};
 type ThumbnailJob = Box<dyn FnOnce() + Send + 'static>;
 type ThumbnailStartedAt = Arc<Mutex<Option<Instant>>>;
 
+// The batch Masonry metadata scan uses a small Rayon pool of its own. Keep the
+// platform worker context on each Rayon thread so Windows Shell property reads
+// run inside an initialized STA COM apartment, just like the shared dimensions
+// worker pool.
+std::thread_local! {
+    static MASONRY_DIMENSION_SCAN_CONTEXT: crate::platform::thumbnails::ThumbnailWorkerContext =
+        crate::platform::thumbnails::ThumbnailWorkerContext::initialize();
+}
+
 fn mark_thumbnail_started(started_at: &ThumbnailStartedAt) {
     let mut started_at = started_at.lock().expect("thumbnail start time poisoned");
     started_at.get_or_insert_with(Instant::now);
@@ -1647,9 +1656,220 @@ pub(crate) fn remove_attempts_for_cached_source(attempted: &mut HashSet<String>,
 }
 
 impl ViewerApp {
-    /// Queue a cheap source-dimension probe only when a filesystem image enters
-    /// the visible Masonry viewport. Probing the entire filtered collection before
-    /// requesting thumbnails made large folders wait for off-screen metadata work.
+    /// Prepare the initial Masonry geometry from all fast filesystem dimensions
+    /// in one background pass. The first grid is not laid out until this completes,
+    /// avoiding one full shortest-column rebuild for every newly discovered ratio.
+    pub(crate) fn prepare_masonry_dimensions_for_layout(
+        &mut self,
+        tab_index: usize,
+        ctx: &egui::Context,
+    ) -> bool {
+        let Some(tab) = self.workspace.tabs.get(tab_index) else {
+            return true;
+        };
+        let revision = tab.masonry_groups_revision;
+        if tab.masonry_dimensions_prepared_revision == Some(revision) {
+            return true;
+        }
+
+        let has_matching_scan = tab.masonry_dimensions_scan_pending_revision == Some(revision)
+            && tab.masonry_dimensions_scan_receiver.is_some();
+
+        if !has_matching_scan {
+            let mut cached_dimensions = Vec::new();
+            let mut cached_ratios = Vec::new();
+            let mut scan_items = Vec::new();
+            let mut queued_source_keys = HashSet::new();
+            {
+                let tab = &self.workspace.tabs[tab_index];
+                for entry in &tab.entries {
+                    let entry_id = entry.get_id();
+                    if let Some((width, height)) = tab
+                        .masonry_dimensions
+                        .get(&entry_id)
+                        .copied()
+                        .filter(|(width, height)| *width > 0 && *height > 0)
+                    {
+                        let ratio = width as f32 / height as f32;
+                        if tab.masonry_aspect_ratios.get(&entry_id) != Some(&ratio) {
+                            cached_dimensions.push((entry_id, width, height));
+                        }
+                        continue;
+                    }
+
+                    let source_key = source_thumbnail_key(entry);
+                    if let Some(Some((width, height))) =
+                        self.masonry_dimension_results.get(&source_key).copied()
+                    {
+                        if width > 0 && height > 0 {
+                            cached_dimensions.push((entry_id, width, height));
+                            continue;
+                        }
+                    }
+
+                    match entry {
+                        crate::imaging::entry::ImageEntry::File(path) => {
+                            // A previously attempted failure is definitive for
+                            // this collection revision; otherwise scan the file
+                            // header/EXIF on a bounded background pool.
+                            if self.masonry_dimension_results.contains_key(&source_key) {
+                                if let Some(ratio) = self
+                                    .masonry_aspect_ratio_results
+                                    .get(&source_key)
+                                    .copied()
+                                    .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+                                {
+                                    cached_ratios.push((entry_id, ratio));
+                                }
+                                continue;
+                            }
+                            if queued_source_keys.insert(source_key.clone()) {
+                                scan_items.push((entry_id, source_key, path.clone()));
+                            }
+                        }
+                        _ => {
+                            // Archive entries are intentionally not extracted a
+                            // second time here. Reuse dimensions/ratios already
+                            // discovered by their thumbnail pipeline, or let the
+                            // visible-card path apply them when that work finishes.
+                            if let Some(ratio) = self
+                                .masonry_aspect_ratio_results
+                                .get(&source_key)
+                                .copied()
+                                .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+                            {
+                                cached_ratios.push((entry_id, ratio));
+                            }
+                        }
+                    }
+                }
+            }
+
+            {
+                let tab = &mut self.workspace.tabs[tab_index];
+                if let Some(cancellation) = tab.masonry_dimensions_scan_cancellation.take() {
+                    cancellation.store(true, Ordering::Release);
+                }
+                for (entry_id, width, height) in cached_dimensions {
+                    tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
+                    tab.masonry_aspect_ratios
+                        .insert(entry_id, width as f32 / height as f32);
+                }
+                for (entry_id, ratio) in cached_ratios {
+                    tab.masonry_aspect_ratios.insert(entry_id, ratio);
+                }
+                tab.masonry_dimensions_scan_pending_revision = Some(revision);
+                tab.masonry_dimensions_scan_cancellation = None;
+                tab.masonry_dimensions_scan_receiver = None;
+            }
+
+            if scan_items.is_empty() {
+                let tab = &mut self.workspace.tabs[tab_index];
+                tab.masonry_dimensions_prepared_revision = Some(revision);
+                tab.masonry_dimensions_scan_pending_revision = None;
+                return true;
+            }
+
+            let worker_limit = self.settings_manager.get().thumbnail_workers.clamp(1, 8);
+            let worker_ctx = ctx.clone();
+            let cancellation = Arc::new(AtomicBool::new(false));
+            let worker_cancellation = Arc::clone(&cancellation);
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                use rayon::prelude::*;
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .num_threads(worker_limit)
+                    .build();
+                let scan_one = |entry_id: &String, source_key: &String, path: &PathBuf| {
+                    let dimensions = if worker_cancellation.load(Ordering::Acquire) {
+                        None
+                    } else {
+                        MASONRY_DIMENSION_SCAN_CONTEXT
+                            .with(|_| source_dimensions_from_file(path))
+                    };
+                    (entry_id.clone(), source_key.clone(), dimensions)
+                };
+                let results = match pool {
+                    Ok(pool) => pool.install(|| {
+                        scan_items
+                            .par_iter()
+                            .map(|(entry_id, source_key, path)| {
+                                scan_one(entry_id, source_key, path)
+                            })
+                            .collect::<Vec<_>>()
+                    }),
+                    Err(_) => scan_items
+                        .iter()
+                        .map(|(entry_id, source_key, path)| {
+                            scan_one(entry_id, source_key, path)
+                        })
+                        .collect::<Vec<_>>(),
+                };
+                if !worker_cancellation.load(Ordering::Acquire) {
+                    let _ = tx.send(results);
+                    worker_ctx.request_repaint();
+                }
+            });
+
+            let tab = &mut self.workspace.tabs[tab_index];
+            tab.masonry_dimensions_scan_pending_revision = Some(revision);
+            tab.masonry_dimensions_scan_cancellation = Some(cancellation);
+            tab.masonry_dimensions_scan_receiver = Some(rx);
+            return false;
+        }
+
+        let results = {
+            let tab = &mut self.workspace.tabs[tab_index];
+            match tab
+                .masonry_dimensions_scan_receiver
+                .as_ref()
+                .map(|receiver| receiver.try_recv())
+            {
+                Some(Ok(results)) => results,
+                Some(Err(std::sync::mpsc::TryRecvError::Empty)) => return false,
+                Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) | None => Vec::new(),
+            }
+        };
+
+        let mut tab_dimension_updates = Vec::new();
+        for (entry_id, source_key, dimensions) in results {
+            if let Some((width, height)) =
+                dimensions.filter(|(width, height)| *width > 0 && *height > 0)
+            {
+                let ratio = width as f32 / height as f32;
+                tab_dimension_updates.push((entry_id, width, height, ratio));
+                self.masonry_dimension_results
+                    .insert(source_key.clone(), Some((width, height)));
+                self.masonry_aspect_ratio_results.remove(&source_key);
+                self.masonry_dimension_attempted.insert(source_key);
+            } else {
+                self.masonry_dimension_results
+                    .entry(source_key.clone())
+                    .or_insert(None);
+                self.masonry_dimension_attempted.insert(source_key);
+            }
+        }
+        {
+            let tab = &mut self.workspace.tabs[tab_index];
+            tab.masonry_dimensions_scan_receiver = None;
+            tab.masonry_dimensions_scan_pending_revision = None;
+            tab.masonry_dimensions_scan_cancellation = None;
+            for (entry_id, width, height, ratio) in tab_dimension_updates {
+                tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
+                tab.masonry_aspect_ratios.insert(entry_id, ratio);
+            }
+            tab.masonry_dimensions_prepared_revision = Some(revision);
+        }
+
+        // A disconnected worker is treated as an unknown-dimensions result for
+        // this revision rather than blocking Masonry indefinitely.
+        ctx.request_repaint();
+        true
+    }
+
+    /// Apply cached dimension metadata for a visible Masonry entry, or queue a
+    /// lightweight fallback probe if a future caller requests one. Filesystem
+    /// entries are normally handled by the collection-wide first-layout scan.
     /// Archive entries intentionally skip this pass: their thumbnail pipeline
     /// already reads/decompresses the member and obtains dimensions from those bytes.
     pub(crate) fn request_masonry_dimensions(

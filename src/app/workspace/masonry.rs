@@ -87,6 +87,13 @@ impl crate::app::types::ViewerApp {
             crate::app::queues::update_masonry_thumbnail_visibility(&HashSet::new());
             return;
         }
+        // Resolve every filesystem entry's cheap header/EXIF dimensions in one
+        // background pass before creating the first shortest-column layout.
+        // This prevents a large collection from reflowing repeatedly as each
+        // newly visible card discovers its aspect ratio.
+        let masonry_dimensions_ready =
+            self.prepare_masonry_dimensions_for_layout(tab_index, ctx);
+
         let footer_height = if selection_mode { 112.0 } else { 82.0 };
         let footer_bottom = layout_rect.bottom() - 8.0;
         let footer_top = (footer_bottom - footer_height).max(layout_rect.top() + 24.0);
@@ -134,6 +141,17 @@ impl crate::app::types::ViewerApp {
                     .id_salt(("masonry_scroll", tab_id))
                     .auto_shrink([false, false])
                     .show(content_ui, |scroll_ui| {
+                        if !masonry_dimensions_ready {
+                            scroll_ui.centered_and_justified(|loading_ui| {
+                                loading_ui.vertical_centered(|loading_ui| {
+                                    loading_ui.add(egui::Spinner::new());
+                                    loading_ui.label(
+                                        "Preparing Masonry layout from image dimensions…",
+                                    );
+                                });
+                            });
+                            return;
+                        }
                         let viewport_width = scroll_ui.available_width().max(1.0);
                         scroll_ui.set_min_width(viewport_width);
                         scroll_ui.set_max_width(viewport_width);

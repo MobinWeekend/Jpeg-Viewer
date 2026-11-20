@@ -170,9 +170,12 @@ impl crate::app::types::ViewerApp {
             let key = entry.get_id();
             let thumbnail_source_key = crate::app::queues::source_thumbnail_key(entry);
             visible_sources.insert(thumbnail_source_key.clone());
-            // Header/EXIF dimensions are requested only for visible filesystem
-            // images. Archive dimensions arrive from the bytes already read by
-            // their thumbnail pipeline, avoiding a second archive extraction.
+            // The collection-wide pass has already prepared the first layout.
+            // Keep this cheap cache-application step for every visible entry:
+            // thumbnail pipelines can still discover better source dimensions
+            // later (for example, when a header probe could not read a format).
+            // Archive entries reuse dimensions from their thumbnail byte buffer,
+            // so this does not trigger a second archive extraction.
             self.request_masonry_dimensions(entry, ctx);
             let image_rect = tile_rect.shrink(TILE_MARGIN);
             // Request exactly the largest physical dimension needed by this
