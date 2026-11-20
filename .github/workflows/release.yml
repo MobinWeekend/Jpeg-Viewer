@@ -648,9 +648,8 @@ jobs:
           IMAGE='${{ matrix.image }}'
           CONTAINER_NAME="jpeg-viewer-arch-${{ matrix.arch }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
-          # Keep the package in the container filesystem. Export it with docker
-          # cp after the build; do not depend on a runner/container bind mount
-          # to carry the build artifact back to GitHub Actions.
+          # Keep build outputs on the container's normal writable filesystem.
+          # Docker cp cannot copy directly from tmpfs mounts such as /tmp.
           rm -rf out
           mkdir -p out
           cleanup_arch_container() {
@@ -672,14 +671,21 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel rust cargo pkgconf dbus libx11 libxkbcommon wayland mesa git zstd unrar python
           getent passwd nobody >/dev/null || { echo "The Arch container has no nobody account"; exit 1; }
 
-          mkdir -p /tmp/arch-build /tmp/arch-home /tmp/arch-output
-          cp /src/packaging/arch/PKGBUILD /tmp/arch-build/PKGBUILD
-          chown -R nobody:nobody /tmp/arch-build /tmp/arch-home /tmp/arch-output
-          cd /tmp/arch-build
+          ARCH_ROOT=/var/cache/jpeg-viewer-arch
+          BUILD_DIR="$ARCH_ROOT/build"
+          HOME_DIR="$ARCH_ROOT/home"
+          OUTPUT_DIR="$ARCH_ROOT/output"
+          rm -rf "$ARCH_ROOT"
+          mkdir -p "$BUILD_DIR" "$HOME_DIR" "$OUTPUT_DIR"
+          cp /src/packaging/arch/PKGBUILD "$BUILD_DIR/PKGBUILD"
+          chown -R nobody:nobody "$ARCH_ROOT"
+          cd "$BUILD_DIR"
 
-          # Arch makepkg explicitly supports PKGDEST/PKGEXT as command
-          # environment overrides. This avoids depending on edits to the
-          # container's global makepkg.conf or a bind-mounted output folder.
+          echo "Arch build filesystem:"
+          findmnt -T "$ARCH_ROOT" -no TARGET,FSTYPE,SOURCE || true
+          echo "Arch package destination: $OUTPUT_DIR"
+
+          # PKGDEST and PKGEXT are documented makepkg environment overrides.
           runuser -u nobody -- env \
             -u CC -u CXX -u RUSTFLAGS -u CARGO_ENCODED_RUSTFLAGS \
             -u CARGO_BUILD_RUSTFLAGS \
@@ -687,25 +693,22 @@ jobs:
             -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER \
             -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
             -u CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS \
-            HOME=/tmp/arch-home USER=nobody LOGNAME=nobody \
-            PKGDEST=/tmp/arch-output PKGEXT=.pkg.tar.zst \
+            HOME="$HOME_DIR" USER=nobody LOGNAME=nobody \
+            PKGDEST="$OUTPUT_DIR" PKGEXT=.pkg.tar.zst \
             makepkg --noconfirm --cleanbuild
 
-          PACKAGE_FILE="$(find /tmp/arch-output -maxdepth 1 -type f \
-            -name 'jpeg-viewer-*.pkg.tar.zst' -print -quit)"
-          if [ -z "$PACKAGE_FILE" ]; then
-            echo "No Arch package was generated in /tmp/arch-output."
-            echo "makepkg configuration and environment:"
-            makepkg --version
-            printf 'PKGDEST requested: %s\nPKGEXT requested: %s\n' /tmp/arch-output .pkg.tar.zst
-            echo "Package output directory contents:"
-            find /tmp/arch-output -maxdepth 2 -printf '%M %u:%g %p (%s bytes)\n'
-            echo "Any package archives elsewhere in the build tree:"
-            find /tmp/arch-build -maxdepth 5 -type f \
+          echo "Package output directory contents:"
+          find "$OUTPUT_DIR" -maxdepth 2 -type f -printf '%M %u:%g %p (%s bytes)\n'
+          mapfile -t BUILT_PACKAGES < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print)
+          if [ "${#BUILT_PACKAGES[@]}" -ne 1 ]; then
+            echo "Expected exactly one Arch package, found ${#BUILT_PACKAGES[@]}"
+            echo "Other package archives in build root:"
+            find "$BUILD_DIR" -maxdepth 5 -type f \
               \( -name '*.pkg.tar' -o -name '*.pkg.tar.*' \) -printf '%M %u:%g %p (%s bytes)\n'
             exit 1
           fi
 
+          PACKAGE_FILE="${BUILT_PACKAGES[0]}"
           PACKAGE_NAME="$(basename "$PACKAGE_FILE")"
           case "$PACKAGE_NAME" in
             "jpeg-viewer-${ARCH_VERSION}-"*.pkg.tar.zst) ;;
@@ -714,18 +717,26 @@ jobs:
               exit 1
               ;;
           esac
-
           chmod 0644 "$PACKAGE_FILE"
-          printf '%s\n' "$PACKAGE_NAME" > /tmp/arch-package-name.txt
-          chmod 0644 /tmp/arch-package-name.txt
-          printf 'Created Arch package inside container: %s\n' "$PACKAGE_FILE"
+          echo "ARCH_PACKAGE_READY=$PACKAGE_NAME"
           ARCH_SCRIPT
 
-          # docker cp works with both running and stopped containers. Copy the
-          # exact package path reported by the container, not a guessed folder.
-          docker cp "$CONTAINER_NAME:/tmp/arch-package-name.txt" \
-            "$RUNNER_TEMP/arch-package-name.txt"
-          PACKAGE_NAME="$(tr -d '\r\n' < "$RUNNER_TEMP/arch-package-name.txt")"
+          # Copy from /var/cache (container writable layer), not /tmp (which
+          # may be tmpfs and is not supported by docker cp).
+          docker cp "$CONTAINER_NAME:/var/cache/jpeg-viewer-arch/output/." out/
+
+          mapfile -t PACKAGES < <(find out -maxdepth 1 -type f -name 'jpeg-viewer-*.pkg.tar.zst' -print)
+          if [ "${#PACKAGES[@]}" -ne 1 ]; then
+            echo "Expected exactly one Arch package in runner output, found ${#PACKAGES[@]}"
+            echo "Container package listing:"
+            docker exec "$CONTAINER_NAME" find /var/cache/jpeg-viewer-arch/output -maxdepth 2 -type f -printf '%M %u:%g %p (%s bytes)\\n' || true
+            echo "Runner output listing:"
+            find out -maxdepth 2 -printf '%M %u:%g %p (%s bytes)'
+            exit 1
+          fi
+
+          PACKAGE_FILE="${PACKAGES[0]}"
+          PACKAGE_NAME="$(basename "$PACKAGE_FILE")"
           case "$PACKAGE_NAME" in
             "jpeg-viewer-${ARCH_VERSION}-"*.pkg.tar.zst) ;;
             *)
@@ -734,14 +745,11 @@ jobs:
               ;;
           esac
 
-          docker cp "$CONTAINER_NAME:/tmp/arch-output/$PACKAGE_NAME" "out/$PACKAGE_NAME"
-          test -s "out/$PACKAGE_NAME" || {
-            echo "docker cp did not produce a non-empty package: out/$PACKAGE_NAME"
-            find out -maxdepth 1 -printf '%M %u:%g %p (%s bytes)\n'
+          test -s "$PACKAGE_FILE" || {
+            echo "docker cp did not produce a non-empty package: $PACKAGE_FILE"
             exit 1
           }
-
-          cp "out/$PACKAGE_NAME" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst"
+          cp "$PACKAGE_FILE" "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst"
           tar -tf "JPEG-Viewer-Arch-${{ matrix.arch }}.pkg.tar.zst" | grep -E 'usr/bin/jpeg_viewer|\.desktop$|metainfo|mime/packages|LICENSE'
 
       - name: Upload Arch package
