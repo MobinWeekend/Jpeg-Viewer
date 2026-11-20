@@ -399,21 +399,31 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
 
     // The Masonry mode switch precedes File in every desktop-menu-bar layout.
     // Native decorations use the shared compact Masonry glyph to save row width.
-    let masonry_active = app.workspace.active_kind()
-        == crate::app::workspace::WorkspaceTabKind::Masonry;
+    let masonry_active =
+        app.workspace.active_kind() == crate::app::workspace::WorkspaceTabKind::Masonry;
     let masonry_enabled = app.masonry_toggle_available();
     if app.settings_manager.get().show_titlebar {
-        let masonry_toggle = crate::app::ui::masonry_toggle_button(
-            ui, masonry_active, masonry_enabled, 24.0,
-        ).on_hover_text(if masonry_active { "Return to Viewer" } else { "Open current entries in Masonry" });
+        let masonry_toggle =
+            crate::app::ui::masonry_toggle_button(ui, masonry_active, masonry_enabled, 24.0)
+                .on_hover_text(if masonry_active {
+                    "Return to Viewer"
+                } else {
+                    "Open current entries in Masonry"
+                });
         if masonry_toggle.clicked() {
             app.activate_masonry_from_navigation_button();
         }
     } else {
         let masonry_toggle = ui
-            .add_enabled_ui(masonry_enabled, |ui| ui.selectable_label(masonry_active, "Masonry"))
+            .add_enabled_ui(masonry_enabled, |ui| {
+                ui.selectable_label(masonry_active, "Masonry")
+            })
             .inner
-            .on_hover_text(if masonry_active { "Return to Viewer" } else { "Open current entries in Masonry" });
+            .on_hover_text(if masonry_active {
+                "Return to Viewer"
+            } else {
+                "Open current entries in Masonry"
+            });
         if masonry_toggle.clicked() {
             app.activate_masonry_from_navigation_button();
         }
@@ -439,7 +449,10 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             ui.close();
         }
         let has_path = !app.is_home_surface_active()
-            && app.current_image_path.as_ref().is_some_and(|path| path.is_file());
+            && app
+                .current_image_path
+                .as_ref()
+                .is_some_and(|path| path.is_file());
         if ui
             .add_enabled(has_path, egui::Button::new("Open With…"))
             .clicked()
@@ -452,10 +465,17 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             }
             ui.close();
         }
-        let locate_path = app.current_image_path.as_deref().filter(|path| {
-            !app.is_home_surface_active() && path.is_file()
-        });
-        if ui.add_enabled(locate_path.is_some(), egui::Button::new("Locate in File Manager")).clicked() {
+        let locate_path = app
+            .current_image_path
+            .as_deref()
+            .filter(|path| !app.is_home_surface_active() && path.is_file());
+        if ui
+            .add_enabled(
+                locate_path.is_some(),
+                egui::Button::new("Locate in File Manager"),
+            )
+            .clicked()
+        {
             if let Some(path) = locate_path {
                 if let Err(error) = crate::app::external_open::reveal_in_file_manager(path) {
                     app.queue_status = Some(format!("Could not locate file: {error}"));
@@ -463,10 +483,11 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             }
             ui.close();
         }
-        let can_delete_current = !app.is_home_surface_active() && matches!(
-            app.image_entries.get(app.current_index),
-            Some(crate::imaging::entry::ImageEntry::File(_))
-        );
+        let can_delete_current = !app.is_home_surface_active()
+            && matches!(
+                app.image_entries.get(app.current_index),
+                Some(crate::imaging::entry::ImageEntry::File(_))
+            );
         if ui
             .add_enabled(can_delete_current, egui::Button::new("Delete Image…"))
             .clicked()
@@ -489,12 +510,16 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
     ui.menu_button("Edit", |ui| {
         *ui.style_mut() = popup_style.clone();
         let has_image = !app.image_entries.is_empty();
-        if ui.add_enabled(has_image, egui::Button::new("Copy Image")).clicked() {
+        if ui
+            .add_enabled(has_image, egui::Button::new("Copy Image"))
+            .clicked()
+        {
             app.copy_image_to_clipboard();
             ui.close();
         }
         ui.separator();
-        let can_edit = !app.is_home_surface_active() && !app.image_entries.is_empty() && !app.is_loading();
+        let can_edit =
+            !app.is_home_surface_active() && !app.image_entries.is_empty() && !app.is_loading();
         if ui
             .add_enabled(can_edit, egui::Button::new("Edit Image…"))
             .clicked()
@@ -529,7 +554,14 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
     ui.menu_button("View", |ui| {
         *ui.style_mut() = popup_style.clone();
         let pinned = app.window_always_on_top;
-        if ui.button(if pinned { "Unpin Window" } else { "Pin Window to Top" }).clicked() {
+        if ui
+            .button(if pinned {
+                "Unpin Window"
+            } else {
+                "Pin Window to Top"
+            })
+            .clicked()
+        {
             app.window_always_on_top = !pinned;
             let level = if app.window_always_on_top {
                 egui::WindowLevel::AlwaysOnTop
@@ -539,39 +571,60 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
             ui.close();
         }
-        let current_is_raw = app.image_entries.get(app.current_index).is_some_and(|entry| {
-            let name = match entry {
-                crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
-                crate::imaging::entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
-                crate::imaging::entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
-                crate::imaging::entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
-            };
-            name.extension()
-                .and_then(|extension| extension.to_str())
-                .and_then(crate::imaging::core::ImageFormat::from_extension)
-                == Some(crate::imaging::core::ImageFormat::CameraRaw)
-        });
+        let current_is_raw = app
+            .image_entries
+            .get(app.current_index)
+            .is_some_and(|entry| {
+                let name = match entry {
+                    crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
+                    crate::imaging::entry::ImageEntry::Zip(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                    crate::imaging::entry::ImageEntry::S7z(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                    crate::imaging::entry::ImageEntry::Rar(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                };
+                name.extension()
+                    .and_then(|extension| extension.to_str())
+                    .and_then(crate::imaging::core::ImageFormat::from_extension)
+                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
+            });
         if current_is_raw {
             let raw_label = if app.showing_raw_developed {
                 "RAW developed (full resolution)"
             } else {
                 "View RAW (full quality)"
             };
-            if ui.add_enabled(!app.showing_raw_developed && !app.is_loading(), egui::Button::new(raw_label)).clicked() {
+            if ui
+                .add_enabled(
+                    !app.showing_raw_developed && !app.is_loading(),
+                    egui::Button::new(raw_label),
+                )
+                .clicked()
+            {
                 app.load_current_image_as_raw();
                 ui.close();
             }
         }
         ui.separator();
         if ui
-            .add_enabled(!app.image_entries.is_empty(), egui::Button::new("Masonry · Current entries"))
+            .add_enabled(
+                !app.image_entries.is_empty(),
+                egui::Button::new("Masonry · Current entries"),
+            )
             .clicked()
         {
             app.open_local_masonry();
             ui.close();
         }
         if ui
-            .add_enabled(app.current_directory.is_some(), egui::Button::new("Masonry · Current folder"))
+            .add_enabled(
+                app.current_directory.is_some(),
+                egui::Button::new("Masonry · Current folder"),
+            )
             .clicked()
         {
             app.open_folder_masonry();
@@ -594,13 +647,18 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             select_sidebar_tab(app, "info");
             ui.close();
         }
-        if ui.button(if app.settings_manager.get().show_file_sidebar {
-            "Hide Sidebar"
-        } else {
-            "Show Sidebar"
-        }).clicked() {
+        if ui
+            .button(if app.settings_manager.get().show_file_sidebar {
+                "Hide Sidebar"
+            } else {
+                "Show Sidebar"
+            })
+            .clicked()
+        {
             let visible = !app.settings_manager.get().show_file_sidebar;
-            let _ = app.settings_manager.update(|settings| settings.show_file_sidebar = visible);
+            let _ = app
+                .settings_manager
+                .update(|settings| settings.show_file_sidebar = visible);
             ui.close();
         }
         if ui

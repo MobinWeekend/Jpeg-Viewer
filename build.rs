@@ -23,8 +23,8 @@ fn build_windows() {
     res.set("CompanyName", "MobinWeekend");
     res.set("LegalCopyright", "Copyright © MobinWeekend");
 
-    let version = std::env::var("CARGO_PKG_VERSION")
-        .expect("Cargo did not provide CARGO_PKG_VERSION");
+    let version =
+        std::env::var("CARGO_PKG_VERSION").expect("Cargo did not provide CARGO_PKG_VERSION");
     res.set("FileVersion", &version);
     res.set("ProductVersion", &version);
 

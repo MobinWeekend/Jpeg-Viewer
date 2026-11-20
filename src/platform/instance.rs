@@ -4,16 +4,16 @@
 //! loopback TCP and receives length-prefixed UTF-8 paths from later launches. The
 //! transport is intentionally local-only; no network interface is exposed.
 
-use std::fs::{self, File};
+use eframe::egui;
 #[cfg(not(windows))]
 use std::fs::OpenOptions;
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
-use eframe::egui;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -95,13 +95,19 @@ fn acquire_lock(path: &Path, _mutex_name: &str) -> io::Result<LockState> {
     const LOCK_EX: c_int = 2;
     const LOCK_NB: c_int = 4;
 
-    let file = OpenOptions::new().create(true).read(true).write(true).open(path)?;
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(path)?;
     let result = unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
     if result == 0 {
         Ok(LockState::Acquired(InstanceLock { _file: file }))
     } else {
         let error = io::Error::last_os_error();
-        if matches!(error.raw_os_error(), Some(11) | Some(35)) || error.kind() == io::ErrorKind::WouldBlock {
+        if matches!(error.raw_os_error(), Some(11) | Some(35))
+            || error.kind() == io::ErrorKind::WouldBlock
+        {
             Ok(LockState::AlreadyRunning)
         } else {
             Err(error)
@@ -124,13 +130,18 @@ fn acquire_lock(_path: &Path, mutex_name: &str) -> io::Result<LockState> {
     }
     const ERROR_ALREADY_EXISTS: u32 = 183;
 
-    let wide: Vec<u16> = mutex_name.encode_utf16().chain(std::iter::once(0)).collect();
+    let wide: Vec<u16> = mutex_name
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     let handle = unsafe { CreateMutexW(std::ptr::null_mut(), 1, wide.as_ptr()) };
     if handle.is_null() {
         return Err(io::Error::last_os_error());
     }
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
-        unsafe { CloseHandle(handle); }
+        unsafe {
+            CloseHandle(handle);
+        }
         Ok(LockState::AlreadyRunning)
     } else {
         Ok(LockState::Acquired(InstanceLock { handle }))
@@ -155,7 +166,9 @@ impl Drop for InstanceLock {
 #[cfg(not(any(unix, windows)))]
 fn acquire_lock(path: &Path, _mutex_name: &str) -> io::Result<LockState> {
     match OpenOptions::new().write(true).create_new(true).open(path) {
-        Ok(_) => Ok(LockState::Acquired(InstanceLock { path: path.to_path_buf() })),
+        Ok(_) => Ok(LockState::Acquired(InstanceLock {
+            path: path.to_path_buf(),
+        })),
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(LockState::AlreadyRunning),
         Err(error) => Err(error),
     }
@@ -171,7 +184,10 @@ impl Drop for InstanceLock {
 /// Enable single-instance behavior for this launch. A forwarded process exits after
 /// the primary acknowledges the request; a primary receives later path batches.
 pub fn launch_or_forward(settings_path: &Path, paths: Vec<PathBuf>) -> io::Result<LaunchOutcome> {
-    let parent = settings_path.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let parent = settings_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     fs::create_dir_all(parent)?;
     let lock_path = parent.join("jpeg-viewer.instance.lock");
     let info_path = parent.join("jpeg-viewer.instance.info");
@@ -244,7 +260,12 @@ fn stable_path_hash(path: &Path) -> u64 {
     hash
 }
 
-fn write_instance_info(path: &Path, address: SocketAddr, token: &str, process_id: u32) -> io::Result<()> {
+fn write_instance_info(
+    path: &Path,
+    address: SocketAddr,
+    token: &str,
+    process_id: u32,
+) -> io::Result<()> {
     let temp = path.with_extension("info.tmp");
     let mut file = File::create(&temp)?;
     writeln!(file, "{}", address.port())?;
@@ -263,13 +284,21 @@ fn write_instance_info(path: &Path, address: SocketAddr, token: &str, process_id
 fn read_instance_info(path: &Path) -> io::Result<(u16, String, u32)> {
     let text = fs::read_to_string(path)?;
     let mut lines = text.lines();
-    let port = lines.next().and_then(|value| value.parse::<u16>().ok())
+    let port = lines
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid instance port"))?;
     let token = lines.next().unwrap_or_default().to_owned();
     if token.len() != TOKEN_LEN || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid instance token"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid instance token",
+        ));
     }
-    let process_id = lines.next().and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
+    let process_id = lines
+        .next()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0);
     Ok((port, token, process_id))
 }
 
@@ -298,7 +327,10 @@ fn forward_to_primary(info_path: &Path, paths: Vec<PathBuf>) -> io::Result<()> {
     while Instant::now() < deadline {
         match read_instance_info(info_path) {
             Ok((port, token, process_id)) => {
-                match TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], port)), Duration::from_millis(250)) {
+                match TcpStream::connect_timeout(
+                    &SocketAddr::from(([127, 0, 0, 1], port)),
+                    Duration::from_millis(250),
+                ) {
                     Ok(mut stream) => {
                         allow_primary_to_set_foreground(process_id);
                         stream.set_write_timeout(Some(Duration::from_secs(2)))?;
@@ -307,15 +339,22 @@ fn forward_to_primary(info_path: &Path, paths: Vec<PathBuf>) -> io::Result<()> {
                         stream.write_all(&(paths.len() as u32).to_le_bytes())?;
                         for path in &paths {
                             let bytes = path.to_string_lossy().as_bytes().to_vec();
-                            let len = u32::try_from(bytes.len()).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path is too long"))?;
+                            let len = u32::try_from(bytes.len()).map_err(|_| {
+                                io::Error::new(io::ErrorKind::InvalidInput, "path is too long")
+                            })?;
                             stream.write_all(&len.to_le_bytes())?;
                             stream.write_all(&bytes)?;
                         }
                         stream.flush()?;
                         let mut ack = [0_u8; 1];
                         stream.read_exact(&mut ack)?;
-                        if ack[0] == 1 { return Ok(()); }
-                        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "primary rejected the request"));
+                        if ack[0] == 1 {
+                            return Ok(());
+                        }
+                        return Err(io::Error::new(
+                            io::ErrorKind::PermissionDenied,
+                            "primary rejected the request",
+                        ));
                     }
                     Err(error) => last_error = Some(error),
                 }
@@ -324,15 +363,25 @@ fn forward_to_primary(info_path: &Path, paths: Vec<PathBuf>) -> io::Result<()> {
         }
         thread::sleep(Duration::from_millis(50));
     }
-    Err(last_error.unwrap_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "primary instance did not become ready")))
+    Err(last_error.unwrap_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            "primary instance did not become ready",
+        )
+    }))
 }
 
 fn read_request(mut stream: TcpStream, expected_token: &str) -> Option<Vec<PathBuf>> {
     stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
-    stream.set_write_timeout(Some(Duration::from_secs(2))).ok()?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .ok()?;
     let mut token = [0_u8; TOKEN_LEN];
     stream.read_exact(&mut token).ok()?;
-    if token.as_slice() != expected_token.as_bytes() { let _ = stream.write_all(&[0]); return None; }
+    if token.as_slice() != expected_token.as_bytes() {
+        let _ = stream.write_all(&[0]);
+        return None;
+    }
     let mut count = [0_u8; 4];
     stream.read_exact(&mut count).ok()?;
     let count = u32::from_le_bytes(count).min(4096) as usize;
@@ -341,7 +390,10 @@ fn read_request(mut stream: TcpStream, expected_token: &str) -> Option<Vec<PathB
         let mut len = [0_u8; 4];
         stream.read_exact(&mut len).ok()?;
         let len = u32::from_le_bytes(len) as usize;
-        if len > 1024 * 1024 { let _ = stream.write_all(&[0]); return None; }
+        if len > 1024 * 1024 {
+            let _ = stream.write_all(&[0]);
+            return None;
+        }
         let mut bytes = vec![0_u8; len];
         stream.read_exact(&mut bytes).ok()?;
         let value = String::from_utf8(bytes).ok()?;
@@ -381,7 +433,10 @@ mod tests {
             if let Some(paths) = requests.into_iter().next() {
                 break paths;
             }
-            assert!(Instant::now() < deadline, "primary did not receive forwarded paths");
+            assert!(
+                Instant::now() < deadline,
+                "primary did not receive forwarded paths"
+            );
             thread::sleep(Duration::from_millis(10));
         };
         assert_eq!(received, expected);
@@ -392,7 +447,10 @@ mod tests {
 
     #[test]
     fn separate_file_manager_launches_forward_every_selected_path() {
-        let unique = format!("jpeg-viewer-instance-batch-test-{:032x}", rand::random::<u128>());
+        let unique = format!(
+            "jpeg-viewer-instance-batch-test-{:032x}",
+            rand::random::<u128>()
+        );
         let directory = std::env::temp_dir().join(unique);
         fs::create_dir_all(&directory).unwrap();
         let settings_path = directory.join("settings.ini");
@@ -419,7 +477,10 @@ mod tests {
             for paths in server.drain_requests() {
                 received.extend(paths);
             }
-            assert!(Instant::now() < deadline, "primary did not receive every forwarded path");
+            assert!(
+                Instant::now() < deadline,
+                "primary did not receive every forwarded path"
+            );
             thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(received, expected);
@@ -427,5 +488,4 @@ mod tests {
         drop(server);
         let _ = fs::remove_dir_all(directory);
     }
-
 }

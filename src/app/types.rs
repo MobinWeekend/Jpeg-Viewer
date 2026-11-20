@@ -1,14 +1,14 @@
 use super::editing::EditOutputFormat;
 use super::image_metadata::FileMetadata;
-use super::virtual_texture::{PreparationProgress, VirtualTexture};
 use super::texture_mipmap::SharedMipmapState;
+use super::virtual_texture::{PreparationProgress, VirtualTexture};
 use crate::decoder::gif::animation::GifAnimation;
 use crate::imaging::core::DecodedImage;
 use crate::imaging::core::ImageFormat;
 use crate::imaging::entry::ImageEntry;
-use crate::settings::SettingsManager;
-use crate::input::shortcuts::InputBindings;
 use crate::imaging::sort::SortMethod;
+use crate::input::shortcuts::InputBindings;
+use crate::settings::SettingsManager;
 use eframe::egui;
 use lru::LruCache;
 use std::collections::{HashMap, HashSet};
@@ -101,7 +101,8 @@ impl Drop for PreloadTask {
     fn drop(&mut self) {
         // Dropping/clearing a preload task is itself a cancellation request.
         // Workers check this flag between bounded reads and before publishing.
-        self.cancellation.store(true, std::sync::atomic::Ordering::Release);
+        self.cancellation
+            .store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -443,8 +444,14 @@ pub struct ViewerApp {
     /// applied lazily by visible Masonry cards instead of scanning every tab
     /// whenever one thumbnail finishes. Exact source dimensions take priority.
     pub masonry_aspect_ratio_results: HashMap<String, f32>,
-    pub masonry_dimension_receivers:
-        Vec<(String, bool, Instant, Arc<Mutex<Option<Instant>>>, Arc<AtomicBool>, Receiver<Option<(u32, u32)>>)>,
+    pub masonry_dimension_receivers: Vec<(
+        String,
+        bool,
+        Instant,
+        Arc<Mutex<Option<Instant>>>,
+        Arc<AtomicBool>,
+        Receiver<Option<(u32, u32)>>,
+    )>,
 }
 
 impl Default for ViewerApp {
@@ -549,7 +556,7 @@ impl Default for ViewerApp {
 
             is_animating: false,
 
-    // ====== SLIDESHOW ======
+            // ====== SLIDESHOW ======
             slideshow_enabled: false,
             power_inhibitor: crate::platform::power::PowerInhibitor::default(),
             slideshow_interval: Duration::from_millis(settings.slideshow_interval_ms),
@@ -602,7 +609,8 @@ impl Default for ViewerApp {
             // ====== WINDOW ======
             startup_fullscreen_handled: false,
             startup_window_placement_handled: false,
-            startup_restore_maximize_pending: settings.window_maximized && !settings.start_fullscreen,
+            startup_restore_maximize_pending: settings.window_maximized
+                && !settings.start_fullscreen,
             preserve_reset_window_geometry: false,
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
@@ -768,9 +776,13 @@ impl ViewerApp {
 
     pub(crate) fn is_home_surface_active(&self) -> bool {
         self.workspace.home_page_visible
-            && self.workspace.tabs.get(self.workspace.active_index).is_some_and(|tab| {
-                tab.id == 1 && tab.kind == super::workspace::WorkspaceTabKind::Viewer
-            })
+            && self
+                .workspace
+                .tabs
+                .get(self.workspace.active_index)
+                .is_some_and(|tab| {
+                    tab.id == 1 && tab.kind == super::workspace::WorkspaceTabKind::Viewer
+                })
     }
 
     pub fn window_title(&self) -> String {

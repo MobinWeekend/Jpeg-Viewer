@@ -79,7 +79,6 @@ pub fn set_enabled(enabled: bool) {
     let _ = enabled;
 }
 
-
 /// Release any native backdrop resources while the native window/display is still alive.
 pub fn shutdown() {
     set_enabled(false);
@@ -476,7 +475,6 @@ mod macos_backdrop {
         apply_window_shape(view_handle as Obj, enabled);
     }
 }
-
 
 #[cfg(target_os = "linux")]
 mod wayland_backdrop;

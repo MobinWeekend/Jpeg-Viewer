@@ -1,7 +1,7 @@
 //! Actions that open Masonry entries or dispatch commands from the grid.
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 impl crate::app::types::ViewerApp {
     pub(super) fn open_masonry_entry_in_viewer(
@@ -10,10 +10,20 @@ impl crate::app::types::ViewerApp {
         entry: &ImageEntry,
         ctx: &egui::Context,
     ) {
-        let Some(masonry_tab) = self.workspace.tabs.get(masonry_tab_index) else { return; };
+        let Some(masonry_tab) = self.workspace.tabs.get(masonry_tab_index) else {
+            return;
+        };
         let entries = masonry_tab.entries.clone();
-        let Some(index) = entries.iter().position(|candidate| candidate.get_id() == entry.get_id()) else { return; };
-        let directory = masonry_tab.directory.clone().or_else(|| entry_parent(entry));
+        let Some(index) = entries
+            .iter()
+            .position(|candidate| candidate.get_id() == entry.get_id())
+        else {
+            return;
+        };
+        let directory = masonry_tab
+            .directory
+            .clone()
+            .or_else(|| entry_parent(entry));
         if !self.prepare_for_image_change(
             "Save or discard unsaved edits before opening this Masonry collection.",
         ) {
@@ -21,18 +31,33 @@ impl crate::app::types::ViewerApp {
         }
         self.snapshot_active_viewer_tab();
 
-        let viewer_index = self.workspace.tabs.iter().position(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
-            .or_else(|| self.workspace.tabs.iter().position(|tab| tab.kind == WorkspaceTabKind::Viewer));
+        let viewer_index = self
+            .workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+            .or_else(|| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.kind == WorkspaceTabKind::Viewer)
+            });
         let viewer_index = if let Some(index) = viewer_index {
             index
         } else {
             self.workspace.tabs.insert(0, WorkspaceTab::viewer());
             0
         };
-        if viewer_index >= self.workspace.tabs.len() { return; }
+        if viewer_index >= self.workspace.tabs.len() {
+            return;
+        }
         {
             let viewer = &mut self.workspace.tabs[viewer_index];
-            viewer.title = if viewer.id == 1 { "Viewer".to_owned() } else { viewer.title.clone() };
+            viewer.title = if viewer.id == 1 {
+                "Viewer".to_owned()
+            } else {
+                viewer.title.clone()
+            };
             viewer.entries = entries.clone();
             viewer.current_index = index;
             viewer.directory = directory.clone();
@@ -59,10 +84,19 @@ impl crate::app::types::ViewerApp {
         self.sync_current_entry_after_collection_change(ctx);
     }
 
-    pub(super) fn handle_masonry_action(&mut self, tab_index: usize, action: MasonryAction, ctx: &egui::Context) {
+    pub(super) fn handle_masonry_action(
+        &mut self,
+        tab_index: usize,
+        action: MasonryAction,
+        ctx: &egui::Context,
+    ) {
         let selected_entries = {
             let tab = &self.workspace.tabs[tab_index];
-            tab.entries.iter().filter(|entry| tab.selected.contains(&entry.get_id())).cloned().collect::<Vec<_>>()
+            tab.entries
+                .iter()
+                .filter(|entry| tab.selected.contains(&entry.get_id()))
+                .cloned()
+                .collect::<Vec<_>>()
         };
         match action {
             MasonryAction::Open(entry) => self.open_masonry_entry_in_viewer(tab_index, &entry, ctx),
@@ -79,9 +113,13 @@ impl crate::app::types::ViewerApp {
             MasonryAction::MoveEntries(entries) => self.copy_or_move_selected(entries, true),
             MasonryAction::DeleteEntries(entries) => {
                 let selected_count = entries.len();
-                let files = entries.into_iter().filter(|entry| matches!(entry, ImageEntry::File(_))).collect::<Vec<_>>();
+                let files = entries
+                    .into_iter()
+                    .filter(|entry| matches!(entry, ImageEntry::File(_)))
+                    .collect::<Vec<_>>();
                 if files.is_empty() {
-                    self.queue_status = Some("Archive entries cannot be deleted from inside an archive.".into());
+                    self.queue_status =
+                        Some("Archive entries cannot be deleted from inside an archive.".into());
                 } else {
                     let archive_count = selected_count.saturating_sub(files.len());
                     let tab_id = self.workspace.tabs[tab_index].id;
@@ -90,7 +128,11 @@ impl crate::app::types::ViewerApp {
             }
             MasonryAction::AddToQueue(path) => {
                 let added = self.add_queue_path(path);
-                self.queue_status = Some(if added { "Added image to Queue.".into() } else { "Image is already in Queue.".into() });
+                self.queue_status = Some(if added {
+                    "Added image to Queue.".into()
+                } else {
+                    "Image is already in Queue.".into()
+                });
             }
             MasonryAction::AddToFavorites(path) => self.add_favorite_path(path),
             MasonryAction::Rename(path) => self.begin_rename(&path),
@@ -101,7 +143,8 @@ impl crate::app::types::ViewerApp {
             }
             MasonryAction::OpenWith(path) => {
                 if let Err(error) = crate::app::external_open::open_with(&path) {
-                    self.queue_status = Some(format!("Could not open external application: {error}"));
+                    self.queue_status =
+                        Some(format!("Could not open external application: {error}"));
                 }
             }
             MasonryAction::OpenArchive(path) => {
@@ -110,19 +153,27 @@ impl crate::app::types::ViewerApp {
                 }
             }
             MasonryAction::CopyText(text) => {
-                self.queue_status = Some(match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
-                    Ok(()) => "Copied entry information to clipboard.".into(),
-                    Err(error) => format!("Could not copy entry information: {error}"),
-                });
+                self.queue_status = Some(
+                    match arboard::Clipboard::new()
+                        .and_then(|mut clipboard| clipboard.set_text(text))
+                    {
+                        Ok(()) => "Copied entry information to clipboard.".into(),
+                        Err(error) => format!("Could not copy entry information: {error}"),
+                    },
+                );
             }
             MasonryAction::OpenSelected => {
-                for entry in selected_entries { self.open_entry_in_image_tab(entry, false); }
+                for entry in selected_entries {
+                    self.open_entry_in_image_tab(entry, false);
+                }
                 self.queue_status = Some("Selected images opened in background tabs.".into());
             }
             MasonryAction::ViewSelected => {
-                if selected_entries.is_empty() || !self.prepare_for_image_change(
-                    "Save or discard unsaved edits before opening the selected collection.",
-                ) {
+                if selected_entries.is_empty()
+                    || !self.prepare_for_image_change(
+                        "Save or discard unsaved edits before opening the selected collection.",
+                    )
+                {
                     return;
                 }
                 self.snapshot_active_viewer_tab();
@@ -150,9 +201,13 @@ impl crate::app::types::ViewerApp {
             MasonryAction::Move => self.copy_or_move_selected(selected_entries, true),
             MasonryAction::Delete => {
                 let selected_count = selected_entries.len();
-                let files = selected_entries.into_iter().filter(|entry| matches!(entry, ImageEntry::File(_))).collect::<Vec<_>>();
+                let files = selected_entries
+                    .into_iter()
+                    .filter(|entry| matches!(entry, ImageEntry::File(_)))
+                    .collect::<Vec<_>>();
                 if files.is_empty() {
-                    self.queue_status = Some("Archive entries cannot be deleted from inside an archive.".into());
+                    self.queue_status =
+                        Some("Archive entries cannot be deleted from inside an archive.".into());
                 } else {
                     let archive_count = selected_count.saturating_sub(files.len());
                     let tab_id = self.workspace.tabs[tab_index].id;

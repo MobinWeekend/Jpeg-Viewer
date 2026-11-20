@@ -100,7 +100,10 @@ mod tests {
         assert_eq!(detect_format(&bytes), Some(ImageFormat::Tga));
 
         let registry = default_registry();
-        assert_eq!(registry.dimensions(&bytes, ImageFormat::Tga).unwrap(), (1, 1));
+        assert_eq!(
+            registry.dimensions(&bytes, ImageFormat::Tga).unwrap(),
+            (1, 1)
+        );
 
         let decoded = registry
             .decode(&bytes, ImageFormat::Tga, &DecodeOptions::default())
@@ -112,6 +115,10 @@ mod tests {
     #[test]
     fn malformed_tga_returns_an_error() {
         let decoder = TgaDecoder::new();
-        assert!(decoder.decode(&[0u8; 18], &DecodeOptions::default()).is_err());
+        assert!(
+            decoder
+                .decode(&[0u8; 18], &DecodeOptions::default())
+                .is_err()
+        );
     }
 }

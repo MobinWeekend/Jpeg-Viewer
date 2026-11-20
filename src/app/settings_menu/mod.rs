@@ -8,8 +8,8 @@ mod settings_file;
 mod slideshow;
 pub(crate) mod viewing;
 
-use crate::app::ui::tricks;
 use crate::app::types::ViewerApp;
+use crate::app::ui::tricks;
 use eframe::egui;
 
 /// Render settings in a docked, resizable sidebar on the right.

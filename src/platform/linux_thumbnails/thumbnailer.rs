@@ -44,7 +44,12 @@ fn data_directories() -> Vec<PathBuf> {
                 .collect::<Vec<_>>()
         })
         .filter(|paths| !paths.is_empty())
-        .unwrap_or_else(|| vec![PathBuf::from("/usr/local/share"), PathBuf::from("/usr/share")]);
+        .unwrap_or_else(|| {
+            vec![
+                PathBuf::from("/usr/local/share"),
+                PathBuf::from("/usr/share"),
+            ]
+        });
 
     directories.extend(data_dirs.into_iter().map(|path| path.join("thumbnailers")));
     directories
@@ -63,12 +68,18 @@ fn load_entries() -> Vec<ThumbnailerEntry> {
         let mut files = read_dir
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|extension| extension.to_str()) == Some("thumbnailer"))
+            .filter(|path| {
+                path.extension().and_then(|extension| extension.to_str()) == Some("thumbnailer")
+            })
             .collect::<Vec<_>>();
         files.sort();
 
         for path in files {
-            let Some(name) = path.file_name().and_then(|name| name.to_str()).map(str::to_owned) else {
+            let Some(name) = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned)
+            else {
                 continue;
             };
             if !seen_names.insert(name.clone()) {
@@ -88,7 +99,11 @@ fn load_entries() -> Vec<ThumbnailerEntry> {
             {
                 continue;
             }
-            let Some(exec) = section.get("Exec").map(str::trim).filter(|value| !value.is_empty()) else {
+            let Some(exec) = section
+                .get("Exec")
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
                 continue;
             };
             let Some(mime_types) = section.get("MimeType") else {
@@ -108,7 +123,10 @@ fn load_entries() -> Vec<ThumbnailerEntry> {
             entries.push(ThumbnailerEntry {
                 exec: exec.to_owned(),
                 mime_types,
-                try_exec: section.get("TryExec").map(|value| value.trim().to_owned()).filter(|value| !value.is_empty()),
+                try_exec: section
+                    .get("TryExec")
+                    .map(|value| value.trim().to_owned())
+                    .filter(|value| !value.is_empty()),
             });
         }
     }
@@ -136,7 +154,9 @@ fn executable_available(executable: &str) -> bool {
         return path.is_file();
     }
     std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).any(|directory| directory.join(executable).is_file()))
+        .map(|path| {
+            std::env::split_paths(&path).any(|directory| directory.join(executable).is_file())
+        })
         .unwrap_or(false)
 }
 
@@ -195,10 +215,8 @@ struct TemporaryOutput {
 impl TemporaryOutput {
     fn new() -> Option<Self> {
         let id = NEXT_OUTPUT_ID.fetch_add(1, Ordering::Relaxed);
-        let directory = std::env::temp_dir().join(format!(
-            "jpeg-viewer-thumbnail-{}-{id}",
-            std::process::id()
-        ));
+        let directory =
+            std::env::temp_dir().join(format!("jpeg-viewer-thumbnail-{}-{id}", std::process::id()));
         let mut builder = std::fs::DirBuilder::new();
         builder.mode(0o700).create(&directory).ok()?;
         Some(Self {
@@ -242,16 +260,27 @@ pub(super) fn generate(
     max_side: u32,
     overall_deadline: Instant,
 ) -> Option<image::RgbaImage> {
-    let mime_type = infer::get_from_path(path).ok().flatten()?.mime_type().to_owned();
+    let mime_type = infer::get_from_path(path)
+        .ok()
+        .flatten()?
+        .mime_type()
+        .to_owned();
     let input_path = path.to_str()?;
     let (source_mtime, source_size) = xdg_cache::source_stamp(path)?;
     let size = requested_flavor_size(max_side);
 
-    for entry in entries().iter().filter(|entry| mime_matches(entry, &mime_type)) {
+    for entry in entries()
+        .iter()
+        .filter(|entry| mime_matches(entry, &mime_type))
+    {
         if Instant::now() >= overall_deadline {
             break;
         }
-        if entry.try_exec.as_deref().is_some_and(|program| !executable_available(program)) {
+        if entry
+            .try_exec
+            .as_deref()
+            .is_some_and(|program| !executable_available(program))
+        {
             continue;
         }
 
@@ -276,7 +305,9 @@ pub(super) fn generate(
         let mut has_output = false;
         let mut valid = true;
         for token in tokens.iter().skip(1) {
-            let Some((expanded, token_has_output)) = expand_token(token, input_path, uri, output_path, size) else {
+            let Some((expanded, token_has_output)) =
+                expand_token(token, input_path, uri, output_path, size)
+            else {
                 valid = false;
                 break;
             };
@@ -357,8 +388,12 @@ mod tests {
             "file:///tmp/a%20file.jpg",
             "/tmp/out.png",
             512,
-        ).expect("valid thumbnailer entry");
-        assert_eq!(expanded, "--size=512:file:///tmp/a%20file.jpg:/tmp/a file.jpg:/tmp/out.png:%");
+        )
+        .expect("valid thumbnailer entry");
+        assert_eq!(
+            expanded,
+            "--size=512:file:///tmp/a%20file.jpg:/tmp/a file.jpg:/tmp/out.png:%"
+        );
         assert!(has_output);
     }
 

@@ -1,11 +1,15 @@
 //! Masonry workspace surface, filtering, sorting, selection, and grid layout.
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 impl crate::app::types::ViewerApp {
     /// Returns true when a non-viewer workspace rendered the central surface.
-    pub(crate) fn render_active_workspace(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
+    pub(crate) fn render_active_workspace(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+    ) -> bool {
         if self.workspace.active_kind() != WorkspaceTabKind::Masonry {
             self.masonry_visible_sources.clear();
             crate::app::queues::update_masonry_thumbnail_visibility(&HashSet::new());
@@ -42,14 +46,27 @@ impl crate::app::types::ViewerApp {
         // shortest-column layout. Defer completed thumbnail uploads until after
         // this frame has recalculated which cards are actually visible.
         self.collect_masonry_dimensions();
-        let Some(tab_index) = self.workspace.tabs.get(self.workspace.active_index)
-            .map(|tab| self.workspace.tabs.iter().position(|candidate| candidate.id == tab.id).unwrap_or(self.workspace.active_index))
-        else { return; };
+        let Some(tab_index) = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .map(|tab| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .position(|candidate| candidate.id == tab.id)
+                    .unwrap_or(self.workspace.active_index)
+            })
+        else {
+            return;
+        };
 
         let mut action: Option<MasonryAction> = None;
         let mut reload_folder = false;
         let mut selected_sort_method = self.sort_method;
-        let previous_tile_size = self.workspace.tabs[tab_index].masonry_tile_size.clamp(76.0, 512.0);
+        let previous_tile_size = self.workspace.tabs[tab_index]
+            .masonry_tile_size
+            .clamp(76.0, 512.0);
         let mut tile_size = previous_tile_size;
         let mut persist_tile_size = false;
         let tab_id = self.workspace.tabs[tab_index].id;
@@ -59,7 +76,8 @@ impl crate::app::types::ViewerApp {
         // Masonry is a bottom-docked workspace: the image grid owns the flexible
         // area and scrolls independently, while the themed two/three-row toolbar
         // stays anchored to the bottom edge of the central view.
-        let layout_rect = ui.available_rect_before_wrap()
+        let layout_rect = ui
+            .available_rect_before_wrap()
             .intersect(ui.clip_rect())
             .intersect(self.main_view_rect(ctx));
         if layout_rect.width() < 80.0 || layout_rect.height() < 40.0 {
@@ -72,7 +90,10 @@ impl crate::app::types::ViewerApp {
         let footer_top = (footer_bottom - footer_height).max(layout_rect.top() + 24.0);
         let footer_rect = egui::Rect::from_min_max(
             egui::pos2(layout_rect.left() + 8.0, footer_top),
-            egui::pos2((layout_rect.right() - 8.0).max(layout_rect.left() + 8.0), footer_bottom),
+            egui::pos2(
+                (layout_rect.right() - 8.0).max(layout_rect.left() + 8.0),
+                footer_bottom,
+            ),
         );
         let content_rect = egui::Rect::from_min_max(
             egui::pos2(layout_rect.left() + 8.0, layout_rect.top() + 8.0),
@@ -85,9 +106,7 @@ impl crate::app::types::ViewerApp {
         // Temporarily take ownership of the Masonry entry vector while building
         // the scroll area. Cloning the complete collection here used to duplicate
         // every PathBuf/archive name on every repaint for large folders.
-        let masonry_entries = std::mem::take(
-            &mut self.workspace.tabs[tab_index].entries,
-        );
+        let masonry_entries = std::mem::take(&mut self.workspace.tabs[tab_index].entries);
 
         // Only entries intersecting the current Masonry viewport should keep
         // exclusive Masonry thumbnail work alive.
@@ -125,7 +144,15 @@ impl crate::app::types::ViewerApp {
                                 grid_ui.set_min_width(content_width);
                                 grid_ui.set_max_width(content_width);
                                 let entries = &masonry_entries;
-                                let (selected, search, extension_filter, folder_masonry, recursive, directory, preferred_size) = {
+                                let (
+                                    selected,
+                                    search,
+                                    extension_filter,
+                                    folder_masonry,
+                                    recursive,
+                                    directory,
+                                    preferred_size,
+                                ) = {
                                     let tab = &self.workspace.tabs[tab_index];
                                     (
                                         tab.selected.clone(),
@@ -143,7 +170,8 @@ impl crate::app::types::ViewerApp {
                                 let selected_entries = if selected.is_empty() {
                                     Vec::new()
                                 } else {
-                                    entries.iter()
+                                    entries
+                                        .iter()
                                         .filter(|entry| selected.contains(&entry.get_id()))
                                         .collect::<Vec<_>>()
                                 };
@@ -153,24 +181,33 @@ impl crate::app::types::ViewerApp {
                                     // discover that no filter removes anything.
                                     entries.iter().collect::<Vec<_>>()
                                 } else {
-                                    entries.iter().filter(|entry| {
-                                        let name = entry_display_name(entry).to_lowercase();
-                                        let ext = Path::new(&name)
-                                            .extension()
-                                            .and_then(|value| value.to_str())
-                                            .unwrap_or("")
-                                            .to_owned();
-                                        (search.is_empty() || name.contains(&search))
-                                            && (extension_filter.is_empty() || ext == extension_filter)
-                                    }).collect::<Vec<_>>()
+                                    entries
+                                        .iter()
+                                        .filter(|entry| {
+                                            let name = entry_display_name(entry).to_lowercase();
+                                            let ext = Path::new(&name)
+                                                .extension()
+                                                .and_then(|value| value.to_str())
+                                                .unwrap_or("")
+                                                .to_owned();
+                                            (search.is_empty() || name.contains(&search))
+                                                && (extension_filter.is_empty()
+                                                    || ext == extension_filter)
+                                        })
+                                        .collect::<Vec<_>>()
                                 };
 
                                 if filtered.is_empty() {
                                     grid_ui.allocate_ui_with_layout(
-                                        egui::vec2(content_width, (content_rect.height() - 32.0).max(60.0)),
+                                        egui::vec2(
+                                            content_width,
+                                            (content_rect.height() - 32.0).max(60.0),
+                                        ),
                                         egui::Layout::top_down(egui::Align::Center),
                                         |empty_ui| {
-                                            empty_ui.add_space((content_rect.height() * 0.25).max(20.0));
+                                            empty_ui.add_space(
+                                                (content_rect.height() * 0.25).max(20.0),
+                                            );
                                             empty_ui.label(if entries.is_empty() {
                                                 "No supported images in this collection."
                                             } else {
@@ -179,7 +216,8 @@ impl crate::app::types::ViewerApp {
                                         },
                                     );
                                 } else {
-                                    let headers_enabled = self.settings_manager.get().masonry_show_folder_headers;
+                                    let headers_enabled =
+                                        self.settings_manager.get().masonry_show_folder_headers;
                                     // Recursive Folder Masonry always benefits from folder sections.
                                     // Local collections also get grouped when they contain images
                                     // from more than one source folder (or archive subfolder), so
@@ -207,8 +245,10 @@ impl crate::app::types::ViewerApp {
                                         // groups for every image in a large collection.
                                         let mut group_indices = HashMap::<String, usize>::new();
                                         for entry in filtered {
-                                            let label = entry_breadcrumb(entry, directory.as_deref());
-                                            if let Some(index) = group_indices.get(&label).copied() {
+                                            let label =
+                                                entry_breadcrumb(entry, directory.as_deref());
+                                            if let Some(index) = group_indices.get(&label).copied()
+                                            {
                                                 groups[index].1.push(entry);
                                             } else {
                                                 let index = groups.len();
@@ -221,17 +261,20 @@ impl crate::app::types::ViewerApp {
                                     }
 
                                     let group_count = groups.len();
-                                    for (group_index, (folder_label, group_entries)) in groups.into_iter().enumerate() {
+                                    for (group_index, (folder_label, group_entries)) in
+                                        groups.into_iter().enumerate()
+                                    {
                                         let mut render_group = true;
                                         if !folder_label.is_empty() {
                                             let header_width = grid_ui.available_width();
                                             let collapsed = self.workspace.tabs[tab_index]
                                                 .collapsed_folders
                                                 .contains(&folder_label);
-                                            let (header_rect, header_response) = grid_ui.allocate_exact_size(
-                                                egui::vec2(header_width, 26.0),
-                                                egui::Sense::click(),
-                                            );
+                                            let (header_rect, header_response) = grid_ui
+                                                .allocate_exact_size(
+                                                    egui::vec2(header_width, 26.0),
+                                                    egui::Sense::click(),
+                                                );
                                             let visuals = grid_ui.visuals().clone();
                                             let fill = if header_response.hovered() {
                                                 visuals.widgets.hovered.bg_fill
@@ -239,7 +282,11 @@ impl crate::app::types::ViewerApp {
                                                 visuals.faint_bg_color
                                             };
                                             let painter = grid_ui.painter();
-                                            painter.rect_filled(header_rect, egui::CornerRadius::same(6), fill);
+                                            painter.rect_filled(
+                                                header_rect,
+                                                egui::CornerRadius::same(6),
+                                                fill,
+                                            );
                                             if header_response.hovered() {
                                                 painter.rect_stroke(
                                                     header_rect,
@@ -249,28 +296,39 @@ impl crate::app::types::ViewerApp {
                                                 );
                                             }
                                             painter.text(
-                                                egui::pos2(header_rect.left() + 9.0, header_rect.center().y),
+                                                egui::pos2(
+                                                    header_rect.left() + 9.0,
+                                                    header_rect.center().y,
+                                                ),
                                                 egui::Align2::LEFT_CENTER,
                                                 if collapsed { "▸" } else { "▾" },
                                                 egui::FontId::proportional(13.0),
                                                 visuals.text_color(),
                                             );
                                             painter.text(
-                                                egui::pos2(header_rect.left() + 26.0, header_rect.center().y),
+                                                egui::pos2(
+                                                    header_rect.left() + 26.0,
+                                                    header_rect.center().y,
+                                                ),
                                                 egui::Align2::LEFT_CENTER,
                                                 format!("📁 {folder_label}"),
                                                 egui::FontId::proportional(12.5),
                                                 visuals.text_color(),
                                             );
                                             painter.text(
-                                                egui::pos2(header_rect.right() - 9.0, header_rect.center().y),
+                                                egui::pos2(
+                                                    header_rect.right() - 9.0,
+                                                    header_rect.center().y,
+                                                ),
                                                 egui::Align2::RIGHT_CENTER,
                                                 format!("{} images", group_entries.len()),
                                                 egui::FontId::proportional(11.0),
                                                 visuals.weak_text_color(),
                                             );
                                             if header_response.clicked() {
-                                                let collapsed_folders = &mut self.workspace.tabs[tab_index].collapsed_folders;
+                                                let collapsed_folders = &mut self.workspace.tabs
+                                                    [tab_index]
+                                                    .collapsed_folders;
                                                 if collapsed {
                                                     collapsed_folders.remove(&folder_label);
                                                 } else {
@@ -513,7 +571,9 @@ impl crate::app::types::ViewerApp {
                 let tab = &self.workspace.tabs[tab_index];
                 (tab.directory.clone(), tab.recursive)
             };
-            if let Some(directory) = directory.filter(|_| self.workspace.tabs[tab_index].folder_masonry) {
+            if let Some(directory) =
+                directory.filter(|_| self.workspace.tabs[tab_index].folder_masonry)
+            {
                 let paths = if recursive {
                     let mut paths = crate::app::queues::collect_folder_images(&directory);
                     crate::imaging::sort::sort_images(&mut paths, self.sort_method);
@@ -522,11 +582,16 @@ impl crate::app::types::ViewerApp {
                     crate::imaging::loader::load_directory_images(&directory, self.sort_method)
                 };
                 let refreshed = paths.into_iter().map(ImageEntry::File).collect::<Vec<_>>();
-                let valid_ids = refreshed.iter().map(ImageEntry::get_id).collect::<HashSet<_>>();
+                let valid_ids = refreshed
+                    .iter()
+                    .map(ImageEntry::get_id)
+                    .collect::<HashSet<_>>();
                 let tab = &mut self.workspace.tabs[tab_index];
                 tab.entries = refreshed;
-                tab.masonry_aspect_ratios.retain(|id, _| valid_ids.contains(id));
-                tab.masonry_dimensions.retain(|id, _| valid_ids.contains(id));
+                tab.masonry_aspect_ratios
+                    .retain(|id, _| valid_ids.contains(id));
+                tab.masonry_dimensions
+                    .retain(|id, _| valid_ids.contains(id));
                 tab.selected.retain(|id| valid_ids.contains(id));
             }
         }

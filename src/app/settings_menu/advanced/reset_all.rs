@@ -78,9 +78,9 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     }
     ctx.data_mut(|data| data.insert_temp(egui::Id::new(RESET_CONFIRM_ID), confirmation_open));
 
-    if let Some((is_error, message)) = ctx.data(|data| {
-        data.get_temp::<(bool, String)>(egui::Id::new(RESET_FEEDBACK_ID))
-    }) {
+    if let Some((is_error, message)) =
+        ctx.data(|data| data.get_temp::<(bool, String)>(egui::Id::new(RESET_FEEDBACK_ID)))
+    {
         let color = if is_error {
             ui.visuals().error_fg_color
         } else {
@@ -131,7 +131,9 @@ fn apply_runtime_defaults(
     app.main_view_window_drag_active = false;
     app.window_mouse_operation_active = false;
     app.sidebar_resize_dragging = false;
-    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::Normal));
+    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+        egui::WindowLevel::Normal,
+    ));
     ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
     ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
     ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(defaults.show_titlebar));
@@ -181,10 +183,7 @@ fn apply_runtime_defaults(
     );
     crate::ui_theme::sync_os_background_blur(ctx);
     crate::ui_theme::platform_backdrop::set_native_window_shape(defaults.native_window_rounding);
-    crate::app::ui::set_desktop_menu_bar_preference(
-        ctx,
-        &defaults.desktop_menu_bar_preference,
-    );
+    crate::app::ui::set_desktop_menu_bar_preference(ctx, &defaults.desktop_menu_bar_preference);
     crate::ui_theme::apply_polished_style_with_options(
         ctx,
         &defaults.ui_accent_color,
@@ -194,7 +193,9 @@ fn apply_runtime_defaults(
 
     app.update_window_title(ctx);
     if !app.image_entries.is_empty() {
-        app.current_index = app.current_index.min(app.image_entries.len().saturating_sub(1));
+        app.current_index = app
+            .current_index
+            .min(app.image_entries.len().saturating_sub(1));
         app.load_current_image_with_cache();
     }
     ctx.request_repaint();

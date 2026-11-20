@@ -74,7 +74,9 @@ impl eframe::App for ViewerApp {
 
         // A forwarded launch can include many selected files. Process its request
         // on the UI thread so it uses the same selected-files path as drag-and-drop.
-        let forwarded_requests = self.instance_server.as_ref()
+        let forwarded_requests = self
+            .instance_server
+            .as_ref()
             .map(crate::platform::instance::InstanceServer::drain_requests)
             .unwrap_or_default();
         for paths in forwarded_requests {
@@ -288,7 +290,10 @@ impl eframe::App for ViewerApp {
                             if let Ok(mut cache) = self.gif_detection_cache.lock() {
                                 cache.insert(
                                     image_id,
-                                    matches!(&loaded_entry.image, super::types::LoadedImage::Animated(_, _)),
+                                    matches!(
+                                        &loaded_entry.image,
+                                        super::types::LoadedImage::Animated(_, _)
+                                    ),
                                 );
                             }
                         }
@@ -304,11 +309,8 @@ impl eframe::App for ViewerApp {
                                 // create it once, without egui's synchronous generate_mipmap.
                                 // The decoded RGBA allocation is shared with the background
                                 // mip and backdrop workers instead of being cloned.
-                                let prepared = self.prepare_current_static_image(
-                                    ctx,
-                                    self.current_index,
-                                    img,
-                                );
+                                let prepared =
+                                    self.prepare_current_static_image(ctx, self.current_index, img);
                                 self.texture = Some(prepared.texture);
                                 self.texture_image_id = self.get_image_id(self.current_index);
                                 self.cache_tricks_backdrop_from_decoded(
@@ -522,17 +524,16 @@ impl eframe::App for ViewerApp {
                         self.get_texture_base_options(),
                     ));
                     self.texture_image_id = self.get_image_id(self.current_index);
-                    self.current_mipmap_state = if self.settings_manager.get().texture_filter
-                        == "mipmap"
-                    {
-                        Some(super::texture_mipmap::start_mipmap_upload(
-                            width,
-                            height,
-                            std::sync::Arc::clone(&rgba),
-                        ))
-                    } else {
-                        None
-                    };
+                    self.current_mipmap_state =
+                        if self.settings_manager.get().texture_filter == "mipmap" {
+                            Some(super::texture_mipmap::start_mipmap_upload(
+                                width,
+                                height,
+                                std::sync::Arc::clone(&rgba),
+                            ))
+                        } else {
+                            None
+                        };
                     self.cache_tricks_backdrop_from_decoded(
                         self.current_image_path.clone(),
                         width,

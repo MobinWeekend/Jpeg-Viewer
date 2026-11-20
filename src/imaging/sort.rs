@@ -163,9 +163,7 @@ pub fn sort_by_date_oldest<T: AsPath>(images: &mut [T]) {
 fn sort_by_cached_modified_time<T: AsPath>(images: &mut [T], newest_first: bool) {
     if newest_first {
         images.sort_by_cached_key(|image| {
-            std::cmp::Reverse(
-                get_modified_time(image.as_path()).unwrap_or(SystemTime::UNIX_EPOCH),
-            )
+            std::cmp::Reverse(get_modified_time(image.as_path()).unwrap_or(SystemTime::UNIX_EPOCH))
         });
     } else {
         images.sort_by_cached_key(|image| {

@@ -1,7 +1,9 @@
 //! Custom-painted thumbnail cards used by Browse, Queue, and Favorites.
 use super::layout::wrap_label;
+use crate::app::queues::{
+    SIDEBAR_CURRENT_PRIORITY, SIDEBAR_HOVER_PRIORITY, SIDEBAR_VISIBLE_PRIORITY,
+};
 use crate::app::types::ViewerApp;
-use crate::app::queues::{SIDEBAR_CURRENT_PRIORITY, SIDEBAR_HOVER_PRIORITY, SIDEBAR_VISIBLE_PRIORITY};
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
 use std::path::Path;
@@ -74,8 +76,8 @@ impl ViewerApp {
         // has the same resolution regardless of its rendered size.
         let target_thumbnail_size = crate::app::queues::thumbnail_request_size(image_rect, ctx);
         let cached_thumbnail = self.get_shared_thumbnail(key, target_thumbnail_size);
-        let needs_thumbnail_upgrade = !path.is_dir()
-            && !self.has_shared_thumbnail_at_least(key, target_thumbnail_size);
+        let needs_thumbnail_upgrade =
+            !path.is_dir() && !self.has_shared_thumbnail_at_least(key, target_thumbnail_size);
 
         if hover_t > 0.01 || selected {
             let shadow_alpha = (hover_t * 34.0).round() as u8;
@@ -110,7 +112,10 @@ impl ViewerApp {
             self.sidebar_visible_sources.insert(key.to_owned());
             if needs_thumbnail_upgrade {
                 let current_image = selected
-                    || self.current_image_path.as_ref().is_some_and(|current| current == path);
+                    || self
+                        .current_image_path
+                        .as_ref()
+                        .is_some_and(|current| current == path);
                 let priority = if current_image {
                     SIDEBAR_CURRENT_PRIORITY
                 } else if response.hovered() {
@@ -135,17 +140,18 @@ impl ViewerApp {
                 "📁", //folder icon
                 egui::FontId::proportional(scaled_text_size(
                     ui.ctx(),
-                    if context_mode == 2 { (entry_size * 0.28).clamp(16.0, 56.0) } else { 14.0 },
+                    if context_mode == 2 {
+                        (entry_size * 0.28).clamp(16.0, 56.0)
+                    } else {
+                        14.0
+                    },
                 )),
                 card_text_color,
             );
         } else if let Some(texture) = cached_thumbnail.as_ref() {
             let size = texture.size_vec2();
             if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
-                let draw_rect = crate::app::queues::thumbnail_fit_rect(
-                    image_rect,
-                    size.x / size.y,
-                );
+                let draw_rect = crate::app::queues::thumbnail_fit_rect(image_rect, size.x / size.y);
                 painter.image(
                     texture.id(),
                     draw_rect,
@@ -354,8 +360,9 @@ impl ViewerApp {
                                         .map(crate::imaging::entry::ImageEntry::File),
                                 );
                             } else {
-                                entries
-                                    .push(crate::imaging::entry::ImageEntry::File(favorite.clone()));
+                                entries.push(crate::imaging::entry::ImageEntry::File(
+                                    favorite.clone(),
+                                ));
                             }
                         }
                         if !entries.is_empty() {

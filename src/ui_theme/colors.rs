@@ -135,7 +135,10 @@ pub(super) fn tint_with_white(color: egui::Color32, color_strength: f32) -> egui
 
 /// Keep colored inline text such as links distinguishable while meeting the WCAG
 /// AA 4.5:1 contrast target against the current surface whenever possible.
-pub(super) fn accessible_accent(foreground: egui::Color32, background: egui::Color32) -> egui::Color32 {
+pub(super) fn accessible_accent(
+    foreground: egui::Color32,
+    background: egui::Color32,
+) -> egui::Color32 {
     let effective_background = contrast_surface_for_text(background, foreground);
     if contrast_ratio(foreground, effective_background) >= 4.5 {
         return foreground;
@@ -162,7 +165,10 @@ pub(super) fn accessible_accent(foreground: egui::Color32, background: egui::Col
     contrast_foreground(effective_background)
 }
 
-pub(super) fn set_widget_foreground(widget: &mut egui::style::WidgetVisuals, foreground: egui::Color32) {
+pub(super) fn set_widget_foreground(
+    widget: &mut egui::style::WidgetVisuals,
+    foreground: egui::Color32,
+) {
     // Keep all standard widget states aligned with the selected theme. Rather than
     // changing text to black on a bright accent hover (which looks broken in dark
     // mode), accent surfaces are tuned to remain dark enough for light foregrounds.
@@ -171,7 +177,10 @@ pub(super) fn set_widget_foreground(widget: &mut egui::style::WidgetVisuals, for
 
 /// Keep a surface dark enough for the chosen light foreground. This is especially
 /// useful for selected/hovered controls in dark mode when the user's accent is bright.
-pub(super) fn darken_surface_for_text(surface: egui::Color32, foreground: egui::Color32) -> egui::Color32 {
+pub(super) fn darken_surface_for_text(
+    surface: egui::Color32,
+    foreground: egui::Color32,
+) -> egui::Color32 {
     if contrast_ratio(foreground, contrast_surface_for_text(surface, foreground)) >= 4.5 {
         return surface;
     }
@@ -247,4 +256,3 @@ mod contrast_tests {
         }
     }
 }
-

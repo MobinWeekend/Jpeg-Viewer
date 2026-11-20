@@ -198,9 +198,7 @@ impl ViewerApp {
         self.texture_image_id = None;
         self.current_mipmap_state = if self.settings_manager.get().texture_filter == "mipmap" {
             Some(super::super::texture_mipmap::start_mipmap_upload(
-                width,
-                height,
-                rgba,
+                width, height, rgba,
             ))
         } else {
             None
@@ -243,17 +241,14 @@ impl ViewerApp {
         // second mip pyramid would be wasted work. Build it again on release,
         // when the full-resolution working image is restored.
         self.texture_image_id = None;
-        self.current_mipmap_state = if !downsample
-            && self.settings_manager.get().texture_filter == "mipmap"
-        {
-            Some(super::super::texture_mipmap::start_mipmap_upload(
-                width,
-                height,
-                rgba,
-            ))
-        } else {
-            None
-        };
+        self.current_mipmap_state =
+            if !downsample && self.settings_manager.get().texture_filter == "mipmap" {
+                Some(super::super::texture_mipmap::start_mipmap_upload(
+                    width, height, rgba,
+                ))
+            } else {
+                None
+            };
         self.virtual_texture = None;
         self.gif_animation = None;
         self.full_gif_source = None;
@@ -286,9 +281,7 @@ impl ViewerApp {
             self.texture_image_id = self.get_image_id(self.current_index);
             self.current_mipmap_state = if self.settings_manager.get().texture_filter == "mipmap" {
                 Some(super::super::texture_mipmap::start_mipmap_upload(
-                    width,
-                    height,
-                    rgba,
+                    width, height, rgba,
                 ))
             } else {
                 None

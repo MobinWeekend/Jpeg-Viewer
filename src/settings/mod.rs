@@ -456,7 +456,9 @@ impl SettingsManager {
     pub fn save_if_due(&mut self) -> Option<Result<(), String>> {
         const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(750);
         let due = self.dirty
-            && self.dirty_since.is_some_and(|since| since.elapsed() >= DEBOUNCE);
+            && self
+                .dirty_since
+                .is_some_and(|since| since.elapsed() >= DEBOUNCE);
         due.then(|| self.save())
     }
 
@@ -467,16 +469,13 @@ impl SettingsManager {
         if !self.dirty {
             return None;
         }
-        self.dirty_since.map(|since| DEBOUNCE.saturating_sub(since.elapsed()))
+        self.dirty_since
+            .map(|since| DEBOUNCE.saturating_sub(since.elapsed()))
     }
 
     /// Flush pending settings immediately, but do not rewrite a clean file.
     pub fn save_if_dirty(&mut self) -> Result<(), String> {
-        if self.is_dirty() {
-            self.save()
-        } else {
-            Ok(())
-        }
+        if self.is_dirty() { self.save() } else { Ok(()) }
     }
 
     pub fn is_dirty(&self) -> bool {

@@ -1,9 +1,9 @@
 // src/decoder/format_detection.rs
 // Pure magic‑byte detection – no external crate dependencies.
-use crate::app::types::LoadedImage;
 use crate::app::constants::MAX_TILE_SIZE;
-use crate::decoder::{DecoderRegistry, default_registry};
+use crate::app::types::LoadedImage;
 use crate::decoder::gif::animation::GifAnimation;
+use crate::decoder::{DecoderRegistry, default_registry};
 use crate::imaging::core::ImageFormat;
 use crate::imaging::core::{DecodeOptions, ImageError};
 
@@ -243,7 +243,8 @@ pub(crate) fn load_bytes_with_detection_and_source(
     // RAW development already produces a complete decoded frame. Decode once
     // and bypass virtual-texture routing (which consumes original source bytes).
     if format == ImageFormat::CameraRaw {
-        return registry.decode(&bytes, format, options)
+        return registry
+            .decode(&bytes, format, options)
             .map(LoadedImage::Static)
             .map(|image| (image, None))
             .map_err(|error| error.to_string());
@@ -258,7 +259,10 @@ pub(crate) fn load_bytes_with_detection_and_source(
     // 4. Virtual‑texture routing
     // RAW development currently produces a complete developed frame; do not
     // route its source bytes into the generic virtual-texture decoder path.
-    if format != ImageFormat::CameraRaw && threshold > 0 && (width >= threshold || height >= threshold) {
+    if format != ImageFormat::CameraRaw
+        && threshold > 0
+        && (width >= threshold || height >= threshold)
+    {
         return Ok((LoadedImage::VirtualPending(bytes, width, height), None));
     }
 

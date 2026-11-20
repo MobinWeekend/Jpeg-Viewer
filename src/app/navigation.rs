@@ -5,7 +5,11 @@ impl ViewerApp {
     /// Reject image/collection changes while a working copy has unsaved edits;
     /// otherwise close the current edit session and clear its crop interaction state.
     pub fn prepare_for_image_change(&mut self, dirty_message: &str) -> bool {
-        if self.edit_session.as_ref().is_some_and(|session| session.dirty) {
+        if self
+            .edit_session
+            .as_ref()
+            .is_some_and(|session| session.dirty)
+        {
             self.edit_status = Some(dirty_message.to_owned());
             self.show_edit_menu = true;
             self.show_settings_menu = false;
@@ -36,7 +40,9 @@ impl ViewerApp {
 
         let new_index = if self.queue_mode && !self.queue_repeat {
             let candidate = self.current_index as i32 + direction;
-            if candidate < 0 || candidate >= len as i32 { return; }
+            if candidate < 0 || candidate >= len as i32 {
+                return;
+            }
             candidate as usize
         } else {
             (self.current_index as i32 + direction).rem_euclid(len as i32) as usize
@@ -84,7 +90,8 @@ impl ViewerApp {
         let dialup_enabled = crate::ui_theme::current_look_profile(ctx) == "win98"
             && self.settings_manager.get().win98_dialup_enabled;
         if dialup_enabled {
-            self.win98_dialup_previous_texture_id = self.texture.as_ref().map(egui::TextureHandle::id);
+            self.win98_dialup_previous_texture_id =
+                self.texture.as_ref().map(egui::TextureHandle::id);
             self.win98_dialup_reveal_pending = true;
             self.win98_dialup_reveal_started = None;
         } else {
@@ -192,14 +199,21 @@ impl ViewerApp {
         // two distinct images instead of animating only the incoming image.
         let old_index = self.current_index;
         let old_texture = self.texture.clone();
-        let should_transition = self.slideshow_enabled
-            && self.slideshow_transition != "none"
-            && old_texture.is_some();
-        self.slideshow_previous_texture = if should_transition { old_texture.clone() } else { None };
+        let should_transition =
+            self.slideshow_enabled && self.slideshow_transition != "none" && old_texture.is_some();
+        self.slideshow_previous_texture = if should_transition {
+            old_texture.clone()
+        } else {
+            None
+        };
         // Capture the exact rectangle used to render the outgoing image. The
         // next image resets zoom/pan for its own view, but this snapshot keeps
         // the outgoing image visually stable throughout the transition.
-        self.slideshow_previous_rect = if should_transition { self.image_rect } else { None };
+        self.slideshow_previous_rect = if should_transition {
+            self.image_rect
+        } else {
+            None
+        };
         self.slideshow_transition_started = None;
 
         self.navigate_to_index(ctx, new_index);

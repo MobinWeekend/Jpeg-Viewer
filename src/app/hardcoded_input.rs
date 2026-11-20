@@ -111,8 +111,8 @@ impl ViewerApp {
             return;
         }
 
-        let (fullscreen, maximized, alt, left_down, right_down, delta, hover_pos) = ctx
-            .input(|input| {
+        let (fullscreen, maximized, alt, left_down, right_down, delta, hover_pos) =
+            ctx.input(|input| {
                 (
                     input.viewport().fullscreen.unwrap_or(false),
                     input.viewport().maximized.unwrap_or(false),

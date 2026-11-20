@@ -57,7 +57,10 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             render_main_surface_navigation_controls(
                 app,
                 ctx,
-                egui::pos2(central_rect.left() + MENU_OFFSET, get_menu_offset_y(app, ctx)),
+                egui::pos2(
+                    central_rect.left() + MENU_OFFSET,
+                    get_menu_offset_y(app, ctx),
+                ),
             );
         }
         // Desktop profile menu bars are always visible, even while the floating
@@ -98,7 +101,11 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             } else {
                 2.0
             };
-            base + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
+            base + if app.workspace_tab_strip_visible(ctx) {
+                44.0
+            } else {
+                0.0
+            }
         }
     } else {
         get_menu_offset_y(app, ctx)
@@ -145,13 +152,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
         if custom_titlebar {
             toolbar::render_bottom_toolbar(app, ctx, toolbar_left, toolbar_width);
         } else if placement == "native" {
-            toolbar::render_top_toolbar(
-                app,
-                ctx,
-                toolbar_left,
-                menu_offset_y,
-                toolbar_width,
-            );
+            toolbar::render_top_toolbar(app, ctx, toolbar_left, menu_offset_y, toolbar_width);
             toolbar::render_bottom_toolbar(app, ctx, toolbar_left, toolbar_width);
         } else if placement == "win98" {
             if central_width >= 136.0 {
@@ -235,7 +236,10 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 fn render_custom_frame_resize_handles(app: &ViewerApp, ctx: &egui::Context) {
     if app.window_mouse_operation_active
         || app.settings_manager.get().show_titlebar
-        || ctx.input(|input| input.viewport().maximized.unwrap_or(false) || input.viewport().fullscreen.unwrap_or(false))
+        || ctx.input(|input| {
+            input.viewport().maximized.unwrap_or(false)
+                || input.viewport().fullscreen.unwrap_or(false)
+        })
     {
         return;
     }
@@ -269,11 +273,7 @@ pub fn render_hamburger_button(app: &mut ViewerApp, ctx: &egui::Context) {
 }
  */
 
-fn render_hamburger_button_at(
-    app: &mut ViewerApp,
-    ctx: &egui::Context,
-    position: egui::Pos2,
-) {
+fn render_hamburger_button_at(app: &mut ViewerApp, ctx: &egui::Context, position: egui::Pos2) {
     egui::Area::new(egui::Id::new("masonry_navigation_hamburger"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
@@ -298,8 +298,7 @@ fn render_main_surface_navigation_controls(
     // Home should sit directly on the custom titlebar/canvas when native
     // decorations are disabled. Keep the floating toolbar surface for native
     // titlebar navigation and for other non-image workspaces.
-    let unframed_home = app.is_home_surface_active()
-        && !app.settings_manager.get().show_titlebar;
+    let unframed_home = app.is_home_surface_active() && !app.settings_manager.get().show_titlebar;
 
     egui::Area::new(egui::Id::new("main_surface_navigation_controls"))
         .order(egui::Order::Foreground)
@@ -318,8 +317,8 @@ fn render_main_surface_navigation_row(app: &mut ViewerApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         app.render_hamburger_ui(ui);
         if app.masonry_toggle_available() {
-            let active = app.workspace.active_kind()
-                == crate::app::workspace::WorkspaceTabKind::Masonry;
+            let active =
+                app.workspace.active_kind() == crate::app::workspace::WorkspaceTabKind::Masonry;
             let toggle = crate::app::ui::masonry_toggle_button(ui, active, true, 30.0)
                 .on_hover_text(if active {
                     "Return to Viewer"
@@ -430,7 +429,6 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
         .show(ctx, |ui| app.render_hamburger_menu_ui(ctx, ui));
 }
 
-
 fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
     const MENU_OFFSET: f32 = 8.0;
 
@@ -452,7 +450,11 @@ fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
         } else {
             crate::app::ui::custom_titlebar_height(ctx) + (MENU_OFFSET / 2.0)
         };
-        base + if app.workspace_tab_strip_visible(ctx) { 44.0 } else { 0.0 }
+        base + if app.workspace_tab_strip_visible(ctx) {
+            44.0
+        } else {
+            0.0
+        }
     }
 }
 

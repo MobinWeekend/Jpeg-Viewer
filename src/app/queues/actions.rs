@@ -2,8 +2,8 @@
 use super::super::types::ViewerApp;
 use super::entry_path;
 use super::storage::{absolute_path, paths_equal, read_queue, remap_paths, write_queue};
-use crate::imaging::helpers::is_supported_image;
 use crate::imaging::entry::ImageEntry;
+use crate::imaging::helpers::is_supported_image;
 use eframe::egui;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,12 +13,19 @@ pub(crate) fn collect_folder_images(root: &Path) -> Vec<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     let mut found = Vec::new();
     while let Some(folder) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&folder) else { continue };
+        let Ok(entries) = fs::read_dir(&folder) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
-            let Ok(file_type) = entry.file_type() else { continue };
-            if file_type.is_dir() { stack.push(path); }
-            else if file_type.is_file() && is_supported_image(&path) { found.push(path); }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                stack.push(path);
+            } else if file_type.is_file() && is_supported_image(&path) {
+                found.push(path);
+            }
         }
     }
     found.sort();
@@ -30,12 +37,15 @@ impl ViewerApp {
     pub(super) fn show_folder_contents(&mut self, folder: &Path, ctx: &egui::Context) {
         let paths = collect_folder_images(folder);
         if paths.is_empty() {
-            self.queue_status = Some(format!("No supported images found in {}.", folder.display()));
+            self.queue_status = Some(format!(
+                "No supported images found in {}.",
+                folder.display()
+            ));
             return;
         }
-        if !self.prepare_for_image_change(
-            "Save or discard unsaved edits before opening this folder.",
-        ) {
+        if !self
+            .prepare_for_image_change("Save or discard unsaved edits before opening this folder.")
+        {
             return;
         }
         self.sidebar_queue_tab = false;
@@ -47,7 +57,10 @@ impl ViewerApp {
         self.current_directory = Some(folder.to_path_buf());
         self.load_dropped_files(paths);
         self.sync_current_entry_after_collection_change(ctx);
-        self.queue_status = Some(format!("Showing {count} image(s) from {}.", folder.display()));
+        self.queue_status = Some(format!(
+            "Showing {count} image(s) from {}.",
+            folder.display()
+        ));
         ctx.request_repaint();
     }
 
@@ -59,7 +72,11 @@ impl ViewerApp {
             self.queue_status = Some("Only existing filesystem files can be renamed.".into());
             return;
         }
-        let stem = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+        let stem = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         self.rename_dialog = Some((path.to_path_buf(), stem));
     }
 
@@ -67,24 +84,39 @@ impl ViewerApp {
         if self.is_home_surface_active() {
             return;
         }
-        let path = self.image_entries.get(self.current_index).and_then(entry_path).cloned();
-        if let Some(path) = path { self.begin_rename(&path); }
-        else { self.queue_status = Some("The current entry cannot be renamed as a filesystem file.".into()); }
+        let path = self
+            .image_entries
+            .get(self.current_index)
+            .and_then(entry_path)
+            .cloned();
+        if let Some(path) = path {
+            self.begin_rename(&path);
+        } else {
+            self.queue_status =
+                Some("The current entry cannot be renamed as a filesystem file.".into());
+        }
     }
 
-
     fn favorites_file_path(&self) -> PathBuf {
-        self.settings_manager.path().parent().unwrap_or_else(|| Path::new(".")).join("favorites.jvq")
+        self.settings_manager
+            .path()
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("favorites.jvq")
     }
 
     pub fn ensure_favorites_loaded(&mut self) {
-        if self.favorites_loaded { return; }
+        if self.favorites_loaded {
+            return;
+        }
         self.favorites_loaded = true;
         let path = self.favorites_file_path();
         if path.is_file() {
             match read_queue(&path) {
                 Ok((paths, _)) => self.favorite_paths = paths,
-                Err(error) => self.queue_status = Some(format!("Could not load favorites: {error}")),
+                Err(error) => {
+                    self.queue_status = Some(format!("Could not load favorites: {error}"))
+                }
             }
         }
     }
@@ -102,20 +134,34 @@ impl ViewerApp {
             }
         }
         match write_queue(&path, &self.favorite_paths, None) {
-            Ok(()) => self.queue_status = Some(format!("Saved {} favorite(s).", self.favorite_paths.len())),
+            Ok(()) => {
+                self.queue_status =
+                    Some(format!("Saved {} favorite(s).", self.favorite_paths.len()))
+            }
             Err(error) => self.queue_status = Some(format!("Could not save favorites: {error}")),
         }
     }
 
     pub fn add_current_image_to_favorites(&mut self) {
-        let path = self.image_entries.get(self.current_index).and_then(entry_path).cloned();
-        if let Some(path) = path { self.toggle_favorite_path(path); }
-        else { self.queue_status = Some("Only filesystem images can be favorites.".into()); }
+        let path = self
+            .image_entries
+            .get(self.current_index)
+            .and_then(entry_path)
+            .cloned();
+        if let Some(path) = path {
+            self.toggle_favorite_path(path);
+        } else {
+            self.queue_status = Some("Only filesystem images can be favorites.".into());
+        }
     }
 
     pub fn add_favorite_path(&mut self, path: PathBuf) {
         let normalized = absolute_path(&path);
-        if !self.favorite_paths.iter().any(|p| paths_equal(p, &normalized)) {
+        if !self
+            .favorite_paths
+            .iter()
+            .any(|p| paths_equal(p, &normalized))
+        {
             self.favorite_paths.push(normalized);
             self.queue_status = Some("Added to favorites.".into());
             self.save_favorites();
@@ -126,7 +172,11 @@ impl ViewerApp {
 
     pub fn toggle_favorite_path(&mut self, path: PathBuf) {
         let normalized = absolute_path(&path);
-        if let Some(index) = self.favorite_paths.iter().position(|p| paths_equal(p, &normalized)) {
+        if let Some(index) = self
+            .favorite_paths
+            .iter()
+            .position(|p| paths_equal(p, &normalized))
+        {
             self.favorite_paths.remove(index);
             self.queue_status = Some("Removed from favorites.".into());
             self.save_favorites();
@@ -178,7 +228,10 @@ impl ViewerApp {
     }
 
     pub fn add_folder_recursively(&mut self, root: &Path) -> usize {
-        collect_folder_images(root).into_iter().map(|path| usize::from(self.add_queue_path(path))).sum()
+        collect_folder_images(root)
+            .into_iter()
+            .map(|path| usize::from(self.add_queue_path(path)))
+            .sum()
     }
 
     pub fn add_queue_path(&mut self, path: PathBuf) -> bool {
@@ -213,7 +266,11 @@ impl ViewerApp {
                 Vec::new()
             };
             if queue_index < index {
-                target_index += if path.is_dir() { folder_images.len() } else { 1 };
+                target_index += if path.is_dir() {
+                    folder_images.len()
+                } else {
+                    1
+                };
             }
             if path.is_dir() {
                 entries.extend(folder_images.into_iter().map(ImageEntry::File));
@@ -227,9 +284,7 @@ impl ViewerApp {
             );
             return false;
         }
-        if !self.prepare_for_image_change(
-            "Save or discard unsaved edits before opening a queue.",
-        ) {
+        if !self.prepare_for_image_change("Save or discard unsaved edits before opening a queue.") {
             return false;
         }
         if !self.queue_mode {
@@ -291,13 +346,23 @@ impl ViewerApp {
                 self.record_welcome_recent_path(path.to_path_buf());
                 if prompt {
                     self.queue_import_prompt = Some((paths, root));
-                    self.queue_status = Some("Choose whether to add this saved queue or replace the current queue.".into());
+                    self.queue_status = Some(
+                        "Choose whether to add this saved queue or replace the current queue."
+                            .into(),
+                    );
                 } else {
                     self.queue_paths = paths;
                     self.queue_root = root;
                     self.open_queue_in_viewer(ctx);
-                    let missing = self.queue_paths.iter().filter(|path| !path.exists()).count();
-                    self.queue_status = Some(format!("Opened {} queue item(s); {missing} unavailable.", self.queue_paths.len()));
+                    let missing = self
+                        .queue_paths
+                        .iter()
+                        .filter(|path| !path.exists())
+                        .count();
+                    self.queue_status = Some(format!(
+                        "Opened {} queue item(s); {missing} unavailable.",
+                        self.queue_paths.len()
+                    ));
                 }
             }
             Err(error) => self.queue_status = Some(format!("Could not open queue: {error}")),

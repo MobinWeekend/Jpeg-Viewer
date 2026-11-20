@@ -34,11 +34,19 @@ impl SettingsManager {
         );
         section.set(
             "window_move_mouse_shortcut_enabled",
-            if settings.window_move_mouse_shortcut_enabled { "true" } else { "false" },
+            if settings.window_move_mouse_shortcut_enabled {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set(
             "window_resize_mouse_shortcut_enabled",
-            if settings.window_resize_mouse_shortcut_enabled { "true" } else { "false" },
+            if settings.window_resize_mouse_shortcut_enabled {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set(
             "zoom_step_mouse_right_button",
@@ -82,7 +90,11 @@ impl SettingsManager {
         section.set("thumbnail_workers", settings.thumbnail_workers.to_string());
         section.set(
             "publish_generated_thumbnails",
-            if settings.publish_generated_thumbnails { "true" } else { "false" },
+            if settings.publish_generated_thumbnails {
+                "true"
+            } else {
+                "false"
+            },
         );
         section.set("texture_filter", &settings.texture_filter);
         section.set(

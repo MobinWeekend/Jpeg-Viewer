@@ -8,18 +8,24 @@ impl ViewerApp {
     /// must not subtract the configured or measured sidebar widths again.
     pub fn main_view_rect(&self, ctx: &egui::Context) -> egui::Rect {
         let viewport = ctx.input(|input| {
-            input.viewport().inner_rect.map(|rect| {
-                egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size())
-            })
+            input
+                .viewport()
+                .inner_rect
+                .map(|rect| egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size()))
         });
         let central = self.central_panel_rect;
-        if central.width().is_finite() && central.height().is_finite() && central.width() > 0.0 && central.height() > 0.0 {
-            viewport.map(|viewport| central.intersect(viewport)).unwrap_or(central)
+        if central.width().is_finite()
+            && central.height().is_finite()
+            && central.width() > 0.0
+            && central.height() > 0.0
+        {
+            viewport
+                .map(|viewport| central.intersect(viewport))
+                .unwrap_or(central)
         } else {
-            viewport.unwrap_or_else(|| egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(1280.0, 800.0),
-            ))
+            viewport.unwrap_or_else(|| {
+                egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0))
+            })
         }
     }
 
@@ -35,7 +41,11 @@ impl ViewerApp {
     /// from sidebar settings or stale window dimensions.
     pub fn main_view_center_offset_x(&self, ctx: &egui::Context) -> f32 {
         let viewport_width = ctx.input(|input| {
-            input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+            input
+                .viewport()
+                .inner_rect
+                .map(|rect| rect.width())
+                .unwrap_or(1280.0)
         });
         self.main_view_rect(ctx).center().x - viewport_width * 0.5
     }
@@ -44,7 +54,11 @@ impl ViewerApp {
     /// overlays so they remain inside the central view when a right sidebar opens.
     pub fn main_view_right_gap(&self, ctx: &egui::Context) -> f32 {
         let viewport_width = ctx.input(|input| {
-            input.viewport().inner_rect.map(|rect| rect.width()).unwrap_or(1280.0)
+            input
+                .viewport()
+                .inner_rect
+                .map(|rect| rect.width())
+                .unwrap_or(1280.0)
         });
         (viewport_width - self.main_view_rect(ctx).right()).max(0.0)
     }
@@ -84,8 +98,7 @@ impl ViewerApp {
             // own clipped share using this exact same backdrop rectangle/UV map.
             if settings.tricks_backdrop_enabled {
                 let central_rect = ui.max_rect();
-                let backdrop_rect =
-                    crate::app::ui::tricks_backdrop_window_rect(ctx, central_rect);
+                let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, central_rect);
                 self.paint_tricks_backdrop(
                     &ui.painter(),
                     central_rect,
@@ -141,16 +154,19 @@ impl ViewerApp {
 
             // Get the available image rectangle. Navigation toolbars are foreground
             // overlays, so their geometry must not reduce this content area.
-            let available_rect = ui.available_rect_before_wrap()
+            let available_rect = ui
+                .available_rect_before_wrap()
                 .intersect(ui.clip_rect())
                 .intersect(self.central_panel_rect);
             let platform_overlay_padding = matches!(
-                crate::ui_theme::current_look_profile(ctx), "win98" | "cosmic" | "gnome"
+                crate::ui_theme::current_look_profile(ctx),
+                "win98" | "cosmic" | "gnome"
             );
             let no_auto_fit_padding = settings.fit_window_to_image
                 && (self.zoom - 1.0).abs() < 0.001
                 && !platform_overlay_padding;
-            let image_viewport_rect = fitted_image_viewport_rect(available_rect, ctx, &settings, no_auto_fit_padding);
+            let image_viewport_rect =
+                fitted_image_viewport_rect(available_rect, ctx, &settings, no_auto_fit_padding);
             // User-defined padding may be negative to bring the image closer to
             // the window edge. Never let that extend the image layer above the
             // content viewport (especially over the browser-style workspace tabs).
@@ -268,10 +284,12 @@ impl ViewerApp {
 
                 // Render using virtual texture. Keep the exact screen-space image
                 // bounds so an empty margin drag can move the native window.
-                let available_rect = ui.available_rect_before_wrap()
+                let available_rect = ui
+                    .available_rect_before_wrap()
                     .intersect(ui.clip_rect())
                     .intersect(self.central_panel_rect);
-                let virtual_image_rect = self.get_image_rect(texture_size, image_viewport_rect.center());
+                let virtual_image_rect =
+                    self.get_image_rect(texture_size, image_viewport_rect.center());
                 self.image_rect = Some(virtual_image_rect);
 
                 // Create the painter and immediately use it in a limited scope.
@@ -908,7 +926,8 @@ fn fitted_image_viewport_rect(
     no_auto_fit_padding: bool,
 ) -> egui::Rect {
     let profile = crate::ui_theme::current_look_profile(ctx);
-    let placement = crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
+    let placement =
+        crate::ui_theme::resolve_main_ui_placement(&settings.main_ui_placement_preference, ctx);
     let mut padding = if no_auto_fit_padding {
         [0.0; 4]
     } else {
@@ -937,6 +956,9 @@ fn fitted_image_viewport_rect(
 
     egui::Rect::from_min_max(
         egui::pos2(available.left() + padding[3], available.top() + padding[0]),
-        egui::pos2(available.right() - padding[1], available.bottom() - padding[2]),
+        egui::pos2(
+            available.right() - padding[1],
+            available.bottom() - padding[2],
+        ),
     )
 }

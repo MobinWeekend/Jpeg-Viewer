@@ -121,7 +121,13 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
     #[cfg(target_os = "linux")]
     {
         let mut publish = app.settings_manager.get().publish_generated_thumbnails;
-        if ui.checkbox(&mut publish, "Publish generated thumbnails to shared desktop cache").changed() {
+        if ui
+            .checkbox(
+                &mut publish,
+                "Publish generated thumbnails to shared desktop cache",
+            )
+            .changed()
+        {
             let _ = app.settings_manager.update(|settings| {
                 settings.publish_generated_thumbnails = publish;
             });

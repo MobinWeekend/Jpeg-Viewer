@@ -5,16 +5,16 @@
 //! focused child module so tab management, browsing, file operations, and comparison
 //! behavior can be maintained independently.
 
-use crate::imaging::entry::ImageEntry;
 use crate::app::types::LoadedImage;
 use crate::app::virtual_texture::VirtualTexture;
+use crate::imaging::entry::ImageEntry;
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
-use std::sync::mpsc::Receiver;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Receiver;
 
 const WELCOME_RECENT_LIMIT: usize = 8;
 
@@ -208,7 +208,10 @@ impl WorkspaceManager {
     }
 
     pub fn should_preload(&self) -> bool {
-        matches!(self.active_kind(), WorkspaceTabKind::Viewer | WorkspaceTabKind::Image)
+        matches!(
+            self.active_kind(),
+            WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
+        )
     }
 
     fn active_tab(&self) -> Option<&WorkspaceTab> {
@@ -277,15 +280,15 @@ enum MasonryAction {
 
 // Workspace lifecycle and tab navigation.
 mod core;
-mod tabs;
 mod new_tab;
 mod session;
+mod tabs;
 
 // Masonry presentation and actions.
-mod masonry;
-mod masonry_group;
-mod masonry_actions;
 mod file_operations;
+mod masonry;
+mod masonry_actions;
+mod masonry_group;
 
 // Compare rendering and shared entry/file helpers.
 mod compare;

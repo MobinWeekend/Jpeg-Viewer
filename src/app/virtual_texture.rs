@@ -8,9 +8,9 @@ use crate::app::texture_mipmap::{
 use crate::imaging::core::DecodedImage;
 use eframe::egui;
 use rayon::spawn;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
-use std::sync::Arc;
 
 // Atomic state constants
 const STATE_NOT_STARTED: u8 = 0;
@@ -139,7 +139,8 @@ impl VirtualTexture {
         }
 
         self.tiles = tiles;
-        self.prepared_tiles.store(self.tiles.len(), Ordering::Relaxed);
+        self.prepared_tiles
+            .store(self.tiles.len(), Ordering::Relaxed);
         self.state.store(STATE_COMPLETE, Ordering::Release);
     }
 
@@ -194,28 +195,37 @@ impl VirtualTexture {
 
         spawn(move || {
             let result = (|| -> Result<Vec<u8>, String> {
-                let x = (tile_x as usize).checked_mul(tile_size)
+                let x = (tile_x as usize)
+                    .checked_mul(tile_size)
                     .ok_or_else(|| "Virtual tile X offset overflowed.".to_owned())?;
-                let y = (tile_y as usize).checked_mul(tile_size)
+                let y = (tile_y as usize)
+                    .checked_mul(tile_size)
                     .ok_or_else(|| "Virtual tile Y offset overflowed.".to_owned())?;
-                let row_bytes = width.checked_mul(4)
+                let row_bytes = width
+                    .checked_mul(4)
                     .ok_or_else(|| "Virtual tile row size overflowed.".to_owned())?;
-                let capacity = row_bytes.checked_mul(height)
+                let capacity = row_bytes
+                    .checked_mul(height)
                     .ok_or_else(|| "Virtual tile allocation size overflowed.".to_owned())?;
                 let mut pixels = Vec::with_capacity(capacity);
 
                 for row in 0..height {
-                    let source_row = y.checked_add(row)
+                    let source_row = y
+                        .checked_add(row)
                         .ok_or_else(|| "Virtual tile row offset overflowed.".to_owned())?;
-                    let pixel_offset = source_row.checked_mul(source_width)
+                    let pixel_offset = source_row
+                        .checked_mul(source_width)
                         .and_then(|value| value.checked_add(x))
                         .ok_or_else(|| "Virtual tile pixel offset overflowed.".to_owned())?;
-                    let start = pixel_offset.checked_mul(4)
+                    let start = pixel_offset
+                        .checked_mul(4)
                         .ok_or_else(|| "Virtual tile byte offset overflowed.".to_owned())?;
-                    let end = start.checked_add(row_bytes)
+                    let end = start
+                        .checked_add(row_bytes)
                         .ok_or_else(|| "Virtual tile byte range overflowed.".to_owned())?;
-                    let row_data = source.get(start..end)
-                        .ok_or_else(|| "Virtual tile falls outside the decoded pixel buffer.".to_owned())?;
+                    let row_data = source.get(start..end).ok_or_else(|| {
+                        "Virtual tile falls outside the decoded pixel buffer.".to_owned()
+                    })?;
                     pixels.extend_from_slice(row_data);
                 }
                 Ok(pixels)
@@ -232,7 +242,9 @@ impl VirtualTexture {
         options: egui::TextureOptions,
         id: usize,
     ) {
-        let Some(receiver) = tile.pending.take() else { return; };
+        let Some(receiver) = tile.pending.take() else {
+            return;
+        };
         match receiver.try_recv() {
             Ok(Ok(pixels)) => {
                 let pixels = Arc::new(pixels);
@@ -392,11 +404,17 @@ impl VirtualTexture {
         } else {
             base_tile_bytes
         };
-        let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes)
-            .clamp(1, MAX_RESIDENT_TILES);
-        let resident_count = self.tiles.iter().filter(|tile| tile.texture.is_some()).count();
+        let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes).clamp(1, MAX_RESIDENT_TILES);
+        let resident_count = self
+            .tiles
+            .iter()
+            .filter(|tile| tile.texture.is_some())
+            .count();
         if resident_count > resident_limit {
-            let mut eviction_candidates = self.tiles.iter().enumerate()
+            let mut eviction_candidates = self
+                .tiles
+                .iter()
+                .enumerate()
                 .filter(|(_, tile)| tile.texture.is_some() && tile.last_used_frame != current_frame)
                 .map(|(index, tile)| (index, tile.last_used_frame))
                 .collect::<Vec<_>>();
@@ -444,9 +462,8 @@ impl VirtualTexture {
             let top = tile.grid_y as f32 * tile_size as f32 - image_height * 0.5;
             let right = left + tile.width as f32;
             let bottom = top + tile.height as f32;
-            let rotate_point = |x: f32, y: f32| {
-                center + egui::vec2(x * cos - y * sin, x * sin + y * cos) * zoom
-            };
+            let rotate_point =
+                |x: f32, y: f32| center + egui::vec2(x * cos - y * sin, x * sin + y * cos) * zoom;
             let points = [
                 rotate_point(left, top),
                 rotate_point(right, top),
@@ -455,12 +472,24 @@ impl VirtualTexture {
             ];
             let bounds = egui::Rect::from_min_max(
                 egui::pos2(
-                    points.iter().map(|point| point.x).fold(f32::INFINITY, f32::min),
-                    points.iter().map(|point| point.y).fold(f32::INFINITY, f32::min),
+                    points
+                        .iter()
+                        .map(|point| point.x)
+                        .fold(f32::INFINITY, f32::min),
+                    points
+                        .iter()
+                        .map(|point| point.y)
+                        .fold(f32::INFINITY, f32::min),
                 ),
                 egui::pos2(
-                    points.iter().map(|point| point.x).fold(f32::NEG_INFINITY, f32::max),
-                    points.iter().map(|point| point.y).fold(f32::NEG_INFINITY, f32::max),
+                    points
+                        .iter()
+                        .map(|point| point.x)
+                        .fold(f32::NEG_INFINITY, f32::max),
+                    points
+                        .iter()
+                        .map(|point| point.y)
+                        .fold(f32::NEG_INFINITY, f32::max),
                 ),
             );
             if !bounds.intersects(viewport) {
@@ -516,16 +545,25 @@ impl VirtualTexture {
             base_tile_bytes
         };
         let resident_limit = (GPU_TILE_BUDGET_BYTES / tile_bytes).clamp(1, MAX_RESIDENT_TILES);
-        let resident_count = self.tiles.iter().filter(|tile| tile.texture.is_some()).count();
+        let resident_count = self
+            .tiles
+            .iter()
+            .filter(|tile| tile.texture.is_some())
+            .count();
         if resident_count > resident_limit {
-            let mut candidates = self.tiles.iter().enumerate()
+            let mut candidates = self
+                .tiles
+                .iter()
+                .enumerate()
                 .filter(|(_, tile)| tile.texture.is_some() && tile.last_used_frame != current_frame)
                 .map(|(index, tile)| (index, tile.last_used_frame))
                 .collect::<Vec<_>>();
             candidates.sort_unstable_by_key(|(_, last_used)| *last_used);
             let mut remaining = resident_count.saturating_sub(resident_limit);
             for (index, _) in candidates {
-                if remaining == 0 { break; }
+                if remaining == 0 {
+                    break;
+                }
                 self.tiles[index].texture = None;
                 self.tiles[index].mipmap_state = None;
                 remaining -= 1;

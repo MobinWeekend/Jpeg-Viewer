@@ -129,4 +129,3 @@ mod navigation_tests {
         assert!(!navigation_auto_hide_enabled(&settings, &ctx));
     }
 }
-

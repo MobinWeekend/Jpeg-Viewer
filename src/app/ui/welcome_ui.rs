@@ -593,10 +593,7 @@ fn render_new_tab_card(
     if let Some(texture) = &card.thumbnail {
         let size = texture.size_vec2();
         if size.x.is_finite() && size.y.is_finite() && size.x > 0.0 && size.y > 0.0 {
-            let image_rect = crate::app::queues::thumbnail_fit_rect(
-                preview_rect,
-                size.x / size.y,
-            );
+            let image_rect = crate::app::queues::thumbnail_fit_rect(preview_rect, size.x / size.y);
             painter.image(
                 texture.id(),
                 image_rect,

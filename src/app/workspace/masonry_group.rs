@@ -1,7 +1,7 @@
 //! Masonry folder groups, entry cards, context menus, and pointer interaction.
 
-use super::*;
 use super::helpers::*;
+use super::*;
 
 impl crate::app::types::ViewerApp {
     pub(super) fn render_masonry_group(
@@ -33,7 +33,7 @@ impl crate::app::types::ViewerApp {
         let preferred_tile_width = preferred_tile_width.clamp(76.0, 512.0);
         let columns = (((available_width + horizontal_gap)
             / (preferred_tile_width + horizontal_gap.max(0.001)))
-            .floor() as usize)
+        .floor() as usize)
             .max(1);
         let tile_width = ((available_width - horizontal_gap * columns.saturating_sub(1) as f32)
             / columns as f32)
@@ -80,10 +80,8 @@ impl crate::app::types::ViewerApp {
             ));
             column_heights[column] += outer_height + vertical_gap;
         }
-        let content_height = (column_heights
-            .into_iter()
-            .fold(0.0_f32, f32::max) - vertical_gap)
-            .max(64.0);
+        let content_height =
+            (column_heights.into_iter().fold(0.0_f32, f32::max) - vertical_gap).max(64.0);
         let (_, grid_rect) = ui.allocate_space(egui::vec2(available_width, content_height));
         let clip_rect = ui.clip_rect();
         let painter = ui.painter().clone();
@@ -118,45 +116,48 @@ impl crate::app::types::ViewerApp {
             // Never request more pixels than the source actually contains. This
             // matters for small icons and thumbnails: otherwise Masonry can keep
             // requesting an impossible high-resolution upgrade.
-            let target_thumbnail_size = crate::app::queues::thumbnail_request_size(
-                image_rect,
-                ctx,
-            )
-            .min(source_dimensions.map(|(width, height)| width.max(height)).unwrap_or(u32::MAX))
-            .max(1);
+            let target_thumbnail_size = crate::app::queues::thumbnail_request_size(image_rect, ctx)
+                .min(
+                    source_dimensions
+                        .map(|(width, height)| width.max(height))
+                        .unwrap_or(u32::MAX),
+                )
+                .max(1);
 
-            let best_cached_resolution = self.best_shared_thumbnail_resolution(&thumbnail_source_key);
+            let best_cached_resolution =
+                self.best_shared_thumbnail_resolution(&thumbnail_source_key);
             // Prefer the smallest cached preview that satisfies this entry's
             // current display size. Otherwise the best low-resolution candidate
             // remains visible while its high-resolution upgrade is generated.
             let texture = self.get_shared_thumbnail(&thumbnail_source_key, target_thumbnail_size);
 
             match best_cached_resolution {
-                    None => {
-                        // Stage one: populate every visible tile with a quick
-                        // native/embedded preview before requesting full detail.
-                        self.request_masonry_thumbnail(
-                            (*entry).clone(),
-                            target_thumbnail_size.min(128),
-                            source_dimensions,
-                            ctx,
-                        );
-                    }
-                    Some(resolution)
-                        if resolution < target_thumbnail_size.min(
+                None => {
+                    // Stage one: populate every visible tile with a quick
+                    // native/embedded preview before requesting full detail.
+                    self.request_masonry_thumbnail(
+                        (*entry).clone(),
+                        target_thumbnail_size.min(128),
+                        source_dimensions,
+                        ctx,
+                    );
+                }
+                Some(resolution)
+                    if resolution
+                        < target_thumbnail_size.min(
                             96_u32.max(target_thumbnail_size.saturating_mul(2).div_ceil(3)),
                         ) =>
-                    {
-                        // Stage two: only after a placeholder exists, request a
-                        // closer native/OS match to the actual physical display size.
-                        self.request_masonry_thumbnail(
-                            (*entry).clone(),
-                            target_thumbnail_size,
-                            source_dimensions,
-                            ctx,
-                        );
-                    }
-                    _ => {}
+                {
+                    // Stage two: only after a placeholder exists, request a
+                    // closer native/OS match to the actual physical display size.
+                    self.request_masonry_thumbnail(
+                        (*entry).clone(),
+                        target_thumbnail_size,
+                        source_dimensions,
+                        ctx,
+                    );
+                }
+                _ => {}
             }
 
             if let Some(texture) = texture {
@@ -178,7 +179,8 @@ impl crate::app::types::ViewerApp {
                             1.0
                         }
                     });
-                let drawn_rect = crate::app::queues::thumbnail_fit_rect(image_rect, source_aspect_ratio);
+                let drawn_rect =
+                    crate::app::queues::thumbnail_fit_rect(image_rect, source_aspect_ratio);
                 painter.image(
                     texture.id(),
                     drawn_rect,
@@ -215,7 +217,10 @@ impl crate::app::types::ViewerApp {
                 let visuals = ui.visuals().clone();
                 let selection_fill = visuals.selection.bg_fill;
                 let tint = egui::Color32::from_rgba_unmultiplied(
-                    selection_fill.r(), selection_fill.g(), selection_fill.b(), 64,
+                    selection_fill.r(),
+                    selection_fill.g(),
+                    selection_fill.b(),
+                    64,
                 );
                 painter.rect_filled(tile_rect.shrink(1.0), 6.0, tint);
                 painter.rect_stroke(
@@ -233,9 +238,7 @@ impl crate::app::types::ViewerApp {
                     egui::FontId::proportional(14.0),
                     crate::ui_theme::contrast_foreground(selection_fill),
                 );
-            } else if self.workspace.tabs[tab_index]
-                .context_highlight
-                .as_deref()
+            } else if self.workspace.tabs[tab_index].context_highlight.as_deref()
                 == Some(key.as_str())
             {
                 // Context highlighting is deliberately separate from the
@@ -258,10 +261,18 @@ impl crate::app::types::ViewerApp {
                 let visuals = ui.visuals().clone();
                 let hover = visuals.widgets.hovered;
                 let tint = egui::Color32::from_rgba_unmultiplied(
-                    hover.bg_fill.r(), hover.bg_fill.g(), hover.bg_fill.b(), 54,
+                    hover.bg_fill.r(),
+                    hover.bg_fill.g(),
+                    hover.bg_fill.b(),
+                    54,
                 );
                 painter.rect_filled(tile_rect.shrink(1.0), 6.0, tint);
-                painter.rect_stroke(tile_rect.shrink(1.0), 6.0, hover.fg_stroke, egui::StrokeKind::Inside);
+                painter.rect_stroke(
+                    tile_rect.shrink(1.0),
+                    6.0,
+                    hover.fg_stroke,
+                    egui::StrokeKind::Inside,
+                );
             }
 
             if response.secondary_clicked() {
@@ -284,14 +295,31 @@ impl crate::app::types::ViewerApp {
                     menu.close();
                 }
                 menu.separator();
-                if menu.button(if is_selected { "Deselect entry" } else { "Select entry" }).clicked() {
+                if menu
+                    .button(if is_selected {
+                        "Deselect entry"
+                    } else {
+                        "Select entry"
+                    })
+                    .clicked()
+                {
                     *action = Some(MasonryAction::ToggleSelection(key.clone()));
                     menu.close();
                 }
                 let compare_minimum = if pending_compare_target { 1 } else { 2 };
-                let compare_label = if pending_compare_target { "Add to Compare" } else { "Compare with selection" };
+                let compare_label = if pending_compare_target {
+                    "Add to Compare"
+                } else {
+                    "Compare with selection"
+                };
                 let compare_count = selected_entries_for_menu.len() + usize::from(!is_selected);
-                if menu.add_enabled(compare_count >= compare_minimum, egui::Button::new(compare_label)).clicked() {
+                if menu
+                    .add_enabled(
+                        compare_count >= compare_minimum,
+                        egui::Button::new(compare_label),
+                    )
+                    .clicked()
+                {
                     // Materialize the selected collection only when the command is
                     // actually invoked, not on every frame that a popup is open.
                     let mut compare_entries = selected_entries_for_menu
@@ -312,11 +340,13 @@ impl crate::app::types::ViewerApp {
                 match &entry_for_menu {
                     ImageEntry::File(path) => {
                         if menu.button("Move…").clicked() {
-                            *action = Some(MasonryAction::MoveEntries(vec![entry_for_menu.clone()]));
+                            *action =
+                                Some(MasonryAction::MoveEntries(vec![entry_for_menu.clone()]));
                             menu.close();
                         }
                         if menu.button("Delete…").clicked() {
-                            *action = Some(MasonryAction::DeleteEntries(vec![entry_for_menu.clone()]));
+                            *action =
+                                Some(MasonryAction::DeleteEntries(vec![entry_for_menu.clone()]));
                             menu.close();
                         }
                         menu.separator();
@@ -392,4 +422,3 @@ impl crate::app::types::ViewerApp {
         }
     }
 }
-

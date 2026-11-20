@@ -1,10 +1,9 @@
 // preloading governs the range and tasks and duration for preloading
 
-use super::texture_mipmap::{
-    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload,
-    start_mipmap_upload_from_entry,
-};
 use super::loading::load_entry_content_with_metadata_cancellable;
+use super::texture_mipmap::{
+    SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload, start_mipmap_upload_from_entry,
+};
 use super::types::{CachedImage, LoadedEntryData, LoadedImage, PreloadTask, ViewerApp};
 use crate::decoder::gif::detection::is_gif_entry;
 use crate::imaging::entry::ImageEntry;
@@ -14,9 +13,9 @@ use rayon::spawn;
 
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::sync::mpsc::channel;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
 const PRELOAD_TIMEOUT: Duration = Duration::from_secs(5);
@@ -452,16 +451,14 @@ impl ViewerApp {
         // whose mip preparation was deferred while a previous neighbour finished.
         if !self.inspect_mode && !self.is_gif && !self.is_preview {
             if let Some(image_id) = self.get_image_id(self.current_index) {
-                let is_current_texture = self.texture_image_id.as_deref() == Some(image_id.as_str());
-                let needs_mipmaps = self
-                    .image_cache
-                    .peek(&image_id)
-                    .is_some_and(|cached| {
-                        cached.texture_filter == "mipmap"
-                            && !cached.is_gif
-                            && !cached.is_preview
-                            && cached.mipmap_state.is_none()
-                    });
+                let is_current_texture =
+                    self.texture_image_id.as_deref() == Some(image_id.as_str());
+                let needs_mipmaps = self.image_cache.peek(&image_id).is_some_and(|cached| {
+                    cached.texture_filter == "mipmap"
+                        && !cached.is_gif
+                        && !cached.is_preview
+                        && cached.mipmap_state.is_none()
+                });
 
                 if is_current_texture && needs_mipmaps {
                     if let Some(entry) = self.image_entries.get(self.current_index).cloned() {
@@ -469,9 +466,7 @@ impl ViewerApp {
                             .current_decoded_pixels
                             .as_ref()
                             .filter(|(source_id, _, _, _)| source_id == &image_id)
-                            .map(|(_, width, height, pixels)| {
-                                (*width, *height, Arc::clone(pixels))
-                            })
+                            .map(|(_, width, height, pixels)| (*width, *height, Arc::clone(pixels)))
                             .or_else(|| {
                                 self.preloaded_mipmap_pixels
                                     .as_ref()
@@ -516,15 +511,12 @@ impl ViewerApp {
                 let Some(image_id) = self.get_image_id(index) else {
                     continue;
                 };
-                let needs_mipmaps = self
-                    .image_cache
-                    .peek(&image_id)
-                    .is_some_and(|cached| {
-                        cached.texture_filter == "mipmap"
-                            && !cached.is_gif
-                            && !cached.is_preview
-                            && cached.mipmap_state.is_none()
-                    });
+                let needs_mipmaps = self.image_cache.peek(&image_id).is_some_and(|cached| {
+                    cached.texture_filter == "mipmap"
+                        && !cached.is_gif
+                        && !cached.is_preview
+                        && cached.mipmap_state.is_none()
+                });
                 if !needs_mipmaps {
                     continue;
                 }
@@ -696,9 +688,7 @@ impl ViewerApp {
 
     fn cancel_preloads_outside(&mut self, desired: &HashSet<usize>) {
         for task in &self.preload_tasks {
-            if !desired.contains(&task.index)
-                && !task.cancellation.swap(true, Ordering::AcqRel)
-            {
+            if !desired.contains(&task.index) && !task.cancellation.swap(true, Ordering::AcqRel) {
                 crate::io_metrics::preload_cancelled();
             }
         }

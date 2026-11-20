@@ -6,8 +6,8 @@ use crate::app::types::ViewerApp;
 use crate::settings::AppSettings;
 use eframe::egui;
 use std::path::PathBuf;
-use std::sync::mpsc::{self, TryRecvError};
 use std::sync::Arc;
+use std::sync::mpsc::{self, TryRecvError};
 use std::time::Duration;
 
 impl ViewerApp {
@@ -438,7 +438,12 @@ impl ViewerApp {
         let opacity = opacity.clamp(0.0, 1.0);
 
         if let Some(texture) = &self.tricks_backdrop_texture {
-            paint_backdrop_texture(&clip_painter, texture, backdrop_rect, opacity * (1.0 - progress));
+            paint_backdrop_texture(
+                &clip_painter,
+                texture,
+                backdrop_rect,
+                opacity * (1.0 - progress),
+            );
         }
         if let Some(texture) = &self.tricks_backdrop_next_texture {
             paint_backdrop_texture(&clip_painter, texture, backdrop_rect, opacity * progress);

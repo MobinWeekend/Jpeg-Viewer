@@ -225,13 +225,8 @@ impl ViewerApp {
         let index = self.current_index;
         let generation = self.preload_generation;
         spawn(move || {
-            let result = load_entry_content_with_metadata(
-                entry,
-                threshold,
-                develop_raw,
-                index,
-                generation,
-            );
+            let result =
+                load_entry_content_with_metadata(entry, threshold, develop_raw, index, generation);
             let _ = tx.send(result);
         });
         self.receiver = Some(rx);
@@ -295,7 +290,8 @@ impl ViewerApp {
         let generation = self.preload_generation;
 
         spawn(move || {
-            let result = load_entry_content_with_metadata(entry, threshold, false, index, generation);
+            let result =
+                load_entry_content_with_metadata(entry, threshold, false, index, generation);
             let _ = tx.send(result);
         });
         self.receiver = Some(rx);
@@ -549,10 +545,12 @@ fn detect_entry_file_type(
         return None;
     };
     let detected_format = crate::decoder::format_detection::detect_format(bytes)?;
-    let current_extension = path.extension()
+    let current_extension = path
+        .extension()
         .and_then(|extension| extension.to_str())
         .map(|extension| extension.to_ascii_lowercase());
-    let mismatch = current_extension.as_deref()
+    let mismatch = current_extension
+        .as_deref()
         .map(|extension| !detected_format.matches_extension(extension))
         .unwrap_or(true);
     Some(FileTypeDetection {
@@ -681,7 +679,10 @@ fn decode_entry_bytes_with_source(
         );
         match crate::decoder::extract_raw_preview_diagnostic(&bytes, path_hint) {
             Ok(Some(preview)) => {
-                eprintln!("[RAW preview] Embedded preview extracted for {source_name} ({} bytes)", preview.len());
+                eprintln!(
+                    "[RAW preview] Embedded preview extracted for {source_name} ({} bytes)",
+                    preview.len()
+                );
                 return crate::decoder::format_detection::load_bytes_with_detection_and_source(
                     preview,
                     Some(std::path::Path::new("embedded-preview.jpg")),

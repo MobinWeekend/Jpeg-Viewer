@@ -104,7 +104,8 @@ impl ViewerApp {
             return false;
         }
 
-        let hide_delay = Duration::from_millis(settings.navigation_ui_auto_hide_ms.clamp(500, 5000));
+        let hide_delay =
+            Duration::from_millis(settings.navigation_ui_auto_hide_ms.clamp(500, 5000));
         let elapsed = self.last_interaction_time.elapsed();
 
         if elapsed >= hide_delay {

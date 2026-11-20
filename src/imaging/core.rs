@@ -67,7 +67,10 @@ impl ImageFormat {
             Self::Heic => &["heic", "heif"],
             Self::JpegXl => &["jxl"],
             Self::Svg => &["svg"],
-            Self::CameraRaw => &["cr2", "cr3", "nef", "nrw", "arw", "dng", "raf", "orf", "rw2", "pef", "srw", "3fr", "fff", "iiq", "kdc", "mos", "mrw", "rwl", "x3f"],
+            Self::CameraRaw => &[
+                "cr2", "cr3", "nef", "nrw", "arw", "dng", "raf", "orf", "rw2", "pef", "srw", "3fr",
+                "fff", "iiq", "kdc", "mos", "mrw", "rwl", "x3f",
+            ],
         }
     }
 

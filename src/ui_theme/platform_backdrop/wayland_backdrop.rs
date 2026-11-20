@@ -16,8 +16,7 @@ use wayland_protocols::ext::background_effect::v1::client::{
     ext_background_effect_surface_v1::ExtBackgroundEffectSurfaceV1,
 };
 use wayland_protocols_plasma::blur::client::{
-    org_kde_kwin_blur::OrgKdeKwinBlur,
-    org_kde_kwin_blur_manager::OrgKdeKwinBlurManager,
+    org_kde_kwin_blur::OrgKdeKwinBlur, org_kde_kwin_blur_manager::OrgKdeKwinBlurManager,
 };
 
 static DISPLAY_PTR: AtomicUsize = AtomicUsize::new(0);
@@ -104,7 +103,8 @@ impl WaylandBackdrop {
             if supported {
                 // SAFETY: eframe supplied this live wl_surface from the same display.
                 let surface_id = unsafe {
-                    ObjectId::from_ptr(wl_surface::WlSurface::interface(), surface_ptr.cast()).ok()?
+                    ObjectId::from_ptr(wl_surface::WlSurface::interface(), surface_ptr.cast())
+                        .ok()?
                 };
                 let surface = wl_surface::WlSurface::from_id(&connection, surface_id).ok()?;
                 let effect = manager.get_background_effect(&surface, &queue_handle, ());
@@ -125,19 +125,11 @@ impl WaylandBackdrop {
             // Keep this as a fallback only: Plasma 6.7 removed it in favour of
             // ext-background-effect-v1.
             let manager_name = kde_manager_name?;
-            let manager = registry.bind::<OrgKdeKwinBlurManager, _, _>(
-                manager_name,
-                1,
-                &queue_handle,
-                (),
-            );
+            let manager =
+                registry.bind::<OrgKdeKwinBlurManager, _, _>(manager_name, 1, &queue_handle, ());
             // SAFETY: eframe supplied this live wl_surface from the same display.
             let surface_id = unsafe {
-                ObjectId::from_ptr(
-                    wl_surface::WlSurface::interface(),
-                    surface_ptr.cast(),
-                )
-                .ok()?
+                ObjectId::from_ptr(wl_surface::WlSurface::interface(), surface_ptr.cast()).ok()?
             };
             let surface = wl_surface::WlSurface::from_id(&connection, surface_id).ok()?;
             let effect = manager.create(&surface, &queue_handle, ());

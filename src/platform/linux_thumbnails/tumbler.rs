@@ -30,7 +30,11 @@ pub(super) fn request(
     if max_side > 1024 {
         return None;
     }
-    let mime_type = infer::get_from_path(path).ok().flatten()?.mime_type().to_owned();
+    let mime_type = infer::get_from_path(path)
+        .ok()
+        .flatten()?
+        .mime_type()
+        .to_owned();
     let uri_argument = gvariant_string_array(uri);
     let mime_argument = gvariant_string_array(&mime_type);
     let flavor = match max_side {
@@ -100,6 +104,9 @@ mod tests {
 
     #[test]
     fn escapes_quotes_and_backslashes_in_file_uris() {
-        assert_eq!(gvariant_string_array("file:///tmp/a'b\\c.jpg"), "['file:///tmp/a\\'b\\\\c.jpg']");
+        assert_eq!(
+            gvariant_string_array("file:///tmp/a'b\\c.jpg"),
+            "['file:///tmp/a\\'b\\\\c.jpg']"
+        );
     }
 }

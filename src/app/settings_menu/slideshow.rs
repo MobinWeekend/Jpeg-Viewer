@@ -27,7 +27,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 });
             }
         });
-        ui.label(egui::RichText::new("Keeps the computer awake while a slideshow is playing.").small().weak());
+        ui.label(
+            egui::RichText::new("Keeps the computer awake while a slideshow is playing.")
+                .small()
+                .weak(),
+        );
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {
@@ -85,7 +89,12 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.label("Transition:");
             let mut transition = app.slideshow_transition.clone();
             egui::ComboBox::from_id_salt("slideshow_transition")
-                .selected_text(match transition.as_str() { "none" => "Instant", "slide" => "Slide", "random" => "Random", _ => "Fade" })
+                .selected_text(match transition.as_str() {
+                    "none" => "Instant",
+                    "slide" => "Slide",
+                    "random" => "Random",
+                    _ => "Fade",
+                })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut transition, "none".to_string(), "Instant");
                     ui.selectable_value(&mut transition, "fade".to_string(), "Fade");
@@ -94,7 +103,9 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 });
             if transition != app.slideshow_transition {
                 app.slideshow_transition = transition.clone();
-                let _ = app.settings_manager.update(|s| s.slideshow_transition = transition);
+                let _ = app
+                    .settings_manager
+                    .update(|s| s.slideshow_transition = transition);
             }
         });
         ui.horizontal(|ui| {
@@ -102,11 +113,23 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.label("Image motion:");
             let mut motion = app.slideshow_motion.clone();
             egui::ComboBox::from_id_salt("slideshow_motion")
-                .selected_text(match motion.as_str() { "none" => "Off", "pan-horizontal" => "Pan wide images", "pan-vertical" => "Pan tall images", "zoom-in" => "Zoom in", "zoom-out" => "Zoom out", "random" => "Random", _ => "Smart" })
+                .selected_text(match motion.as_str() {
+                    "none" => "Off",
+                    "pan-horizontal" => "Pan wide images",
+                    "pan-vertical" => "Pan tall images",
+                    "zoom-in" => "Zoom in",
+                    "zoom-out" => "Zoom out",
+                    "random" => "Random",
+                    _ => "Smart",
+                })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut motion, "none".to_string(), "Off");
                     ui.selectable_value(&mut motion, "smart".to_string(), "Smart (aspect ratio)");
-                    ui.selectable_value(&mut motion, "pan-horizontal".to_string(), "Pan wide images");
+                    ui.selectable_value(
+                        &mut motion,
+                        "pan-horizontal".to_string(),
+                        "Pan wide images",
+                    );
                     ui.selectable_value(&mut motion, "pan-vertical".to_string(), "Pan tall images");
                     ui.selectable_value(&mut motion, "zoom-in".to_string(), "Zoom in");
                     ui.selectable_value(&mut motion, "zoom-out".to_string(), "Zoom out");
@@ -121,12 +144,25 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.add_space(8.0);
             ui.label("Motion strength:");
             let mut strength = app.slideshow_motion_strength;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut strength, 5.0..=40.0).suffix("%"))).changed() {
+            if ui
+                .add(crate::ui_theme::BorderedSlider::new(
+                    egui::Slider::new(&mut strength, 5.0..=40.0).suffix("%"),
+                ))
+                .changed()
+            {
                 app.slideshow_motion_strength = strength;
-                let _ = app.settings_manager.update(|s| s.slideshow_motion_strength = strength);
+                let _ = app
+                    .settings_manager
+                    .update(|s| s.slideshow_motion_strength = strength);
             }
         });
-        ui.label(egui::RichText::new("Effects operate on the displayed texture; decoders remain independent.").small().weak());
+        ui.label(
+            egui::RichText::new(
+                "Effects operate on the displayed texture; decoders remain independent.",
+            )
+            .small()
+            .weak(),
+        );
 
         ui.separator();
         ui.add_space(8.0);
