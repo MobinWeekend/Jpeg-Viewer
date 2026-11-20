@@ -171,7 +171,7 @@ jobs:
         shell: pwsh
         run: |
           winget install --id JRSoftware.InnoSetup --exact --source winget `
-            --version 6.7.4 --silent --accept-source-agreements --accept-package-agreements
+            --silent --accept-source-agreements --accept-package-agreements
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
           $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found: $iscc" }
