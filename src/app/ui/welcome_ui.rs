@@ -55,8 +55,8 @@ impl ViewerApp {
             crate::platform::wayland_pointer_recovery::after_native_window_operation(ctx);
         }
 
-        // Complete asynchronous thumbnail jobs even when the user is not viewing
-        // a sidebar or Masonry workspace. All new-tab cards share the same cache.
+        // Keep background Masonry dimension results current, while the shared
+        // thumbnail collector returns immediately when no thumbnail jobs exist.
         self.collect_sidebar_thumbnails(ctx);
         let new_tab_settings = self.settings_manager.get().clone();
         let recent_rows = new_tab_settings.new_tab_recent_rows.clamp(0, 2);
@@ -68,6 +68,11 @@ impl ViewerApp {
             Vec::new()
         };
         let pinned_paths = self.welcome_pinned_paths();
+        let favorites_label = if self.favorites_loaded {
+            format!("Favorites · {}", self.favorite_paths.len())
+        } else {
+            "Favorites".to_owned()
+        };
         // Pass this into the free-standing card renderers so they can avoid
         // initiating shortcut drags during a global window move/resize gesture.
         let window_mouse_operation_active = self.window_mouse_operation_active;
@@ -81,14 +86,6 @@ impl ViewerApp {
             .ceil()
             .max(1.0)
             .min(u32::MAX as f32) as u32;
-        let recent = self.build_new_tab_cards(
-            &recent_paths[..recent_paths.len().min(recent_limit)],
-            ctx,
-            target_thumbnail_size,
-        );
-        let pinned = self.build_new_tab_cards(&pinned_paths, ctx, target_thumbnail_size);
-        self.ensure_favorites_loaded();
-        let favorites_count = self.favorite_paths.len();
         let mut action: Option<WelcomeAction> = None;
 
         egui::ScrollArea::vertical()
@@ -204,8 +201,8 @@ impl ViewerApp {
                                                     }
                                                     if crate::app::ui::masonry_button(
                                                         buttons,
-                                                        &format!("Favorites · {favorites_count}"),
-                                                        favorites_count > 0,
+                                                        &favorites_label,
+                                                        true,
                                                         150.0,
                                                         false,
                                                         true,
@@ -222,8 +219,11 @@ impl ViewerApp {
                                 // optional Recently opened section. Both grids use six-card rows.
                                 page.add_space(26.0);
                                 let shortcuts_action = render_shortcuts_section(
+                                    self,
                                     page,
-                                    &pinned,
+                                    &pinned_paths,
+                                    ctx,
+                                    target_thumbnail_size,
                                     window_mouse_operation_active,
                                 );
 
@@ -231,9 +231,12 @@ impl ViewerApp {
                                 if show_recent {
                                     page.add_space(26.0);
                                     recent_action = render_recent_section(
+                                        self,
                                         page,
-                                        &recent,
+                                        &recent_paths[..recent_paths.len().min(recent_limit)],
                                         recent_rows,
+                                        ctx,
+                                        target_thumbnail_size,
                                         window_mouse_operation_active,
                                     );
                                 }
@@ -308,6 +311,9 @@ impl ViewerApp {
         }
     }
 
+    /// Build cards only for a row which intersects the current Home viewport.
+    /// Path/queue/archive resolution and thumbnail requests therefore happen
+    /// on demand instead of for every pinned/recent entry at startup.
     fn build_new_tab_cards(
         &mut self,
         paths: &[PathBuf],
@@ -328,24 +334,7 @@ impl ViewerApp {
                         resolved
                     };
                 let thumbnail = preview_entry.and_then(|entry| {
-                    let key = crate::app::queues::source_thumbnail_key(&entry);
-                    if !self.has_shared_thumbnail_at_least(&key, target_thumbnail_size) {
-                        match entry {
-                            ImageEntry::File(path) => self.request_sidebar_thumbnail(
-                                path,
-                                key.clone(),
-                                target_thumbnail_size,
-                                ctx,
-                            ),
-                            archive_entry => self.request_sidebar_archive_thumbnail(
-                                archive_entry,
-                                key.clone(),
-                                target_thumbnail_size,
-                                ctx,
-                            ),
-                        }
-                    }
-                    self.get_shared_thumbnail(&key, target_thumbnail_size)
+                    self.home_thumbnail_for_entry(entry, target_thumbnail_size, ctx)
                 });
                 NewTabCard {
                     path: path.clone(),
@@ -357,6 +346,95 @@ impl ViewerApp {
             .collect()
     }
 
+    fn home_thumbnail_for_entry(
+        &mut self,
+        entry: ImageEntry,
+        target_size: u32,
+        ctx: &egui::Context,
+    ) -> Option<egui::TextureHandle> {
+        let key = crate::app::queues::source_thumbnail_key(&entry);
+        let request_key = crate::app::queues::shared_thumbnail_key(&key, target_size);
+
+        // Check the persistent Home cache once per source revision/size pair.
+        // The file name incorporates source length and modified time, so a
+        // changed source naturally bypasses the old thumbnail. Prefer a full-
+        // resolution shared texture when another workspace already generated it.
+        if self.home_thumbnail_cache_checked.insert(request_key.clone()) {
+            let already_available = self.has_shared_thumbnail_at_least(&key, target_size);
+            if let Some(cache_path) = crate::app::home_thumbnail_cache::cache_path(
+                self.settings_manager.path(),
+                &entry,
+                target_size,
+            ) {
+                self.home_thumbnail_cache_paths
+                    .insert(request_key.clone(), cache_path.clone());
+                if !already_available
+                    && let Some(cached) = crate::app::home_thumbnail_cache::load(&cache_path)
+                {
+                    let texture_key = crate::app::queues::shared_thumbnail_key(
+                        &key,
+                        cached.resolution,
+                    );
+                    let color = egui::ColorImage::from_rgba_unmultiplied(
+                        [cached.width, cached.height],
+                        &cached.pixels,
+                    );
+                    let texture = ctx.load_texture(
+                        format!("home_thumb_{texture_key}"),
+                        color,
+                        egui::TextureOptions::LINEAR,
+                    );
+                    if self.sidebar_thumbnails.len() >= 256
+                        && let Some((evicted_key, _texture)) = self.sidebar_thumbnails.pop_lru()
+                    {
+                        crate::app::queues::remove_attempts_for_cached_source(
+                            &mut self.sidebar_thumbnail_attempted,
+                            &evicted_key,
+                        );
+                    }
+                    self.sidebar_thumbnails.put(texture_key, texture);
+                }
+            }
+        }
+
+        // A smaller persistent preview may be shown immediately while the
+        // normal thumbnail pipeline generates an upgrade for the card size.
+        if !self.has_shared_thumbnail_at_least(&key, target_size) {
+            let cache_path = self.home_thumbnail_cache_paths.get(&request_key).cloned();
+            if self.sidebar_thumbnail_pending.contains(&request_key) {
+                // Another workspace may already be generating this exact key.
+                // Mark it as Home-owned too so its completion is persisted.
+                if let Some(cache_path) = cache_path {
+                    self.home_thumbnail_cache_writes
+                        .insert(request_key.clone(), cache_path);
+                }
+            } else if !self.sidebar_thumbnail_failed.contains(&request_key)
+                && !self.sidebar_thumbnail_attempted.contains(&request_key)
+            {
+                if let Some(cache_path) = cache_path {
+                    self.home_thumbnail_cache_writes
+                        .insert(request_key.clone(), cache_path);
+                }
+                match entry {
+                    ImageEntry::File(path) => self.request_sidebar_thumbnail(
+                        path,
+                        key.clone(),
+                        target_size,
+                        ctx,
+                    ),
+                    archive_entry => self.request_sidebar_archive_thumbnail(
+                        archive_entry,
+                        key.clone(),
+                        target_size,
+                        ctx,
+                    ),
+                }
+            }
+        }
+
+        self.get_shared_thumbnail(&key, target_size)
+    }
+
     /// The session prompt is intentionally checked before rendering Welcome so
     /// the startup restoration flow does not spend a frame building new-tab UI.
     pub(crate) fn workspace_session_prompt_active(&self) -> bool {
@@ -365,9 +443,12 @@ impl ViewerApp {
 }
 
 fn render_recent_section(
+    app: &mut ViewerApp,
     ui: &mut egui::Ui,
-    recent: &[NewTabCard],
+    recent_paths: &[PathBuf],
     recent_rows: usize,
+    ctx: &egui::Context,
+    target_thumbnail_size: u32,
     window_mouse_operation_active: bool,
 ) -> Option<WelcomeAction> {
     let mut selected_action = None;
@@ -376,13 +457,13 @@ fn render_recent_section(
         header.heading("Recently opened");
         header.add_space(8.0);
         header.label(
-            egui::RichText::new(format!("{} / {}", recent.len(), recent_limit))
+            egui::RichText::new(format!("{} / {}", recent_paths.len(), recent_limit))
                 .small()
                 .color(header.visuals().weak_text_color()),
         );
     });
     ui.add_space(10.0);
-    if recent.is_empty() {
+    if recent_paths.is_empty() {
         egui::Frame::new()
             .fill(ui.visuals().faint_bg_color)
             .corner_radius(egui::CornerRadius::same(10))
@@ -396,37 +477,51 @@ fn render_recent_section(
                 );
             });
     } else {
+        let visible_paths = &recent_paths[..recent_paths.len().min(recent_limit)];
         let (card_width, row_gap) = new_tab_card_layout(ui);
-        for (row_index, row) in recent.chunks(6).enumerate() {
+        for (row_index, row) in visible_paths.chunks(6).enumerate() {
             if row_index > 0 {
                 ui.add_space(10.0);
             }
-            ui.horizontal(|row_ui| {
-                row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
-                for card in row {
-                    let (opened, _, menu_action) = render_new_tab_card(
-                        row_ui,
-                        card,
-                        false,
-                        card_width,
-                        window_mouse_operation_active,
-                    );
-                    if opened {
-                        selected_action = Some(WelcomeAction::OpenPath(card.path.clone()));
+            let row_rect = egui::Rect::from_min_size(
+                ui.cursor().min,
+                egui::vec2(ui.available_width().max(1.0), 132.0),
+            );
+            if ui.is_rect_visible(row_rect) {
+                let cards = app.build_new_tab_cards(row, ctx, target_thumbnail_size);
+                ui.horizontal(|row_ui| {
+                    row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
+                    for card in &cards {
+                        let (opened, _, menu_action) = render_new_tab_card(
+                            row_ui,
+                            card,
+                            false,
+                            card_width,
+                            window_mouse_operation_active,
+                        );
+                        if opened {
+                            selected_action = Some(WelcomeAction::OpenPath(card.path.clone()));
+                        }
+                        if menu_action.is_some() {
+                            selected_action = menu_action;
+                        }
                     }
-                    if menu_action.is_some() {
-                        selected_action = menu_action;
-                    }
-                }
-            });
+                });
+            } else {
+                let row_width = ui.available_width().max(1.0);
+                ui.allocate_space(egui::vec2(row_width, 132.0));
+            }
         }
     }
     selected_action
 }
 
 fn render_shortcuts_section(
+    app: &mut ViewerApp,
     ui: &mut egui::Ui,
-    pinned: &[NewTabCard],
+    pinned_paths: &[PathBuf],
+    ctx: &egui::Context,
+    target_thumbnail_size: u32,
     window_mouse_operation_active: bool,
 ) -> Option<WelcomeAction> {
     let mut action = None;
@@ -443,7 +538,7 @@ fn render_shortcuts_section(
         }
     });
     ui.add_space(10.0);
-    if pinned.is_empty() {
+    if pinned_paths.is_empty() {
         egui::Frame::new()
             .fill(ui.visuals().faint_bg_color)
             .corner_radius(egui::CornerRadius::same(10))
@@ -458,30 +553,40 @@ fn render_shortcuts_section(
             });
     } else {
         let (card_width, row_gap) = new_tab_card_layout(ui);
-        for (row_index, row) in pinned.chunks(6).enumerate() {
+        for (row_index, row) in pinned_paths.chunks(6).enumerate() {
             if row_index > 0 {
                 ui.add_space(10.0);
             }
-            ui.horizontal(|row_ui| {
-                row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
-                for card in row {
-                    let (opened, removed, menu_action) = render_new_tab_card(
-                        row_ui,
-                        card,
-                        true,
-                        card_width,
-                        window_mouse_operation_active,
-                    );
-                    if removed {
-                        action = Some(WelcomeAction::RemovePin(card.path.clone()));
-                    } else if opened {
-                        action = Some(WelcomeAction::OpenPath(card.path.clone()));
+            let row_rect = egui::Rect::from_min_size(
+                ui.cursor().min,
+                egui::vec2(ui.available_width().max(1.0), 132.0),
+            );
+            if ui.is_rect_visible(row_rect) {
+                let cards = app.build_new_tab_cards(row, ctx, target_thumbnail_size);
+                ui.horizontal(|row_ui| {
+                    row_ui.spacing_mut().item_spacing = egui::vec2(row_gap, 10.0);
+                    for card in &cards {
+                        let (opened, removed, menu_action) = render_new_tab_card(
+                            row_ui,
+                            card,
+                            true,
+                            card_width,
+                            window_mouse_operation_active,
+                        );
+                        if removed {
+                            action = Some(WelcomeAction::RemovePin(card.path.clone()));
+                        } else if opened {
+                            action = Some(WelcomeAction::OpenPath(card.path.clone()));
+                        }
+                        if menu_action.is_some() {
+                            action = menu_action;
+                        }
                     }
-                    if menu_action.is_some() {
-                        action = menu_action;
-                    }
-                }
-            });
+                });
+            } else {
+                let row_width = ui.available_width().max(1.0);
+                ui.allocate_space(egui::vec2(row_width, 132.0));
+            }
         }
     }
     if ui.ctx().input(|input| input.pointer.any_released()) {
@@ -689,7 +794,7 @@ fn render_new_tab_card(
             menu.close();
         }
     });
-    let opened = card.path.exists() && response.clicked();
+    let opened = response.clicked() && card.path.exists();
     let border_color = if is_drop_target {
         crate::ui_theme::main_accent_color(ui.ctx())
     } else if hover_t > 0.01 {

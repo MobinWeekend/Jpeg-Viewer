@@ -151,8 +151,9 @@ impl ViewerApp {
         // Clear file type detection before changing image
         //self.set_file_type_detection(None);
 
-        // Metadata is produced asynchronously from the same source bytes as decoding.
-        self.file_metadata = None;
+        // `load_current_image_with_cache_keep_texture` either restores the
+        // cached metadata or clears it before starting the asynchronous load.
+        // Do not clear it here: doing so discarded metadata on every cache hit.
 
         // Update UI
         ctx.request_repaint_after(std::time::Duration::from_millis(16));

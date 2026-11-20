@@ -413,6 +413,12 @@ pub struct ViewerApp {
     pub sidebar_thumbnail_attempted: HashSet<String>,
     pub sidebar_thumbnail_failed: HashSet<String>,
     pub sidebar_thumbnail_pending: HashSet<String>,
+    /// Disk-cache writes associated only with thumbnails requested by Home.
+    pub(crate) home_thumbnail_cache_writes: HashMap<String, PathBuf>,
+    /// Persistent cache file paths resolved for Home cards in this session.
+    pub(crate) home_thumbnail_cache_paths: HashMap<String, PathBuf>,
+    /// Home card/source-size pairs whose persistent cache was already checked.
+    pub(crate) home_thumbnail_cache_checked: HashSet<String>,
     pub sidebar_thumbnail_receivers: Vec<(
         String,
         Option<String>,
@@ -708,6 +714,9 @@ impl Default for ViewerApp {
             sidebar_thumbnail_attempted: HashSet::new(),
             sidebar_thumbnail_failed: HashSet::new(),
             sidebar_thumbnail_pending: HashSet::new(),
+            home_thumbnail_cache_writes: HashMap::new(),
+            home_thumbnail_cache_paths: HashMap::new(),
+            home_thumbnail_cache_checked: HashSet::new(),
             sidebar_thumbnail_receivers: Vec::new(),
             sidebar_visible_sources: HashSet::new(),
             sidebar_prefetch_sources: HashSet::new(),

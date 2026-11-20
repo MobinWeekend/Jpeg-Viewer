@@ -695,7 +695,7 @@ fn sidebar_dimension_priority(thumbnail_priority: u8) -> u8 {
 }
 const MASONRY_PLACEHOLDER_SIZE: u32 = 128;
 
-fn shared_thumbnail_key(key: &str, size: u32) -> String {
+pub(crate) fn shared_thumbnail_key(key: &str, size: u32) -> String {
     // Resolution is an exact request value, not one of a few application-wide
     // buckets. Native providers may return their closest supported size.
     format!("thumb:{}:{}", size.max(1), key)
@@ -1636,7 +1636,7 @@ fn thumbnail_source_key_from_cache_key(cache_key: &str) -> Option<&str> {
     parts.next()
 }
 
-fn remove_attempts_for_cached_source(attempted: &mut HashSet<String>, cache_key: &str) {
+pub(crate) fn remove_attempts_for_cached_source(attempted: &mut HashSet<String>, cache_key: &str) {
     let Some(source_key) = thumbnail_source_key_from_cache_key(cache_key) else {
         attempted.remove(cache_key);
         return;
@@ -2633,6 +2633,9 @@ impl ViewerApp {
 
     pub fn collect_sidebar_thumbnails(&mut self, ctx: &egui::Context) {
         self.collect_masonry_dimensions();
+        if self.sidebar_thumbnail_receivers.is_empty() {
+            return;
+        }
         let mut completed = Vec::new();
         let mut cancelled = Vec::new();
         let mut disconnected = Vec::new();
@@ -2685,11 +2688,13 @@ impl ViewerApp {
             },
         );
         for key in cancelled {
+            self.home_thumbnail_cache_writes.remove(&key);
             self.sidebar_thumbnail_pending.remove(&key);
             self.sidebar_thumbnail_attempted.remove(&key);
             self.sidebar_thumbnail_failed.remove(&key);
         }
         for key in disconnected {
+            self.home_thumbnail_cache_writes.remove(&key);
             self.sidebar_thumbnail_pending.remove(&key);
             // A disconnected result means a worker exited unexpectedly (for
             // example after a panic). Mark it failed so the UI does not create
@@ -2698,12 +2703,17 @@ impl ViewerApp {
             self.sidebar_thumbnail_failed.insert(key);
         }
         for key in timed_out {
+            self.home_thumbnail_cache_writes.remove(&key);
             self.sidebar_thumbnail_pending.remove(&key);
             self.sidebar_thumbnail_attempted.insert(key.clone());
             self.sidebar_thumbnail_failed.insert(key);
         }
         for (key, masonry_source, sidebar_managed, result) in completed {
             self.sidebar_thumbnail_pending.remove(&key);
+            let home_cache_path = self.home_thumbnail_cache_writes.remove(&key);
+            if let (Some(cache_path), Ok(thumbnail)) = (home_cache_path, &result) {
+                crate::app::home_thumbnail_cache::store(&cache_path, thumbnail);
+            }
             if let Ok(thumbnail) = &result
                 && let Some(source_key) = thumbnail_source_key_from_cache_key(&key)
             {

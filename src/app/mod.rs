@@ -8,6 +8,7 @@ mod file_detection;
 mod file_ops;
 mod frame_limiter;
 mod hardcoded_input;
+mod home_thumbnail_cache;
 mod image_metadata;
 pub(crate) mod inspect;
 mod loading;
