@@ -872,19 +872,23 @@ jobs:
           echo "Expected Arch package version: $ARCH_VERSION"
           echo "Runner workspace: $WORKSPACE"
 
-          # Do not inspect the local image cache first. The GitHub runner may
-          # not have this user-selected image yet. Let docker run pull it from
-          # its registry, for the requested platform, before creating the
-          # container. This also avoids a race between separate pull/inspect/run
-          # calls and produces the registry's real error if the tag is invalid.
+          # The build script is supplied through a heredoc on Docker STDIN.
+          # --interactive is required: without it, bash -s receives EOF, exits
+          # successfully without executing the build, and leaves out/ empty.
           echo "Pulling and starting selected Arch image for $DOCKER_PLATFORM..."
-          docker run --rm --pull=always --platform "$DOCKER_PLATFORM" --user 0:0 \
+          SCRIPT_MARKER="$WORKSPACE/.arch-container-started-${{ matrix.arch }}"
+          rm -f "$SCRIPT_MARKER"
+          docker run --rm --interactive --pull=always --platform "$DOCKER_PLATFORM" --user 0:0 \
             --mount "type=bind,source=$WORKSPACE,target=/workspace" \
             -e ARCH_VERSION="$ARCH_VERSION" \
             -e JPEG_VIEWER_SOURCE_COMMIT="$GITHUB_SHA" \
             -e BUILD_ARCH='${{ matrix.arch }}' \
+            -e ARCH_SCRIPT_MARKER="/workspace/.arch-container-started-${{ matrix.arch }}" \
             -w /workspace "$IMAGE" bash -s <<'ARCH_SCRIPT'
           set -Eeuo pipefail
+          : "${ARCH_SCRIPT_MARKER:?Arch script marker path was not supplied}"
+          printf 'Arch build script started at %s\n' "$(date -Is)" > "$ARCH_SCRIPT_MARKER"
+          echo '=== Arch build script started (stdin received) ==='
           on_error() {
             status=$?
             trap - ERR
@@ -996,6 +1000,13 @@ jobs:
           echo "Package exported: /workspace/out/$PACKAGE_NAME"
           sha256sum "/workspace/out/$PACKAGE_NAME"
           ARCH_SCRIPT
+
+          if [[ ! -s "$SCRIPT_MARKER" ]]; then
+            echo 'Arch container exited without executing the supplied build script.' >&2
+            echo 'Check that docker run uses --interactive when passing bash -s via heredoc.' >&2
+            exit 1
+          fi
+          rm -f "$SCRIPT_MARKER"
 
           echo '=== Runner-side package discovery ==='
           find "$OUT_DIR" -maxdepth 1 -type f -printf '%M %U:%G %p (%s bytes)\n'
