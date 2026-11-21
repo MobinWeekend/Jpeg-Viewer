@@ -21,6 +21,7 @@ impl ViewerApp {
         entry_size: f32,
         context_index: Option<usize>,
         context_mode: u8,
+        browse_tab_id: Option<u64>,
         ctx: &egui::Context,
     ) -> bool {
         let card_width = thumbnail_width.max(1.0);
@@ -348,7 +349,10 @@ impl ViewerApp {
                     if path.is_dir() {
                         self.show_folder_contents(path, ctx);
                     } else if context_mode == 0 {
-                        if let Some(index) = context_index {
+                        if let Some(tab_id) = browse_tab_id {
+                            self.activate_workspace_tab(tab_id);
+                        } else if let Some(index) = context_index {
+                            self.activate_primary_viewer_tab();
                             self.navigate_to_index(ctx, index);
                         }
                     } else if context_mode == 1 {
@@ -437,6 +441,64 @@ impl ViewerApp {
             });
         }
 
+        // Image-tab entries outside the currently browsed folder are presented
+        // as ordinary Browse tiles at the end of the same grid. They have no
+        // primary Viewer index, but still need the ordinary single-entry menu.
+        if context_mode == 0 && context_index.is_none() && browse_tab_id.is_some() {
+            response.clone().context_menu(|ui| {
+                if ui.button("Open image").clicked() {
+                    if let Some(tab_id) = browse_tab_id {
+                        self.activate_workspace_tab(tab_id);
+                    }
+                    ui.close();
+                }
+                if ui.button("Share…").clicked() {
+                    self.share_entry(&crate::imaging::entry::ImageEntry::File(path.to_path_buf()));
+                    ui.close();
+                }
+                if ui.button("Compare…").clicked() {
+                    self.compare_entry_from_context(
+                        crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                    );
+                    ui.close();
+                }
+                if ui.button("Open With…").clicked() {
+                    if let Err(error) = crate::app::external_open::open_with(path) {
+                        self.queue_status = Some(format!("Could not open the Open With dialog: {error}"));
+                    }
+                    ui.close();
+                }
+                if ui.button("Locate in File Manager").clicked() {
+                    if let Err(error) = crate::app::external_open::reveal_in_file_manager(path) {
+                        self.queue_status = Some(format!("Could not locate file: {error}"));
+                    }
+                    ui.close();
+                }
+                if ui.button("Add to favorites").clicked() {
+                    self.add_favorite_path(path.to_path_buf());
+                    ui.close();
+                }
+                if ui.button("Add to queue").clicked() {
+                    let added = self.add_queue_path(path.to_path_buf());
+                    self.queue_status = Some(if added {
+                        "Added image to queue.".to_owned()
+                    } else {
+                        "Image is already in the queue.".to_owned()
+                    });
+                    ui.close();
+                }
+                if ui.button("Copy file path").clicked() {
+                    match arboard::Clipboard::new()
+                        .and_then(|mut clipboard| clipboard.set_text(path.display().to_string()))
+                    {
+                        Ok(()) => self.queue_status = Some("Copied file path to clipboard.".into()),
+                        Err(error) => self.queue_status = Some(format!("Could not copy path: {error}")),
+                    }
+                    ui.close();
+                }
+            });
+        }
+
         let clicked = response.clicked();
         if let Some(index) = context_index {
             if response.drag_started() && !self.window_mouse_operation_active {
@@ -460,7 +522,14 @@ impl ViewerApp {
                     index + 1
                 };
                 let len = match context_mode {
-                    0 => self.image_entries.len(),
+                    0 => self
+                        .workspace
+                        .tabs
+                        .iter()
+                        .find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer && tab.id == 1)
+                        .or_else(|| self.workspace.tabs.iter().find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer))
+                        .map(|tab| tab.entries.len())
+                        .unwrap_or(0),
                     1 => self.queue_paths.len(),
                     2 => self.favorite_paths.len(),
                     _ => 0,
@@ -468,22 +537,7 @@ impl ViewerApp {
                 if from < len && to <= len && !(from == index && (to == index || to == index + 1)) {
                     match context_mode {
                         0 => {
-                            let selected_path = self.current_image_path.clone();
-                            let item = self.image_entries.remove(from);
-                            let insert_at = if from < to { to.saturating_sub(1) } else { to };
-                            self.image_entries
-                                .insert(insert_at.min(self.image_entries.len()), item);
-                            if let Some(path) = selected_path
-                                    && let Some(new_index) = self.image_entries.iter().position(|e| matches!(e, crate::imaging::entry::ImageEntry::File(p) if p == &path)) { self.current_index = new_index; }
-                            self.sidebar_last_current_index = None;
-                            self.image_cache.clear();
-                            self.preloading_indices.clear();
-                            self.cancel_all_preload_tasks();
-                            self.preload_generation = self.preload_generation.wrapping_add(1);
-                            self.preloading_indices.clear();
-                            if !self.image_entries.is_empty() {
-                                self.load_current_image_with_cache();
-                            }
+                            self.reorder_primary_viewer_entries(from, to);
                         }
                         1 => {
                             let item = self.queue_paths.remove(from);
@@ -558,7 +612,12 @@ impl ViewerApp {
                         ui.close();
                     }
                     if ui.button("Open image").clicked() {
-                        self.navigate_to_index(ctx, index);
+                        if let Some(tab_id) = browse_tab_id {
+                            self.activate_workspace_tab(tab_id);
+                        } else {
+                            self.activate_primary_viewer_tab();
+                            self.navigate_to_index(ctx, index);
+                        }
                         ui.close();
                     }
                     if path.is_file() && ui.button("Open in New Tab").clicked() {

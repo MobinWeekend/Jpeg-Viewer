@@ -218,6 +218,7 @@ impl ViewerApp {
                                             entry_size,
                                             Some(index),
                                             1,
+                                            None,
                                             ctx,
                                         );
                                         // Queue controls overlay the cell: vertically centered at far right in compact mode,
@@ -455,6 +456,7 @@ impl ViewerApp {
                                         entry_size,
                                         Some(index),
                                         2,
+                                        None,
                                         ctx,
                                     );
                                 },

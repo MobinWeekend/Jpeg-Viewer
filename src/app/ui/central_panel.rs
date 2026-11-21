@@ -93,6 +93,31 @@ impl ViewerApp {
             if self.render_active_workspace(ui, ctx) {
                 return;
             }
+            // Image-tab Pop-out controls are a persistent panel below the image,
+            // not a dropdown in the tab strip. Reserve the panel's height from
+            // the image viewport so it never obscures the displayed photograph.
+            let popout_panel_rect = self.active_image_popout_source().map(
+                |(tab_id, texture, animation, source_pixels)| {
+                    let content = ui
+                        .available_rect_before_wrap()
+                        .intersect(ui.clip_rect())
+                        .intersect(self.central_panel_rect);
+                    let height = crate::app::popout::IMAGE_TAB_PANEL_HEIGHT.min(content.height() * 0.5);
+                    let rect = egui::Rect::from_min_max(
+                        egui::pos2(content.left(), content.bottom() - height),
+                        content.max,
+                    );
+                    self.popouts.render_navigation_panel(
+                        ctx,
+                        rect,
+                        tab_id,
+                        texture,
+                        animation,
+                        source_pixels,
+                    );
+                    rect
+                },
+            );
             // Paint the central viewport's clipped share of the single
             // window-aligned Tricks backdrop. The custom title bar paints its
             // own clipped share using this exact same backdrop rectangle/UV map.
@@ -154,10 +179,13 @@ impl ViewerApp {
 
             // Get the available image rectangle. Navigation toolbars are foreground
             // overlays, so their geometry must not reduce this content area.
-            let available_rect = ui
+            let mut available_rect = ui
                 .available_rect_before_wrap()
                 .intersect(ui.clip_rect())
                 .intersect(self.central_panel_rect);
+            if let Some(panel_rect) = popout_panel_rect {
+                available_rect.max.y = available_rect.max.y.min(panel_rect.top());
+            }
             let platform_overlay_padding = matches!(
                 crate::ui_theme::current_look_profile(ctx),
                 "win98" | "cosmic" | "gnome"
@@ -285,10 +313,13 @@ impl ViewerApp {
 
                 // Render using virtual texture. Keep the exact screen-space image
                 // bounds so an empty margin drag can move the native window.
-                let available_rect = ui
+                let mut available_rect = ui
                     .available_rect_before_wrap()
                     .intersect(ui.clip_rect())
                     .intersect(self.central_panel_rect);
+                if let Some(panel_rect) = popout_panel_rect {
+                    available_rect.max.y = available_rect.max.y.min(panel_rect.top());
+                }
                 let virtual_image_rect =
                     self.get_image_rect(texture_size, image_viewport_rect.center());
                 self.image_rect = Some(virtual_image_rect);

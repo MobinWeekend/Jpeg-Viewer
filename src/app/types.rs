@@ -258,6 +258,8 @@ pub struct ViewerApp {
     pub(crate) updater: super::updater::Updater,
     /// Independent Viewer, Image, Masonry, and Compare workspace tabs.
     pub(crate) workspace: super::workspace::WorkspaceManager,
+    /// Native floating image windows, one optional instance per Image tab.
+    pub(crate) popouts: super::popout::PopoutManager,
     pub input_bindings: InputBindings,
 
     // ====== UI ======
@@ -618,6 +620,7 @@ impl ViewerApp {
             settings_manager,
             updater,
             workspace: super::workspace::WorkspaceManager::default(),
+            popouts: super::popout::PopoutManager::default(),
             input_bindings: InputBindings::default(),
 
             // ====== UI ======

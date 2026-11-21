@@ -68,7 +68,7 @@ impl ViewerApp {
         self.set_loading_state(LoadingState::Idle);
 
         // Reset preload state – discard all pending tasks and invalidate results.
-        self.image_cache.clear();
+        self.retain_open_image_tab_cache();
         self.preloading_indices.clear();
         self.cancel_all_preload_tasks();
 
@@ -300,7 +300,7 @@ impl ViewerApp {
                 self.b_zoom_used = false;
 
                 // Reset preload state
-                self.image_cache.clear();
+                self.retain_open_image_tab_cache();
                 self.preloading_indices.clear();
                 self.cancel_all_preload_tasks();
 
@@ -362,7 +362,7 @@ impl ViewerApp {
         self.indexing_receiver = None;
 
         // Reset preload state
-        self.image_cache.clear();
+        self.retain_open_image_tab_cache();
         self.preloading_indices.clear();
         self.cancel_all_preload_tasks();
 

@@ -312,7 +312,7 @@ impl WorkspaceManager {
         )
     }
 
-    fn active_tab(&self) -> Option<&WorkspaceTab> {
+    pub(crate) fn active_tab(&self) -> Option<&WorkspaceTab> {
         self.tabs.get(self.active_index)
     }
 

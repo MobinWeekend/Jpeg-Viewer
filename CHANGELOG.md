@@ -1,7 +1,14 @@
 # Changelog
 
 ## Unreleased
+- Pop-outs now use deferred child viewports with independent rendering while the main window is minimized. On Windows, the pop-out native owner relationship is detached so minimizing the main window does not automatically hide its floating image windows. Root-side viewport-level/transparent commands are no longer redundantly sent each frame.
+- Opening an Image tab now expands the shared full-image LRU by one slot per open Image tab before snapshotting the outgoing image. Cache cleanup pins the stable static-image IDs for all open Image tabs and the primary Browse preload window, preserving loaded textures when switching between tabs or pausing normal Browse speculation. GIFs continue to use their animated decode path. Closing tabs releases their reserved slot.
+- Tightened the Image-tab Pop-out panel to a compact 64-point, two-row layout. Size and opacity stay directly accessible; click-through and window stacking use compact toggles; DVD speed, monitor choice and four monitor-edge offsets are grouped in a DVD menu.
+- Made `WorkspaceManager::active_tab` crate-visible so the Browse sidebar can inspect the active workspace tab without exposing the method publicly outside the application crate.
+- Browse now reuses the existing image tile for an open Image tab, showing a tab indicator, pop-out indicator, and close control without duplicating thumbnails. Image tabs outside the Browse collection appear as ordinary tiles in the same grid.
+- Pop-out move and resize hit regions no longer overlap: each of the eight edge/corner handles owns its own input area, custom aspect-ratio resizing is no longer competing with native window resizing, and the window builder supplies initial geometry only once.
 
+- Added an Image-tab Pop-out panel below the image and dedicated `src/app/popout/` subsystem for undecorated floating image windows, click-through, image opacity, DVD-style monitor-bounded movement, monitor selection, DVD speed and per-edge offsets, aspect-ratio-preserving size, drag-anywhere movement, four-edge/four-corner resize, stay-on-top/bottom and hover-only close/stacking controls, and tab-linked window lifetime. Animated GIF frames are shared between animation states so pop-outs can loop at the tab's playback speed without duplicating the decoded frame buffers.
 - Fixed the Browse sidebar context menu so Share and the other actions are presented in one popup.
 - Added a direct Compare button to the desktop menu bar and hamburger menu. Compare now starts with at least two panes, supports image drag-and-drop, and can add multiple images through the file picker.
 - Masonry now scrolls to the image that was active when it opened and marks it with an eye badge. Loaded folder collections update when files are moved between folders or sent to the trash.
@@ -14,3 +21,5 @@
 - Added Compare access from Browse, Queue, Favorites, and Masonry entry context menus. Sidebar images can also be dragged directly into a specific Compare split.
 - Added a Masonry button to the Compare toolbar, direct anchor placement at the right-click position, and per-split earlier/later/first/last ordering actions. Reset View preserves anchors; Clear Anchors remains separate.
 - Masonry hover highlighting is now available on the current image, and its eye marker is centered without suppressing the selected-entry indicator.
+
+- Fixed Pop-out resizing: non-overlapping move and eight edge/corner resize hit regions prevent egui pointer capture conflicts; OS-native resizing is disabled so custom aspect-ratio resizing owns window geometry. Initial viewport geometry is supplied once, and later size/position changes use one command path. Slider edits remain staged until release.

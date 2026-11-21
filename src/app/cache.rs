@@ -3,6 +3,7 @@ use super::types::{CachedImage, LoadedEntryData, LoadedImage, ViewerApp};
 use crate::app::constants::MAX_TILE_SIZE;
 use crate::imaging::core::DecodedImage;
 use eframe::egui;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 /// Result of consuming the current decoded static image. The decoded RGBA buffer
@@ -16,6 +17,72 @@ pub(crate) struct PreparedStaticImage {
 }
 
 impl ViewerApp {
+    /// Keep the one-image texture slots belonging to open Image tabs when a
+    /// different Viewer collection takes over the shared renderer or normal
+    /// speculative caching is paused. Browse/preload entries remain governed by
+    /// the ordinary LRU and can be rebuilt independently when needed.
+    pub(crate) fn retain_open_image_tab_cache(&mut self) {
+        let pinned_ids = self
+            .workspace
+            .tabs
+            .iter()
+            .filter(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Image)
+            .filter_map(|tab| tab.entries.first().map(|entry| entry.get_id()))
+            .collect::<std::collections::HashSet<_>>();
+
+        let to_remove = self
+            .image_cache
+            .iter()
+            .filter_map(|(id, _)| (!pinned_ids.contains(id)).then(|| id.clone()))
+            .collect::<Vec<_>>();
+        for id in to_remove {
+            self.image_cache.pop(&id);
+        }
+        if self
+            .preloaded_mipmap_pixels
+            .as_ref()
+            .is_some_and(|(id, _, _, _)| !pinned_ids.contains(id))
+        {
+            self.preloaded_mipmap_pixels = None;
+        }
+    }
+
+    /// Keep the normal Browse navigation window warm and reserve one additional
+    /// full-image cache slot for every open Image tab. Capacity changes preserve
+    /// the existing LRU contents and their recency order instead of flushing the
+    /// cache when a new tab is opened or closed.
+    pub(crate) fn sync_image_cache_capacity(&mut self) {
+        let image_tab_slots = self
+            .workspace
+            .tabs
+            .iter()
+            .filter(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Image)
+            .count();
+        // 2 * radius + 1 entries cover the current image and both preload
+        // directions; one spare slot absorbs the active transition image.
+        let browse_slots = self.cache_radius.saturating_mul(2).saturating_add(2);
+        let capacity = browse_slots.saturating_add(image_tab_slots).max(3);
+        if capacity == self.max_cache_size {
+            return;
+        }
+        let Some(non_zero) = NonZeroUsize::new(capacity) else {
+            return;
+        };
+        let entries = self
+            .image_cache
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Vec<_>>();
+        let mut resized = lru::LruCache::new(non_zero);
+        // LruCache iterates most-recent-first; reverse insertion retains the
+        // exact recency order and therefore does not evict the warm Browse set.
+        for (key, value) in entries.into_iter().rev() {
+            resized.put(key, value);
+        }
+        self.image_cache = resized;
+        self.max_cache_size = capacity;
+    }
+
     pub fn get_image_id(&self, index: usize) -> Option<String> {
         self.image_entries.get(index).map(|entry| entry.get_id())
     }

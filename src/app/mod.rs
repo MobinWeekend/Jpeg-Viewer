@@ -15,6 +15,7 @@ pub(crate) mod inspect;
 mod loading;
 mod navigation;
 mod preload;
+pub(crate) mod popout;
 pub(crate) mod queues;
 pub(crate) mod settings_menu;
 pub(crate) mod slideshow;

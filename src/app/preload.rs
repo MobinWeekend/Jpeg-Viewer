@@ -4,7 +4,7 @@ use super::loading::load_entry_content_with_metadata_cancellable;
 use super::texture_mipmap::{
     SharedMipmapState, is_mipmap_state_pending, start_mipmap_upload, start_mipmap_upload_from_entry,
 };
-use super::types::{CachedImage, LoadedEntryData, LoadedImage, PreloadTask, ViewerApp};
+use super::types::{LoadedEntryData, LoadedImage, PreloadTask, ViewerApp};
 use crate::decoder::gif::detection::is_gif_entry;
 use crate::imaging::entry::ImageEntry;
 
@@ -12,7 +12,6 @@ use eframe::egui;
 use rayon::spawn;
 
 use std::collections::HashSet;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
@@ -700,11 +699,58 @@ impl ViewerApp {
             return;
         }
 
+        // Convert the active collection's desired indices to stable entry IDs.
+        // The same LRU stores entries from Browse and dedicated Image tabs, so
+        // comparing cached indices alone can accidentally retain an unrelated
+        // entry at the same index in a different tab.
+        let desired_ids = desired
+            .iter()
+            .filter_map(|index| self.image_entries.get(*index).map(|entry| entry.get_id()))
+            .collect::<HashSet<_>>();
+
+        // Every open Image tab owns one cache slot. Preserve its source ID even
+        // while a different tab is active and the ordinary preload window moves.
+        let pinned_image_ids = self
+            .workspace
+            .tabs
+            .iter()
+            .filter(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Image)
+            .filter_map(|tab| tab.entries.first().map(ImageEntry::get_id))
+            .collect::<HashSet<_>>();
+
+        // Keep the primary Browse tab's normal look-ahead window warm while an
+        // Image tab is active. Opening a tab must not make the Browse thumbnails
+        // appear unloaded when the user switches back to the collection.
+        let browse_window_ids = self
+            .workspace
+            .tabs
+            .iter()
+            .find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer && tab.id == 1)
+            .or_else(|| self.workspace.tabs.iter().find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer))
+            .map(|tab| {
+                let len = tab.entries.len();
+                if len == 0 {
+                    return HashSet::new();
+                }
+                let origin = tab.current_index.min(len - 1);
+                let mut ids = HashSet::with_capacity(self.cache_radius.saturating_mul(2) + 1);
+                ids.insert(tab.entries[origin].get_id());
+                for distance in 1..=self.cache_radius {
+                    ids.insert(tab.entries[(origin + distance) % len].get_id());
+                    ids.insert(tab.entries[(origin + len - (distance % len)) % len].get_id());
+                }
+                ids
+            })
+            .unwrap_or_default();
+
         let to_remove: Vec<String> = self
             .image_cache
             .iter()
-            .filter_map(|(id, cached)| {
-                if desired.contains(&cached.index) {
+            .filter_map(|(id, _cached)| {
+                if desired_ids.contains(id)
+                    || pinned_image_ids.contains(id)
+                    || browse_window_ids.contains(id)
+                {
                     None
                 } else {
                     Some(id.clone())
@@ -871,24 +917,7 @@ impl ViewerApp {
 
         self.delta_threshold = ((radius as f32 * self.cache_delta_factor).round() as usize).max(1);
 
-        let desired_capacity = radius * 2 + 2;
-        self.max_cache_size = desired_capacity.max(3);
-
-        if let Some(non_zero) = NonZeroUsize::new(self.max_cache_size) {
-            let mut new_cache = lru::LruCache::new(non_zero);
-
-            let entries: Vec<(String, CachedImage)> = self
-                .image_cache
-                .iter()
-                .map(|(key, value)| (key.clone(), value.clone()))
-                .collect();
-
-            for (key, value) in entries {
-                new_cache.put(key, value);
-            }
-
-            self.image_cache = new_cache;
-        }
+        self.sync_image_cache_capacity();
 
         // Changing the radius starts a new preload cycle.
         self.move_preload_origin();
@@ -916,9 +945,9 @@ impl ViewerApp {
         self.preload_generation = self.preload_generation.wrapping_add(1);
         self.cancel_all_preload_tasks();
 
-        // Clear normal cache.
-        self.image_cache.clear();
-        self.preloaded_mipmap_pixels = None;
+        // Preserve the dedicated full-image slots for every open Image tab;
+        // stopping Browse speculation must not unload those tab-backed images.
+        self.retain_open_image_tab_cache();
         self.preload_working = false;
     }
 }
