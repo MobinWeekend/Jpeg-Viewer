@@ -200,16 +200,19 @@ fn unix_now() -> i64 {
         .min(i64::MAX as u64) as i64
 }
 
+#[cfg(windows)]
 fn curl_command() -> Command {
+    use std::os::windows::process::CommandExt;
+    // Avoid briefly opening a console window from the GUI application.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let mut command = Command::new("curl");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // Avoid briefly opening a console window from the GUI application.
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
+    command.creation_flags(CREATE_NO_WINDOW);
     command
+}
+
+#[cfg(not(windows))]
+fn curl_command() -> Command {
+    Command::new("curl")
 }
 
 fn fetch_latest_release() -> Result<ReleaseInfo, String> {
@@ -326,15 +329,18 @@ fn fetch_with_wget() -> Result<Vec<u8>, String> {
     Ok(output.stdout)
 }
 
+#[cfg(windows)]
 fn wget_command() -> Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let mut command = Command::new("wget");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
+    command.creation_flags(CREATE_NO_WINDOW);
     command
+}
+
+#[cfg(not(windows))]
+fn wget_command() -> Command {
+    Command::new("wget")
 }
 
 fn parse_release_response(body: &[u8]) -> Result<ReleaseInfo, String> {

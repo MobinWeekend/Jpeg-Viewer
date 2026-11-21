@@ -37,7 +37,7 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=10"));
+    assert!(saved.contains("schema_version=11"));
     let _ = fs::remove_file(path);
 }
 
@@ -191,13 +191,13 @@ fn save_preserves_unknown_keys_and_future_schema_version() {
     let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-future-{}.ini", unique));
     fs::write(
         &path,
-        "[Settings]\nschema_version=9\nfuture_option=keep-me\n[OtherSection]\ncustom=value\n",
+        "[Settings]\nschema_version=12\nfuture_option=keep-me\n[OtherSection]\ncustom=value\n",
     )
     .unwrap();
 
     SettingsManager::save_to_file(&path, &AppSettings::default()).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=10"));
+    assert!(saved.contains("schema_version=12"));
     assert!(saved.contains("future_option=keep-me"));
     assert!(saved.contains("custom=value"));
     let _ = fs::remove_file(path);
