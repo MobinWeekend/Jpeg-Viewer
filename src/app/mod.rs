@@ -22,6 +22,7 @@ pub mod types;
 pub(crate) mod ui;
 mod update;
 pub(crate) mod updater;
+mod updater_install;
 mod virtual_texture;
 mod window_sizing;
 pub(crate) mod workspace;

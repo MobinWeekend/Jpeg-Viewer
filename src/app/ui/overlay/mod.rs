@@ -141,12 +141,13 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
             && !desktop_menu_bar
             && !app.workspace_tab_strip_hosts_hamburger(ctx)
         {
-            let position = egui::pos2(central_left + MENU_OFFSET, menu_offset_y);
-            if app.is_home_surface_active() {
-                render_main_surface_navigation_controls(app, ctx, position);
-            } else {
-                render_hamburger_button_at(app, ctx, position);
-            }
+            // The non-image workspace surfaces use the same hamburger/Masonry
+            // navigation row as Home whenever these controls are visible.
+            render_main_surface_navigation_controls(
+                app,
+                ctx,
+                egui::pos2(central_left + MENU_OFFSET, menu_offset_y),
+            );
         }
     } else {
         if custom_titlebar {
@@ -273,19 +274,10 @@ pub fn render_hamburger_button(app: &mut ViewerApp, ctx: &egui::Context) {
 }
  */
 
-fn render_hamburger_button_at(app: &mut ViewerApp, ctx: &egui::Context, position: egui::Pos2) {
-    egui::Area::new(egui::Id::new("masonry_navigation_hamburger"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(position)
-        .show(ctx, |ui| {
-            app.render_hamburger_ui(ui);
-        });
-}
-
-/// Native-titlebar navigation actions for non-image surfaces. When overlays are
-/// hidden, this row is kept persistent on Home only; other workspaces hide these
-/// controls together with the navigation UI. With a desktop menu bar, Masonry is
-/// hosted immediately before File instead of being duplicated in this row.
+/// Navigation actions for non-image surfaces. Keep the hamburger and Masonry
+/// controls in one row wherever this entry point is shown, independent of whether
+/// the window uses native or custom decorations. A desktop menu bar hosts its own
+/// entry points, so this row is not duplicated in that configuration.
 fn render_main_surface_navigation_controls(
     app: &mut ViewerApp,
     ctx: &egui::Context,
@@ -295,16 +287,16 @@ fn render_main_surface_navigation_controls(
         return;
     }
 
-    // Home should sit directly on the custom titlebar/canvas when native
-    // decorations are disabled. Keep the floating toolbar surface for native
-    // titlebar navigation and for other non-image workspaces.
-    let unframed_home = app.is_home_surface_active() && !app.settings_manager.get().show_titlebar;
+    // With native decorations disabled, keep this navigation group directly on
+    // the custom chrome/canvas in every non-image workspace. Home and the other
+    // views must share the same hit targets without a view-specific frame inset.
+    let unframed_custom_titlebar = !app.settings_manager.get().show_titlebar;
 
     egui::Area::new(egui::Id::new("main_surface_navigation_controls"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
         .show(ctx, |ui| {
-            if unframed_home {
+            if unframed_custom_titlebar {
                 render_main_surface_navigation_row(app, ui);
             } else {
                 toolbar::toolbar_frame_mode(ctx, true)

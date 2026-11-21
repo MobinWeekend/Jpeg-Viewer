@@ -37,7 +37,27 @@ fn legacy_settings_load_with_defaults_and_are_versioned_on_save() {
 
     SettingsManager::save_to_file(&path, &loaded).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=11"));
+    assert!(saved.contains("schema_version=13"));
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn migrates_old_primary_monitor_default_to_current_window_position() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("jpeg-viewer-monitor-default-{}.ini", unique));
+    fs::write(
+        &path,
+        "[Settings]\nschema_version=12\nwindow_default_monitor=primary\n",
+    )
+    .unwrap();
+
+    let mut error = None;
+    let loaded = SettingsManager::load_from_file(&path, &mut error);
+    assert!(error.is_none());
+    assert_eq!(loaded.window_default_monitor, "current");
     let _ = fs::remove_file(path);
 }
 
@@ -191,13 +211,13 @@ fn save_preserves_unknown_keys_and_future_schema_version() {
     let path = std::env::temp_dir().join(format!("jpeg-viewer-settings-future-{}.ini", unique));
     fs::write(
         &path,
-        "[Settings]\nschema_version=12\nfuture_option=keep-me\n[OtherSection]\ncustom=value\n",
+        "[Settings]\nschema_version=14\nfuture_option=keep-me\n[OtherSection]\ncustom=value\n",
     )
     .unwrap();
 
     SettingsManager::save_to_file(&path, &AppSettings::default()).unwrap();
     let saved = fs::read_to_string(&path).unwrap();
-    assert!(saved.contains("schema_version=12"));
+    assert!(saved.contains("schema_version=14"));
     assert!(saved.contains("future_option=keep-me"));
     assert!(saved.contains("custom=value"));
     let _ = fs::remove_file(path);
@@ -287,6 +307,7 @@ fn test_default_settings() {
     assert!(settings.window_resize_mouse_shortcut_enabled);
     assert!(settings.window_pos.is_none());
     assert!(settings.window_size.is_none());
+    assert_eq!(settings.window_default_monitor, "current");
     assert!(!settings.window_maximized);
     assert_eq!(settings.cache_radius, 6);
     assert_eq!(settings.cache_delta_factor, 0.6);
@@ -332,6 +353,8 @@ fn viewing_and_single_instance_settings_round_trip() {
     settings.view_padding_custom = [10.0, 20.0, 30.0, 40.0];
     settings.fit_window_to_image = true;
     settings.fit_window_limit = "custom".to_string();
+    settings.window_default_monitor = "DISPLAY-2".to_string();
+    settings.fit_window_monitor_offset = 72.0;
     settings.fit_window_min_width = 640.0;
     settings.fit_window_max_width = 1800.0;
     settings.fit_window_min_height = 512.0;
@@ -353,6 +376,8 @@ fn viewing_and_single_instance_settings_round_trip() {
     assert_eq!(loaded.view_padding_custom, [10.0, 20.0, 30.0, 40.0]);
     assert!(loaded.fit_window_to_image);
     assert_eq!(loaded.fit_window_limit, "custom");
+    assert_eq!(loaded.window_default_monitor, "DISPLAY-2");
+    assert_eq!(loaded.fit_window_monitor_offset, 72.0);
     assert_eq!(loaded.fit_window_min_width, 640.0);
     assert_eq!(loaded.fit_window_max_width, 1800.0);
     assert_eq!(loaded.fit_window_min_height, 512.0);

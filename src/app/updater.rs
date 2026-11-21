@@ -5,6 +5,7 @@
 
 use eframe::egui;
 use semver::Version;
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,6 +26,8 @@ pub(crate) struct ReleaseInfo {
     pub title: String,
     pub url: String,
     pub published_at: Option<String>,
+    /// Official release assets indexed by their exact published filename.
+    pub assets: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -51,6 +54,7 @@ impl ReleaseInfo {
             "name": self.title,
             "html_url": self.url,
             "published_at": self.published_at.as_deref(),
+            "assets": &self.assets,
             "draft": false,
             "prerelease": false
         })
@@ -58,9 +62,34 @@ impl ReleaseInfo {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) enum UpdateInstallStatus {
+    #[default]
+    Idle,
+    Downloading { asset_name: String },
+    Installing { asset_name: String },
+    Restarting,
+    Launched,
+    Failed { message: String },
+}
+
+impl UpdateInstallStatus {
+    pub fn is_busy(&self) -> bool {
+        matches!(
+            self,
+            Self::Downloading { .. }
+                | Self::Installing { .. }
+                | Self::Restarting
+                | Self::Launched
+        )
+    }
+}
+
 pub(crate) struct Updater {
     status: UpdateStatus,
     receiver: Option<Receiver<Result<ReleaseInfo, String>>>,
+    install_status: UpdateInstallStatus,
+    install_receiver: Option<Receiver<UpdateInstallStatus>>,
     automatic_check_considered: bool,
 }
 
@@ -69,6 +98,8 @@ impl Default for Updater {
         Self {
             status: UpdateStatus::Idle,
             receiver: None,
+            install_status: UpdateInstallStatus::Idle,
+            install_receiver: None,
             automatic_check_considered: false,
         }
     }
@@ -97,6 +128,88 @@ impl Updater {
 
     pub fn is_checking(&self) -> bool {
         matches!(&self.status, UpdateStatus::Checking)
+    }
+
+    pub fn install_status(&self) -> &UpdateInstallStatus {
+        &self.install_status
+    }
+
+    /// Starts a platform-aware download and installation for the available release.
+    /// Network and installation work runs off the UI thread.
+    pub fn start_install(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        if self.install_status.is_busy() {
+            return Err("An update is already being installed.".to_owned());
+        }
+        let release = match &self.status {
+            UpdateStatus::UpdateAvailable { release } => release.clone(),
+            _ => return Err("There is no available update to install.".to_owned()),
+        };
+
+        let (sender, receiver) = mpsc::channel();
+        let repaint_context = ctx.clone();
+        let thread = std::thread::Builder::new()
+            .name("jpeg-viewer-update-install".to_owned())
+            .spawn(move || {
+                let _ = sender.send(UpdateInstallStatus::Downloading {
+                    asset_name: "Detecting the installed platform…".to_owned(),
+                });
+                repaint_context.request_repaint();
+                let result = super::updater_install::run_update(
+                    &release,
+                    &sender,
+                    &repaint_context,
+                );
+                let final_status = match result {
+                    Ok(super::updater_install::InstallOutcome::CloseAndRestart) => {
+                        UpdateInstallStatus::Restarting
+                    }
+                    Ok(super::updater_install::InstallOutcome::InstallerLaunched) => {
+                        UpdateInstallStatus::Launched
+                    }
+                    Err(message) => UpdateInstallStatus::Failed { message },
+                };
+                let _ = sender.send(final_status);
+                repaint_context.request_repaint();
+            })
+            .map_err(|error| format!("Could not start the update installer: {error}"))?;
+        drop(thread);
+
+        self.install_receiver = Some(receiver);
+        self.install_status = UpdateInstallStatus::Downloading {
+            asset_name: "Detecting the installed platform…".to_owned(),
+        };
+        Ok(())
+    }
+
+    pub fn set_install_failed(&mut self, message: String) {
+        self.install_receiver = None;
+        self.install_status = UpdateInstallStatus::Failed { message };
+    }
+
+    /// Applies one installation-progress event to the UI-owned status state.
+    pub fn poll_install(&mut self) -> Option<UpdateInstallStatus> {
+        let result = self.install_receiver.as_ref().and_then(|receiver| match receiver.try_recv() {
+            Ok(status) => Some(status),
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => Some(UpdateInstallStatus::Failed {
+                message: "The update installer stopped before reporting its result.".to_owned(),
+            }),
+        });
+
+        if let Some(status) = result {
+            if matches!(
+                &status,
+                UpdateInstallStatus::Restarting
+                    | UpdateInstallStatus::Launched
+                    | UpdateInstallStatus::Failed { .. }
+            ) {
+                self.install_receiver = None;
+            }
+            self.install_status = status.clone();
+            Some(status)
+        } else {
+            None
+        }
     }
 
     /// Starts one launch-time check, unless an attempt was made within the last
@@ -343,6 +456,17 @@ fn wget_command() -> Command {
     Command::new("wget")
 }
 
+fn valid_release_asset(name: &str, download_url: &str) -> bool {
+    // Never execute or install an asset hosted outside the official repository's
+    // GitHub release-download namespace.
+    !name.is_empty()
+        && !name.contains('/')
+        && !name.contains('\\')
+        && download_url.starts_with(
+            "https://github.com/MobinWeekend/Jpeg-Viewer/releases/download/",
+        )
+}
+
 fn parse_release_response(body: &[u8]) -> Result<ReleaseInfo, String> {
     let value: serde_json::Value = serde_json::from_slice(body)
         .map_err(|error| format!("Could not parse the GitHub release response: {error}"))?;
@@ -387,6 +511,37 @@ fn parse_release_response(body: &[u8]) -> Result<ReleaseInfo, String> {
         .get("published_at")
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
+    // GitHub returns an array of asset objects. Cached release metadata stores
+    // the same verified assets as a filename-to-URL map, so accept both shapes.
+    let assets = if let Some(release_assets) = value
+        .get("assets")
+        .and_then(serde_json::Value::as_array)
+    {
+        release_assets
+            .iter()
+            .filter_map(|asset| {
+                let name = asset.get("name")?.as_str()?.trim();
+                let download_url = asset.get("browser_download_url")?.as_str()?;
+                valid_release_asset(name, download_url)
+                    .then(|| (name.to_owned(), download_url.to_owned()))
+            })
+            .collect()
+    } else if let Some(cached_assets) = value
+        .get("assets")
+        .and_then(serde_json::Value::as_object)
+    {
+        cached_assets
+            .iter()
+            .filter_map(|(name, download_url)| {
+                let name = name.trim();
+                let download_url = download_url.as_str()?;
+                valid_release_asset(name, download_url)
+                    .then(|| (name.to_owned(), download_url.to_owned()))
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
 
     Ok(ReleaseInfo {
         version,
@@ -394,6 +549,7 @@ fn parse_release_response(body: &[u8]) -> Result<ReleaseInfo, String> {
         title,
         url,
         published_at,
+        assets,
     })
 }
 
@@ -408,6 +564,10 @@ mod tests {
             "name": "JPEG Viewer 1.2.3",
             "html_url": "https://github.com/MobinWeekend/Jpeg-Viewer/releases/tag/v1.2.3",
             "published_at": "2026-11-20T12:00:00Z",
+            "assets": [{
+                "name": "JPEG-Viewer-Windows-x64.exe",
+                "browser_download_url": "https://github.com/MobinWeekend/Jpeg-Viewer/releases/download/v1.2.3/JPEG-Viewer-Windows-x64.exe"
+            }],
             "draft": false,
             "prerelease": false
         }"#;
@@ -416,6 +576,10 @@ mod tests {
         assert_eq!(release.version.to_string(), "1.2.3");
         assert_eq!(release.tag_name, "v1.2.3");
         assert_eq!(release.title, "JPEG Viewer 1.2.3");
+        assert_eq!(
+            release.assets.get("JPEG-Viewer-Windows-x64.exe").map(String::as_str),
+            Some("https://github.com/MobinWeekend/Jpeg-Viewer/releases/download/v1.2.3/JPEG-Viewer-Windows-x64.exe")
+        );
     }
 
     #[test]
@@ -424,6 +588,10 @@ mod tests {
             "tag_name": "v1.2.3",
             "name": "JPEG Viewer 1.2.3",
             "html_url": "https://github.com/MobinWeekend/Jpeg-Viewer/releases/tag/v1.2.3",
+            "assets": [{
+                "name": "JPEG-Viewer-Linux-x64.AppImage",
+                "browser_download_url": "https://github.com/MobinWeekend/Jpeg-Viewer/releases/download/v1.2.3/JPEG-Viewer-Linux-x64.AppImage"
+            }],
             "draft": false,
             "prerelease": false
         }"#;
@@ -434,6 +602,7 @@ mod tests {
 
         assert_eq!(restored.version, release.version);
         assert_eq!(restored.url, release.url);
+        assert_eq!(restored.assets, release.assets);
     }
 
     #[test]

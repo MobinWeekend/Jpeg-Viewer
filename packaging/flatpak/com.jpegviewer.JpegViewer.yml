@@ -16,6 +16,7 @@ finish-args:
   - --filesystem=home
   - --share=ipc
   - --share=network
+  - --talk-name=org.freedesktop.Flatpak
 
 modules:
   - name: jpeg-viewer

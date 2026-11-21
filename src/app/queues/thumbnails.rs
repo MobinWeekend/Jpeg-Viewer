@@ -1656,33 +1656,152 @@ pub(crate) fn remove_attempts_for_cached_source(attempted: &mut HashSet<String>,
 }
 
 impl ViewerApp {
-    /// Prepare the initial Masonry geometry from all fast filesystem dimensions
-    /// in one background pass. The first grid is not laid out until this completes,
-    /// avoiding one full shortest-column rebuild for every newly discovered ratio.
+    /// Prepare Masonry dimensions in consecutive 32-entry batches.
+    ///
+    /// Only the first unfinished batch is submitted to the dimension workers.
+    /// This makes the top of the current collection the strict priority: later
+    /// entries cannot occupy workers until the earlier batch has completed.
+    /// Each completed prefix is immediately available to the Masonry renderer.
     pub(crate) fn prepare_masonry_dimensions_for_layout(
         &mut self,
         tab_index: usize,
         ctx: &egui::Context,
     ) -> bool {
+        const CHUNK_SIZE: usize = 32;
+
         let Some(tab) = self.workspace.tabs.get(tab_index) else {
             return true;
         };
         let revision = tab.masonry_groups_revision;
-        if tab.masonry_dimensions_prepared_revision == Some(revision) {
-            return true;
+        if tab.masonry_dimensions_progress_revision != Some(revision) {
+            let tab = &mut self.workspace.tabs[tab_index];
+            if let Some(cancellation) = tab.masonry_dimensions_scan_cancellation.take() {
+                cancellation.store(true, Ordering::Release);
+            }
+            tab.masonry_dimensions_scan_receiver = None;
+            tab.masonry_dimensions_scan_pending_revision = None;
+            tab.masonry_dimensions_scan_chunk_end = None;
+            tab.masonry_dimensions_ready_count = 0;
+            tab.masonry_dimensions_prepared_revision = None;
+            tab.masonry_dimensions_progress_revision = Some(revision);
         }
 
-        let has_matching_scan = tab.masonry_dimensions_scan_pending_revision == Some(revision)
-            && tab.masonry_dimensions_scan_receiver.is_some();
+        loop {
+            // Finish the active chunk before submitting the next one. Results
+            // are applied as one batch so visible geometry only changes once
+            // for every 32 source entries.
+            if self.workspace.tabs[tab_index]
+                .masonry_dimensions_scan_receiver
+                .is_some()
+            {
+                let received = {
+                    let tab = &self.workspace.tabs[tab_index];
+                    tab.masonry_dimensions_scan_receiver
+                        .as_ref()
+                        .map(|receiver| receiver.try_recv())
+                };
+                let results = match received {
+                    Some(Ok(results)) => results,
+                    Some(Err(std::sync::mpsc::TryRecvError::Empty)) => {
+                        return self.workspace.tabs[tab_index].masonry_dimensions_ready_count > 0;
+                    }
+                    Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) | None => Vec::new(),
+                };
 
-        if !has_matching_scan {
+                let chunk_end = self.workspace.tabs[tab_index]
+                    .masonry_dimensions_scan_chunk_end
+                    .take()
+                    .unwrap_or_else(|| {
+                        self.workspace.tabs[tab_index]
+                            .masonry_dimensions_ready_count
+                    });
+                let chunk_start = self.workspace.tabs[tab_index].masonry_dimensions_ready_count;
+                for (_entry_id, source_key, dimensions) in results {
+                    if let Some((width, height)) =
+                        dimensions.filter(|(width, height)| *width > 0 && *height > 0)
+                    {
+                        self.masonry_dimension_results
+                            .insert(source_key.clone(), Some((width, height)));
+                        self.masonry_aspect_ratio_results.remove(&source_key);
+                        self.masonry_dimension_attempted.insert(source_key);
+                    } else {
+                        self.masonry_dimension_results
+                            .entry(source_key.clone())
+                            .or_insert(None);
+                        self.masonry_dimension_attempted.insert(source_key);
+                    }
+                }
+
+                // A chunk scans each unique source only once, but a collection
+                // can contain the same file more than once. Propagate each
+                // completed source result to every matching entry in this
+                // chunk before making the whole prefix visible.
+                let mut dimension_updates = Vec::new();
+                let mut ratio_updates = Vec::new();
+                {
+                    let tab = &self.workspace.tabs[tab_index];
+                    for entry in &tab.entries[chunk_start..chunk_end] {
+                        let entry_id = entry.get_id();
+                        let source_key = source_thumbnail_key(entry);
+                        if let Some(Some((width, height))) =
+                            self.masonry_dimension_results.get(&source_key).copied()
+                        {
+                            if width > 0 && height > 0 {
+                                dimension_updates.push((entry_id, width, height));
+                                continue;
+                            }
+                        }
+                        if let Some(ratio) = self
+                            .masonry_aspect_ratio_results
+                            .get(&source_key)
+                            .copied()
+                            .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
+                        {
+                            ratio_updates.push((entry_id, ratio));
+                        }
+                    }
+                }
+
+                {
+                    let tab = &mut self.workspace.tabs[tab_index];
+                    tab.masonry_dimensions_scan_receiver = None;
+                    tab.masonry_dimensions_scan_pending_revision = None;
+                    tab.masonry_dimensions_scan_cancellation = None;
+                    for (entry_id, width, height) in dimension_updates {
+                        tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
+                        tab.masonry_aspect_ratios
+                            .insert(entry_id, width as f32 / height as f32);
+                    }
+                    for (entry_id, ratio) in ratio_updates {
+                        tab.masonry_aspect_ratios.insert(entry_id, ratio);
+                    }
+                    tab.masonry_dimensions_ready_count = chunk_end;
+                    tab.invalidate_masonry_geometry();
+                }
+                ctx.request_repaint();
+                continue;
+            }
+
+            let (chunk_start, chunk_end, entry_count) = {
+                let tab = &self.workspace.tabs[tab_index];
+                let start = tab.masonry_dimensions_ready_count;
+                (start, start.saturating_add(CHUNK_SIZE).min(tab.entries.len()), tab.entries.len())
+            };
+            if chunk_start >= entry_count {
+                let tab = &mut self.workspace.tabs[tab_index];
+                tab.masonry_dimensions_ready_count = entry_count;
+                tab.masonry_dimensions_prepared_revision = Some(revision);
+                tab.masonry_dimensions_scan_pending_revision = None;
+                return true;
+            }
+
             let mut cached_dimensions = Vec::new();
             let mut cached_ratios = Vec::new();
             let mut scan_items = Vec::new();
             let mut queued_source_keys = HashSet::new();
             {
                 let tab = &self.workspace.tabs[tab_index];
-                for entry in &tab.entries {
+                for entry in &tab.entries[chunk_start..chunk_end] {
                     let entry_id = entry.get_id();
                     if let Some((width, height)) = tab
                         .masonry_dimensions
@@ -1709,9 +1828,9 @@ impl ViewerApp {
 
                     match entry {
                         crate::imaging::entry::ImageEntry::File(path) => {
-                            // A previously attempted failure is definitive for
-                            // this collection revision; otherwise scan the file
-                            // header/EXIF on a bounded background pool.
+                            // Failed probes are remembered as well. A cached
+                            // provider ratio remains useful even when a format
+                            // has no readable header dimensions.
                             if self.masonry_dimension_results.contains_key(&source_key) {
                                 if let Some(ratio) = self
                                     .masonry_aspect_ratio_results
@@ -1728,10 +1847,8 @@ impl ViewerApp {
                             }
                         }
                         _ => {
-                            // Archive entries are intentionally not extracted a
-                            // second time here. Reuse dimensions/ratios already
-                            // discovered by their thumbnail pipeline, or let the
-                            // visible-card path apply them when that work finishes.
+                            // Archive entries use dimensions discovered while
+                            // their thumbnail byte buffer is already available.
                             if let Some(ratio) = self
                                 .masonry_aspect_ratio_results
                                 .get(&source_key)
@@ -1747,9 +1864,6 @@ impl ViewerApp {
 
             {
                 let tab = &mut self.workspace.tabs[tab_index];
-                if let Some(cancellation) = tab.masonry_dimensions_scan_cancellation.take() {
-                    cancellation.store(true, Ordering::Release);
-                }
                 for (entry_id, width, height) in cached_dimensions {
                     tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
                     tab.masonry_aspect_ratios
@@ -1758,16 +1872,15 @@ impl ViewerApp {
                 for (entry_id, ratio) in cached_ratios {
                     tab.masonry_aspect_ratios.insert(entry_id, ratio);
                 }
-                tab.masonry_dimensions_scan_pending_revision = Some(revision);
-                tab.masonry_dimensions_scan_cancellation = None;
-                tab.masonry_dimensions_scan_receiver = None;
             }
 
             if scan_items.is_empty() {
                 let tab = &mut self.workspace.tabs[tab_index];
-                tab.masonry_dimensions_prepared_revision = Some(revision);
-                tab.masonry_dimensions_scan_pending_revision = None;
-                return true;
+                tab.masonry_dimensions_ready_count = chunk_end;
+                tab.invalidate_masonry_geometry();
+                // Cached-only batches can be passed through immediately; the
+                // first batch containing unknown files becomes the worker job.
+                continue;
             }
 
             let worker_limit = self.settings_manager.get().thumbnail_workers.clamp(1, 8);
@@ -1775,96 +1888,59 @@ impl ViewerApp {
             let cancellation = Arc::new(AtomicBool::new(false));
             let worker_cancellation = Arc::clone(&cancellation);
             let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
-                use rayon::prelude::*;
-                let pool = rayon::ThreadPoolBuilder::new()
-                    .num_threads(worker_limit)
-                    .build();
-                let scan_one = |entry_id: &String, source_key: &String, path: &PathBuf| {
-                    let dimensions = if worker_cancellation.load(Ordering::Acquire) {
-                        None
-                    } else {
-                        MASONRY_DIMENSION_SCAN_CONTEXT
-                            .with(|_| source_dimensions_from_file(path))
+            let worker = std::thread::Builder::new()
+                .name(format!("jpeg-viewer-masonry-dimensions-{chunk_start}"))
+                .spawn(move || {
+                    use rayon::prelude::*;
+                    let pool = rayon::ThreadPoolBuilder::new()
+                        .num_threads(worker_limit)
+                        .build();
+                    let scan_one = |entry_id: &String, source_key: &String, path: &PathBuf| {
+                        let dimensions = if worker_cancellation.load(Ordering::Acquire) {
+                            None
+                        } else {
+                            MASONRY_DIMENSION_SCAN_CONTEXT
+                                .with(|_| source_dimensions_from_file(path))
+                        };
+                        (entry_id.clone(), source_key.clone(), dimensions)
                     };
-                    (entry_id.clone(), source_key.clone(), dimensions)
-                };
-                let results = match pool {
-                    Ok(pool) => pool.install(|| {
-                        scan_items
-                            .par_iter()
+                    let results = match pool {
+                        Ok(pool) => pool.install(|| {
+                            scan_items
+                                .par_iter()
+                                .map(|(entry_id, source_key, path)| {
+                                    scan_one(entry_id, source_key, path)
+                                })
+                                .collect::<Vec<_>>()
+                        }),
+                        Err(_) => scan_items
+                            .iter()
                             .map(|(entry_id, source_key, path)| {
                                 scan_one(entry_id, source_key, path)
                             })
-                            .collect::<Vec<_>>()
-                    }),
-                    Err(_) => scan_items
-                        .iter()
-                        .map(|(entry_id, source_key, path)| {
-                            scan_one(entry_id, source_key, path)
-                        })
-                        .collect::<Vec<_>>(),
-                };
-                if !worker_cancellation.load(Ordering::Acquire) {
-                    let _ = tx.send(results);
-                    worker_ctx.request_repaint();
-                }
-            });
+                            .collect::<Vec<_>>(),
+                    };
+                    if !worker_cancellation.load(Ordering::Acquire) {
+                        let _ = tx.send(results);
+                        worker_ctx.request_repaint();
+                    }
+                });
+
+            if let Err(error) = worker {
+                eprintln!("Could not start Masonry dimension batch: {error}");
+                let tab = &mut self.workspace.tabs[tab_index];
+                tab.masonry_dimensions_ready_count = chunk_end;
+                tab.invalidate_masonry_geometry();
+                continue;
+            }
 
             let tab = &mut self.workspace.tabs[tab_index];
             tab.masonry_dimensions_scan_pending_revision = Some(revision);
             tab.masonry_dimensions_scan_cancellation = Some(cancellation);
+            tab.masonry_dimensions_scan_chunk_end = Some(chunk_end);
             tab.masonry_dimensions_scan_receiver = Some(rx);
-            return false;
+            return tab.masonry_dimensions_ready_count > 0;
         }
-
-        let results = {
-            let tab = &mut self.workspace.tabs[tab_index];
-            match tab
-                .masonry_dimensions_scan_receiver
-                .as_ref()
-                .map(|receiver| receiver.try_recv())
-            {
-                Some(Ok(results)) => results,
-                Some(Err(std::sync::mpsc::TryRecvError::Empty)) => return false,
-                Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) | None => Vec::new(),
-            }
-        };
-
-        let mut tab_dimension_updates = Vec::new();
-        for (entry_id, source_key, dimensions) in results {
-            if let Some((width, height)) =
-                dimensions.filter(|(width, height)| *width > 0 && *height > 0)
-            {
-                let ratio = width as f32 / height as f32;
-                tab_dimension_updates.push((entry_id, width, height, ratio));
-                self.masonry_dimension_results
-                    .insert(source_key.clone(), Some((width, height)));
-                self.masonry_aspect_ratio_results.remove(&source_key);
-                self.masonry_dimension_attempted.insert(source_key);
-            } else {
-                self.masonry_dimension_results
-                    .entry(source_key.clone())
-                    .or_insert(None);
-                self.masonry_dimension_attempted.insert(source_key);
-            }
-        }
-        {
-            let tab = &mut self.workspace.tabs[tab_index];
-            tab.masonry_dimensions_scan_receiver = None;
-            tab.masonry_dimensions_scan_pending_revision = None;
-            tab.masonry_dimensions_scan_cancellation = None;
-            for (entry_id, width, height, ratio) in tab_dimension_updates {
-                tab.masonry_dimensions.insert(entry_id.clone(), (width, height));
-                tab.masonry_aspect_ratios.insert(entry_id, ratio);
-            }
-            tab.masonry_dimensions_prepared_revision = Some(revision);
-        }
-
-        // A disconnected worker is treated as an unknown-dimensions result for
-        // this revision rather than blocking Masonry indefinitely.
-        ctx.request_repaint();
-        true
     }
 
     /// Apply cached dimension metadata for a visible Masonry entry, or queue a

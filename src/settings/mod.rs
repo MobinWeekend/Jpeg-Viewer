@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 11;
+const SETTINGS_SCHEMA_VERSION: u32 = 13;
+const CURRENT_WINDOW_MONITOR_DEFAULT_SCHEMA: u32 = 13;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -26,6 +27,9 @@ pub struct AppSettings {
     pub zoom_step_keyboard: f32,
     pub window_pos: Option<[f32; 2]>,
     pub window_size: Option<[f32; 2]>,
+    /// Preferred display identifier, "primary" for the primary display, or "current"
+    /// to select whichever monitor contains the largest part of the current window.
+    pub window_default_monitor: String,
     /// Restore the window maximized when it was maximized on the last normal exit.
     pub window_maximized: bool,
     pub cache_radius: usize,
@@ -174,6 +178,9 @@ pub struct AppSettings {
     pub fit_window_to_image: bool,
     /// monitor or custom.
     pub fit_window_limit: String,
+    /// Insets the usable monitor area by this many logical points on each edge
+    /// when the monitor-size window limit is selected.
+    pub fit_window_monitor_offset: f32,
     pub fit_window_min_width: f32,
     pub fit_window_max_width: f32,
     pub fit_window_min_height: f32,
@@ -193,6 +200,7 @@ impl Default for AppSettings {
             zoom_step_keyboard: 1.2,
             window_pos: None,
             window_size: None,
+            window_default_monitor: "current".to_string(),
             window_maximized: false,
             cache_radius: 6,
             cache_delta_factor: 0.6,
@@ -291,6 +299,7 @@ impl Default for AppSettings {
             view_padding_custom: [0.0; 4],
             fit_window_to_image: false,
             fit_window_limit: "monitor".to_string(),
+            fit_window_monitor_offset: 0.0,
             fit_window_min_width: 512.0,
             fit_window_max_width: 1600.0,
             fit_window_min_height: 512.0,
@@ -348,8 +357,7 @@ impl SettingsManager {
                 eprintln!("Warning: Could not save default settings: {}", e);
                 error = Some(format!("Could not save default settings: {}", e));
             }
-        } else if stored_schema_version < WINDOW_GEOMETRY_NORMALIZED_SCHEMA
-            || titlebar_navigation_migrated
+        } else if stored_schema_version < SETTINGS_SCHEMA_VERSION || titlebar_navigation_migrated
         {
             // Persist one-time settings migrations. save_to_file preserves unrelated/unknown INI keys.
             if let Err(e) = Self::save_to_file(&path, &settings) {

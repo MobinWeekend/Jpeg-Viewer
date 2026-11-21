@@ -26,6 +26,14 @@ impl eframe::App for ViewerApp {
                 | super::updater::UpdateStatus::Failed { .. } => {}
             }
         }
+        if let Some(status) = self.updater.poll_install()
+            && matches!(status, super::updater::UpdateInstallStatus::Restarting)
+        {
+            // Portable AppImage/macOS/Linux/Windows builds use a helper process
+            // that waits for this process to close before replacing the binary.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+
         if let Some(attempted_at) = self.updater.maybe_start_automatic_check(
             self.settings_manager.get().update_check_last_attempt_unix,
             ctx,
@@ -178,70 +186,110 @@ impl eframe::App for ViewerApp {
 
         // ========== STARTUP WINDOW PLACEMENT ==========
         // Check the first reported native geometry once the platform has created the window.
-        // egui reports the current monitor size; clamp saved positions back onto that monitor
-        // when a monitor was removed or its resolution changed.
+        // Prefer the saved display selection; if it was disconnected, resolve to the primary
+        // display and then the first remaining monitor before correcting the saved position.
         if !self.startup_window_placement_handled {
-            let (monitor_size, outer_rect, inner_size, maximized, fullscreen) =
+            let (reported_monitor_size, outer_rect, inner_size, maximized, fullscreen) =
                 ctx.input(|input| {
                     let viewport = input.viewport();
                     (
                         viewport.monitor_size,
                         viewport.outer_rect,
-                        viewport.inner_rect.map(|r| r.size()),
+                        viewport.inner_rect.map(|rect| rect.size()),
                         viewport.maximized.unwrap_or(false),
                         viewport.fullscreen.unwrap_or(false),
                     )
                 });
-            if let (Some(monitor_size), Some(outer_rect), Some(inner_size)) =
-                (monitor_size, outer_rect, inner_size)
-            {
+            if let (Some(outer_rect), Some(inner_size)) = (outer_rect, inner_size) {
                 let settings = self.settings_manager.get();
-                if settings.start_centered && !maximized {
-                    // Center once using the actual outer frame dimensions. The saved
-                    // normal position is left untouched when start-centered is off.
-                    let pos = egui::pos2(
-                        ((monitor_size.x - outer_rect.width()) * 0.5).max(0.0),
-                        ((monitor_size.y - outer_rect.height()) * 0.5).max(0.0),
-                    );
-                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
-                } else if !maximized {
-                    // `with_position` and `OuterPosition` both use the outer frame's
-                    // top-left. Clamp only when a frame edge is actually outside the
-                    // current monitor, and ignore sub-point decoration/DPI rounding so
-                    // a correctly restored window does not creep each time it opens.
-                    let max_x = (monitor_size.x - outer_rect.width()).max(0.0);
-                    let max_y = (monitor_size.y - outer_rect.height()).max(0.0);
-                    let out_of_bounds = outer_rect.min.x < -2.0
-                        || outer_rect.min.y < -2.0
-                        || outer_rect.max.x > monitor_size.x + 2.0
-                        || outer_rect.max.y > monitor_size.y + 2.0;
-                    if out_of_bounds {
-                        let pos = egui::pos2(
-                            outer_rect.min.x.clamp(0.0, max_x),
-                            outer_rect.min.y.clamp(0.0, max_y),
+                let monitors = crate::platform::monitors::available_monitors();
+                let selected_monitor = crate::platform::monitors::resolve_default_monitor_at(
+                    &monitors,
+                    &settings.window_default_monitor,
+                    Some(outer_rect),
+                );
+                let monitor_padding = if settings.fit_window_limit == "monitor" {
+                    settings.fit_window_monitor_offset.clamp(0.0, 4096.0)
+                } else {
+                    0.0
+                };
+                let selected_bounds =
+                    selected_monitor.map(|monitor| monitor.inset_bounds(monitor_padding));
+                let reported_usable_size = reported_monitor_size.map(|size| {
+                    egui::vec2(
+                        (size.x - monitor_padding * 2.0).max(100.0),
+                        (size.y - monitor_padding * 2.0).max(100.0),
+                    )
+                });
+                let monitor_size = selected_bounds
+                    .map(|bounds| bounds.size())
+                    .or(reported_usable_size);
+
+                if let Some(monitor_size) = monitor_size {
+                    // Do not invent a (0, 0) monitor origin when the platform cannot
+                    // enumerate displays. In that case, keep the saved position and
+                    // use egui's reported size only for the safety resize below.
+                    if let Some(bounds) = selected_bounds {
+                        let min_position = bounds.min;
+                        let max_position = egui::pos2(
+                            (bounds.max.x - outer_rect.width()).max(min_position.x),
+                            (bounds.max.y - outer_rect.height()).max(min_position.y),
                         );
-                        if (pos - outer_rect.min).length_sq() > 4.0 {
+
+                        if settings.start_centered && !maximized {
+                            // Center on the selected display, not necessarily the display
+                            // that happened to host the initial native window.
+                            let pos = bounds.min
+                                + ((monitor_size - outer_rect.size()) * 0.5)
+                                    .max(egui::Vec2::ZERO);
                             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+                        } else if !maximized {
+                            // A saved location on another monitor must not override the
+                            // selected default display. If the chosen display disappeared,
+                            // resolve_default_monitor_at has already selected the primary or
+                            // first remaining display.
+                            let center_on_selected = bounds.contains(outer_rect.center());
+                            let out_of_bounds = outer_rect.min.x < bounds.min.x - 2.0
+                                || outer_rect.min.y < bounds.min.y - 2.0
+                                || outer_rect.max.x > bounds.max.x + 2.0
+                                || outer_rect.max.y > bounds.max.y + 2.0;
+                            if !center_on_selected || out_of_bounds {
+                                let pos = if !center_on_selected {
+                                    egui::pos2(
+                                        bounds.min.x.clamp(min_position.x, max_position.x),
+                                        bounds.min.y.clamp(min_position.y, max_position.y),
+                                    )
+                                } else {
+                                    egui::pos2(
+                                        outer_rect.min.x.clamp(min_position.x, max_position.x),
+                                        outer_rect.min.y.clamp(min_position.y, max_position.y),
+                                    )
+                                };
+                                if (pos - outer_rect.min).length_sq() > 4.0 {
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+                                }
+                            }
                         }
                     }
-                }
 
-                // Only shrink when the actual client size exceeds the current monitor.
-                // Never issue InnerSize for a size that already fits: the app persists its
-                // own geometry, and repeated native resize commands can compound rounding.
-                if !maximized
-                    && !fullscreen
-                    && (inner_size.x > monitor_size.x + 1.0 || inner_size.y > monitor_size.y + 1.0)
-                {
-                    let target_size = egui::vec2(
-                        inner_size.x.min(monitor_size.x).max(100.0),
-                        inner_size.y.min(monitor_size.y).max(100.0),
-                    );
-                    if (target_size - inner_size).length_sq() > 1.0 {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(target_size));
+                    // Only shrink when the actual client size exceeds the selected
+                    // monitor. Never resize a window that already fits: this avoids
+                    // accumulating native frame/DPI rounding across launches.
+                    if !maximized
+                        && !fullscreen
+                        && (inner_size.x > monitor_size.x + 1.0
+                            || inner_size.y > monitor_size.y + 1.0)
+                    {
+                        let target_size = egui::vec2(
+                            inner_size.x.min(monitor_size.x).max(100.0),
+                            inner_size.y.min(monitor_size.y).max(100.0),
+                        );
+                        if (target_size - inner_size).length_sq() > 1.0 {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(target_size));
+                        }
                     }
+                    self.startup_window_placement_handled = true;
                 }
-                self.startup_window_placement_handled = true;
             }
         }
 

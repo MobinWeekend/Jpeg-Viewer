@@ -78,15 +78,21 @@ pub(crate) struct WorkspaceTab {
     /// Original pixel dimensions discovered in the fast metadata-first pass.
     /// Kept separately from thumbnail texture residency and aspect ratios.
     pub masonry_dimensions: HashMap<String, (u32, u32)>,
-    /// Collection revision whose initial fast-dimension pass has completed.
-    /// Masonry waits for this pass before its first geometry build, so visible
-    /// scrolling never triggers a succession of full shortest-column rebuilds.
+    /// Collection revision whose fast-dimension pass has completed for every
+    /// entry. Masonry can render each completed 32-entry prefix before this is set.
     pub masonry_dimensions_prepared_revision: Option<u64>,
+    /// Revision whose dimensions are being revealed progressively in Masonry.
+    pub masonry_dimensions_progress_revision: Option<u64>,
+    /// Number of leading source entries whose 32-entry dimension batch is ready.
+    /// Rendering is limited to this prefix so chunks appear in collection order.
+    pub masonry_dimensions_ready_count: usize,
+    /// End index of the currently running 32-entry dimension batch.
+    pub masonry_dimensions_scan_chunk_end: Option<usize>,
     /// Revision currently being scanned for fast source dimensions.
     pub masonry_dimensions_scan_pending_revision: Option<u64>,
-    /// Cancellation for a superseded collection-wide dimensions scan.
+    /// Cancellation for a superseded collection dimension batch.
     pub masonry_dimensions_scan_cancellation: Option<Arc<AtomicBool>>,
-    /// Background header/EXIF scan; the result is applied to every entry at once.
+    /// Background header/EXIF scan for the currently active 32-entry prefix.
     pub masonry_dimensions_scan_receiver:
         Option<Receiver<Vec<(String, String, Option<(u32, u32)>)>>>,
     /// Per-folder geometry retained between frames. Fingerprints include the
@@ -164,6 +170,9 @@ impl WorkspaceTab {
             masonry_aspect_ratios: HashMap::new(),
             masonry_dimensions: HashMap::new(),
             masonry_dimensions_prepared_revision: None,
+            masonry_dimensions_progress_revision: None,
+            masonry_dimensions_ready_count: 0,
+            masonry_dimensions_scan_chunk_end: None,
             masonry_dimensions_scan_pending_revision: None,
             masonry_dimensions_scan_cancellation: None,
             masonry_dimensions_scan_receiver: None,

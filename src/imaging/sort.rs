@@ -111,28 +111,9 @@ pub fn sort_images<T: AsPath>(images: &mut [T], method: SortMethod) {
 
 /// Sort images naturally (alphanumerically)
 pub fn sort_natural<T: AsPath>(images: &mut [T]) {
-    #[cfg(target_os = "windows")]
-    fn compare_filenames(a: &Path, b: &Path) -> std::cmp::Ordering {
-        use std::os::windows::ffi::OsStrExt;
-        use windows::Win32::UI::Shell::StrCmpLogicalW;
-        use windows::core::PCWSTR;
-
-        let a_name = a.file_name().unwrap_or_default();
-        let b_name = b.file_name().unwrap_or_default();
-
-        let a_wide: Vec<u16> = a_name.encode_wide().chain(std::iter::once(0)).collect();
-        let b_wide: Vec<u16> = b_name.encode_wide().chain(std::iter::once(0)).collect();
-
-        let result = unsafe { StrCmpLogicalW(PCWSTR(a_wide.as_ptr()), PCWSTR(b_wide.as_ptr())) };
-
-        result.cmp(&0)
-    }
-
-    #[cfg(not(target_os = "windows"))]
     fn compare_filenames(a: &Path, b: &Path) -> std::cmp::Ordering {
         let a_name = a.file_name().unwrap_or_default().to_string_lossy();
         let b_name = b.file_name().unwrap_or_default().to_string_lossy();
-
         natord::compare(&a_name.to_lowercase(), &b_name.to_lowercase())
     }
 

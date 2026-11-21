@@ -93,6 +93,28 @@ fn main() -> eframe::Result<()> {
             viewport = viewport.with_inner_size(size);
         }
     } else {
+        // Place the initial native window on the selected display before asking
+        // the window manager to maximize it. Moving an already-maximized window
+        // is not reliable across all desktop environments.
+        let monitors = crate::platform::monitors::available_monitors();
+        let saved_window_rect = app_settings
+            .window_pos
+            .zip(app_settings.window_size)
+            .map(|(position, size)| {
+                egui::Rect::from_min_size(
+                    egui::pos2(position[0], position[1]),
+                    egui::vec2(size[0], size[1]),
+                )
+            });
+        if let Some(monitor) = crate::platform::monitors::resolve_default_monitor_at(
+            &monitors,
+            &app_settings.window_default_monitor,
+            saved_window_rect,
+        ) {
+            viewport = viewport.with_position(
+                egui::pos2(monitor.x + 24.0, monitor.y + 24.0),
+            );
+        }
         viewport = viewport.with_maximized(true);
     }
 

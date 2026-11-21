@@ -1,5 +1,5 @@
 use crate::app::types::ViewerApp;
-use crate::app::updater::UpdateStatus;
+use crate::app::updater::{UpdateInstallStatus, UpdateStatus};
 use eframe::egui;
 
 pub(super) fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -8,6 +8,8 @@ pub(super) fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
 
         let status = app.updater.status().clone();
         let checking = matches!(&status, UpdateStatus::Checking);
+        let install_status = app.updater.install_status().clone();
+        let installing = install_status.is_busy();
         let button_label = match &status {
             UpdateStatus::Idle => "Check for updates",
             UpdateStatus::Checking => "Checking…",
@@ -67,6 +69,19 @@ pub(super) fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
                         ))
                         .strong(),
                     );
+                    let install_response = ui.add_enabled(
+                        !installing,
+                        egui::Button::new(format!("Download and install v{}", release.version))
+                            .min_size(egui::vec2(0.0, 30.0)),
+                    );
+                    if installing {
+                        ui.spinner();
+                    }
+                    if install_response.clicked()
+                        && let Err(error) = app.updater.start_install(ctx)
+                    {
+                        app.updater.set_install_failed(error);
+                    }
                     if ui.button("View release and download options").clicked()
                         && let Err(error) = open::that(&release.url)
                     {
@@ -110,11 +125,40 @@ pub(super) fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
                     .weak(),
                 );
             }
-            ui.label(
-                egui::RichText::new("Downloads and installation are handled manually from GitHub.")
-                    .small()
-                    .weak(),
-            );
+            match install_status {
+                UpdateInstallStatus::Idle => {
+                    ui.label(
+                        egui::RichText::new(
+                            "The installer automatically selects the matching operating system, architecture, and installation type.",
+                        )
+                        .small()
+                        .weak(),
+                    );
+                }
+                UpdateInstallStatus::Downloading { asset_name } => {
+                    ui.label(format!("Downloading update: {asset_name}"));
+                }
+                UpdateInstallStatus::Installing { asset_name } => {
+                    ui.label(format!("Installing update: {asset_name}"));
+                }
+                UpdateInstallStatus::Restarting => {
+                    ui.label("Restarting with the updated version…");
+                }
+                UpdateInstallStatus::Launched => {
+                    ui.label(
+                        egui::RichText::new(
+                            "The platform installer has been launched. Complete any authorization prompts, then restart JPEG Viewer after it finishes.",
+                        )
+                        .small(),
+                    );
+                }
+                UpdateInstallStatus::Failed { message } => {
+                    ui.label(
+                        egui::RichText::new(format!("Update installation failed: {message}"))
+                            .color(ui.visuals().error_fg_color),
+                    );
+                }
+            }
         });
         ui.add_space(4.0);
     });

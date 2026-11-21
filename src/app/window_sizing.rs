@@ -19,16 +19,17 @@ impl ViewerApp {
             self.window_fit_pending = false;
             return false;
         }
-        let (fullscreen, maximized, monitor_size, outer_size, inner_size) = ctx.input(|input| {
-            let viewport = input.viewport();
-            (
-                viewport.fullscreen.unwrap_or(false),
-                viewport.maximized.unwrap_or(false),
-                viewport.monitor_size,
-                viewport.outer_rect.map(|rect| rect.size()),
-                viewport.inner_rect.map(|rect| rect.size()),
-            )
-        });
+        let (fullscreen, maximized, reported_monitor_size, outer_rect, inner_size) =
+            ctx.input(|input| {
+                let viewport = input.viewport();
+                (
+                    viewport.fullscreen.unwrap_or(false),
+                    viewport.maximized.unwrap_or(false),
+                    viewport.monitor_size,
+                    viewport.outer_rect,
+                    viewport.inner_rect.map(|rect| rect.size()),
+                )
+            });
         // Fitting is a windowed operation. Do not queue a surprise resize for later
         // when the user leaves fullscreen or restores a maximized window.
         if fullscreen || maximized {
@@ -37,11 +38,36 @@ impl ViewerApp {
         }
 
         let settings = self.settings_manager.get().clone();
-        let zoom = ctx.zoom_factor().max(0.01);
-        let monitor = monitor_size.unwrap_or_else(|| {
-            ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()))
-                .unwrap_or(egui::vec2(1920.0, 1080.0))
+        let monitors = crate::platform::monitors::available_monitors();
+        let selected_monitor = crate::platform::monitors::resolve_default_monitor_at(
+            &monitors,
+            &settings.window_default_monitor,
+            outer_rect,
+        );
+        let monitor_padding = if settings.fit_window_limit == "monitor" {
+            settings.fit_window_monitor_offset.clamp(0.0, 4096.0)
+        } else {
+            0.0
+        };
+        let selected_bounds =
+            selected_monitor.map(|monitor| monitor.inset_bounds(monitor_padding));
+        let reported_usable_size = reported_monitor_size.map(|size| {
+            egui::vec2(
+                (size.x - monitor_padding * 2.0).max(1.0),
+                (size.y - monitor_padding * 2.0).max(1.0),
+            )
         });
+        let monitor = selected_bounds
+            .map(|bounds| bounds.size())
+            .or(reported_usable_size)
+            .unwrap_or_else(|| {
+                ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()))
+                    .unwrap_or(egui::vec2(1920.0, 1080.0))
+            });
+        let zoom = ctx.zoom_factor().max(0.01);
+        // The monitor offset is an inset on every edge, already reflected in
+        // `monitor`; do not subtract it again from the width and height.
+        let constrained_monitor = egui::vec2(monitor.x.max(512.0), monitor.y.max(512.0));
         let (min_width, max_width, min_height, max_height) =
             if settings.fit_window_limit == "custom" {
                 (
@@ -51,7 +77,12 @@ impl ViewerApp {
                     settings.fit_window_max_height,
                 )
             } else {
-                (512.0, monitor.x.max(512.0), 512.0, monitor.y.max(512.0))
+                (
+                    512.0,
+                    constrained_monitor.x,
+                    512.0,
+                    constrained_monitor.y,
+                )
             };
 
         let left_panel = if settings.show_file_sidebar {
@@ -121,19 +152,35 @@ impl ViewerApp {
         let native_inner = target_inner / zoom;
         ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(native_inner));
 
+        let frame_delta = match (outer_rect, inner_size) {
+            (Some(outer), Some(inner)) => (outer.size() - inner).max(egui::Vec2::ZERO),
+            _ => egui::Vec2::ZERO,
+        };
+        // Viewport geometry and enumerated monitor bounds use egui logical points;
+        // only InnerSize is converted to native logical points above.
+        let target_outer = target_inner + frame_delta;
         if settings.fit_window_center {
-            let frame_delta = match (outer_size, inner_size) {
-                (Some(outer), Some(inner)) => (outer - inner).max(egui::Vec2::ZERO),
-                _ => egui::Vec2::ZERO,
-            };
-            // Viewport geometry and monitor size use the same egui point space;
-            // only InnerSize is converted to native logical points above.
-            let target_outer = target_inner + frame_delta;
-            let centered = egui::pos2(
-                ((monitor.x - target_outer.x) * 0.5).max(0.0),
-                ((monitor.y - target_outer.y) * 0.5).max(0.0),
-            );
-            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(centered));
+            if let Some(bounds) = selected_bounds {
+                let centered = bounds.min
+                    + ((constrained_monitor - target_outer) * 0.5).max(egui::Vec2::ZERO);
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(centered));
+            }
+        } else if let (Some(outer), Some(bounds)) = (outer_rect, selected_bounds) {
+            // Choosing a default monitor also affects image-fit commands: move the
+            // window there when it currently lives on a different display, without
+            // changing the user's preference for centered vs. top-left placement.
+            let max_pos = (bounds.max - target_outer).max(bounds.min);
+            let outside_usable_area = outer.min.x < bounds.min.x - 1.0
+                || outer.min.y < bounds.min.y - 1.0
+                || outer.max.x > bounds.max.x + 1.0
+                || outer.max.y > bounds.max.y + 1.0;
+            if !bounds.contains(outer.center()) || outside_usable_area {
+                let target_pos = egui::pos2(
+                    outer.min.x.clamp(bounds.min.x, max_pos.x),
+                    outer.min.y.clamp(bounds.min.y, max_pos.y),
+                );
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(target_pos));
+            }
         }
         self.window_fit_pending = false;
         true

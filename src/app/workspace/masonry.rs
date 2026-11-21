@@ -87,12 +87,18 @@ impl crate::app::types::ViewerApp {
             crate::app::queues::update_masonry_thumbnail_visibility(&HashSet::new());
             return;
         }
-        // Resolve every filesystem entry's cheap header/EXIF dimensions in one
-        // background pass before creating the first shortest-column layout.
-        // This prevents a large collection from reflowing repeatedly as each
-        // newly visible card discovers its aspect ratio.
+        // Prepare source dimensions in 32-entry batches. Only the first
+        // unfinished batch is active, and each completed prefix can be shown
+        // immediately while the next batch is being scanned.
         let masonry_dimensions_ready =
             self.prepare_masonry_dimensions_for_layout(tab_index, ctx);
+        let (masonry_dimensions_ready_count, masonry_dimensions_complete) = {
+            let tab = &self.workspace.tabs[tab_index];
+            (
+                tab.masonry_dimensions_ready_count,
+                tab.masonry_dimensions_prepared_revision == Some(tab.masonry_groups_revision),
+            )
+        };
 
         let footer_height = if selection_mode { 112.0 } else { 82.0 };
         let footer_bottom = layout_rect.bottom() - 8.0;
@@ -207,6 +213,7 @@ impl crate::app::types::ViewerApp {
                                     directory.hash(&mut hasher);
                                     headers_enabled.hash(&mut hasher);
                                     entries.len().hash(&mut hasher);
+                                    masonry_dimensions_ready_count.hash(&mut hasher);
                                     hasher.finish()
                                 };
 
@@ -225,10 +232,12 @@ impl crate::app::types::ViewerApp {
                                     let filtered_indices = if search.is_empty()
                                         && extension_filter.is_empty()
                                     {
-                                        (0..entries.len()).collect::<Vec<_>>()
+                                        (0..masonry_dimensions_ready_count.min(entries.len()))
+                                            .collect::<Vec<_>>()
                                     } else {
                                         entries
                                             .iter()
+                                            .take(masonry_dimensions_ready_count)
                                             .enumerate()
                                             .filter_map(|(index, entry)| {
                                                 let name = entry_display_name(entry).to_lowercase();
@@ -320,6 +329,8 @@ impl crate::app::types::ViewerApp {
                                             );
                                             empty_ui.label(if entries.is_empty() {
                                                 "No supported images in this collection."
+                                            } else if !masonry_dimensions_complete {
+                                                "Preparing the next Masonry batch…"
                                             } else {
                                                 "No images match the current filters."
                                             });
@@ -426,6 +437,17 @@ impl crate::app::types::ViewerApp {
                                             grid_ui.add_space(8.0);
                                         }
                                     }
+                                }
+                                if !masonry_dimensions_complete {
+                                    grid_ui.add_space(14.0);
+                                    grid_ui.horizontal(|loading_ui| {
+                                        loading_ui.spinner();
+                                        loading_ui.label(format!(
+                                            "Preparing the next 32 images… ({}/{})",
+                                            masonry_dimensions_ready_count,
+                                            entries.len()
+                                        ));
+                                    });
                                 }
                             });
                             outer.add_space(12.0);

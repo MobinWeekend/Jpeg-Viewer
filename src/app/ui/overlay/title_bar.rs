@@ -226,21 +226,24 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                             );
                         }
 
-                        // Home's navigation controls form one compact, themed group:
-                        // the hamburger sits beside the Masonry switch on the same surface.
+                        // Keep the hamburger and Masonry entry point on one shared
+                        // compact surface across Home and the other workspace views.
                         // The desktop menu bar already provides these entry points, so
                         // neither control is duplicated when it is enabled.
                         let has_desktop_menu = crate::app::ui::uses_desktop_menu_bar(ctx);
                         let masonry_active = app.workspace.active_kind()
                             == crate::app::workspace::WorkspaceTabKind::Masonry;
                         let can_toggle_masonry = !has_desktop_menu && app.masonry_toggle_available();
-                        if integrate_navigation && !has_desktop_menu && app.is_home_surface_active() {
+                        if (integrate_navigation && !has_desktop_menu) || can_toggle_masonry {
+                            // Keep the hamburger and Masonry switch in the same compact
+                            // group in every workspace, matching Home's spacing, padding,
+                            // and hit targets instead of laying them out independently.
                             ui.add_space(3.0);
-                            // Home is intentionally a clean landing page: keep the
-                            // hamburger and Masonry controls directly on the titlebar
-                            // without the floating toolbar's background surface.
                             ui.horizontal(|group| {
-                                app.render_hamburger_ui(group);
+                                group.spacing_mut().item_spacing.x = 2.0;
+                                if integrate_navigation && !has_desktop_menu {
+                                    app.render_hamburger_ui(group);
+                                }
                                 if can_toggle_masonry {
                                     let tip = if masonry_active {
                                         "Return to Viewer"
@@ -257,29 +260,6 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                                     }
                                 }
                             });
-                        } else {
-                            // When integrated navigation is enabled, the hamburger
-                            // has absolute priority and remains visible at minimal width.
-                            if integrate_navigation && !has_desktop_menu {
-                                ui.add_space(3.0);
-                                app.render_hamburger_ui(ui);
-                            }
-                            if can_toggle_masonry {
-                                ui.add_space(3.0);
-                                let tip = if masonry_active {
-                                    "Return to Viewer"
-                                } else {
-                                    "Open current entries in Masonry"
-                                };
-                                if crate::app::ui::masonry_toggle_button(
-                                    ui, masonry_active, true, 30.0,
-                                )
-                                .on_hover_text(tip)
-                                .clicked()
-                                {
-                                    app.activate_masonry_from_navigation_button();
-                                }
-                            }
                         }
 
                         if integrate_navigation

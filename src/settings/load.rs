@@ -1,5 +1,6 @@
 use super::{
-    AppSettings, SETTINGS_SCHEMA_VERSION, SettingsManager, WINDOW_GEOMETRY_NORMALIZED_SCHEMA,
+    AppSettings, CURRENT_WINDOW_MONITOR_DEFAULT_SCHEMA, SETTINGS_SCHEMA_VERSION,
+    SettingsManager, WINDOW_GEOMETRY_NORMALIZED_SCHEMA,
 };
 use ini::Ini;
 use std::fs;
@@ -416,6 +417,19 @@ impl SettingsManager {
                     {
                         settings.fit_window_limit = value.to_string();
                     }
+                    if let Some(value) = section.get("window_default_monitor")
+                        && !value.trim().is_empty()
+                        && value.len() <= 256
+                    {
+                        settings.window_default_monitor = value.to_string();
+                    }
+                    if let Some(value) = section.get("fit_window_monitor_offset")
+                        && let Ok(parsed) = value.parse::<f32>()
+                        && parsed.is_finite()
+                        && (0.0..=4096.0).contains(&parsed)
+                    {
+                        settings.fit_window_monitor_offset = parsed;
+                    }
                     for (key, target, min, max) in [
                         (
                             "fit_window_min_width",
@@ -707,6 +721,17 @@ impl SettingsManager {
                             settings.window_size = Some([width * scale, height * scale]);
                         }
                     }
+                }
+
+                // Schema 13 changes the default from the system-primary monitor to
+                // the display currently containing most of the window. Existing
+                // schema-12 installs stored "primary" even when it was only the old
+                // default, so migrate that value once. Later explicit user choices
+                // of the primary display are preserved.
+                if loaded_schema_version < CURRENT_WINDOW_MONITOR_DEFAULT_SCHEMA
+                    && settings.window_default_monitor == "primary"
+                {
+                    settings.window_default_monitor = "current".to_owned();
                 }
 
                 settings

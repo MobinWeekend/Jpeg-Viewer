@@ -253,6 +253,89 @@ fn render_window_sizing(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
         .weak(),
     );
 
+    let monitors = crate::platform::monitors::available_monitors();
+    let current_window_rect = ctx.input(|input| input.viewport().outer_rect);
+    let current_monitor = crate::platform::monitors::resolve_default_monitor_at(
+        &monitors,
+        crate::platform::monitors::CURRENT_WINDOW_MONITOR,
+        current_window_rect,
+    );
+    let fallback_monitor = crate::platform::monitors::resolve_default_monitor(&monitors, "primary");
+    let preferred_monitor_available = crate::platform::monitors::preferred_monitor_is_available(
+        &monitors,
+        &settings.window_default_monitor,
+    );
+    let monitor_label = match settings.window_default_monitor.as_str() {
+        crate::platform::monitors::CURRENT_WINDOW_MONITOR => current_monitor
+            .map(|monitor| format!("Current window position · {}", monitor.display_label()))
+            .unwrap_or_else(|| "Current window position".to_owned()),
+        "primary" => fallback_monitor
+            .map(|monitor| {
+                if monitor.is_primary {
+                    monitor.display_label()
+                } else {
+                    format!("System default · {}", monitor.display_label())
+                }
+            })
+            .unwrap_or_else(|| "Primary monitor (system default)".to_owned()),
+        _ => monitors
+            .iter()
+            .find(|monitor| monitor.id == settings.window_default_monitor)
+            .map(|monitor| monitor.display_label())
+            .unwrap_or_else(|| {
+                let fallback_name = fallback_monitor
+                    .map(|monitor| monitor.name.as_str())
+                    .unwrap_or("system default");
+                format!("Saved monitor unavailable · using {fallback_name}")
+            }),
+    };
+    ui.label(egui::RichText::new("Default monitor").strong());
+    let mut default_monitor = settings.window_default_monitor.clone();
+    egui::ComboBox::from_id_salt("window_default_monitor")
+        .selected_text(monitor_label)
+        .width(ui.available_width().max(180.0) - 8.0)
+        .show_ui(ui, |ui| {
+            let current_label = current_monitor
+                .map(|monitor| format!("Current window position · {}", monitor.display_label()))
+                .unwrap_or_else(|| "Current window position".to_owned());
+            ui.selectable_value(
+                &mut default_monitor,
+                crate::platform::monitors::CURRENT_WINDOW_MONITOR.to_owned(),
+                current_label,
+            );
+            ui.selectable_value(
+                &mut default_monitor,
+                "primary".to_owned(),
+                "Primary monitor (system default)",
+            );
+            for monitor in &monitors {
+                ui.selectable_value(
+                    &mut default_monitor,
+                    monitor.id.clone(),
+                    monitor.display_label(),
+                );
+            }
+            if !preferred_monitor_available {
+                ui.selectable_value(
+                    &mut default_monitor,
+                    settings.window_default_monitor.clone(),
+                    format!("Unavailable · {}", settings.window_default_monitor),
+                );
+            }
+        });
+    if default_monitor != settings.window_default_monitor {
+        let _ = app
+            .settings_manager
+            .update(|value| value.window_default_monitor = default_monitor.clone());
+    }
+    ui.label(
+        egui::RichText::new(
+            "Current window position selects the monitor with the largest overlap with this window. If no overlap can be determined, the primary monitor is used, then the first available display. A specifically selected disconnected monitor also falls back to the primary display until it reconnects.",
+        )
+        .small()
+        .weak(),
+    );
+
     let mut limit = settings.fit_window_limit.clone();
     egui::ComboBox::from_id_salt("fit_window_limit")
         .selected_text(if limit == "custom" {
@@ -347,7 +430,32 @@ fn render_window_sizing(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
             });
         }
     } else {
-        ui.label(egui::RichText::new("The monitor's available dimensions provide the upper bounds; the application minimum remains 512 × 512 pt.").small().weak());
+        let mut offset = settings.fit_window_monitor_offset.clamp(0.0, 4096.0);
+        let changed = ui
+            .horizontal(|ui| {
+                ui.label("Monitor edge padding");
+                ui.add(
+                    egui::DragValue::new(&mut offset)
+                        .range(0.0..=4096.0)
+                        .speed(4.0)
+                        .fixed_decimals(0)
+                        .suffix(" pt"),
+                )
+                .changed()
+            })
+            .inner;
+        if changed || offset != settings.fit_window_monitor_offset {
+            let _ = app
+                .settings_manager
+                .update(|value| value.fit_window_monitor_offset = offset);
+        }
+        ui.label(
+            egui::RichText::new(
+                "Padding is applied equally to all four edges of the selected monitor. For example, 100 pt leaves a usable area inset by 100 pt on every side. The minimum window size remains 512 × 512 pt.",
+            )
+            .small()
+            .weak(),
+        );
     }
 
     let mut preserve = settings.fit_window_preserve_aspect;

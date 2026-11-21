@@ -170,7 +170,7 @@ impl crate::app::types::ViewerApp {
             let key = entry.get_id();
             let thumbnail_source_key = crate::app::queues::source_thumbnail_key(entry);
             visible_sources.insert(thumbnail_source_key.clone());
-            // The collection-wide pass has already prepared the first layout.
+            // The progressive dimension pass has prepared this entry's chunk.
             // Keep this cheap cache-application step for every visible entry:
             // thumbnail pipelines can still discover better source dimensions
             // later (for example, when a header probe could not read a format).

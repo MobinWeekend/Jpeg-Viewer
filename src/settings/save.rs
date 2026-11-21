@@ -499,6 +499,11 @@ impl SettingsManager {
             },
         );
         section.set("fit_window_limit", &settings.fit_window_limit);
+        section.set("window_default_monitor", &settings.window_default_monitor);
+        section.set(
+            "fit_window_monitor_offset",
+            settings.fit_window_monitor_offset.clamp(0.0, 4096.0).to_string(),
+        );
         section.set(
             "fit_window_min_width",
             settings.fit_window_min_width.to_string(),
