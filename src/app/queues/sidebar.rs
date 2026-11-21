@@ -328,6 +328,11 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                             app.open_entry_in_image_tab(entry.clone(), true);
                                                             ui.close();
                                                         }
+                                                        if ui.button("Share…").clicked() {
+                                                            let entry_for_share = entry.clone();
+                                                            app.share_entry(&entry_for_share);
+                                                            ui.close();
+                                                        }
                                                         if ui.button("Copy entry name").clicked() {
                                                             match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(name.clone())) {
                                                                 Ok(()) => app.queue_status = Some("Copied archive entry name.".into()),

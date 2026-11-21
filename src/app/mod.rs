@@ -4,6 +4,7 @@ mod commands;
 pub(crate) mod constants;
 mod editing;
 mod external_open;
+mod sharing;
 mod file_detection;
 mod file_ops;
 mod frame_limiter;

@@ -340,6 +340,7 @@ enum ConflictResolution {
 enum MasonryAction {
     Open(ImageEntry),
     OpenNewTab(ImageEntry),
+    Share(ImageEntry),
     ToggleSelection(String),
     CompareEntries(Vec<ImageEntry>),
     CopyEntries(Vec<ImageEntry>),
@@ -375,3 +376,8 @@ mod masonry_group;
 // Compare rendering and shared entry/file helpers.
 mod compare;
 mod helpers;
+
+/// Read an entry as bytes for OS share targets, extracting archive members when needed.
+pub(crate) fn read_archive_entry_for_share(entry: &ImageEntry) -> Result<Vec<u8>, String> {
+    helpers::read_archive_entry(entry)
+}

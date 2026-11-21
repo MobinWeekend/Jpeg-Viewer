@@ -101,6 +101,7 @@ impl crate::app::types::ViewerApp {
         match action {
             MasonryAction::Open(entry) => self.open_masonry_entry_in_viewer(tab_index, &entry, ctx),
             MasonryAction::OpenNewTab(entry) => self.open_entry_in_image_tab(entry, true),
+            MasonryAction::Share(entry) => self.share_entry(&entry),
             MasonryAction::ToggleSelection(entry_id) => {
                 let tab = &mut self.workspace.tabs[tab_index];
                 tab.selection_mode = true;

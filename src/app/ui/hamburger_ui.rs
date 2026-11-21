@@ -81,12 +81,13 @@ impl ViewerApp {
             ui.vertical(|ui| {
                 // ---- Toolbar row (horizontal cluster of icon actions) ----
                 ui.horizontal(|ui| {
-                    self.hamburger_copy_button(ctx, ui);
+                    //self.hamburger_copy_button(ctx, ui);
+                    self.hamburger_share_button(ui);
                     ui.separator();
                     self.zoom_ui(ctx, ui);
-                    ui.separator();
+                    ui.add_space(2.0);
                     self.fullscreen_ui(ctx, ui);
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
                     self.pin_window_ui(ctx, ui);
                 });
 
@@ -102,20 +103,26 @@ impl ViewerApp {
                 self.hamburger_masonry_buttons(ui);
 
                 ui.separator();
-                self.hamburger_sidebar_toggle_button(ctx, ui);
-                self.hamburger_inspect_button(ctx, ui);
-                self.hamburger_wrap_window_button(ctx, ui);
-                self.hamburger_raw_develop_button(ui);
+                //self.hamburger_sidebar_toggle_button(ctx, ui);
+                ui.horizontal(|ui| {
+                    self.hamburger_inspect_button(ctx, ui);
+                    ui.separator();
+                    self.hamburger_wrap_window_button(ctx, ui);
+                });
                 self.hamburger_edit_image_button(ctx, ui);
                 self.hamburger_delete_image_button(ctx, ui);
-
-                ui.separator();
-                self.hamburger_settings_button(ctx, ui);
-                self.hamburger_help_button(ctx, ui);
+                self.hamburger_raw_develop_button(ui);
 
                 // ---- Loading indicator (only when loading) with it's own separator ----
                 self.hamburger_loading_indicator(ctx, ui);
+                ui.separator();
 
+                // ---- settings and help compact ----
+                ui.horizontal(|ui| {
+                    self.hamburger_settings_button(ctx, ui);
+                    ui.separator();
+                    self.hamburger_help_button(ctx, ui);
+                });
                 ui.separator();
                 self.hamburger_exit_button(ctx, ui);
             });
@@ -142,14 +149,42 @@ impl ViewerApp {
         });
     }
 
+    /// share button on hamburger menu
+    fn hamburger_share_button(&mut self, ui: &mut egui::Ui) {
+        let can_share_current =
+            !self.is_home_surface_active() && self.image_entries.get(self.current_index).is_some();
+
+        let response = ui
+            .add_enabled(
+                can_share_current,
+                egui::Button::new(
+                    egui::RichText::new("Share…").size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(26.0, 26.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text(if can_share_current {
+                "Share current image"
+            } else {
+                "No image to share"
+            });
+
+        if response.clicked() {
+            self.share_current_image();
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /*
     /// "📋 Copy" — copies the current image to the clipboard.
-    fn hamburger_copy_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+    fn hamburger_copy_button(&mut self, ui: &mut egui::Ui) {
         if ui
             .add(
                 egui::Button::new(
                     egui::RichText::new("📋 Copy").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(28.0, 28.0))
+                .min_size(egui::vec2(26.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -159,6 +194,8 @@ impl ViewerApp {
             self.copy_image_to_clipboard();
         }
     }
+
+     */
 
     /// "📄 Open File" — opens the file picker.
     fn hamburger_open_file_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
@@ -186,7 +223,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("🏠 Home").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -260,7 +297,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new(label).size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -286,7 +323,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("↗  Open With…").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -314,7 +351,7 @@ impl ViewerApp {
                     egui::RichText::new("📂  Locate in File Manager")
                         .size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -335,9 +372,9 @@ impl ViewerApp {
             .add_enabled(
                 !self.is_home_surface_active() && !self.image_entries.is_empty(),
                 egui::Button::new(
-                    egui::RichText::new("📐  Wrap Window").size(scaled_text_size(ui.ctx(), 14.0)),
+                    egui::RichText::new("📐  Wrap").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(60.0, 30.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -356,7 +393,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("📁  Open Folder").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -376,7 +413,7 @@ impl ViewerApp {
                     egui::RichText::new("📂  Open Folder + Subfolders")
                         .size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -388,28 +425,30 @@ impl ViewerApp {
         }
     }
 
-    /// "🗄️ Show/Hide Sidebar" — toggles the file sidebar visibility.
-    fn hamburger_sidebar_toggle_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        let sidebar_visible = self.settings_manager.get().show_file_sidebar;
-        if ui
-            .add(
-                egui::Button::new(if sidebar_visible {
-                    "🗄️  Hide Sidebar"
-                } else {
-                    "🗄️  Show Sidebar"
-                })
-                .min_size(egui::vec2(180.0, 30.0))
-                .fill(egui::Color32::TRANSPARENT)
-                .stroke(egui::Stroke::NONE),
-            )
-            .clicked()
-        {
-            let _ = self
-                .settings_manager
-                .update(|settings| settings.show_file_sidebar = !sidebar_visible);
-            self.hamburger_menu_open = false;
-        }
-    }
+    /*
+       /// "🗄️ Show/Hide Sidebar" — toggles the file sidebar visibility.
+       fn hamburger_sidebar_toggle_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+           let sidebar_visible = self.settings_manager.get().show_file_sidebar;
+           if ui
+               .add(
+                   egui::Button::new(if sidebar_visible {
+                       "🗄️  Hide Sidebar"
+                   } else {
+                       "🗄️  Show Sidebar"
+                   })
+                   .min_size(egui::vec2(180.0, 26.0))
+                   .fill(egui::Color32::TRANSPARENT)
+                   .stroke(egui::Stroke::NONE),
+               )
+               .clicked()
+           {
+               let _ = self
+                   .settings_manager
+                   .update(|settings| settings.show_file_sidebar = !sidebar_visible);
+               self.hamburger_menu_open = false;
+           }
+       }
+    */
 
     /// "✂️ Edit Image" / "Resume Edit Mode" / "Exit Edit Mode" — toggles the
     /// separate image-editing mode. An existing working copy can be resumed
@@ -429,7 +468,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new(edit_label).size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -455,7 +494,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("🗑  Delete Image…").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -475,7 +514,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("🔬  Inspect").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(26.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -494,7 +533,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("⚙  Settings").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(26.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -513,7 +552,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("❓  Help").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(26.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )
@@ -546,7 +585,7 @@ impl ViewerApp {
                 egui::Button::new(
                     egui::RichText::new("X  Exit").size(scaled_text_size(ui.ctx(), 14.0)),
                 )
-                .min_size(egui::vec2(180.0, 30.0))
+                .min_size(egui::vec2(180.0, 26.0))
                 .fill(egui::Color32::TRANSPARENT)
                 .stroke(egui::Stroke::NONE),
             )

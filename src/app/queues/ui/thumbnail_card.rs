@@ -260,6 +260,17 @@ impl ViewerApp {
             "{}\nClick to select; drag to reorder",
             path.display()
         ));
+        if context_mode == 0 {
+            response.clone().context_menu(|ui| {
+                if path.is_file() && ui.button("Share…").clicked() {
+                    let entry_for_share =
+                        crate::imaging::entry::ImageEntry::File(path.to_path_buf());
+                    self.share_entry(&entry_for_share);
+                    ui.close();
+                }
+            });
+        }
+
         if context_mode == 1 || context_mode == 2 {
             response.clone().context_menu(|ui| {
                 if path.is_dir() {
@@ -299,6 +310,12 @@ impl ViewerApp {
                         crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
                         true,
                     );
+                    ui.close();
+                }
+                if path.is_file() && ui.button("Share…").clicked() {
+                    let entry_for_share =
+                        crate::imaging::entry::ImageEntry::File(path.to_path_buf());
+                    self.share_entry(&entry_for_share);
                     ui.close();
                 }
                 if ui.button("Open With…").clicked() {

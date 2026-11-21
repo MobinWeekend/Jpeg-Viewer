@@ -367,6 +367,10 @@ impl crate::app::types::ViewerApp {
                     *action = Some(MasonryAction::OpenNewTab(entry_for_menu.clone()));
                     menu.close();
                 }
+                if menu.button("Share…").clicked() {
+                    *action = Some(MasonryAction::Share(entry_for_menu.clone()));
+                    menu.close();
+                }
                 menu.separator();
                 if menu
                     .button(if is_selected {

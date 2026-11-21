@@ -447,6 +447,15 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
             app.open_folder_recursively_dialog();
             ui.close();
         }
+        let can_share_current = !app.is_home_surface_active()
+            && app.image_entries.get(app.current_index).is_some();
+        if ui
+            .add_enabled(can_share_current, egui::Button::new("Share…"))
+            .clicked()
+        {
+            app.share_current_image();
+            ui.close();
+        }
         let has_path = !app.is_home_surface_active()
             && app
                 .current_image_path
