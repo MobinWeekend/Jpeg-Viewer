@@ -63,6 +63,12 @@ Open the sidebar and choose **Browse**, **Queue**, **Favorites**, or **Info**.
 - **Reorder entries:** drag thumbnails to move them, or click the position number and enter a new order where supported.
 - **Queue file paths:** if images moved, use **Remap missing root**. Queue files currently support filesystem images, not entries inside archives.
 
+## Masonry and Compare
+
+- Open **Masonry** from the desktop menu bar or its workspace controls to browse the current collection. It automatically scrolls to and highlights the image that was being viewed. Folder Masonry collections update when an image is moved into or out of a loaded folder, and deleted images are removed from the grid.
+- Open **Compare** from the desktop menu-bar button or the hamburger menu. The current image fills the first pane when one is loaded; otherwise both panes start empty. Drop image files into the Compare area or choose **Add Images…** to select several files at once. Empty panes offer the same picker, and additional selected images create more panes.
+- Use **Columns** or **Rows** to change the layout. **Sync pan** and **Sync zoom** control linked movement, while the two anchors in each pane can align matching points across images.
+
 ## Edit an image
 
 Enable **Edit mode** from the toolbar or menu. Editing is available for fully loaded, supported raster images with a direct filesystem path. Archive entries, animated GIFs, virtual-texture images, and images still loading are not editable.

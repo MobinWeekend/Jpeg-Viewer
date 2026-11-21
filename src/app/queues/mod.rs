@@ -2,6 +2,7 @@
 mod actions;
 pub mod sidebar;
 mod storage;
+pub use storage::paths_equal;
 mod thumbnails;
 mod ui;
 pub use sidebar::{render_left_sidebar, render_rename_dialog};

@@ -123,6 +123,18 @@ impl crate::app::types::ViewerApp {
                 Some("There are no supported image entries to show in Masonry.".into());
             return;
         }
+        // The Viewer remains the source of truth while Masonry is active. Keep
+        // the image that was being viewed as a one-time navigation target so
+        // Masonry can reveal it after its batched dimension scan is ready.
+        let masonry_focus_entry_id = self
+            .image_entries
+            .get(self.current_index)
+            .map(ImageEntry::get_id)
+            .filter(|current_id| {
+                entries
+                    .iter()
+                    .any(|entry| entry.get_id() == current_id.as_str())
+            });
         if self.workspace.active_kind() != WorkspaceTabKind::Masonry {
             let return_tab_id = self
                 .workspace
@@ -161,6 +173,8 @@ impl crate::app::types::ViewerApp {
             tab.selection_mode = false;
             tab.selected.clear();
             tab.context_highlight = None;
+            tab.masonry_focus_entry_id = masonry_focus_entry_id.clone();
+            tab.masonry_focus_highlight_id = masonry_focus_entry_id.clone();
             tab.search.clear();
             tab.extension_filter.clear();
             tab.collapsed_folders.clear();
@@ -170,6 +184,8 @@ impl crate::app::types::ViewerApp {
             let mut tab = WorkspaceTab::new(id, title, WorkspaceTabKind::Masonry);
             tab.entries = entries;
             tab.directory = directory;
+            tab.masonry_focus_entry_id = masonry_focus_entry_id.clone();
+            tab.masonry_focus_highlight_id = masonry_focus_entry_id;
             tab.masonry_tile_size = self
                 .settings_manager
                 .get()
@@ -197,6 +213,15 @@ impl crate::app::types::ViewerApp {
         self.snapshot_active_viewer_tab();
         let paths = crate::imaging::loader::load_directory_images(&directory, self.sort_method);
         let entries = paths.into_iter().map(ImageEntry::File).collect::<Vec<_>>();
+        let masonry_focus_entry_id = self
+            .image_entries
+            .get(self.current_index)
+            .map(ImageEntry::get_id)
+            .filter(|current_id| {
+                entries
+                    .iter()
+                    .any(|entry| entry.get_id() == current_id.as_str())
+            });
         // Keep an empty Folder Masonry collection available for recursive browsing.
         if let Some(index) = self
             .workspace
@@ -222,6 +247,8 @@ impl crate::app::types::ViewerApp {
             tab.selection_mode = false;
             tab.selected.clear();
             tab.context_highlight = None;
+            tab.masonry_focus_entry_id = masonry_focus_entry_id.clone();
+            tab.masonry_focus_highlight_id = masonry_focus_entry_id.clone();
             tab.search.clear();
             tab.extension_filter.clear();
             tab.collapsed_folders.clear();
@@ -232,6 +259,8 @@ impl crate::app::types::ViewerApp {
                 WorkspaceTab::new(id, "Masonry · Folder".into(), WorkspaceTabKind::Masonry);
             tab.entries = entries;
             tab.directory = Some(directory);
+            tab.masonry_focus_entry_id = masonry_focus_entry_id.clone();
+            tab.masonry_focus_highlight_id = masonry_focus_entry_id;
             tab.masonry_tile_size = self
                 .settings_manager
                 .get()

@@ -13,13 +13,13 @@ A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse im
 
 - **Image formats:** JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, HEIC/HEIF, JPEG XL, SVG, HDR/EXR, and more; includes in-process camera RAW decoding (support varies by camera model).
 - **Archives:** browse images inside ZIP, 7z, and RAR archives without extracting them.
-- **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan, fullscreen, and compact mode. In windowed mode, drag the image-view margins to move the window.
-- **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable. With single-instance mode enabled, file-manager multi-selections are forwarded to the existing window and shown as the selected collection.
+- **Navigation:** keyboard and mouse controls, trackpad scrolling, zoom and pan with a 20% visibility clamp that remains valid at high zoom levels, fullscreen, and compact mode. In windowed mode, drag the image-view margins to move the window.
+- **Collections:** Browse, Queue, Favorites, and Info sidebar tabs; thumbnail lists support drag reordering and direct position entry where applicable. Browse context menus include Share. With single-instance mode enabled, file-manager multi-selections are forwarded to the existing window and shown as the selected collection.
 - **Queues:** create a viewing/slideshow sequence, save and load `.jvq` lists, export paths, shuffle, repeat, and remap moved folders.
 - **Workspace tabs:** open images, Masonry collections, and comparisons in browser-style tabs. Switch with **Ctrl+PageUp**/**Ctrl+PageDown** and reorder the active tab with **Ctrl+Shift+PageUp/PageDown/ArrowLeft/ArrowRight**. The strip can render inline in the custom title bar, and it hides when only the primary viewer remains.
 - **Home page:** a Home surface in the primary viewer showing recently opened items and pinned shortcuts; open pinned images, folders, and `.jvq` queues in the Viewer or Masonry.
-- **Masonry browsing:** grid browsing of a folder with optional recursive subfolders, search, extension filtering, and natural/name/newest/oldest/random sorting; select multiple entries or view a selected subset, and group results by collapsible folders.
-- **Compare:** side-by-side multi-pane comparison with optional synchronized pan and zoom, columns or rows layout, and anchor alignment — two corresponding points per pane compute matching zoom, pan, and image rotation.
+- **Masonry browsing:** grid browsing of a folder with optional recursive subfolders, search, extension filtering, and natural/name/newest/oldest/random sorting; select multiple entries or view a selected subset, and group results by collapsible folders. Opening Masonry scrolls to the currently viewed image and marks it with a centered eye badge. Ctrl+click always enters Select mode and toggles an entry; while Select mode is active, ordinary clicks also toggle entries without Ctrl. Hover highlighting and selection indicators remain visible independently of the current-image eye marker. Loaded folder collections stay in sync when files are moved or trashed.
+- **Compare:** open it from the desktop menu bar or hamburger menu. It starts with the current image when available, always shows at least two panes, and accepts dropped images or multiple selections through **Add Images…**. Includes synchronized pan and zoom, columns or rows layout, right-click anchor placement, split reordering, and anchor alignment — two corresponding points per pane compute matching zoom, pan, and image rotation. Sidebar and Masonry entries can be sent to Compare or dragged into a specific split.
 - **Editing:** crop, resize with optional aspect-ratio locking, rotate, flip, adjust brightness/contrast/saturation/hue, undo/redo, and export to a selected format. The source is unchanged until you save or overwrite it.
 - **GIFs and slideshows:** playback speed controls, configurable intervals, transitions, pan/zoom motion, looping, and optional prevention of system sleep.
 - **Appearance:** system/light/dark theme, UI and text scaling, accent colors, transparency checkerboard, translucent backgrounds where supported, and desktop-oriented looks for JPEG Viewer, COSMIC, GNOME/Adwaita, and Windows 98. Main-view padding can follow the active Look, be fine-tuned per Look, or use custom values.
@@ -32,7 +32,7 @@ A GPU-accelerated image viewer written in Rust with `egui` and `wgpu`. Browse im
 - **Session restore:** restore the previous session's tabs, Masonry collections, comparisons, and viewing positions; choose **automatic**, **ask**, or **never** on startup.
 - **Tricks:** optional decorative effects inside the main image view — snowfall, a text or image watermark, and a blurred image backdrop — each configurable for color, position, speed, opacity, and size.
 - **RAW full quality:** toggle camera RAW files between the developed preview and the full-resolution RAW output.
-- **Desktop menu bar:** an optional desktop-style menu bar (File, Edit, View, Queue) that can sit in its own row or inline in the custom title bar.
+- **Desktop menu bar:** an optional desktop-style menu bar (Compare, File, Edit, View, Queue) that can sit in its own row or inline in the custom title bar.
 
 ## Downloads
 

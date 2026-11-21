@@ -141,55 +141,46 @@ impl crate::app::types::ViewerApp {
                 .position(|tab| tab.id == target_id && tab.kind == WorkspaceTabKind::Compare)
         {
             if entries.is_empty() {
-                self.queue_status = Some("Select an image in Masonry to add it to Compare.".into());
+                // The menu-bar Compare command may intentionally return here
+                // without a current image. Keep the existing workspace open so
+                // its two empty panes can accept a drop or image-picker selection.
                 self.workspace.active_index = index;
                 self.stop_preloading_for_workspace();
                 return;
             }
-            let tab = &mut self.workspace.tabs[index];
-            let mut known = tab
-                .entries
-                .iter()
-                .map(ImageEntry::get_id)
-                .collect::<HashSet<_>>();
-            for entry in entries {
-                if known.insert(entry.get_id()) {
-                    tab.entries.push(entry);
-                    tab.anchors.push(None);
-                    tab.anchors_second.push(None);
-                    tab.offsets.push([0.0, 0.0]);
-                    tab.pane_zoom.push(1.0);
-                    tab.pane_sync.push(true);
-                    tab.pane_size.push([1.0, 1.0]);
-                }
-            }
-            tab.title = format!("Compare ({})", tab.entries.len());
+            let target_id = self.workspace.tabs[index].id;
+            self.add_entries_to_compare(target_id, entries);
             self.workspace.active_index = index;
             self.stop_preloading_for_workspace();
             return;
         }
-        if entries.len() < 2 {
-            self.queue_status = Some("Select at least two images to compare.".into());
-            return;
-        }
         // A comparison workspace owns its own entry list and pane state. It is
         // deliberately independent of ordinary Image tabs: creating, closing,
-        // or reordering image tabs must not change this comparison.
+        // or reordering image tabs must not change this comparison. Empty and
+        // one-image comparisons are valid; the renderer always supplies two
+        // editable drop targets until both panes contain images.
         self.snapshot_active_viewer_tab();
+        let mut unique_entries = Vec::with_capacity(entries.len());
+        let mut seen = HashSet::new();
+        for entry in entries {
+            if seen.insert(entry.get_id()) {
+                unique_entries.push(entry);
+            }
+        }
         let id = self.workspace.allocate_id();
         let mut tab = WorkspaceTab::new(
             id,
-            format!("Compare ({})", entries.len()),
+            format!("Compare ({})", unique_entries.len()),
             WorkspaceTabKind::Compare,
         );
-        tab.anchors = vec![None; entries.len()];
-        tab.anchors_second = vec![None; entries.len()];
-        tab.offsets = vec![[0.0, 0.0]; entries.len()];
-        tab.pane_zoom = vec![1.0; entries.len()];
-        tab.pane_rotation = vec![0.0; entries.len()];
-        tab.pane_sync = vec![true; entries.len()];
-        tab.pane_size = vec![[1.0, 1.0]; entries.len()];
-        tab.entries = entries;
+        tab.anchors = vec![None; unique_entries.len()];
+        tab.anchors_second = vec![None; unique_entries.len()];
+        tab.offsets = vec![[0.0, 0.0]; unique_entries.len()];
+        tab.pane_zoom = vec![1.0; unique_entries.len()];
+        tab.pane_rotation = vec![0.0; unique_entries.len()];
+        tab.pane_sync = vec![true; unique_entries.len()];
+        tab.pane_size = vec![[1.0, 1.0]; unique_entries.len()];
+        tab.entries = unique_entries;
         tab.show_anchors = true;
         tab.sync_pan = true;
         tab.sync_zoom = true;
@@ -197,6 +188,60 @@ impl crate::app::types::ViewerApp {
         self.workspace.tabs.push(tab);
         self.workspace.active_index = self.workspace.tabs.len() - 1;
         self.stop_preloading_for_workspace();
+    }
+
+    /// Add unique entries to an existing Compare workspace. The two default
+    /// panes (and any user-added empty panes) are filled before the layout grows.
+    pub(crate) fn add_entries_to_compare(
+        &mut self,
+        compare_tab_id: u64,
+        entries: Vec<ImageEntry>,
+    ) -> usize {
+        let Some(tab) = self
+            .workspace
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.id == compare_tab_id && tab.kind == WorkspaceTabKind::Compare)
+        else {
+            return 0;
+        };
+        // The renderer pads these vectors for empty placeholder panes.
+        // Trim that UI-only padding before appending real entries so each new
+        // image receives metadata at its actual entry index.
+        let existing_count = tab.entries.len();
+        tab.anchors.resize(existing_count, None);
+        tab.anchors_second.resize(existing_count, None);
+        tab.offsets.resize(existing_count, [0.0, 0.0]);
+        tab.pane_zoom.resize(existing_count, 1.0);
+        tab.pane_rotation.resize(existing_count, 0.0);
+        tab.pane_sync.resize(existing_count, true);
+        tab.pane_size.resize(existing_count, [1.0, 1.0]);
+        let mut known = tab
+            .entries
+            .iter()
+            .map(ImageEntry::get_id)
+            .collect::<HashSet<_>>();
+        let mut added: usize = 0;
+        for entry in entries {
+            if known.insert(entry.get_id()) {
+                tab.entries.push(entry);
+                tab.anchors.push(None);
+                tab.anchors_second.push(None);
+                tab.offsets.push([0.0, 0.0]);
+                tab.pane_zoom.push(1.0);
+                tab.pane_rotation.push(0.0);
+                tab.pane_sync.push(true);
+                tab.pane_size.push([1.0, 1.0]);
+                added += 1;
+            }
+        }
+        // The first two panes are implicit defaults. Only images beyond the
+        // remaining default empty slots consume explicitly-added extra panes.
+        let default_empty_slots = 2usize.saturating_sub(existing_count);
+        let extra_slots_filled = added.saturating_sub(default_empty_slots);
+        tab.compare_empty_panes = tab.compare_empty_panes.saturating_sub(extra_slots_filled);
+        tab.title = format!("Compare ({})", tab.entries.len());
+        added
     }
 
     pub(crate) fn close_workspace_tab(&mut self, id: u64) {

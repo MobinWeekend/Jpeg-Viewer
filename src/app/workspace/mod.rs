@@ -68,6 +68,12 @@ pub(crate) struct WorkspaceTab {
     /// A right-click highlight is visual context only; it is not part of the
     /// multi-selection set and does not activate selection mode.
     pub context_highlight: Option<String>,
+    /// Entry to reveal after the next Masonry layout has enough dimensions to
+    /// produce stable tile geometry. This is transient and is not session state.
+    pub masonry_focus_entry_id: Option<String>,
+    /// Persistent visual emphasis for the image that was active when Masonry
+    /// opened. Kept separate from the short-lived right-click context highlight.
+    pub masonry_focus_highlight_id: Option<String>,
     /// Folder groups the user has collapsed in this Masonry workspace.
     pub collapsed_folders: HashSet<String>,
     /// Preferred Masonry tile width in logical points; columns are auto-filled.
@@ -114,6 +120,9 @@ pub(crate) struct WorkspaceTab {
     pub anchor_editing: Option<usize>,
     /// 0 = first anchor, 1 = second anchor.
     pub anchor_editing_point: usize,
+    /// Normalized image coordinate captured by a pane right-click. This lets
+    /// the context menu assign an anchor at the exact pointer location.
+    pub anchor_context_position: Option<(usize, [f32; 2])>,
     pub show_anchors: bool,
     pub sync_pan: bool,
     pub sync_zoom: bool,
@@ -129,6 +138,9 @@ pub(crate) struct WorkspaceTab {
     pub compare_columns: usize,
     /// Compare panes are arranged either as side-by-side columns or full-width rows.
     pub compare_rows: bool,
+    /// Additional explicit empty comparison panes beyond the two default panes.
+    /// The renderer always keeps at least two panes even when this is zero.
+    pub compare_empty_panes: usize,
 }
 
 impl WorkspaceTab {
@@ -165,6 +177,8 @@ impl WorkspaceTab {
             search: String::new(),
             extension_filter: String::new(),
             context_highlight: None,
+            masonry_focus_entry_id: None,
+            masonry_focus_highlight_id: None,
             collapsed_folders: HashSet::new(),
             masonry_tile_size: 220.0,
             masonry_aspect_ratios: HashMap::new(),
@@ -185,6 +199,7 @@ impl WorkspaceTab {
             offsets: Vec::new(),
             anchor_editing: None,
             anchor_editing_point: 0,
+            anchor_context_position: None,
             show_anchors: true,
             sync_pan: true,
             sync_zoom: true,
@@ -195,6 +210,7 @@ impl WorkspaceTab {
             pane_size: Vec::new(),
             compare_columns: 0,
             compare_rows: false,
+            compare_empty_panes: 0,
         }
     }
 
@@ -375,6 +391,7 @@ mod masonry_group;
 
 // Compare rendering and shared entry/file helpers.
 mod compare;
+mod entry_context;
 mod helpers;
 
 /// Read an entry as bytes for OS share targets, extracting archive members when needed.

@@ -95,6 +95,7 @@ impl ViewerApp {
                 self.hamburger_open_file_button(ctx, ui);
                 self.hamburger_open_folder_button(ctx, ui);
                 self.hamburger_open_folder_recursive_button(ctx, ui);
+                self.hamburger_compare_button(ui);
                 self.hamburger_open_with_button(ctx, ui);
                 self.hamburger_locate_in_file_manager_button(ctx, ui);
 
@@ -307,6 +308,34 @@ impl ViewerApp {
             .clicked()
         {
             self.load_current_image_as_raw();
+            self.hamburger_menu_open = false;
+        }
+    }
+
+    /// Opens a two-pane comparison, preloading the current image when available.
+    fn hamburger_compare_button(&mut self, ui: &mut egui::Ui) {
+        let response = ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("⇄  Compare Images…")
+                        .size(scaled_text_size(ui.ctx(), 14.0)),
+                )
+                .min_size(egui::vec2(26.0, 26.0))
+                .fill(egui::Color32::TRANSPARENT)
+                .stroke(egui::Stroke::NONE),
+            )
+            .on_hover_text("Compare images side by side or in rows");
+        if response.clicked() {
+            let entries = if self.is_home_surface_active() {
+                Vec::new()
+            } else {
+                self.image_entries
+                    .get(self.current_index)
+                    .cloned()
+                    .into_iter()
+                    .collect()
+            };
+            self.open_compare_workspace(entries);
             self.hamburger_menu_open = false;
         }
     }

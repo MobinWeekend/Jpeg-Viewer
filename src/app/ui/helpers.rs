@@ -33,6 +33,30 @@ impl ViewerApp {
         }
     }
 
+    /// Keep a useful portion of the image inside the viewport without trapping
+    /// large, zoomed-in images inside the viewport. The minimum visible amount
+    /// is 20% of the smaller of the image and viewport dimensions, independently
+    /// on each axis. This keeps the bound valid even when the image is much larger
+    /// than the viewport.
+    pub fn clamp_pan_to_viewport(&mut self, viewport: egui::Rect, texture_size: egui::Vec2) {
+        let zoom = self.zoom.max(0.001);
+        let image_size = texture_size * zoom;
+        let image_center = viewport.center() + self.pan * zoom;
+
+        let min_visible_x = image_size.x.min(viewport.width()).max(0.0) * 0.20;
+        let min_visible_y = image_size.y.min(viewport.height()).max(0.0) * 0.20;
+        let min_center_x = viewport.left() + min_visible_x - image_size.x * 0.5;
+        let max_center_x = viewport.right() - min_visible_x + image_size.x * 0.5;
+        let min_center_y = viewport.top() + min_visible_y - image_size.y * 0.5;
+        let max_center_y = viewport.bottom() - min_visible_y + image_size.y * 0.5;
+
+        let clamped_center = egui::pos2(
+            image_center.x.clamp(min_center_x, max_center_x),
+            image_center.y.clamp(min_center_y, max_center_y),
+        );
+        self.pan += (clamped_center - image_center) / zoom;
+    }
+
     /// Get the image rectangle centered in available space
     pub fn get_image_rect(&self, texture_size: egui::Vec2, center: egui::Pos2) -> egui::Rect {
         let display_size = texture_size * self.zoom;

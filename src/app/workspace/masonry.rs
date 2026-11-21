@@ -343,10 +343,24 @@ impl crate::app::types::ViewerApp {
                                     {
                                         let mut render_group = true;
                                         if !folder_label.is_empty() {
+                                            let focus_is_in_group = self.workspace.tabs[tab_index]
+                                                .masonry_focus_entry_id
+                                                .as_ref()
+                                                .is_some_and(|focus_id| {
+                                                    group_entry_indices.iter().any(|entry_index| {
+                                                        entries[*entry_index].get_id() == focus_id.as_str()
+                                                    })
+                                                });
+                                            if focus_is_in_group {
+                                                self.workspace.tabs[tab_index]
+                                                    .collapsed_folders
+                                                    .remove(folder_label);
+                                            }
                                             let header_width = grid_ui.available_width();
-                                            let collapsed = self.workspace.tabs[tab_index]
-                                                .collapsed_folders
-                                                .contains(folder_label);
+                                            let collapsed = !focus_is_in_group
+                                                && self.workspace.tabs[tab_index]
+                                                    .collapsed_folders
+                                                    .contains(folder_label);
                                             let (header_rect, header_response) = grid_ui
                                                 .allocate_exact_size(
                                                     egui::vec2(header_width, 26.0),
@@ -516,10 +530,25 @@ impl crate::app::types::ViewerApp {
                                 .max_height(28.0)
                                 .show(row, |controls| {
                                     controls.horizontal(|controls| {
-                                        controls.add_sized(
-                                            egui::vec2(150.0, 22.0),
-                                            egui::TextEdit::singleline(&mut tab.search).hint_text("Search images"),
-                                        );
+                                        egui::Frame::new()
+                                            .fill(controls.visuals().widgets.inactive.bg_fill)
+                                            .stroke(controls.visuals().widgets.inactive.bg_stroke)
+                                            .corner_radius(egui::CornerRadius::same(7))
+                                            .inner_margin(egui::Margin::symmetric(6, 2))
+                                            .show(controls, |search_ui| {
+                                                search_ui.horizontal(|search_ui| {
+                                                    search_ui.label("⌕");
+                                                    search_ui.add_sized(
+                                                        egui::vec2(128.0, 22.0),
+                                                        egui::TextEdit::singleline(&mut tab.search)
+                                                            .frame(false)
+                                                            .hint_text("Search filename…"),
+                                                    );
+                                                    if !tab.search.is_empty() && search_ui.small_button("×").clicked() {
+                                                        tab.search.clear();
+                                                    }
+                                                });
+                                            });
                                         egui::ComboBox::from_id_salt(("masonry_format", tab.id))
                                             .width(100.0)
                                             .selected_text(if tab.extension_filter.is_empty() { "All formats" } else { &tab.extension_filter })
@@ -689,7 +718,5 @@ impl crate::app::types::ViewerApp {
         if let Some(action) = action {
             self.handle_masonry_action(tab_index, action, ctx);
         }
-        self.render_delete_confirmation(ctx);
-        self.render_file_conflict_dialog(ctx);
     }
 }

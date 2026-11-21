@@ -281,6 +281,7 @@ impl ViewerApp {
                     self.calculate_fit_zoom(texture_size, image_viewport_rect.size());
                     self.b_fit_to_window = false;
                 }
+                self.clamp_pan_to_viewport(image_viewport_rect, texture_size);
 
                 // Render using virtual texture. Keep the exact screen-space image
                 // bounds so an empty margin drag can move the native window.
@@ -335,7 +336,13 @@ impl ViewerApp {
                 // Allocate the same rect for interaction (drag/pan)
                 let response = ui.allocate_rect(available_rect, egui::Sense::click_and_drag());
 
-                self.handle_image_mouse_input(ctx, &response, Some(virtual_image_rect));
+                self.handle_image_mouse_input(
+                    ctx,
+                    &response,
+                    Some(virtual_image_rect),
+                    Some(image_viewport_rect),
+                );
+                self.show_main_entry_context_menu(&response, ctx);
 
                 // Show loading indicator overlay if still loading
                 if self.is_loading()
@@ -378,6 +385,7 @@ impl ViewerApp {
                 self.calculate_fit_zoom(texture_size, image_viewport_rect.size());
                 self.b_fit_to_window = false;
             }
+            self.clamp_pan_to_viewport(image_viewport_rect, texture_size);
 
             let base_image_rect = self.get_image_rect(texture_size, image_viewport_rect.center());
             let mut image_rect = base_image_rect;
@@ -637,14 +645,25 @@ impl ViewerApp {
                 if self.crop_tool_active {
                     self.handle_crop_mouse_input(ctx, &response, image_rect);
                 } else {
-                    self.handle_image_mouse_input(ctx, &response, Some(image_rect));
+                    self.handle_image_mouse_input(
+                        ctx,
+                        &response,
+                        Some(image_rect),
+                        Some(image_viewport_rect),
+                    );
                 }
                 if self.crop_tool_active || self.crop_selection.is_some() {
                     self.paint_crop_selection(ui.painter(), image_rect);
                 }
             } else {
-                self.handle_image_mouse_input(ctx, &response, Some(image_rect));
+                self.handle_image_mouse_input(
+                    ctx,
+                    &response,
+                    Some(image_rect),
+                    Some(image_viewport_rect),
+                );
             }
+            self.show_main_entry_context_menu(&response, ctx);
 
             if self.is_loading()
                 && (!crate::app::ui::uses_desktop_menu_bar(ctx)
@@ -669,7 +688,7 @@ impl ViewerApp {
             ui.id().with("main_view_background_drag"),
             egui::Sense::click_and_drag(),
         );
-        self.handle_image_mouse_input(ctx, &response, None);
+        self.handle_image_mouse_input(ctx, &response, None, None);
     }
 
     // New unified loading UI with optional progress and extreme ratio indicator

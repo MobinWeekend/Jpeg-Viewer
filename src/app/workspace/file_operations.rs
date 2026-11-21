@@ -40,7 +40,7 @@ impl crate::app::types::ViewerApp {
         }
     }
 
-    pub(super) fn render_file_conflict_dialog(&mut self, ctx: &egui::Context) {
+    pub(crate) fn render_file_conflict_dialog(&mut self, ctx: &egui::Context) {
         let Some(pending) = self.workspace.pending_file_operation.as_ref() else {
             return;
         };
@@ -187,45 +187,102 @@ impl crate::app::types::ViewerApp {
         }
 
         if !moved_paths.is_empty() {
-            // Keep open image/Compare/Local Masonry references valid after a
-            // successful move. Folder Masonry removes entries that have left
-            // that folder, matching what a fresh folder scan would show.
+            // Keep every open reference in sync with successful moves. Folder
+            // Masonry collections behave like a fresh scan: remove files that
+            // leave the folder and add files that move into an already-loaded one.
             for tab in &mut self.workspace.tabs {
-                let is_folder_masonry = tab.kind == WorkspaceTabKind::Masonry && tab.folder_masonry;
-                let recursive_folder = tab.recursive;
+                let is_masonry = tab.kind == WorkspaceTabKind::Masonry;
+                let is_folder_masonry = is_masonry && tab.folder_masonry;
+                let is_browse_folder = tab.kind == WorkspaceTabKind::Viewer
+                    && !self.queue_mode
+                    && !self.sidebar_queue_tab
+                    && !self.sidebar_favorites_tab
+                    && tab.directory.as_deref().is_some_and(|folder| folder.is_dir());
+                let recursive_folder = is_folder_masonry && tab.recursive;
                 let folder = tab.directory.clone();
-                if is_folder_masonry {
-                    tab.entries.retain(|entry| {
-                        moved_paths.get(&entry.get_id()).is_none_or(|new_path| {
+                let current_entry_id = tab
+                    .entries
+                    .get(tab.current_index)
+                    .map(ImageEntry::get_id);
+
+                if is_folder_masonry || is_browse_folder {
+                    let belongs_to_folder = |path: &std::path::Path| {
+                        folder.as_deref().is_some_and(|root| {
                             if recursive_folder {
-                                folder
-                                    .as_ref()
-                                    .is_some_and(|root| new_path.starts_with(root))
+                                path.starts_with(root)
                             } else {
-                                new_path.parent() == folder.as_deref()
+                                path.parent() == Some(root)
                             }
                         })
-                    });
-                }
-                for entry in &mut tab.entries {
-                    let old_id = entry.get_id();
-                    if let Some(new_path) = moved_paths.get(&old_id)
-                        && let ImageEntry::File(path) = entry
-                    {
-                        *path = new_path.clone();
-                        // A move changes the stable entry ID. Carry its
-                        // already-known Masonry dimensions to the new ID so
-                        // moving a file does not reset its tile geometry.
-                        let new_id = entry.get_id();
-                        if let Some(aspect) = tab.masonry_aspect_ratios.remove(&old_id) {
-                            tab.masonry_aspect_ratios.insert(new_id.clone(), aspect);
+                    };
+                    let mut updated_entries = Vec::with_capacity(tab.entries.len());
+                    for mut entry in std::mem::take(&mut tab.entries) {
+                        let old_id = entry.get_id();
+                        if let Some(new_path) = moved_paths.get(&old_id) {
+                            if belongs_to_folder(new_path) {
+                                if let ImageEntry::File(path) = &mut entry {
+                                    *path = new_path.clone();
+                                }
+                                updated_entries.push(entry);
+                            }
+                        } else {
+                            updated_entries.push(entry);
                         }
-                        if let Some(dimensions) = tab.masonry_dimensions.remove(&old_id) {
-                            tab.masonry_dimensions.insert(new_id, dimensions);
+                    }
+                    // Any already-loaded destination folder collection must reflect
+                    // incoming files too; collections outside the destination drop
+                    // moved files rather than retaining stale source-folder entries.
+                    for new_path in moved_paths.values() {
+                        if belongs_to_folder(new_path) && new_path.is_file() {
+                            let new_entry = ImageEntry::File(new_path.clone());
+                            let new_id = new_entry.get_id();
+                            if !updated_entries
+                                .iter()
+                                .any(|entry| entry.get_id() == new_id)
+                            {
+                                updated_entries.push(new_entry);
+                            }
+                        }
+                    }
+                    crate::imaging::sort::sort_images(&mut updated_entries, self.sort_method);
+                    tab.entries = updated_entries;
+                    tab.current_index = current_entry_id
+                        .as_ref()
+                        .and_then(|current_id| {
+                            tab.entries.iter().position(|entry| entry.get_id() == *current_id)
+                        })
+                        .unwrap_or_else(|| tab.current_index.min(tab.entries.len().saturating_sub(1)));
+                } else {
+                    // Image tabs and collection-based Masonry retain their
+                    // entries when moved; only the backing path and stable ID change.
+                    for entry in &mut tab.entries {
+                        let old_id = entry.get_id();
+                        if let Some(new_path) = moved_paths.get(&old_id)
+                            && let ImageEntry::File(path) = entry
+                        {
+                            *path = new_path.clone();
                         }
                     }
                 }
-                if tab.kind == WorkspaceTabKind::Masonry {
+
+                if is_masonry {
+                    // Transfer already-known tile geometry to the new stable ID
+                    // only when the moved image still belongs to this collection.
+                    for (old_id, new_path) in &moved_paths {
+                        let new_id = ImageEntry::File(new_path.clone()).get_id();
+                        let retained = tab.entries.iter().any(|entry| entry.get_id() == new_id);
+                        if retained {
+                            if let Some(aspect) = tab.masonry_aspect_ratios.remove(old_id) {
+                                tab.masonry_aspect_ratios.insert(new_id.clone(), aspect);
+                            }
+                            if let Some(dimensions) = tab.masonry_dimensions.remove(old_id) {
+                                tab.masonry_dimensions.insert(new_id, dimensions);
+                            }
+                        } else {
+                            tab.masonry_aspect_ratios.remove(old_id);
+                            tab.masonry_dimensions.remove(old_id);
+                        }
+                    }
                     let valid_ids = tab
                         .entries
                         .iter()
@@ -235,6 +292,31 @@ impl crate::app::types::ViewerApp {
                         .retain(|id, _| valid_ids.contains(id));
                     tab.masonry_dimensions
                         .retain(|id, _| valid_ids.contains(id));
+                    for focus_id in [
+                        &mut tab.masonry_focus_entry_id,
+                        &mut tab.masonry_focus_highlight_id,
+                    ] {
+                        let moved_focus_path = focus_id
+                            .as_ref()
+                            .and_then(|old_id| moved_paths.get(old_id))
+                            .cloned();
+                        if let Some(new_path) = moved_focus_path {
+                            *focus_id = Some(ImageEntry::File(new_path).get_id());
+                        }
+                        if focus_id
+                            .as_ref()
+                            .is_some_and(|id| !valid_ids.contains(id))
+                        {
+                            *focus_id = None;
+                        }
+                    }
+                    if tab
+                        .context_highlight
+                        .as_ref()
+                        .is_some_and(|id| !valid_ids.contains(id))
+                    {
+                        tab.context_highlight = None;
+                    }
                     tab.invalidate_masonry_layout();
                 }
                 tab.selected.clear();
@@ -246,6 +328,38 @@ impl crate::app::types::ViewerApp {
                     tab.directory = entry_parent(entry);
                 }
             }
+            // Browse thumbnails use ViewerApp::image_entries rather than reading
+            // directly from WorkspaceTab. Keep that live sidebar source in step with
+            // the remembered Viewer tab after a move from Masonry/Compare.
+            let browse_tab_id = match self.workspace.active_kind() {
+                WorkspaceTabKind::Viewer | WorkspaceTabKind::Image => self
+                    .workspace
+                    .tabs
+                    .get(self.workspace.active_index)
+                    .map(|tab| tab.id)
+                    .unwrap_or(1),
+                WorkspaceTabKind::Masonry => self
+                    .workspace
+                    .masonry_return_tab_id
+                    .or(self.workspace.last_image_tab_id)
+                    .unwrap_or(1),
+                WorkspaceTabKind::Compare | WorkspaceTabKind::Welcome => self
+                    .workspace
+                    .last_image_tab_id
+                    .unwrap_or(1),
+            };
+            if let Some(browse_tab) = self
+                .workspace
+                .tabs
+                .iter()
+                .find(|tab| tab.id == browse_tab_id && tab.kind != WorkspaceTabKind::Masonry && tab.kind != WorkspaceTabKind::Compare)
+            {
+                self.image_entries = browse_tab.entries.clone();
+                self.current_index = browse_tab
+                    .current_index
+                    .min(self.image_entries.len().saturating_sub(1));
+            }
+
             // Old cache keys no longer identify the moved paths.
             for old_id in moved_paths.keys() {
                 self.workspace.compare_images.remove(old_id);
@@ -273,7 +387,7 @@ impl crate::app::types::ViewerApp {
         });
     }
 
-    pub(super) fn render_delete_confirmation(&mut self, ctx: &egui::Context) {
+    pub(crate) fn render_delete_confirmation(&mut self, ctx: &egui::Context) {
         let Some((_, entries, archive_count)) = self
             .workspace
             .delete_confirmation
@@ -375,6 +489,24 @@ impl crate::app::types::ViewerApp {
                         tab.entries
                             .retain(|entry| !removed_ids.contains(&entry.get_id()));
                         tab.selected.retain(|id| !removed_ids.contains(id));
+                        if tab.masonry_focus_entry_id
+                            .as_ref()
+                            .is_some_and(|id| removed_ids.contains(id))
+                        {
+                            tab.masonry_focus_entry_id = None;
+                        }
+                        if tab.masonry_focus_highlight_id
+                            .as_ref()
+                            .is_some_and(|id| removed_ids.contains(id))
+                        {
+                            tab.masonry_focus_highlight_id = None;
+                        }
+                        if tab.context_highlight
+                            .as_ref()
+                            .is_some_and(|id| removed_ids.contains(id))
+                        {
+                            tab.context_highlight = None;
+                        }
                         if tab.kind == WorkspaceTabKind::Masonry {
                             let valid_ids = tab
                                 .entries
@@ -397,6 +529,11 @@ impl crate::app::types::ViewerApp {
                 self.workspace
                     .compare_failed
                     .retain(|key| !removed_ids.contains(key));
+                self.image_entries
+                    .retain(|entry| !removed_ids.contains(&entry.get_id()));
+                self.current_index = self
+                    .current_index
+                    .min(self.image_entries.len().saturating_sub(1));
             }
 
             let empty_image_tabs = self

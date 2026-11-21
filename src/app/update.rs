@@ -747,6 +747,10 @@ impl eframe::App for ViewerApp {
             crate::app::ui::render_settings_menu(self, ctx);
         }
         self.render_central_panel(ctx);
+        // File-operation confirmations are shared by Viewer, Compare, and Masonry
+        // entry context menus, so render them outside the Masonry-only surface.
+        self.render_delete_confirmation(ctx);
+        self.render_file_conflict_dialog(ctx);
         self.render_workspace_session_prompt(ctx);
         crate::app::ui::render_overlay_ui(self, ctx);
 

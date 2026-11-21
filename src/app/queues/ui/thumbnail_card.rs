@@ -257,17 +257,17 @@ impl ViewerApp {
         }
 
         let response = response.on_hover_text(format!(
-            "{}\nClick to select; drag to reorder",
+            "{}\nClick to select; drag to reorder or into Compare",
             path.display()
         ));
-        if context_mode == 0 {
-            response.clone().context_menu(|ui| {
-                if path.is_file() && ui.button("Share…").clicked() {
-                    let entry_for_share =
-                        crate::imaging::entry::ImageEntry::File(path.to_path_buf());
-                    self.share_entry(&entry_for_share);
-                    ui.close();
-                }
+        if response.drag_started() && path.is_file() {
+            // The path is the lightweight drag payload; Compare resolves it to
+            // an ImageEntry only when a pane accepts the drop.
+            ctx.data_mut(|data| {
+                data.insert_temp(
+                    egui::Id::new("jpeg_viewer_compare_drag_entry"),
+                    path.to_path_buf(),
+                );
             });
         }
 
@@ -316,6 +316,12 @@ impl ViewerApp {
                     let entry_for_share =
                         crate::imaging::entry::ImageEntry::File(path.to_path_buf());
                     self.share_entry(&entry_for_share);
+                    ui.close();
+                }
+                if path.is_file() && ui.button("Compare…").clicked() {
+                    self.compare_entry_from_context(
+                        crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                    );
                     ui.close();
                 }
                 if ui.button("Open With…").clicked() {
@@ -525,6 +531,18 @@ impl ViewerApp {
             }
             if context_mode == 0 {
                 response.context_menu(|ui| {
+                    if path.is_file() && ui.button("Share…").clicked() {
+                        let entry_for_share =
+                            crate::imaging::entry::ImageEntry::File(path.to_path_buf());
+                        self.share_entry(&entry_for_share);
+                        ui.close();
+                    }
+                    if path.is_file() && ui.button("Compare…").clicked() {
+                        self.compare_entry_from_context(
+                            crate::imaging::entry::ImageEntry::File(path.to_path_buf()),
+                        );
+                        ui.close();
+                    }
                     if ui.button("Open With…").clicked() {
                         if let Err(error) = crate::app::external_open::open_with(path) {
                             self.queue_status =
@@ -588,6 +606,18 @@ impl ViewerApp {
             }
             if response.clicked() && context_mode == 0 {
                 // Browse's full-cell click selects the corresponding entry in the caller.
+            }
+            // A sidebar drag that ends outside Compare must not leave a stale
+            // path payload that a later click in Compare could consume.
+            if response.drag_stopped()
+                && self.workspace.active_kind()
+                    != crate::app::workspace::WorkspaceTabKind::Compare
+            {
+                ctx.data_mut(|data| {
+                    data.remove_temp::<std::path::PathBuf>(egui::Id::new(
+                        "jpeg_viewer_compare_drag_entry",
+                    ));
+                });
             }
         }
         clicked

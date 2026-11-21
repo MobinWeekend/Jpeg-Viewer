@@ -188,8 +188,11 @@ impl ViewerApp {
             "Open images inside ZIP, 7z, and RAR archives without extracting them",
             "Browse, Queue, Favorites, and Info sidebar tabs",
             "Firefox-style workspace tabs with drag-and-drop and keyboard reordering",
-            "Local and Folder Masonry galleries with size-adaptive thumbnails, sorting, and recursive folder sections",
-            "Multi-selection file actions and independent comparison workspaces with per-pane removal, Viewer-compatible zoom shortcuts, synchronized pan/zoom, and anchor-based rotation/alignment",
+            "Local and Folder Masonry galleries with size-adaptive thumbnails, sorting, recursive folder sections, multi-select, and a centered eye marker on the current image",
+            "Masonry Ctrl+click enters Select mode; plain clicks toggle entries while Select mode is active, with hover and selection feedback shown independently",
+            "Loaded Folder Masonry views update after file moves and deletes",
+            "Compare from the desktop menu bar or hamburger; drop images or add multiple files with the picker",
+            "Independent comparison workspaces with per-pane removal, synchronized pan/zoom, right-click anchor placement, split reordering, and anchor-based rotation/alignment",
             "Save and load .jvq queues; reorder queue and favorite entries",
             "Edit supported raster files: crop, rotate, flip, adjust color, undo/redo, and export",
             "GIF playback controls and configurable slideshow transitions and motion",
@@ -197,7 +200,7 @@ impl ViewerApp {
             "UI scaling, custom accents, transparency checkerboard, and optional OS/DE glass",
             "Background decoding, preloading, cache controls, and tiled rendering for very large images",
             "Optional single-instance mode forwards later file opens and multi-file selections to the running window",
-            "Adjustable main-view padding and automatic or one-time window fitting around the current image",
+            "Adjustable main-view padding, double-left-click image fitting, 20% pan visibility clamp, and automatic or one-time window fitting around the current image",
             "File actions include Open With, locate, rename, copy path, and trash where supported",
         ];
 
@@ -231,6 +234,7 @@ impl ViewerApp {
                 for item in [
                     "Drag an image, folder, or supported archive into the window to open it.",
                     "Use File → Open Folder + Subfolders to include nested folders.",
+                    "Open Compare from the desktop menu bar or hamburger; drop images or choose Add Images…",
                     "Press F5 to open Settings, or F1 to return to this help window.",
                     "Use the Keyboard and Mouse tabs for the complete control reference.",
                 ] {
@@ -275,6 +279,7 @@ impl ViewerApp {
                 ("S / ↓ / 0", "Fit image to window"),
                 ("Ctrl+Alt+W", "Wrap window around the current image"),
                 ("Scroll", "Navigate images; Ctrl + scroll zooms"),
+                ("Double-left-click", "Fit image to window"),
             ],
         );
         Self::render_shortcut_group(
@@ -424,6 +429,7 @@ impl ViewerApp {
             "Pass one or more file paths on launch: jpeg_viewer image.jpg image2.png.",
             "Enable Settings → General → Startup → Run only one instance to forward later launches to the existing window; restart after changing it.",
             "Select multiple files in your file manager to open that selection without indexing neighboring files when single-instance mode is enabled.",
+            "Double-left-click the image to fit it to the view. Panning keeps at least 20% of the image visible.",
             "Settings → Viewing controls image padding and automatic window sizing; View → Wrap Window Around Image (Ctrl+Alt+W) performs a one-time fit.",
             "If the file extension does not match the detected format, the toolbar may offer a rename suggestion.",
             "Very large images can use tiled virtual textures; tune Advanced settings if memory use is high.",

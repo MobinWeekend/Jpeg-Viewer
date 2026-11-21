@@ -2,6 +2,25 @@
 
 use super::*;
 
+#[derive(Clone, Copy)]
+enum ComparePaneContextAction {
+    SetAnchor(usize),
+    BeginAnchor(usize),
+    MoveLeft,
+    MoveRight,
+    MoveFirst,
+    MoveLast,
+    AlignPanZoom,
+    AlignRotation,
+    ResetView,
+    ToggleSync,
+    ToggleAnchors,
+    ClearAnchors,
+    ReplaceImage,
+    OpenNewSplit,
+    CloseSplit,
+}
+
 impl crate::app::types::ViewerApp {
     /// Drop comparison tile textures when the global filtering configuration
     /// changes. VirtualTexture keeps sampler state inside each resident tile,
@@ -166,6 +185,50 @@ impl crate::app::types::ViewerApp {
         });
     }
 
+    pub(crate) fn compare_entry_from_context(&mut self, entry: ImageEntry) {
+        let active_compare_id = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .filter(|tab| tab.kind == WorkspaceTabKind::Compare)
+            .map(|tab| tab.id);
+        let pending_compare_id = self.workspace.pending_compare_target_id;
+        if let Some(compare_tab_id) = active_compare_id.or(pending_compare_id) {
+            let added = self.add_entries_to_compare(compare_tab_id, vec![entry]);
+            self.queue_status = Some(if added == 0 {
+                "That image is already present in Compare.".into()
+            } else {
+                "Added image to Compare.".into()
+            });
+            if pending_compare_id == Some(compare_tab_id) {
+                self.workspace.pending_compare_target_id = None;
+                self.activate_workspace_tab(compare_tab_id);
+            }
+        } else {
+            self.open_compare_workspace(vec![entry]);
+        }
+    }
+
+    /// Send Masonry selections to the comparison workspace that opened Masonry,
+    /// or create a new Compare workspace when there is no pending destination.
+    pub(crate) fn compare_entries_from_masonry(&mut self, entries: Vec<ImageEntry>) {
+        if let Some(compare_tab_id) = self.workspace.pending_compare_target_id.take() {
+            let added = self.add_entries_to_compare(compare_tab_id, entries);
+            self.queue_status = Some(if added == 0 {
+                "No new images were added to Compare.".into()
+            } else {
+                format!("Added {added} image(s) to Compare.")
+            });
+            if self.workspace.tabs.iter().any(|tab| {
+                tab.id == compare_tab_id && tab.kind == WorkspaceTabKind::Compare
+            }) {
+                self.activate_workspace_tab(compare_tab_id);
+            }
+        } else {
+            self.open_compare_workspace(entries);
+        }
+    }
+
     pub(super) fn return_to_masonry_from_compare(&mut self, compare_tab_id: u64) {
         self.workspace.pending_compare_target_id = Some(compare_tab_id);
         if let Some(id) = self
@@ -198,23 +261,32 @@ impl crate::app::types::ViewerApp {
         let mut remove_pane: Option<usize> = None;
         let mut align_anchors_requested = false;
         let mut rotate_anchors_requested = false;
+        let mut add_images_requested = false;
         let mut open_masonry_from_compare = false;
+        let mut pane_context_action: Option<(usize, ComparePaneContextAction)> = None;
+        let mut replace_pane_request: Option<usize> = None;
+        let mut drop_pane_request: Option<(usize, std::path::PathBuf)> = None;
         {
             let tab = &mut self.workspace.tabs[tab_index];
             ui.horizontal_wrapped(|ui| {
                 ui.heading("Compare");
-                ui.separator();
-                let mut sync_all = tab.sync_pan && tab.sync_zoom;
-                if ui.checkbox(&mut sync_all, "Sync all").changed() {
-                    tab.sync_pan = sync_all;
-                    tab.sync_zoom = sync_all;
+                if crate::app::ui::masonry_button(ui, "Masonry", true, 92.0, false, true)
+                    .on_hover_text("Open the Masonry browser while keeping this comparison available")
+                    .clicked()
+                {
+                    open_masonry_from_compare = true;
                 }
-                ui.checkbox(&mut tab.sync_pan, "Sync pan");
-                ui.checkbox(&mut tab.sync_zoom, "Sync zoom");
+                ui.separator();
+                ui.label("Sync:");
+                ui.checkbox(&mut tab.sync_pan, "Pan");
+                ui.checkbox(&mut tab.sync_zoom, "Zoom");
                 ui.checkbox(&mut tab.show_anchors, "Show anchors");
                 ui.separator();
                 ui.selectable_value(&mut tab.compare_rows, false, "Columns");
                 ui.selectable_value(&mut tab.compare_rows, true, "Rows");
+                if ui.button("Add Images…").on_hover_text("Choose one or more images to fill empty panes or add comparison panes.").clicked() {
+                    add_images_requested = true;
+                }
                 if ui.button("Align anchors").on_hover_text(
                     "Use the two corresponding points in each pane to calculate matching zoom and pan.",
                 ).clicked() {
@@ -237,9 +309,9 @@ impl crate::app::types::ViewerApp {
                     tab.offsets.fill([0.0, 0.0]);
                     tab.pane_zoom.fill(1.0);
                     tab.pane_rotation.fill(0.0);
-                    tab.anchors.fill(None);
-                    tab.anchors_second.fill(None);
+                    // Reset view deliberately preserves both anchor sets.
                     tab.anchor_editing = None;
+                    tab.anchor_context_position = None;
                     tab.anchor_editing_point = 0;
                 }
                 if ui.button("Close comparison").clicked() {
@@ -248,80 +320,14 @@ impl crate::app::types::ViewerApp {
             });
         }
 
-        if rotate_anchors_requested {
-            let pane_count = self.workspace.tabs[tab_index].entries.len();
-            let mut angles = vec![None; pane_count];
-            for index in 0..pane_count {
-                if !self.workspace.tabs[tab_index]
-                    .pane_sync
-                    .get(index)
-                    .copied()
-                    .unwrap_or(true)
-                {
-                    continue;
-                }
-                let first = self.workspace.tabs[tab_index]
-                    .anchors
-                    .get(index)
-                    .copied()
-                    .flatten();
-                let second = self.workspace.tabs[tab_index]
-                    .anchors_second
-                    .get(index)
-                    .copied()
-                    .flatten();
-                let Some((first, second)) = first.zip(second) else {
-                    continue;
-                };
-                let key = self.workspace.tabs[tab_index].entries[index].get_id();
-                let Some((width, height)) = self
-                    .workspace
-                    .compare_images
-                    .get(&key)
-                    .map(VirtualTexture::dimensions)
-                else {
-                    continue;
-                };
-                let dx = (second[0] - first[0]) * width as f32;
-                let dy = (second[1] - first[1]) * height as f32;
-                if dx.hypot(dy) > 0.01 {
-                    angles[index] = Some(dy.atan2(dx));
-                }
-            }
-            if angles.iter().flatten().count() >= 2 {
-                let reference_angle = angles.iter().flatten().next().copied().unwrap_or(0.0);
-                let tab = &mut self.workspace.tabs[tab_index];
-                tab.pane_rotation.resize(pane_count, 0.0);
-                tab.pane_rotation.fill(0.0);
-                for index in 0..pane_count {
-                    if !tab.pane_sync.get(index).copied().unwrap_or(true) {
-                        continue;
-                    }
-                    if let Some(angle) = angles[index] {
-                        let delta = reference_angle - angle;
-                        tab.pane_rotation[index] = delta.sin().atan2(delta.cos());
-                    }
-                }
-            } else {
-                self.queue_status = Some(
-                    "Set both anchors on at least two loaded images before rotating to align."
-                        .into(),
-                );
-            }
-        }
-
         let entries = self.workspace.tabs[tab_index].entries.clone();
-        if entries.is_empty() {
-            ui.centered_and_justified(|ui| {
-                ui.label(
-                    "No comparison images remain. Close this workspace or add images from Masonry.",
-                );
-            });
-        } else {
-            let actual_entry_count = entries.len();
-            // A one-image comparison always keeps a second, intentionally empty
-            // slot so it is obvious where another image can be added.
-            let pane_count = actual_entry_count.max(2);
+        let actual_entry_count = entries.len();
+        // Keep two implicit empty panes in a new comparison, and preserve any
+        // additional empty panes explicitly opened from a pane context menu.
+            let explicit_empty_panes = self.workspace.tabs[tab_index].compare_empty_panes;
+            // Two base panes are always present. `compare_empty_panes` counts
+            // only additional panes explicitly opened by the user.
+            let pane_count = actual_entry_count.max(2) + explicit_empty_panes;
             let compare_rows = self.workspace.tabs[tab_index].compare_rows;
             if pane_count > 4 {
                 ui.label(
@@ -453,10 +459,6 @@ impl crate::app::types::ViewerApp {
                                         if ui.small_button("×").on_hover_text("Remove this image from the comparison").clicked() {
                                             remove_pane = Some(index);
                                         }
-                                        let mut participates = self.workspace.tabs[tab_index].pane_sync[index];
-                                        if ui.checkbox(&mut participates, "Sync").changed() {
-                                            self.workspace.tabs[tab_index].pane_sync[index] = participates;
-                                        }
                                         let anchor_editing = self.workspace.tabs[tab_index].anchor_editing;
                                         let editing_first = anchor_editing == Some(index)
                                             && self.workspace.tabs[tab_index].anchor_editing_point == 0;
@@ -508,6 +510,107 @@ impl crate::app::types::ViewerApp {
                                         egui::vec2(pane_width, pane_height),
                                         egui::Sense::click_and_drag(),
                                     );
+                                    let compare_drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+                                    if response.hovered()
+                                        && ctx.input(|input| input.pointer.any_released())
+                                        && let Some(path) = ctx.data(|data| data.get_temp::<std::path::PathBuf>(compare_drag_payload_id))
+                                    {
+                                        drop_pane_request = Some((index, path));
+                                    }
+                                    let tab_state = &self.workspace.tabs[tab_index];
+                                    let aligned_anchor_count = tab_state
+                                        .anchors
+                                        .iter()
+                                        .zip(tab_state.anchors_second.iter())
+                                        .filter(|(first, second)| first.is_some() && second.is_some())
+                                        .count();
+                                    let can_align_anchors = aligned_anchor_count >= 2;
+                                    let pane_participates = tab_state
+                                        .pane_sync
+                                        .get(index)
+                                        .copied()
+                                        .unwrap_or(true);
+                                    response.clone().context_menu(|menu| {
+                                        menu.label(format!("Split {}", index + 1));
+                                        menu.separator();
+                                        if menu.button("Set anchor 1 here").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::SetAnchor(0)));
+                                            menu.close();
+                                        }
+                                        if menu.button("Set anchor 2 here").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::SetAnchor(1)));
+                                            menu.close();
+                                        }
+                                        if menu.button("Choose anchor 1 by clicking…").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::BeginAnchor(0)));
+                                            menu.close();
+                                        }
+                                        if menu.button("Choose anchor 2 by clicking…").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::BeginAnchor(1)));
+                                            menu.close();
+                                        }
+                                        if menu.add_enabled(
+                                            can_align_anchors,
+                                            egui::Button::new("Align pan + zoom from anchors"),
+                                        ).clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::AlignPanZoom));
+                                            menu.close();
+                                        }
+                                        if menu.add_enabled(
+                                            can_align_anchors,
+                                            egui::Button::new("Align rotation from anchors"),
+                                        ).clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::AlignRotation));
+                                            menu.close();
+                                        }
+                                        menu.separator();
+                                        if menu.button("Reset view").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::ResetView));
+                                            menu.close();
+                                        }
+                                        if menu.button("Clear anchors").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::ClearAnchors));
+                                            menu.close();
+                                        }
+                                        if menu.button(if tab_state.show_anchors { "Hide anchors" } else { "Show anchors" }).clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::ToggleAnchors));
+                                            menu.close();
+                                        }
+                                        if menu.button(if pane_participates { "Desync this split" } else { "Sync this split" }).clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::ToggleSync));
+                                            menu.close();
+                                        }
+                                        menu.separator();
+                                        if menu.button("Open another image in this split…").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::ReplaceImage));
+                                            menu.close();
+                                        }
+                                        menu.separator();
+                                        if menu.add_enabled(index > 0, egui::Button::new("Move split earlier")).clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::MoveLeft));
+                                            menu.close();
+                                        }
+                                        if menu.add_enabled(index + 1 < tab_state.entries.len(), egui::Button::new("Move split later")).clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::MoveRight));
+                                            menu.close();
+                                        }
+                                        if menu.button("Move split to first").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::MoveFirst));
+                                            menu.close();
+                                        }
+                                        if menu.button("Move split to last").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::MoveLast));
+                                            menu.close();
+                                        }
+                                        if menu.button("Open new split").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::OpenNewSplit));
+                                            menu.close();
+                                        }
+                                        if menu.button("Close split").clicked() {
+                                            pane_context_action = Some((index, ComparePaneContextAction::CloseSplit));
+                                            menu.close();
+                                        }
+                                    });
                                     // Compare panes use the same configurable zoom keys and
                                     // mouse-wheel modifier as the primary Viewer. Only the pane
                                     // under the pointer receives the input.
@@ -751,6 +854,27 @@ impl crate::app::types::ViewerApp {
                                             ));
                                         }
 
+                                        if response.secondary_clicked() {
+                                            // Clear a previous point first: a right-click
+                                            // outside the rendered image must not reuse an
+                                            // older anchor coordinate from this split.
+                                            self.workspace.tabs[tab_index].anchor_context_position = None;
+                                            if let Some(point) = response.interact_pointer_pos()
+                                                && image_rect.contains(point)
+                                            {
+                                                let displayed = (point - image_center) / image_zoom.max(0.0001);
+                                                let source = egui::vec2(
+                                                    displayed.x * cos + displayed.y * sin,
+                                                    -displayed.x * sin + displayed.y * cos,
+                                                );
+                                                let normalized = [source.x / size.x + 0.5, source.y / size.y + 0.5];
+                                                if (0.0..=1.0).contains(&normalized[0]) && (0.0..=1.0).contains(&normalized[1]) {
+                                                    self.workspace.tabs[tab_index].anchor_context_position = Some((index, normalized));
+                                                } else {
+                                                    self.workspace.tabs[tab_index].anchor_context_position = None;
+                                                }
+                                            }
+                                        }
                                         if editing && response.clicked() && !resize_response.hovered() {
                                             let point = response.interact_pointer_pos().unwrap_or(rect.center());
                                             if rect.contains(point) {
@@ -858,7 +982,10 @@ impl crate::app::types::ViewerApp {
                                     ui.end_row();
                                 }
                             }
-                            if actual_entry_count == 1 {
+                            // Keep at least two panes visible, even when Compare
+                            // starts empty. Each blank pane is an independent
+                            // drop target visually and offers the same multi-file picker.
+                            for index in actual_entry_count..pane_count {
                                 let pane_border = ui.visuals().widgets.noninteractive.bg_stroke;
                                 egui::Frame::new()
                                     .fill(ui.visuals().extreme_bg_color)
@@ -873,52 +1000,228 @@ impl crate::app::types::ViewerApp {
                                         } else {
                                             compare_viewport_height
                                         }).max(1.0);
-                                        let (rect, _) = pane.allocate_exact_size(
+                                        let (rect, empty_response) = pane.allocate_exact_size(
                                             egui::vec2(base_width, placeholder_height),
-                                            egui::Sense::hover(),
+                                            egui::Sense::click_and_drag(),
                                         );
+                                        let compare_drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+                                        if empty_response.hovered()
+                                            && ctx.input(|input| input.pointer.any_released())
+                                            && let Some(path) = ctx.data(|data| data.get_temp::<std::path::PathBuf>(compare_drag_payload_id))
+                                        {
+                                            drop_pane_request = Some((index, path));
+                                        }
+                                        let first_extra_pane = actual_entry_count.max(2);
+                                        let can_close_empty = index >= first_extra_pane
+                                            && self.workspace.tabs[tab_index].compare_empty_panes > 0;
+                                        empty_response.context_menu(|menu| {
+                                            menu.label(format!("Empty split {}", index + 1));
+                                            if menu.button("Add image to comparison…").clicked() {
+                                                pane_context_action = Some((index, ComparePaneContextAction::ReplaceImage));
+                                                menu.close();
+                                            }
+                                            if menu.button("Open new split").clicked() {
+                                                pane_context_action = Some((index, ComparePaneContextAction::OpenNewSplit));
+                                                menu.close();
+                                            }
+                                            if menu.add_enabled(can_close_empty, egui::Button::new("Close split")).clicked() {
+                                                pane_context_action = Some((index, ComparePaneContextAction::CloseSplit));
+                                                menu.close();
+                                            }
+                                        });
                                         let painter = pane.painter().with_clip_rect(rect.intersect(pane.clip_rect()));
                                         painter.rect_filled(rect, 0.0, pane.visuals().faint_bg_color);
+                                        painter.rect_stroke(
+                                            rect.shrink(8.0),
+                                            4.0,
+                                            egui::Stroke::new(1.0_f32, pane.visuals().widgets.noninteractive.bg_stroke.color.gamma_multiply(0.6)),
+                                            egui::StrokeKind::Inside,
+                                        );
                                         let message_rect = egui::Rect::from_min_size(
-                                            rect.min + egui::vec2(16.0, (rect.height() * 0.5 - 32.0).max(8.0)),
-                                            egui::vec2((rect.width() - 32.0).max(1.0), 42.0),
+                                            rect.min + egui::vec2(12.0, (rect.height() * 0.5 - 36.0).max(8.0)),
+                                            egui::vec2((rect.width() - 24.0).max(1.0), 42.0),
                                         );
                                         pane.put(
                                             message_rect,
                                             egui::Label::new(
-                                                egui::RichText::new("No comparison image. add more images from Masonry.")
+                                                egui::RichText::new("Drop an image here")
                                                     .color(pane.visuals().weak_text_color()),
                                             ).wrap(),
                                         );
                                         let button_rect = egui::Rect::from_center_size(
-                                            egui::pos2(rect.center().x, rect.center().y + 28.0),
-                                            egui::vec2(126.0, 28.0),
+                                            egui::pos2(rect.center().x, rect.center().y + 18.0),
+                                            egui::vec2(142.0, 30.0),
                                         );
-                                        let mut masonry_clicked = false;
                                         pane.scope_builder(
                                             egui::UiBuilder::new().max_rect(button_rect),
                                             |button_ui| {
-                                                masonry_clicked = crate::app::ui::masonry_button(
+                                                if button_ui.add_sized(
+                                                    [142.0, 30.0],
+                                                    egui::Button::new("Add Image(s)…"),
+                                                ).clicked() {
+                                                    add_images_requested = true;
+                                                }
+                                            },
+                                        );
+                                        let masonry_button_rect = egui::Rect::from_center_size(
+                                            egui::pos2(rect.center().x, rect.center().y + 54.0),
+                                            egui::vec2(126.0, 28.0),
+                                        );
+                                        pane.scope_builder(
+                                            egui::UiBuilder::new().max_rect(masonry_button_rect),
+                                            |button_ui| {
+                                                if crate::app::ui::masonry_button(
                                                     button_ui,
                                                     "Open Masonry",
                                                     true,
                                                     126.0,
                                                     false,
                                                     true,
-                                                ).clicked();
+                                                ).clicked() {
+                                                    open_masonry_from_compare = true;
+                                                }
                                             },
                                         );
-                                        if masonry_clicked {
-                                            open_masonry_from_compare = true;
-                                        }
                                     });
-                                ui.end_row();
+                                if (index + 1) % columns == 0 {
+                                    ui.end_row();
+                                }
                             }
                         });
                             });
                         });
                 },
             );
+
+            if let Some((index, action)) = pane_context_action {
+                match action {
+                    ComparePaneContextAction::SetAnchor(anchor_point) => {
+                        let tab = &mut self.workspace.tabs[tab_index];
+                        if index < tab.entries.len() {
+                            let context_position = tab.anchor_context_position.take()
+                                .filter(|(pane_index, _)| *pane_index == index)
+                                .map(|(_, position)| position);
+                            if let Some(position) = context_position {
+                                if anchor_point == 0 {
+                                    tab.anchors[index] = Some(position);
+                                } else {
+                                    tab.anchors_second[index] = Some(position);
+                                }
+                                tab.anchor_editing = None;
+                                align_compare_anchor_pairs(
+                                    tab,
+                                    &anchor_metrics,
+                                    &anchor_image_sizes,
+                                    &anchor_source_sizes,
+                                );
+                            } else {
+                                // If the right-click was outside the image, retain
+                                // the original click-to-place workflow as fallback.
+                                tab.anchor_editing = Some(index);
+                                tab.anchor_editing_point = anchor_point.min(1);
+                            }
+                        }
+                    }
+                    ComparePaneContextAction::BeginAnchor(anchor_point) => {
+                        let tab = &mut self.workspace.tabs[tab_index];
+                        if index < tab.entries.len() {
+                            tab.anchor_context_position = None;
+                            tab.anchor_editing = Some(index);
+                            tab.anchor_editing_point = anchor_point.min(1);
+                        }
+                    }
+                    ComparePaneContextAction::MoveLeft => {
+                        if index > 0 {
+                            reorder_compare_pane(&mut self.workspace.tabs[tab_index], index, index - 1);
+                        }
+                    }
+                    ComparePaneContextAction::MoveRight => {
+                        let last = self.workspace.tabs[tab_index].entries.len().saturating_sub(1);
+                        if index < last {
+                            reorder_compare_pane(&mut self.workspace.tabs[tab_index], index, index + 1);
+                        }
+                    }
+                    ComparePaneContextAction::MoveFirst => {
+                        reorder_compare_pane(&mut self.workspace.tabs[tab_index], index, 0);
+                    }
+                    ComparePaneContextAction::MoveLast => {
+                        let last = self.workspace.tabs[tab_index].entries.len().saturating_sub(1);
+                        reorder_compare_pane(&mut self.workspace.tabs[tab_index], index, last);
+                    }
+                    ComparePaneContextAction::AlignPanZoom => {
+                        align_anchors_requested = true;
+                    }
+                    ComparePaneContextAction::AlignRotation => {
+                        rotate_anchors_requested = true;
+                    }
+                    ComparePaneContextAction::ResetView => {
+                        let tab = &mut self.workspace.tabs[tab_index];
+                        if index < tab.offsets.len() {
+                            tab.offsets[index] = [0.0, 0.0];
+                        }
+                        if index < tab.pane_zoom.len() {
+                            tab.pane_zoom[index] = 1.0;
+                        }
+                        if index < tab.pane_rotation.len() {
+                            tab.pane_rotation[index] = 0.0;
+                        }
+                        // Reset position/zoom/rotation only; anchors persist.
+                    }
+                    ComparePaneContextAction::ToggleSync => {
+                        let tab = &mut self.workspace.tabs[tab_index];
+                        if let Some(participates) = tab.pane_sync.get_mut(index) {
+                            *participates = !*participates;
+                        }
+                    }
+                    ComparePaneContextAction::ToggleAnchors => {
+                        self.workspace.tabs[tab_index].show_anchors = !self.workspace.tabs[tab_index].show_anchors;
+                    }
+                    ComparePaneContextAction::ClearAnchors => {
+                        let tab = &mut self.workspace.tabs[tab_index];
+                        if index < tab.anchors.len() { tab.anchors[index] = None; }
+                        if index < tab.anchors_second.len() { tab.anchors_second[index] = None; }
+                        tab.anchor_context_position = None;
+                        tab.anchor_editing = None;
+                    }
+                    ComparePaneContextAction::ReplaceImage => {
+                        replace_pane_request = Some(index);
+                    }
+                    ComparePaneContextAction::OpenNewSplit => {
+                        let tab = &mut self.workspace.tabs[tab_index];
+                        tab.compare_empty_panes = tab.compare_empty_panes.saturating_add(1).min(16);
+                        ctx.request_repaint();
+                    }
+                    ComparePaneContextAction::CloseSplit => {
+                        if index < self.workspace.tabs[tab_index].entries.len() {
+                            let tab = &mut self.workspace.tabs[tab_index];
+                            // When there are fewer than three populated panes,
+                            // removing an image would otherwise turn it into a
+                            // default empty slot without reducing the pane count.
+                            // Consume one extra empty pane as well so Close split
+                            // actually closes one split while preserving the two-pane minimum.
+                            if tab.entries.len() <= 2 && tab.compare_empty_panes > 0 {
+                                tab.compare_empty_panes -= 1;
+                            }
+                            remove_pane = Some(index);
+                        } else {
+                            let tab = &mut self.workspace.tabs[tab_index];
+                            let first_extra_pane = tab.entries.len().max(2);
+                            if index >= first_extra_pane && tab.compare_empty_panes > 0 {
+                                tab.compare_empty_panes -= 1;
+                                let visible_count = tab.entries.len().max(2) + tab.compare_empty_panes;
+                                tab.pane_zoom.truncate(visible_count);
+                                tab.pane_rotation.truncate(visible_count);
+                                tab.pane_sync.truncate(visible_count);
+                                tab.pane_size.truncate(visible_count);
+                                tab.offsets.truncate(visible_count);
+                                tab.anchors.truncate(visible_count);
+                                tab.anchors_second.truncate(visible_count);
+                                ctx.request_repaint();
+                            }
+                        }
+                    }
+                }
+            }
 
             if let Some(index) = remove_pane {
                 let removed = {
@@ -973,6 +1276,68 @@ impl crate::app::types::ViewerApp {
                 placed_anchor = None;
             }
 
+        if rotate_anchors_requested {
+            let pane_count = self.workspace.tabs[tab_index].entries.len();
+            let mut angles = vec![None; pane_count];
+            for index in 0..pane_count {
+                if !self.workspace.tabs[tab_index]
+                    .pane_sync
+                    .get(index)
+                    .copied()
+                    .unwrap_or(true)
+                {
+                    continue;
+                }
+                let first = self.workspace.tabs[tab_index]
+                    .anchors
+                    .get(index)
+                    .copied()
+                    .flatten();
+                let second = self.workspace.tabs[tab_index]
+                    .anchors_second
+                    .get(index)
+                    .copied()
+                    .flatten();
+                let Some((first, second)) = first.zip(second) else {
+                    continue;
+                };
+                let key = self.workspace.tabs[tab_index].entries[index].get_id();
+                let Some((width, height)) = self
+                    .workspace
+                    .compare_images
+                    .get(&key)
+                    .map(VirtualTexture::dimensions)
+                else {
+                    continue;
+                };
+                let dx = (second[0] - first[0]) * width as f32;
+                let dy = (second[1] - first[1]) * height as f32;
+                if dx.hypot(dy) > 0.01 {
+                    angles[index] = Some(dy.atan2(dx));
+                }
+            }
+            if angles.iter().flatten().count() >= 2 {
+                let reference_angle = angles.iter().flatten().next().copied().unwrap_or(0.0);
+                let tab = &mut self.workspace.tabs[tab_index];
+                tab.pane_rotation.resize(pane_count, 0.0);
+                tab.pane_rotation.fill(0.0);
+                for index in 0..pane_count {
+                    if !tab.pane_sync.get(index).copied().unwrap_or(true) {
+                        continue;
+                    }
+                    if let Some(angle) = angles[index] {
+                        let delta = reference_angle - angle;
+                        tab.pane_rotation[index] = delta.sin().atan2(delta.cos());
+                    }
+                }
+            } else {
+                self.queue_status = Some(
+                    "Set both anchors on at least two loaded images before rotating to align."
+                        .into(),
+                );
+            }
+        }
+
             if let Some((index, screen_delta)) = pan_delta {
                 let tab = &mut self.workspace.tabs[tab_index];
                 let sync_source = tab.sync_pan && tab.pane_sync.get(index).copied().unwrap_or(true);
@@ -1024,12 +1389,179 @@ impl crate::app::types::ViewerApp {
                     &anchor_source_sizes,
                 );
             }
+        if let Some((index, path)) = drop_pane_request {
+            self.sidebar_drag_index = None;
+            let drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+            ctx.data_mut(|data| { data.remove_temp::<std::path::PathBuf>(drag_payload_id); });
+            if path.is_file() && crate::imaging::helpers::is_supported_image(&path) {
+                let replaced = self.replace_compare_pane(tab_id, index, ImageEntry::File(path));
+                self.queue_status = Some(if replaced {
+                    "Added image to comparison split.".into()
+                } else {
+                    "That image is already present in this comparison.".into()
+                });
+            } else {
+                self.queue_status = Some("The dropped file is not a supported image.".into());
+            }
+        } else if ctx.input(|input| input.pointer.any_released()) {
+            self.sidebar_drag_index = None;
+            // Do not leave a stale sidebar payload that could be consumed by a
+            // later unrelated click after the user drops outside a split.
+            let drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+            ctx.data_mut(|data| { data.remove_temp::<std::path::PathBuf>(drag_payload_id); });
+        }
+
+        if add_images_requested
+            && let Some(paths) = rfd::FileDialog::new()
+                .set_title("Add comparison images")
+                .pick_files()
+        {
+            let entries = paths
+                .into_iter()
+                .filter(|path| {
+                    path.is_file() && crate::imaging::helpers::is_supported_image(path)
+                })
+                .map(ImageEntry::File)
+                .collect::<Vec<_>>();
+            let added = self.add_entries_to_compare(tab_id, entries);
+            self.queue_status = Some(if added == 0 {
+                "No new supported images were added to Compare.".into()
+            } else {
+                format!("Added {added} image(s) to Compare.")
+            });
+        }
+        if let Some(index) = replace_pane_request
+            && let Some(path) = rfd::FileDialog::new()
+                .set_title("Open an image in this comparison split")
+                .pick_file()
+        {
+            if path.is_file() && crate::imaging::helpers::is_supported_image(&path) {
+                let replaced = self.replace_compare_pane(
+                    tab_id,
+                    index,
+                    ImageEntry::File(path),
+                );
+                self.queue_status = Some(if replaced {
+                    "Updated comparison split.".into()
+                } else {
+                    "That image is already present in this comparison.".into()
+                });
+            } else {
+                self.queue_status = Some("The selected file is not a supported image.".into());
+            }
         }
         if close {
             self.close_workspace_tab(tab_id);
         } else if open_masonry_from_compare {
             self.return_to_masonry_from_compare(tab_id);
         }
+    }
+
+    /// Replace one populated split, or fill the next available empty split.
+    fn replace_compare_pane(
+        &mut self,
+        compare_tab_id: u64,
+        pane_index: usize,
+        entry: ImageEntry,
+    ) -> bool {
+        let Some(tab_index) = self.workspace.tabs.iter().position(|tab| {
+            tab.id == compare_tab_id && tab.kind == WorkspaceTabKind::Compare
+        }) else {
+            return false;
+        };
+        let new_id = entry.get_id();
+        if pane_index >= self.workspace.tabs[tab_index].entries.len() {
+            return self.add_entries_to_compare(compare_tab_id, vec![entry]) > 0;
+        }
+
+        let old_id = self.workspace.tabs[tab_index].entries[pane_index].get_id();
+        if old_id == new_id {
+            return false;
+        }
+        if self.workspace.tabs[tab_index]
+            .entries
+            .iter()
+            .enumerate()
+            .any(|(index, existing)| index != pane_index && existing.get_id() == new_id)
+        {
+            return false;
+        }
+
+        {
+            let tab = &mut self.workspace.tabs[tab_index];
+            tab.entries[pane_index] = entry;
+            let entry_count = tab.entries.len();
+            tab.anchors.resize(entry_count, None);
+            tab.anchors_second.resize(entry_count, None);
+            tab.offsets.resize(entry_count, [0.0, 0.0]);
+            tab.pane_zoom.resize(entry_count, 1.0);
+            tab.pane_rotation.resize(entry_count, 0.0);
+            tab.pane_sync.resize(entry_count, true);
+            tab.pane_size.resize(entry_count, [1.0, 1.0]);
+            tab.anchors[pane_index] = None;
+            tab.anchors_second[pane_index] = None;
+            tab.offsets[pane_index] = [0.0, 0.0];
+            tab.pane_zoom[pane_index] = 1.0;
+            tab.pane_rotation[pane_index] = 0.0;
+            tab.anchor_editing = None;
+            tab.anchor_editing_point = 0;
+            tab.title = format!("Compare ({})", tab.entries.len());
+        }
+
+        let old_still_referenced = self.workspace.tabs.iter().any(|tab| {
+            tab.kind == WorkspaceTabKind::Compare
+                && tab.entries.iter().any(|existing| existing.get_id() == old_id)
+        });
+        if !old_still_referenced {
+            self.workspace.compare_images.remove(&old_id);
+            self.workspace.compare_failed.remove(&old_id);
+        }
+        self.workspace.compare_failed.remove(&new_id);
+        true
+    }
+}
+
+fn reorder_compare_pane(tab: &mut WorkspaceTab, from: usize, to: usize) {
+    let len = tab.entries.len();
+    if from >= len || to >= len || from == to {
+        return;
+    }
+    fn move_item<T>(items: &mut Vec<T>, from: usize, to: usize) {
+        if from < items.len() && to < items.len() {
+            let item = items.remove(from);
+            items.insert(to, item);
+        }
+    }
+    move_item(&mut tab.entries, from, to);
+    move_item(&mut tab.anchors, from, to);
+    move_item(&mut tab.anchors_second, from, to);
+    move_item(&mut tab.offsets, from, to);
+    move_item(&mut tab.pane_zoom, from, to);
+    move_item(&mut tab.pane_rotation, from, to);
+    move_item(&mut tab.pane_sync, from, to);
+    move_item(&mut tab.pane_size, from, to);
+    if let Some(editing) = tab.anchor_editing {
+        tab.anchor_editing = Some(if editing == from {
+            to
+        } else if from < to && editing > from && editing <= to {
+            editing - 1
+        } else if from > to && editing >= to && editing < from {
+            editing + 1
+        } else {
+            editing
+        });
+    }
+    if let Some((pane_index, position)) = tab.anchor_context_position {
+        let remapped = if pane_index == from {
+            to
+        } else if from < to && pane_index > from && pane_index <= to {
+            pane_index - 1
+        } else if from > to && pane_index >= to && pane_index < from {
+            pane_index + 1
+        } else {
+            pane_index
+        };
+        tab.anchor_context_position = Some((remapped, position));
     }
 }
 

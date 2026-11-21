@@ -428,6 +428,25 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
         }
     }
 
+    // Compare is a direct command rather than a submenu so it remains easy to
+    // reach from both decorated and custom desktop menu bars.
+    if ui
+        .button("Compare")
+        .on_hover_text("Open the side-by-side image comparison workspace")
+        .clicked()
+    {
+        let entries = if app.is_home_surface_active() {
+            Vec::new()
+        } else {
+            app.image_entries
+                .get(app.current_index)
+                .cloned()
+                .into_iter()
+                .collect()
+        };
+        app.open_compare_workspace(entries);
+    }
+
     // Keep the conventional desktop menu order. Home belongs only in File.
     ui.menu_button("File", |ui| {
         *ui.style_mut() = popup_style.clone();

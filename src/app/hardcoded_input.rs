@@ -104,6 +104,7 @@ impl ViewerApp {
         ctx: &egui::Context,
         response: &egui::Response,
         image_rect: Option<egui::Rect>,
+        pan_viewport: Option<egui::Rect>,
     ) {
         if self.window_mouse_operation_active {
             self.main_view_pan_drag_active = false;
@@ -139,17 +140,22 @@ impl ViewerApp {
         if !response.hovered() && !left_down && !right_down {
             return;
         }
+        let pan_viewport = pan_viewport.unwrap_or(response.rect);
 
         // Trackpad pinch gestures: preserve existing zoom behavior.
         let zoom_delta = ctx.input(|i| i.zoom_delta());
         if zoom_delta.is_finite() && (zoom_delta - 1.0).abs() > 0.001 {
             if !self.image_entries.is_empty() {
-                let center = response.rect.center();
-                let offset = center - response.rect.center();
+                let texture_size = image_rect.map(|rect| rect.size() / self.zoom.max(0.001));
+                let center = pan_viewport.center();
+                let offset = center - pan_viewport.center();
                 let image_point = offset / self.zoom - self.pan;
                 self.zoom_animation = None;
                 self.zoom = (self.zoom * zoom_delta).clamp(0.005, 50.0);
                 self.pan = offset / self.zoom - image_point;
+                if let Some(texture_size) = texture_size {
+                    self.clamp_pan_to_viewport(pan_viewport, texture_size);
+                }
                 self.b_zoom_used = true;
                 self.mark_interaction();
                 ctx.request_repaint();
@@ -203,22 +209,26 @@ impl ViewerApp {
             }
         }
 
-        // NORMAL MOUSE BINDINGS
-        for command in handle_mouse(
-            ctx,
-            &self.input_bindings,
-            response.hovered(),
-            ctx.is_pointer_over_area(),
-            self.b_ctrl_invert,
-        ) {
-            self.handle_command(ctx, command);
+        // A plain secondary click opens the image's entry context menu. Keep
+        // configurable mouse bindings for all other gestures, but do not let a
+        // right-click shortcut consume that click before the popup can open.
+        if !right_down && !response.secondary_clicked() {
+            for command in handle_mouse(
+                ctx,
+                &self.input_bindings,
+                response.hovered(),
+                ctx.is_pointer_over_area(),
+                self.b_ctrl_invert,
+            ) {
+                self.handle_command(ctx, command);
+            }
         }
 
         if response.drag_started_by(egui::PointerButton::Secondary) {
             self.zoom_drag_start_pos = response.interact_pointer_pos();
             self.zoom_drag_start_zoom = self.zoom;
             self.zoom_drag_start_pan = self.pan;
-            self.zoom_drag_start_center = response.rect.center();
+            self.zoom_drag_start_center = pan_viewport.center();
         }
 
         if right_down && response.dragged_by(egui::PointerButton::Secondary) {
@@ -233,6 +243,7 @@ impl ViewerApp {
             };
 
             let start_zoom = self.zoom_drag_start_zoom;
+            let texture_size = image_rect.map(|rect| rect.size() / self.zoom.max(0.001));
             let vertical_delta = current_pos.y - start_pos.y;
             let step = self
                 .settings_manager
@@ -247,6 +258,9 @@ impl ViewerApp {
             self.zoom_animation = None;
             self.zoom = new_zoom;
             self.pan = mouse_offset / new_zoom - image_point;
+            if let Some(texture_size) = texture_size {
+                self.clamp_pan_to_viewport(pan_viewport, texture_size);
+            }
             self.b_zoom_used = true;
             ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
             return;
@@ -257,7 +271,15 @@ impl ViewerApp {
             && left_down
             && response.dragged_by(egui::PointerButton::Primary)
         {
-            self.pan += delta / self.zoom.max(0.001);
+            let zoom = self.zoom.max(0.001);
+            self.pan += delta / zoom;
+
+            // Clamp in screen space using the viewport and current image size.
+            // The helper caps the required visible strip to 20% of the smaller
+            // dimension, so zoomed-in images can still pan freely across the view.
+            if let Some(image_rect) = image_rect {
+                self.clamp_pan_to_viewport(pan_viewport, image_rect.size() / zoom);
+            }
             ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
             return;
         }
@@ -433,6 +455,38 @@ impl ViewerApp {
             .iter()
             .filter_map(|file| file.path.clone())
             .collect();
+        // Compare owns its entire central workspace. Do not let a drop that lands
+        // near a split border, toolbar edge, or during the first layout frame fall
+        // through to the generic Viewer loader and replace the background image.
+        // Explicit Queue/Favorites sidebar drops remain higher priority and keep
+        // their normal collection semantics. Other drops belong to Compare.
+        if self.workspace.active_kind() == crate::app::workspace::WorkspaceTabKind::Compare
+            && !dropped_on_queue
+            && !dropped_on_favorites
+        {
+            let entries = dropped_paths
+                .iter()
+                .filter(|path| {
+                    path.is_file() && crate::imaging::helpers::is_supported_image(path)
+                })
+                .cloned()
+                .map(crate::imaging::entry::ImageEntry::File)
+                .collect::<Vec<_>>();
+            let compare_tab_id = self
+                .workspace
+                .tabs
+                .get(self.workspace.active_index)
+                .map(|tab| tab.id);
+            let added = compare_tab_id
+                .map(|id| self.add_entries_to_compare(id, entries))
+                .unwrap_or_default();
+            self.queue_status = Some(if added == 0 {
+                "No supported new images were dropped into Compare.".into()
+            } else {
+                format!("Added {added} image(s) to Compare.")
+            });
+            return;
+        }
         let recursive_folder_drop = self.settings_manager.get().drag_drop_folders_recursive
             && !dropped_on_queue
             && !dropped_on_favorites;

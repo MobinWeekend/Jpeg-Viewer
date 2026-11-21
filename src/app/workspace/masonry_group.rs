@@ -48,6 +48,12 @@ impl crate::app::types::ViewerApp {
         // collection, so selections spanning different folder groups remain
         // available without cloning the complete source list for every card.
         let pending_compare_target = self.workspace.pending_compare_target_id.is_some();
+        // Compare by ImageEntry identity rather than filesystem path so images
+        // opened from ZIP/7z/RAR archives receive the same current-view marker.
+        let current_viewed_entry_id = self
+            .image_entries
+            .get(self.current_index)
+            .map(ImageEntry::get_id);
 
         // Masonry's shortest-column assignment is O(entries × columns). The
         // previous version repeated it on every scroll repaint, even though the
@@ -136,6 +142,25 @@ impl crate::app::types::ViewerApp {
                 (local_tile_rects, column_indices, content_height)
             };
         let (_, grid_rect) = ui.allocate_space(egui::vec2(available_width, content_height));
+
+        // Resolve the initial focus only after the dimension-first Masonry pass
+        // has supplied stable tile geometry. Calling scroll_to_rect here also
+        // works when the target tile is outside the current virtualized viewport.
+        let focus_entry_id = self.workspace.tabs[tab_index]
+            .masonry_focus_entry_id
+            .clone();
+        if let Some(focus_entry_id) = focus_entry_id
+            && let Some(layout_index) = entry_indices.iter().position(|entry_index| {
+                entries[*entry_index].get_id() == focus_entry_id.as_str()
+            })
+        {
+            let focus_rect = local_tile_rects[layout_index].translate(grid_rect.min.to_vec2());
+            ui.scroll_to_rect(focus_rect, Some(egui::Align::Center));
+            let tab = &mut self.workspace.tabs[tab_index];
+            tab.masonry_focus_entry_id = None;
+            tab.masonry_focus_highlight_id = Some(focus_entry_id);
+        }
+
         let clip_rect = ui.clip_rect();
         let painter = ui.painter().clone();
 
@@ -286,6 +311,9 @@ impl crate::app::types::ViewerApp {
                     entry_breadcrumb(entry, self.workspace.tabs[tab_index].directory.as_deref()),
                 ));
 
+            let is_current_viewed = current_viewed_entry_id.as_deref() == Some(key.as_str());
+            // The eye marks the current image independently from selection,
+            // context highlighting, and hover feedback.
             if selected.contains(&key) {
                 let visuals = ui.visuals().clone();
                 let selection_fill = visuals.selection.bg_fill;
@@ -311,8 +339,12 @@ impl crate::app::types::ViewerApp {
                     egui::FontId::proportional(14.0),
                     crate::ui_theme::contrast_foreground(selection_fill),
                 );
-            } else if self.workspace.tabs[tab_index].context_highlight.as_deref()
+            } else if !is_current_viewed && (self.workspace.tabs[tab_index].context_highlight.as_deref()
                 == Some(key.as_str())
+                || self.workspace.tabs[tab_index]
+                    .masonry_focus_highlight_id
+                    .as_deref()
+                    == Some(key.as_str()))
             {
                 // Context highlighting is deliberately separate from the
                 // selection set: right-clicking never changes multi-selection.
@@ -330,7 +362,12 @@ impl crate::app::types::ViewerApp {
                     visuals.widgets.hovered.fg_stroke,
                     egui::StrokeKind::Inside,
                 );
-            } else if response.hovered() {
+            }
+
+            // Hover is an independent state, not an alternative to selection.
+            // The current image can therefore show its eye, its multi-select
+            // marker, and the normal hover outline at the same time.
+            if response.hovered() {
                 let visuals = ui.visuals().clone();
                 let hover = visuals.widgets.hovered;
                 let tint = egui::Color32::from_rgba_unmultiplied(
@@ -345,6 +382,31 @@ impl crate::app::types::ViewerApp {
                     6.0,
                     hover.fg_stroke,
                     egui::StrokeKind::Inside,
+                );
+            }
+
+            if is_current_viewed {
+                // Three times the previous badge's 28px diameter / 16px glyph.
+                // Keep the badge inside the tile even for narrow thumbnails.
+                let eye_margin = 4.0_f32;
+                let eye_diameter = 84.0_f32.min(
+                    (tile_rect.width().min(tile_rect.height()) - eye_margin * 2.0).max(1.0),
+                );
+                let eye_rect = egui::Rect::from_center_size(
+                    tile_rect.center(),
+                    egui::vec2(eye_diameter, eye_diameter),
+                );
+                ui.painter().circle_filled(
+                    eye_rect.center(),
+                    eye_diameter * 0.5,
+                    egui::Color32::from_black_alpha(165),
+                );
+                ui.painter().text(
+                    eye_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "👁",
+                    egui::FontId::proportional(48.0_f32.min(eye_diameter * (48.0 / 84.0))),
+                    egui::Color32::WHITE,
                 );
             }
 
@@ -383,9 +445,14 @@ impl crate::app::types::ViewerApp {
                     *action = Some(MasonryAction::ToggleSelection(key.clone()));
                     menu.close();
                 }
-                let compare_minimum = if pending_compare_target { 1 } else { 2 };
+                // A single right-clicked image can open a two-pane Compare
+                // workspace with the second pane left empty. When a Compare
+                // destination is pending, the same action fills that workspace.
+                let compare_minimum = 1;
                 let compare_label = if pending_compare_target {
                     "Add to Compare"
+                } else if selected_entries_for_menu.is_empty() {
+                    "Open in Compare"
                 } else {
                     "Compare with selection"
                 };
@@ -487,8 +554,18 @@ impl crate::app::types::ViewerApp {
 
             if response.clicked() {
                 self.workspace.tabs[tab_index].context_highlight = None;
-                if self.workspace.tabs[tab_index].selection_mode {
-                    let tab = &mut self.workspace.tabs[tab_index];
+                let ctrl = ctx.input(|input| input.modifiers.ctrl || input.modifiers.command);
+                let tab = &mut self.workspace.tabs[tab_index];
+                if ctrl {
+                    // Ctrl+click always enters Select mode, even when the user
+                    // started from ordinary browsing, then toggles this entry.
+                    tab.selection_mode = true;
+                    if !tab.selected.insert(key.clone()) {
+                        tab.selected.remove(&key);
+                    }
+                } else if tab.selection_mode {
+                    // Once Select mode is active, plain clicks also toggle
+                    // membership; Ctrl is no longer required for multi-select.
                     if !tab.selected.insert(key.clone()) {
                         tab.selected.remove(&key);
                     }

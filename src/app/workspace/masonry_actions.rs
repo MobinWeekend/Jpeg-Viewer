@@ -109,7 +109,7 @@ impl crate::app::types::ViewerApp {
                     tab.selected.remove(&entry_id);
                 }
             }
-            MasonryAction::CompareEntries(entries) => self.open_compare_workspace(entries),
+            MasonryAction::CompareEntries(entries) => self.compare_entries_from_masonry(entries),
             MasonryAction::CopyEntries(entries) => self.copy_or_move_selected(entries, false),
             MasonryAction::MoveEntries(entries) => self.copy_or_move_selected(entries, true),
             MasonryAction::DeleteEntries(entries) => {
@@ -197,7 +197,7 @@ impl crate::app::types::ViewerApp {
                 self.activate_workspace_tab(id);
                 self.sync_current_entry_after_collection_change(ctx);
             }
-            MasonryAction::Compare => self.open_compare_workspace(selected_entries),
+            MasonryAction::Compare => self.compare_entries_from_masonry(selected_entries),
             MasonryAction::Copy => self.copy_or_move_selected(selected_entries, false),
             MasonryAction::Move => self.copy_or_move_selected(selected_entries, true),
             MasonryAction::Delete => {

@@ -221,7 +221,7 @@ impl crate::app::types::ViewerApp {
                 continue;
             }
             output.push_str(&format!(
-                "T|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                "T|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                 tab.id,
                 tab_kind_code(tab.kind),
                 encode_field(&tab.title),
@@ -247,6 +247,7 @@ impl crate::app::types::ViewerApp {
                 tab.sync_navigation,
                 tab.compare_columns,
                 tab.compare_rows,
+                tab.compare_empty_panes,
             ));
             for entry in &tab.entries {
                 match entry {
@@ -437,6 +438,11 @@ pub(super) fn load_workspace_session(path: &Path) -> Option<RestorableSession> {
                     .unwrap_or(0)
                     .min(4);
                 tab.compare_rows = fields.get(22).is_some_and(|value| *value == "true");
+                tab.compare_empty_panes = fields
+                    .get(23)
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0)
+                    .min(16);
                 tabs.push(tab);
             }
             "E" if fields.len() >= 4 => {

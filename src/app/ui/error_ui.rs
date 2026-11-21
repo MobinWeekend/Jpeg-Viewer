@@ -133,6 +133,6 @@ impl ViewerApp {
         });
         // Run after the foreground error card has registered its buttons so a
         // drag over Retry/Skip is not interpreted as a background window drag.
-        self.handle_image_mouse_input(ui.ctx(), &response, None);
+        self.handle_image_mouse_input(ui.ctx(), &response, None, None);
     }
 }

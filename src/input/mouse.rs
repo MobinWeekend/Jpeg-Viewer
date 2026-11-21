@@ -16,18 +16,13 @@ pub(super) fn default_bindings() -> HashMap<ViewerCommand, Vec<MouseBinding>> {
         )],
     );
 
-    mouse.insert(
-        ViewerCommand::OpenFile,
-        vec![MouseBinding::plain(
-            egui::PointerButton::Primary,
-            MouseAction::DoubleClick,
-        )],
-    );
-
+    // Double-left-click fits the current image. Opening a file is an explicit
+    // File-menu / keyboard action rather than a gesture that conflicts with
+    // image viewing and context-menu interactions.
     mouse.insert(
         ViewerCommand::MakeFit,
         vec![MouseBinding::plain(
-            egui::PointerButton::Secondary,
+            egui::PointerButton::Primary,
             MouseAction::DoubleClick,
         )],
     );
