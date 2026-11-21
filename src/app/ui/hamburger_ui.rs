@@ -91,19 +91,17 @@ impl ViewerApp {
                 });
 
                 ui.separator();
-
                 self.hamburger_open_file_button(ctx, ui);
-                self.hamburger_home_button(ui);
                 self.hamburger_open_folder_button(ctx, ui);
                 self.hamburger_open_folder_recursive_button(ctx, ui);
                 self.hamburger_open_with_button(ctx, ui);
                 self.hamburger_locate_in_file_manager_button(ctx, ui);
 
                 ui.separator();
+                self.hamburger_home_button(ui);
                 self.hamburger_masonry_buttons(ui);
 
                 ui.separator();
-
                 self.hamburger_sidebar_toggle_button(ctx, ui);
                 self.hamburger_inspect_button(ctx, ui);
                 self.hamburger_wrap_window_button(ctx, ui);
@@ -112,11 +110,10 @@ impl ViewerApp {
                 self.hamburger_delete_image_button(ctx, ui);
 
                 ui.separator();
-
                 self.hamburger_settings_button(ctx, ui);
                 self.hamburger_help_button(ctx, ui);
 
-                // ---- Loading indicator (only when loading) ----
+                // ---- Loading indicator (only when loading) with it's own separator ----
                 self.hamburger_loading_indicator(ctx, ui);
 
                 ui.separator();
