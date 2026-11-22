@@ -3,6 +3,51 @@
 use super::helpers::*;
 use super::*;
 
+/// Draw the compact, clickable Pop-out state pill that lives inside every
+/// Image tab. Keeping the state text in the tab makes it readable without
+/// relying on a separate global ON/OFF control.
+fn render_tab_popout_badge(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    id: egui::Id,
+    is_open: bool,
+) -> egui::Response {
+    let response = ui.interact(rect, id, egui::Sense::click());
+    let visuals = ui.visuals();
+    let accent = if is_open {
+        egui::Color32::from_rgb(67, 190, 130)
+    } else {
+        visuals.weak_text_color()
+    };
+    let fill = if response.hovered() {
+        visuals.widgets.hovered.bg_fill
+    } else if is_open {
+        egui::Color32::from_rgba_unmultiplied(67, 190, 130, 24)
+    } else {
+        visuals.widgets.inactive.bg_fill
+    };
+    let stroke = if is_open {
+        egui::Stroke::new(0.9_f32, accent)
+    } else {
+        egui::Stroke::new(0.7_f32, visuals.widgets.inactive.bg_stroke.color)
+    };
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(5), fill);
+    ui.painter()
+        .rect_stroke(rect, egui::CornerRadius::same(5), stroke, egui::StrokeKind::Inside);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        if is_open { "POP ON" } else { "POP OFF" },
+        egui::FontId::proportional(8.5),
+        accent,
+    );
+    response.on_hover_text(if is_open {
+        "Pop-out is running · click to show or hide its controls"
+    } else {
+        "No pop-out is running · click to open its controls"
+    })
+}
+
 impl crate::app::types::ViewerApp {
     /// Resolve the active Image tab's own texture and animation. A stale texture
     /// from the previously active tab must never be shown in a new pop-out.
@@ -566,7 +611,14 @@ impl crate::app::types::ViewerApp {
                     && tab.kind != WorkspaceTabKind::Masonry
                     && tab.kind != WorkspaceTabKind::Welcome
             })
-            .map(|tab| (tab.id, tab.title.clone(), tab.kind))
+            .map(|tab| {
+                (
+                    tab.id,
+                    tab.title.clone(),
+                    tab.kind,
+                    self.popouts.has_tab_popout(tab.id),
+                )
+            })
             .collect::<Vec<_>>();
         if tabs.is_empty() {
             return 0.0;
@@ -580,7 +632,7 @@ impl crate::app::types::ViewerApp {
         let tab_gap = 3.0;
         let desired_tabs_width = tabs
             .iter()
-            .map(|(_, title, kind)| {
+            .map(|(_, title, kind, _)| {
                 let icon = match kind {
                     WorkspaceTabKind::Viewer => "▣",
                     WorkspaceTabKind::Image => "▧",
@@ -594,222 +646,248 @@ impl crate::app::types::ViewerApp {
                     title.clone()
                 };
                 let label = format!("{icon}  {short_title}");
-                (label.chars().count() as f32 * 7.0 + 42.0).clamp(88.0, 220.0)
+                (label.chars().count() as f32 * 7.0
+                    + 42.0
+                    + if *kind == WorkspaceTabKind::Image { 56.0 } else { 0.0 })
+                    .clamp(88.0, 220.0)
             })
             .sum::<f32>()
             + tab_gap * tabs.len().saturating_sub(1) as f32;
-        let popout_tab_id = self
-            .workspace
-            .tabs
-            .get(self.workspace.active_index)
-            .filter(|tab| tab.kind == WorkspaceTabKind::Image)
-            .map(|tab| tab.id);
-        let popout_is_enabled = popout_tab_id.is_some_and(|tab_id| self.popouts.is_open(tab_id));
-        let popout_button_width = if popout_tab_id.is_some() { 112.0 } else { 0.0 };
         let min_drag_width = 84.0;
         let tab_width = desired_tabs_width.min(
-            (ui.available_width() - controls_width - min_drag_width - popout_button_width - 4.0)
+            (ui.available_width() - controls_width - min_drag_width - 4.0)
                 .max(0.0)
                 .min(720.0),
         );
         if tab_width < 64.0 {
             return 0.0;
         }
-        let total_navigation_width = tab_width
-            + popout_button_width
-            + if popout_tab_id.is_some() { 4.0 } else { 0.0 };
 
         let mut activate = None;
         let mut close = None;
-        let mut toggle_popout_sidebar = false;
-        // Match the actual caption-control row height and center the chips in
-        // that full-height host, including the shorter Win98 title-bar profile.
+        let mut toggle_popout_sidebar = None;
         let row_height = if win98 { 24.0 } else { 36.0 };
         let chip_height = if win98 { 22.0 } else { 28.0 };
         ui.allocate_ui_with_layout(
-            egui::vec2(total_navigation_width, row_height),
+            egui::vec2(tab_width, row_height),
             egui::Layout::left_to_right(egui::Align::Center),
-            |host| {
-                host.allocate_ui_with_layout(
-                    egui::vec2(tab_width, row_height),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |tab_host| {
-                        tab_host.set_min_width(tab_width);
-                        tab_host.set_max_width(tab_width);
-                        egui::ScrollArea::horizontal()
-                            .id_salt("custom_titlebar_workspace_tabs")
-                            .auto_shrink([false, false])
-                            .max_width(tab_width)
-                            .max_height(row_height)
-                            .show(tab_host, |scroll| {
-                                scroll.set_min_height(row_height);
-                                scroll.set_max_height(row_height);
-                                scroll.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |row| {
-                                        row.set_min_height(row_height);
-                                        row.set_max_height(row_height);
-                                        row.spacing_mut().item_spacing.x = 3.0;
-                                        for (id, title, kind) in &tabs {
-                                            let active = Some(*id) == active_id;
-                                            let can_close =
-                                                !(*kind == WorkspaceTabKind::Viewer && *id == 1);
-                                            let icon = match kind {
-                                                WorkspaceTabKind::Viewer => "▣",
-                                                WorkspaceTabKind::Image => "▧",
-                                                WorkspaceTabKind::Masonry => "▦",
-                                                WorkspaceTabKind::Compare => "⇄",
-                                                WorkspaceTabKind::Welcome => "⌂",
-                                            };
-                                            let short_title = if title.chars().count() > 16 {
-                                                format!("{}…", title.chars().take(15).collect::<String>())
-                                            } else {
-                                                title.clone()
-                                            };
-                                            let label = format!("{icon}  {short_title}");
-                                            let width = (label.chars().count() as f32 * 7.0
-                                                + if can_close { 42.0 } else { 22.0 })
-                                            .clamp(88.0, 220.0);
-                                            let (rect, response) = row.allocate_exact_size(
-                                                egui::vec2(width, chip_height),
-                                                egui::Sense::click_and_drag(),
-                                            );
-                                            let visuals = row.visuals();
-                                            let rounding =
-                                                if crate::ui_theme::current_look_profile(ctx) == "win98" {
-                                                    egui::CornerRadius::ZERO
-                                                } else {
-                                                    egui::CornerRadius::same(7)
-                                                };
-                                            let fill = if active {
-                                                visuals.selection.bg_fill
-                                            } else if response.hovered() {
-                                                visuals.widgets.hovered.bg_fill
-                                            } else {
-                                                egui::Color32::TRANSPARENT
-                                            };
-                                            row.painter().rect_filled(rect, rounding, fill);
-                                            row.painter().rect_stroke(
-                                                rect,
-                                                rounding,
-                                                if active {
-                                                    visuals.selection.stroke
-                                                } else {
-                                                    egui::Stroke::new(
-                                                        0.5_f32,
-                                                        visuals.widgets.inactive.bg_stroke.color,
-                                                    )
-                                                },
-                                                egui::StrokeKind::Inside,
-                                            );
-                                            let close_rect = egui::Rect::from_center_size(
-                                                egui::pos2(rect.right() - 13.0, rect.center().y),
-                                                egui::vec2(20.0, 20.0),
-                                            );
-                                            let label_rect = egui::Rect::from_min_max(
-                                                rect.min + egui::vec2(8.0, 1.0),
-                                                egui::pos2(
-                                                    if can_close {
-                                                        close_rect.left() - 2.0
-                                                    } else {
-                                                        rect.right() - 5.0
-                                                    },
-                                                    rect.bottom() - 1.0,
-                                                ),
-                                            );
-                                            row.painter().with_clip_rect(label_rect).text(
-                                                egui::pos2(rect.left() + 8.0, rect.center().y),
-                                                egui::Align2::LEFT_CENTER,
-                                                label,
-                                                egui::FontId::proportional(12.5),
-                                                if active {
-                                                    visuals.text_color()
-                                                } else {
-                                                    visuals.weak_text_color()
-                                                },
-                                            );
-                                            let close_hovered = can_close
-                                                && ctx
-                                                    .pointer_hover_pos()
-                                                    .is_some_and(|pos| close_rect.contains(pos));
-                                            if can_close && (response.hovered() || close_hovered) {
-                                                row.painter().circle_filled(
-                                                    close_rect.center(),
-                                                    8.5,
-                                                    visuals.widgets.hovered.bg_fill,
-                                                );
-                                                row.painter().text(
-                                                    close_rect.center(),
-                                                    egui::Align2::CENTER_CENTER,
-                                                    "×",
-                                                    egui::FontId::proportional(16.0),
-                                                    visuals.text_color(),
-                                                );
-                                            }
-
-                                            if response.clicked_by(egui::PointerButton::Middle) {
+            |tab_host| {
+                tab_host.set_min_width(tab_width);
+                tab_host.set_max_width(tab_width);
+                egui::ScrollArea::horizontal()
+                    .id_salt("custom_titlebar_workspace_tabs")
+                    .auto_shrink([false, false])
+                    .max_width(tab_width)
+                    .max_height(row_height)
+                    .show(tab_host, |scroll| {
+                        scroll.set_min_height(row_height);
+                        scroll.set_max_height(row_height);
+                        scroll.with_layout(
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |row| {
+                                row.set_min_height(row_height);
+                                row.set_max_height(row_height);
+                                row.spacing_mut().item_spacing.x = 3.0;
+                                for (id, title, kind, has_popout) in &tabs {
+                                    let active = Some(*id) == active_id;
+                                    let can_close =
+                                        !(*kind == WorkspaceTabKind::Viewer && *id == 1);
+                                    let has_popout_indicator = *kind == WorkspaceTabKind::Image;
+                                    let icon = match kind {
+                                        WorkspaceTabKind::Viewer => "▣",
+                                        WorkspaceTabKind::Image => "▧",
+                                        WorkspaceTabKind::Masonry => "▦",
+                                        WorkspaceTabKind::Compare => "⇄",
+                                        WorkspaceTabKind::Welcome => "⌂",
+                                    };
+                                    let short_title = if title.chars().count() > 16 {
+                                        format!("{}…", title.chars().take(15).collect::<String>())
+                                    } else {
+                                        title.clone()
+                                    };
+                                    let label = format!("{icon}  {short_title}");
+                                    let width = (label.chars().count() as f32 * 7.0
+                                        + if can_close { 42.0 } else { 22.0 }
+                                        + if has_popout_indicator { 56.0 } else { 0.0 })
+                                    .clamp(88.0, 220.0);
+                                    let (rect, _) = row.allocate_exact_size(
+                                        egui::vec2(width, chip_height),
+                                        egui::Sense::hover(),
+                                    );
+                                    let visuals = row.visuals().clone();
+                                    let rounding =
+                                        if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                                            egui::CornerRadius::ZERO
+                                        } else {
+                                            egui::CornerRadius::same(7)
+                                        };
+                                    let hovered = ctx
+                                        .pointer_hover_pos()
+                                        .is_some_and(|pos| rect.contains(pos));
+                                    let fill = if active {
+                                        visuals.selection.bg_fill
+                                    } else if hovered {
+                                        visuals.widgets.hovered.bg_fill
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    };
+                                    row.painter().rect_filled(rect, rounding, fill);
+                                    row.painter().rect_stroke(
+                                        rect,
+                                        rounding,
+                                        if active {
+                                            visuals.selection.stroke
+                                        } else {
+                                            egui::Stroke::new(
+                                                0.5_f32,
+                                                visuals.widgets.inactive.bg_stroke.color,
+                                            )
+                                        },
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    let close_rect = egui::Rect::from_center_size(
+                                        egui::pos2(rect.right() - 13.0, rect.center().y),
+                                        egui::vec2(20.0, 20.0),
+                                    );
+                                    const POPOUT_BADGE_WIDTH: f32 = 48.0;
+                                    let popout_rect = has_popout_indicator.then(|| {
+                                        egui::Rect::from_center_size(
+                                            egui::pos2(
                                                 if can_close {
-                                                    close = Some(*id);
-                                                }
-                                            } else if response.clicked() {
-                                                if can_close
-                                                    && response
-                                                        .interact_pointer_pos()
-                                                        .is_some_and(|pos| close_rect.contains(pos))
-                                                {
-                                                    close = Some(*id);
+                                                    close_rect.left() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
                                                 } else {
-                                                    activate = Some(*id);
-                                                }
+                                                    rect.right() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                },
+                                                rect.center().y,
+                                            ),
+                                            egui::vec2(POPOUT_BADGE_WIDTH, 17.0),
+                                        )
+                                    });
+                                    let label_right = popout_rect
+                                        .map(|badge| badge.left() - 3.0)
+                                        .unwrap_or_else(|| {
+                                            if can_close {
+                                                close_rect.left() - 2.0
+                                            } else {
+                                                rect.right() - 5.0
                                             }
-                                            if response.drag_started()
-                                                && !self.window_mouse_operation_active
-                                                && response
-                                                    .interact_pointer_pos()
-                                                    .is_some_and(|pos| !close_rect.contains(pos))
-                                            {
-                                                self.workspace.dragging_tab_id = Some(*id);
-                                            }
+                                        });
+                                    let label_rect = egui::Rect::from_min_max(
+                                        rect.min + egui::vec2(8.0, 1.0),
+                                        egui::pos2(label_right, rect.bottom() - 1.0),
+                                    );
+                                    row.painter().with_clip_rect(label_rect).text(
+                                        egui::pos2(rect.left() + 8.0, rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        label,
+                                        egui::FontId::proportional(12.5),
+                                        if active {
+                                            visuals.text_color()
+                                        } else {
+                                            visuals.weak_text_color()
+                                        },
+                                    );
+
+                                    // The compact per-tab indicator replaces the old
+                                    // global POP-OUT ON/OFF button. Its color reports
+                                    // state; clicking it opens this tab's controls.
+                                    if let Some(badge_rect) = popout_rect {
+                                        let badge_response = render_tab_popout_badge(
+                                            row,
+                                            badge_rect,
+                                            egui::Id::new(("workspace_tab_popout", id)),
+                                            *has_popout,
+                                        );
+                                        if badge_response.clicked() {
+                                            activate = Some(*id);
+                                            toggle_popout_sidebar = Some(*id);
                                         }
-                                    },
-                                );
-                            });
-                    },
-                );
-                if let Some(_tab_id) = popout_tab_id {
-                    let (label, accent) = if popout_is_enabled {
-                        ("● ON", egui::Color32::from_rgb(93, 223, 166))
-                    } else {
-                        ("○ OFF", egui::Color32::from_rgb(165, 184, 201))
-                    };
-                    let button = host.add_sized(
-                        [popout_button_width, row_height],
-                        egui::Button::new(
-                            egui::RichText::new(format!("POP-OUT {label}"))
-                                .strong()
-                                .size(10.0)
-                                .color(accent),
-                        ),
-                    );
-                    if button.clicked() {
-                        toggle_popout_sidebar = true;
-                    }
-                    button.on_hover_text("Open Pop-out controls and Tricks");
-                }
+                                    }
+
+                                    if can_close {
+                                        let close_response = row.interact(
+                                            close_rect,
+                                            egui::Id::new(("workspace_tab_close", id)),
+                                            egui::Sense::click(),
+                                        );
+                                        if close_response.hovered() || hovered {
+                                            row.painter().circle_filled(
+                                                close_rect.center(),
+                                                8.5,
+                                                visuals.widgets.hovered.bg_fill,
+                                            );
+                                            row.painter().text(
+                                                close_rect.center(),
+                                                egui::Align2::CENTER_CENTER,
+                                                "×",
+                                                egui::FontId::proportional(16.0),
+                                                visuals.text_color(),
+                                            );
+                                        }
+                                        if close_response.clicked() {
+                                            close = Some(*id);
+                                        }
+                                    }
+
+                                    let main_rect = egui::Rect::from_min_max(
+                                        rect.min,
+                                        egui::pos2(label_right, rect.bottom()),
+                                    );
+                                    if main_rect.is_positive() {
+                                        let response = row.interact(
+                                            main_rect,
+                                            egui::Id::new(("workspace_tab_body", id)),
+                                            egui::Sense::click_and_drag(),
+                                        );
+                                        if response.clicked_by(egui::PointerButton::Middle)
+                                            && can_close
+                                        {
+                                            close = Some(*id);
+                                        } else if response.clicked() {
+                                            activate = Some(*id);
+                                        }
+                                        if response.drag_started()
+                                            && !self.window_mouse_operation_active
+                                        {
+                                            self.workspace.dragging_tab_id = Some(*id);
+                                        }
+                                        if response.hovered()
+                                            && self.workspace.dragging_tab_id.is_some()
+                                        {
+                                            row.output_mut(|output| {
+                                                output.cursor_icon = egui::CursorIcon::Grabbing
+                                            });
+                                        }
+                                        if has_popout_indicator {
+                                            response.on_hover_text(if *has_popout {
+                                                "Image tab · Pop-out active"
+                                            } else {
+                                                "Image tab · Pop-out inactive"
+                                            });
+                                        }
+                                    }
+                                }
+                            },
+                        );
+                    });
             },
         );
 
-        if toggle_popout_sidebar
-            && let Some(tab_id) = popout_tab_id
-        {
-            self.popouts.toggle_settings_sidebar(tab_id);
-        }
         if let Some(id) = close {
             self.close_workspace_tab(id);
         } else if let Some(id) = activate {
             self.activate_workspace_tab(id);
         }
-        total_navigation_width
+        if let Some(tab_id) = toggle_popout_sidebar {
+            if !self.popouts.settings_sidebar_open(tab_id) {
+                self.show_settings_menu = false;
+                self.show_edit_menu = false;
+                self.crop_tool_active = false;
+                self.crop_drag_start_image = None;
+            }
+            self.popouts.toggle_settings_sidebar(tab_id);
+        }
+        tab_width
     }
 
     pub(crate) fn render_workspace_tabs(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -910,20 +988,12 @@ impl crate::app::types::ViewerApp {
                     tab.title.clone(),
                     tab.kind,
                     Some(tab.id) == active_id,
+                    self.popouts.has_tab_popout(tab.id),
                 )
             })
             .collect::<Vec<_>>();
         let masonry_active = active_kind == WorkspaceTabKind::Masonry;
         let masonry_available = self.masonry_toggle_available();
-        let popout_tab_id = self
-            .workspace
-            .tabs
-            .get(self.workspace.active_index)
-            .filter(|tab| tab.kind == WorkspaceTabKind::Image)
-            .map(|tab| tab.id);
-        let popout_is_enabled = popout_tab_id.is_some_and(|tab_id| self.popouts.is_open(tab_id));
-        let popout_button_width = if popout_tab_id.is_some() { 126.0 } else { 0.0 };
-        let mut toggle_popout_sidebar = false;
         if descriptors.is_empty() && !masonry_available {
             return;
         }
@@ -932,6 +1002,7 @@ impl crate::app::types::ViewerApp {
         let show_tab_strip_masonry_toggle = masonry_available && fullscreen;
         let mut activate = None;
         let mut close = None;
+        let mut toggle_popout_sidebar = None;
         let mut tab_rects: Vec<(u64, egui::Rect)> = Vec::with_capacity(descriptors.len());
 
         let profile = crate::ui_theme::current_look_profile(ctx);
@@ -1005,12 +1076,8 @@ impl crate::app::types::ViewerApp {
                                         self.activate_masonry_from_navigation_button();
                                     }
                                 }
-                                let tab_viewport_width = (body_width
-                                    - hamburger_width
-                                    - masonry_toggle_width
-                                    - popout_button_width
-                                    - if popout_tab_id.is_some() { 6.0 } else { 0.0 })
-                                    .max(0.0);
+                                let tab_viewport_width =
+                                    (body_width - hamburger_width - masonry_toggle_width).max(0.0);
                                 row.allocate_ui_with_layout(
                                     egui::vec2(tab_viewport_width, 32.0),
                                     egui::Layout::left_to_right(egui::Align::Center),
@@ -1025,7 +1092,9 @@ impl crate::app::types::ViewerApp {
                                             .show(scroll_host, |tabs_ui| {
                                                 tabs_ui.spacing_mut().item_spacing.x = 4.0;
                                                 tabs_ui.horizontal(|tabs_ui| {
-                                                    for (id, title, kind, active) in descriptors {
+                                                    for (id, title, kind, active, has_popout) in
+                                                        &descriptors
+                                                    {
                                                         let icon = match kind {
                                                             WorkspaceTabKind::Viewer => "▣",
                                                             WorkspaceTabKind::Image => "▧",
@@ -1037,40 +1106,38 @@ impl crate::app::types::ViewerApp {
                                                             if title.chars().count() > 20 {
                                                                 format!(
                                                                     "{}…",
-                                                                    title
-                                                                        .chars()
-                                                                        .take(19)
-                                                                        .collect::<String>()
+                                                                    title.chars().take(19).collect::<String>()
                                                                 )
                                                             } else {
                                                                 title.clone()
                                                             };
-                                                        let can_close = kind
-                                                            != WorkspaceTabKind::Viewer
-                                                            || id != 1;
-                                                        // Reserve a predictable close-button gutter and clip the
-                                                        // label to its own tab, even for long folder/image titles.
+                                                        let can_close =
+                                                            *kind != WorkspaceTabKind::Viewer || *id != 1;
+                                                        let has_popout_indicator =
+                                                            *kind == WorkspaceTabKind::Image;
                                                         let label_width =
-                                                            display_title.chars().count() as f32
-                                                                * 6.7
+                                                            display_title.chars().count() as f32 * 6.7
                                                                 + 19.0;
                                                         let width = (label_width
-                                                            + if can_close { 38.0 } else { 20.0 })
+                                                            + if can_close { 38.0 } else { 20.0 }
+                                                            + if has_popout_indicator { 56.0 } else { 0.0 })
                                                         .clamp(96.0, 196.0);
-                                                        let (rect, response) = tabs_ui
-                                                            .allocate_exact_size(
-                                                                egui::vec2(width, 32.0),
-                                                                egui::Sense::click_and_drag(),
-                                                            );
-                                                        let visuals = tabs_ui.visuals();
-                                                        let fill = if active {
+                                                        let (rect, _) = tabs_ui.allocate_exact_size(
+                                                            egui::vec2(width, 32.0),
+                                                            egui::Sense::hover(),
+                                                        );
+                                                        let visuals = tabs_ui.visuals().clone();
+                                                        let pointer_hovered = ctx
+                                                            .pointer_hover_pos()
+                                                            .is_some_and(|pos| rect.contains(pos));
+                                                        let fill = if *active {
                                                             visuals.selection.bg_fill
-                                                        } else if response.hovered() {
+                                                        } else if pointer_hovered {
                                                             visuals.widgets.hovered.bg_fill
                                                         } else {
                                                             egui::Color32::TRANSPARENT
                                                         };
-                                                        let stroke = if active {
+                                                        let stroke = if *active {
                                                             visuals.selection.stroke
                                                         } else {
                                                             visuals.widgets.inactive.bg_stroke
@@ -1083,101 +1150,89 @@ impl crate::app::types::ViewerApp {
                                                         tabs_ui.painter().rect_stroke(
                                                             rect,
                                                             tab_rounding,
-                                                            if active {
+                                                            if *active {
                                                                 stroke
                                                             } else {
                                                                 egui::Stroke::new(
                                                                     0.5_f32,
-                                                                    stroke.color,
+                                                                    visuals.widgets.inactive.bg_stroke.color,
                                                                 )
                                                             },
                                                             egui::StrokeKind::Inside,
                                                         );
-                                                        let close_rect =
+                                                        let close_rect = egui::Rect::from_center_size(
+                                                            egui::pos2(
+                                                                rect.right() - 13.0,
+                                                                rect.center().y,
+                                                            ),
+                                                            egui::vec2(20.0, 20.0),
+                                                        );
+                                                        const POPOUT_BADGE_WIDTH: f32 = 48.0;
+                                                        let popout_rect = has_popout_indicator.then(|| {
                                                             egui::Rect::from_center_size(
                                                                 egui::pos2(
-                                                                    rect.right() - 14.0,
+                                                                    if can_close {
+                                                                        close_rect.left() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                                    } else {
+                                                                        rect.right() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                                    },
                                                                     rect.center().y,
                                                                 ),
-                                                                egui::vec2(22.0, 22.0),
-                                                            );
-                                                        let label_rect = egui::Rect::from_min_max(
-                                                            egui::pos2(
-                                                                rect.left() + 9.0,
-                                                                rect.top() + 2.0,
-                                                            ),
-                                                            egui::pos2(
+                                                                egui::vec2(POPOUT_BADGE_WIDTH, 17.0),
+                                                            )
+                                                        });
+                                                        let label_right = popout_rect
+                                                            .map(|badge| badge.left() - 3.0)
+                                                            .unwrap_or_else(|| {
                                                                 if can_close {
                                                                     close_rect.left() - 2.0
                                                                 } else {
                                                                     rect.right() - 5.0
-                                                                },
-                                                                rect.bottom() - 2.0,
-                                                            ),
+                                                                }
+                                                            });
+                                                        let label_rect = egui::Rect::from_min_max(
+                                                            rect.min + egui::vec2(8.0, 1.0),
+                                                            egui::pos2(label_right, rect.bottom() - 1.0),
                                                         );
-                                                        let label_color = if active {
+                                                        let label_color = if *active {
                                                             visuals.text_color()
                                                         } else {
                                                             visuals.weak_text_color()
                                                         };
-                                                        if kind == WorkspaceTabKind::Masonry {
-                                                            let mark_rect =
-                                                                egui::Rect::from_center_size(
-                                                                    egui::pos2(
-                                                                        rect.left() + 18.0,
-                                                                        rect.center().y,
-                                                                    ),
-                                                                    egui::vec2(14.0, 14.0),
-                                                                );
-                                                            crate::app::ui::draw_masonry_icon(
-                                                                &tabs_ui
-                                                                    .painter()
-                                                                    .with_clip_rect(label_rect),
-                                                                mark_rect,
-                                                                label_color,
+                                                        tabs_ui.painter().with_clip_rect(label_rect).text(
+                                                            egui::pos2(
+                                                                rect.left() + 9.0,
+                                                                rect.center().y,
+                                                            ),
+                                                            egui::Align2::LEFT_CENTER,
+                                                            format!("{icon}  {display_title}"),
+                                                            egui::FontId::proportional(12.5),
+                                                            label_color,
+                                                        );
+
+                                                        if let Some(badge_rect) = popout_rect {
+                                                            let badge_response = render_tab_popout_badge(
+                                                                tabs_ui,
+                                                                badge_rect,
+                                                                egui::Id::new((
+                                                                    "workspace_strip_tab_popout",
+                                                                    id,
+                                                                )),
+                                                                *has_popout,
                                                             );
-                                                            tabs_ui
-                                                                .painter()
-                                                                .with_clip_rect(label_rect)
-                                                                .text(
-                                                                    egui::pos2(
-                                                                        rect.left() + 30.0,
-                                                                        rect.center().y,
-                                                                    ),
-                                                                    egui::Align2::LEFT_CENTER,
-                                                                    display_title,
-                                                                    egui::FontId::proportional(
-                                                                        12.5,
-                                                                    ),
-                                                                    label_color,
-                                                                );
-                                                        } else {
-                                                            tabs_ui
-                                                                .painter()
-                                                                .with_clip_rect(label_rect)
-                                                                .text(
-                                                                    egui::pos2(
-                                                                        rect.left() + 9.0,
-                                                                        rect.center().y,
-                                                                    ),
-                                                                    egui::Align2::LEFT_CENTER,
-                                                                    format!(
-                                                                        "{icon}  {display_title}"
-                                                                    ),
-                                                                    egui::FontId::proportional(
-                                                                        12.5,
-                                                                    ),
-                                                                    label_color,
-                                                                );
+                                                            if badge_response.clicked() {
+                                                                activate = Some(*id);
+                                                                toggle_popout_sidebar = Some(*id);
+                                                            }
                                                         }
+
                                                         if can_close {
-                                                            let close_hovered = response.hovered()
-                                                                || ctx
-                                                                    .pointer_hover_pos()
-                                                                    .is_some_and(|pos| {
-                                                                        close_rect.contains(pos)
-                                                                    });
-                                                            if close_hovered {
+                                                            let close_response = tabs_ui.interact(
+                                                                close_rect,
+                                                                egui::Id::new(("workspace_strip_tab_close", id)),
+                                                                egui::Sense::click(),
+                                                            );
+                                                            if close_response.hovered() || pointer_hovered {
                                                                 tabs_ui.painter().circle_filled(
                                                                     close_rect.center(),
                                                                     9.5,
@@ -1187,89 +1242,64 @@ impl crate::app::types::ViewerApp {
                                                                     close_rect.center(),
                                                                     egui::Align2::CENTER_CENTER,
                                                                     "×",
-                                                                    egui::FontId::proportional(
-                                                                        17.0,
-                                                                    ),
+                                                                    egui::FontId::proportional(17.0),
                                                                     visuals.text_color(),
                                                                 );
                                                             }
-                                                        }
-                                                        if response
-                                                            .clicked_by(egui::PointerButton::Middle)
-                                                        {
-                                                            // Middle-click is the browser-style close gesture.
-                                                            if can_close {
-                                                                close = Some(id);
+                                                            if close_response.clicked() {
+                                                                close = Some(*id);
                                                             }
-                                                        } else if response.clicked() {
-                                                            if can_close
-                                                                && response
-                                                                    .interact_pointer_pos()
-                                                                    .is_some_and(|pos| {
-                                                                        close_rect.contains(pos)
-                                                                    })
+                                                        }
+
+                                                        let main_rect = egui::Rect::from_min_max(
+                                                            rect.min,
+                                                            egui::pos2(label_right, rect.bottom()),
+                                                        );
+                                                        if main_rect.is_positive() {
+                                                            let response = tabs_ui.interact(
+                                                                main_rect,
+                                                                egui::Id::new(("workspace_strip_tab_body", id)),
+                                                                egui::Sense::click_and_drag(),
+                                                            );
+                                                            if response.clicked_by(egui::PointerButton::Middle)
+                                                                && can_close
                                                             {
-                                                                close = Some(id);
-                                                            } else {
-                                                                activate = Some(id);
+                                                                close = Some(*id);
+                                                            } else if response.clicked() {
+                                                                activate = Some(*id);
+                                                            }
+                                                            if response.drag_started()
+                                                                && !self.window_mouse_operation_active
+                                                            {
+                                                                self.workspace.dragging_tab_id = Some(*id);
+                                                            }
+                                                            if response.hovered()
+                                                                && self.workspace.dragging_tab_id.is_some()
+                                                            {
+                                                                tabs_ui.output_mut(|output| {
+                                                                    output.cursor_icon =
+                                                                        egui::CursorIcon::Grabbing
+                                                                });
+                                                            }
+                                                            if has_popout_indicator {
+                                                                response.on_hover_text(if *has_popout {
+                                                                    "Image tab · Pop-out active"
+                                                                } else {
+                                                                    "Image tab · Pop-out inactive"
+                                                                });
                                                             }
                                                         }
-                                                        if response.drag_started()
-                                                            && !self.window_mouse_operation_active
-                                                            && response
-                                                                .interact_pointer_pos()
-                                                                .is_some_and(|pos| {
-                                                                    !close_rect.contains(pos)
-                                                                })
-                                                        {
-                                                            self.workspace.dragging_tab_id =
-                                                                Some(id);
-                                                        }
-                                                        if response.hovered()
-                                                            && self
-                                                                .workspace
-                                                                .dragging_tab_id
-                                                                .is_some()
-                                                        {
-                                                            tabs_ui.output_mut(|output| {
-                                                                output.cursor_icon =
-                                                                    egui::CursorIcon::Grabbing
-                                                            });
-                                                        }
-                                                        tab_rects.push((id, rect));
+                                                        tab_rects.push((*id, rect));
                                                     }
                                                 });
                                             });
                                     },
                                 );
-                                if popout_tab_id.is_some() {
-                                    let (label, accent) = if popout_is_enabled {
-                                        ("● POP-OUT ON", egui::Color32::from_rgb(93, 223, 166))
-                                    } else {
-                                        ("○ POP-OUT OFF", egui::Color32::from_rgb(165, 184, 201))
-                                    };
-                                    let button = row.add_sized(
-                                        [popout_button_width, 30.0],
-                                        egui::Button::new(
-                                            egui::RichText::new(label).strong().color(accent),
-                                        ),
-                                    );
-                                    if button.clicked() {
-                                        toggle_popout_sidebar = true;
-                                    }
-                                    button.on_hover_text("Open Pop-out controls and Tricks");
-                                }
                             },
                         );
                     });
             },
         );
-
-        if toggle_popout_sidebar
-            && let Some(tab_id) = popout_tab_id
-        {
-            self.popouts.toggle_settings_sidebar(tab_id);
-        }
 
         // Reorder while the pointer is down over another tab. The active tab is
         // tracked by its stable ID, so reordering cannot accidentally activate a
@@ -1294,6 +1324,15 @@ impl crate::app::types::ViewerApp {
             self.close_workspace_tab(id);
         } else if let Some(id) = activate {
             self.activate_workspace_tab(id);
+        }
+        if let Some(tab_id) = toggle_popout_sidebar {
+            if !self.popouts.settings_sidebar_open(tab_id) {
+                self.show_settings_menu = false;
+                self.show_edit_menu = false;
+                self.crop_tool_active = false;
+                self.crop_drag_start_image = None;
+            }
+            self.popouts.toggle_settings_sidebar(tab_id);
         }
     }
 
