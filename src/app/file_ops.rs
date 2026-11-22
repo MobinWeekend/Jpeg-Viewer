@@ -595,33 +595,4 @@ impl ViewerApp {
             }
         }
     }
-
-    /// Rebuild the image index from the current directory
-    pub fn rebuild_image_index(&mut self) {
-        use std::fs;
-        if let Some(directory) = &self.current_directory {
-            // Read directory and get image files
-            let mut files: Vec<PathBuf> = fs::read_dir(directory)
-                .ok()
-                .into_iter()
-                .flat_map(|entries| {
-                    entries
-                        .filter_map(|entry| {
-                            let entry = entry.ok()?;
-                            let path = entry.path();
-                            if path.is_file() && crate::imaging::helpers::is_supported_image(&path)
-                            {
-                                Some(path)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect();
-
-            // Sort images using current sort method
-            crate::imaging::sort::sort_images(&mut files, self.sort_method);
-        }
-    }
 }

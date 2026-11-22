@@ -23,6 +23,14 @@ pub fn initialize(display: Option<RawDisplayHandle>) {
     RUNNING_ON_WAYLAND.store(is_wayland, Ordering::Relaxed);
 }
 
+/// Return whether the application is using a native Wayland display backend.
+///
+/// This is based on the actual display handle, not environment variables, so
+/// XWayland sessions are correctly treated as X11 for window-position support.
+pub fn is_running_on_wayland() -> bool {
+    RUNNING_ON_WAYLAND.load(Ordering::Relaxed)
+}
+
 /// Release egui's stale pointer/drag state after handing a move or resize to
 /// the native window manager.
 ///

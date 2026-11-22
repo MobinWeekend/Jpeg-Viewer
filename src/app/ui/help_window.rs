@@ -236,7 +236,7 @@ impl ViewerApp {
                     "Drag an image, folder, or supported archive into the window to open it.",
                     "Use File → Open Folder + Subfolders to include nested folders.",
                     "Open Compare from the desktop menu bar or hamburger; drop images or choose Add Images…",
-                    "Open an Image tab's Pop-out panel below the image for its floating window, click-through, aspect-ratio size, DVD speed, and monitor-corner offsets",
+                    "Open an Image tab's POP-OUT status button to show the right-hand controls sidebar for its floating window, click-through, size, DVD and Ball tricks",
                     "Press F5 to open Settings, or F1 to return to this help window.",
                     "Use the Keyboard and Mouse tabs for the complete control reference.",
                 ] {

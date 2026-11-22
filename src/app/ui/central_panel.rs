@@ -75,6 +75,31 @@ impl ViewerApp {
         let settings = self.settings_manager.get().clone();
         self.update_tricks_assets(ctx, &settings);
         let main_accent = crate::ui_theme::main_accent_color(ctx);
+
+        // Pop-out controls are a docked right sidebar, opened from the active
+        // Image tab's POP-OUT ON/OFF status button. Register it before the
+        // CentralPanel so the image canvas is laid out in the remaining width.
+        if let Some((tab_id, texture, animation, source_pixels)) = self
+            .active_image_popout_source()
+            .filter(|(tab_id, _, _, _)| self.popouts.settings_sidebar_open(*tab_id))
+        {
+            let image_entry = self.active_image_popout_entry();
+            egui::SidePanel::right("jpeg_viewer_popout_tricks_sidebar")
+                .resizable(true)
+                .default_width(370.0)
+                .width_range(300.0..=520.0)
+                .show(ctx, |sidebar_ui| {
+                    self.popouts.render_settings_sidebar(
+                        ctx,
+                        sidebar_ui.max_rect(),
+                        tab_id,
+                        texture,
+                        animation,
+                        source_pixels,
+                        image_entry,
+                    );
+                });
+        }
         let view_bg = crate::ui_theme::main_view_surface_color(
             ctx,
             &settings.main_view_background,
@@ -93,31 +118,6 @@ impl ViewerApp {
             if self.render_active_workspace(ui, ctx) {
                 return;
             }
-            // Image-tab Pop-out controls are a persistent panel below the image,
-            // not a dropdown in the tab strip. Reserve the panel's height from
-            // the image viewport so it never obscures the displayed photograph.
-            let popout_panel_rect = self.active_image_popout_source().map(
-                |(tab_id, texture, animation, source_pixels)| {
-                    let content = ui
-                        .available_rect_before_wrap()
-                        .intersect(ui.clip_rect())
-                        .intersect(self.central_panel_rect);
-                    let height = crate::app::popout::IMAGE_TAB_PANEL_HEIGHT.min(content.height() * 0.5);
-                    let rect = egui::Rect::from_min_max(
-                        egui::pos2(content.left(), content.bottom() - height),
-                        content.max,
-                    );
-                    self.popouts.render_navigation_panel(
-                        ctx,
-                        rect,
-                        tab_id,
-                        texture,
-                        animation,
-                        source_pixels,
-                    );
-                    rect
-                },
-            );
             // Paint the central viewport's clipped share of the single
             // window-aligned Tricks backdrop. The custom title bar paints its
             // own clipped share using this exact same backdrop rectangle/UV map.
@@ -179,13 +179,17 @@ impl ViewerApp {
 
             // Get the available image rectangle. Navigation toolbars are foreground
             // overlays, so their geometry must not reduce this content area.
-            let mut available_rect = ui
-                .available_rect_before_wrap()
-                .intersect(ui.clip_rect())
-                .intersect(self.central_panel_rect);
-            if let Some(panel_rect) = popout_panel_rect {
-                available_rect.max.y = available_rect.max.y.min(panel_rect.top());
-            }
+            let remaining = ui.available_rect_before_wrap();
+            // Workspace-tab widgets can leave the layout cursor horizontally
+            // offset even though the image viewer should occupy the full
+            // CentralPanel width. Rebuild the viewer rectangle from the true
+            // panel bounds while retaining the layout's post-tab top edge.
+            let available_rect = egui::Rect::from_min_max(
+                egui::pos2(self.central_panel_rect.left(), remaining.top()),
+                self.central_panel_rect.right_bottom(),
+            )
+            .intersect(ui.clip_rect())
+            .intersect(self.central_panel_rect);
             let platform_overlay_padding = matches!(
                 crate::ui_theme::current_look_profile(ctx),
                 "win98" | "cosmic" | "gnome"
@@ -313,13 +317,10 @@ impl ViewerApp {
 
                 // Render using virtual texture. Keep the exact screen-space image
                 // bounds so an empty margin drag can move the native window.
-                let mut available_rect = ui
+                let available_rect = ui
                     .available_rect_before_wrap()
                     .intersect(ui.clip_rect())
                     .intersect(self.central_panel_rect);
-                if let Some(panel_rect) = popout_panel_rect {
-                    available_rect.max.y = available_rect.max.y.min(panel_rect.top());
-                }
                 let virtual_image_rect =
                     self.get_image_rect(texture_size, image_viewport_rect.center());
                 self.image_rect = Some(virtual_image_rect);
@@ -709,6 +710,21 @@ impl ViewerApp {
                 Self::draw_loading_overlay(painter, available_rect, message);
             }
         });
+
+        if let Some((entry, preset)) = self.popouts.take_pending_image_open() {
+            self.open_entry_in_image_tab(entry, true);
+            if let Some(tab_id) = self
+                .workspace
+                .active_tab()
+                .filter(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Image)
+                .map(|tab| tab.id)
+            {
+                self.popouts.assign_preset(tab_id, preset, ctx);
+            }
+        }
+        if let Some(message) = self.popouts.take_status_message() {
+            self.queue_status = Some(message);
+        }
     }
 
     /// Allow the empty portion of the central view to move a window even while

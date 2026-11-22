@@ -42,6 +42,17 @@ impl crate::app::types::ViewerApp {
         Some((tab_id, texture, animation, source_pixels))
     }
 
+    /// Current Image tab entry associated with its pop-out controller. Preset
+    /// linking/bundling must use the workspace entry rather than infer a path
+    /// from the rendered texture (which also covers archive members and GIFs).
+    pub(crate) fn active_image_popout_entry(&self) -> Option<ImageEntry> {
+        let tab = self.workspace.tabs.get(self.workspace.active_index)?;
+        if tab.kind != WorkspaceTabKind::Image {
+            return None;
+        }
+        tab.entries.first().cloned()
+    }
+
     /// Switch ordinary file-open actions back to the collection-based Viewer tab.
     /// Explicitly opening a new path must take precedence over a restored Masonry
     /// or comparison workspace rather than silently changing an invisible viewer.
@@ -587,19 +598,30 @@ impl crate::app::types::ViewerApp {
             })
             .sum::<f32>()
             + tab_gap * tabs.len().saturating_sub(1) as f32;
+        let popout_tab_id = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .filter(|tab| tab.kind == WorkspaceTabKind::Image)
+            .map(|tab| tab.id);
+        let popout_is_enabled = popout_tab_id.is_some_and(|tab_id| self.popouts.is_open(tab_id));
+        let popout_button_width = if popout_tab_id.is_some() { 112.0 } else { 0.0 };
         let min_drag_width = 84.0;
         let tab_width = desired_tabs_width.min(
-            (ui.available_width() - controls_width - min_drag_width)
+            (ui.available_width() - controls_width - min_drag_width - popout_button_width - 4.0)
                 .max(0.0)
                 .min(720.0),
         );
         if tab_width < 64.0 {
             return 0.0;
         }
-        let total_navigation_width = tab_width;
+        let total_navigation_width = tab_width
+            + popout_button_width
+            + if popout_tab_id.is_some() { 4.0 } else { 0.0 };
 
         let mut activate = None;
         let mut close = None;
+        let mut toggle_popout_sidebar = false;
         // Match the actual caption-control row height and center the chips in
         // that full-height host, including the shorter Win98 title-bar profile.
         let row_height = if win98 { 24.0 } else { 36.0 };
@@ -754,9 +776,34 @@ impl crate::app::types::ViewerApp {
                             });
                     },
                 );
+                if let Some(_tab_id) = popout_tab_id {
+                    let (label, accent) = if popout_is_enabled {
+                        ("● ON", egui::Color32::from_rgb(93, 223, 166))
+                    } else {
+                        ("○ OFF", egui::Color32::from_rgb(165, 184, 201))
+                    };
+                    let button = host.add_sized(
+                        [popout_button_width, row_height],
+                        egui::Button::new(
+                            egui::RichText::new(format!("POP-OUT {label}"))
+                                .strong()
+                                .size(10.0)
+                                .color(accent),
+                        ),
+                    );
+                    if button.clicked() {
+                        toggle_popout_sidebar = true;
+                    }
+                    button.on_hover_text("Open Pop-out controls and Tricks");
+                }
             },
         );
 
+        if toggle_popout_sidebar
+            && let Some(tab_id) = popout_tab_id
+        {
+            self.popouts.toggle_settings_sidebar(tab_id);
+        }
         if let Some(id) = close {
             self.close_workspace_tab(id);
         } else if let Some(id) = activate {
@@ -868,6 +915,15 @@ impl crate::app::types::ViewerApp {
             .collect::<Vec<_>>();
         let masonry_active = active_kind == WorkspaceTabKind::Masonry;
         let masonry_available = self.masonry_toggle_available();
+        let popout_tab_id = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .filter(|tab| tab.kind == WorkspaceTabKind::Image)
+            .map(|tab| tab.id);
+        let popout_is_enabled = popout_tab_id.is_some_and(|tab_id| self.popouts.is_open(tab_id));
+        let popout_button_width = if popout_tab_id.is_some() { 126.0 } else { 0.0 };
+        let mut toggle_popout_sidebar = false;
         if descriptors.is_empty() && !masonry_available {
             return;
         }
@@ -951,7 +1007,9 @@ impl crate::app::types::ViewerApp {
                                 }
                                 let tab_viewport_width = (body_width
                                     - hamburger_width
-                                    - masonry_toggle_width)
+                                    - masonry_toggle_width
+                                    - popout_button_width
+                                    - if popout_tab_id.is_some() { 6.0 } else { 0.0 })
                                     .max(0.0);
                                 row.allocate_ui_with_layout(
                                     egui::vec2(tab_viewport_width, 32.0),
@@ -1184,11 +1242,34 @@ impl crate::app::types::ViewerApp {
                                             });
                                     },
                                 );
+                                if popout_tab_id.is_some() {
+                                    let (label, accent) = if popout_is_enabled {
+                                        ("● POP-OUT ON", egui::Color32::from_rgb(93, 223, 166))
+                                    } else {
+                                        ("○ POP-OUT OFF", egui::Color32::from_rgb(165, 184, 201))
+                                    };
+                                    let button = row.add_sized(
+                                        [popout_button_width, 30.0],
+                                        egui::Button::new(
+                                            egui::RichText::new(label).strong().color(accent),
+                                        ),
+                                    );
+                                    if button.clicked() {
+                                        toggle_popout_sidebar = true;
+                                    }
+                                    button.on_hover_text("Open Pop-out controls and Tricks");
+                                }
                             },
                         );
                     });
             },
         );
+
+        if toggle_popout_sidebar
+            && let Some(tab_id) = popout_tab_id
+        {
+            self.popouts.toggle_settings_sidebar(tab_id);
+        }
 
         // Reorder while the pointer is down over another tab. The active tab is
         // tracked by its stable ID, so reordering cannot accidentally activate a

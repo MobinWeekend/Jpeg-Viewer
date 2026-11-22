@@ -6,8 +6,6 @@
 //! - Sorting method
 
 use crate::app::types::ViewerApp;
-use crate::imaging::sort::SortMethod;
-use crate::input::shortcuts::ViewerCommand;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -561,55 +559,6 @@ fn render_startup_fullscreen(app: &mut ViewerApp, ui: &mut egui::Ui) {
             .small()
             .weak(),
     );
-}
-
-/// Render sort method in a horizontal layout (for compact settings panels)
-pub fn sort_method_horizontal_ui(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
-    let old_method = app.sort_method;
-
-    ui.horizontal(|ui| {
-        ui.label("Sort:");
-
-        egui::ComboBox::from_id_salt("sort_method_combobox")
-            .selected_text(format!("{:?}", app.sort_method))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut app.sort_method, SortMethod::Natural, "Natural");
-                ui.selectable_value(&mut app.sort_method, SortMethod::DateNewest, "Newest");
-                ui.selectable_value(&mut app.sort_method, SortMethod::DateOldest, "Oldest");
-                ui.selectable_value(&mut app.sort_method, SortMethod::Shuffle, "Shuffle");
-            });
-    });
-
-    if old_method != app.sort_method {
-        // Sort the collection currently shown, rather than reopening the current
-        // file's parent directory (which breaks queue/local-list views).
-        let selected_id = app
-            .image_entries
-            .get(app.current_index)
-            .map(|entry| entry.get_id());
-        if !app.image_entries.is_empty() {
-            crate::imaging::sort::sort_images(&mut app.image_entries, app.sort_method);
-            if let Some(id) = selected_id
-                && let Some(index) = app
-                    .image_entries
-                    .iter()
-                    .position(|entry| entry.get_id() == id)
-            {
-                app.current_index = index;
-            }
-        } else {
-            app.handle_command(ctx, ViewerCommand::RebuildIndex);
-        }
-        app.image_cache.clear();
-        app.preloading_indices.clear();
-        app.cancel_all_preload_tasks();
-        app.preload_generation = app.preload_generation.wrapping_add(1);
-        app.preloading_indices.clear();
-        app.sidebar_last_current_index = None;
-        if !app.image_entries.is_empty() {
-            app.load_current_image_with_cache();
-        }
-    }
 }
 
 fn render_single_instance(app: &mut ViewerApp, ui: &mut egui::Ui) {
