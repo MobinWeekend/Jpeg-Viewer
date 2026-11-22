@@ -3,7 +3,101 @@
 use super::helpers::*;
 use super::*;
 
+/// Draw the compact, clickable Pop-out state pill that lives inside every
+/// Image tab. Keeping the state text in the tab makes it readable without
+/// relying on a separate global ON/OFF control.
+fn render_tab_popout_badge(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    id: egui::Id,
+    is_open: bool,
+) -> egui::Response {
+    let response = ui.interact(rect, id, egui::Sense::click());
+    let visuals = ui.visuals();
+    let accent = if is_open {
+        egui::Color32::from_rgb(67, 190, 130)
+    } else {
+        visuals.weak_text_color()
+    };
+    let fill = if response.hovered() {
+        visuals.widgets.hovered.bg_fill
+    } else if is_open {
+        egui::Color32::from_rgba_unmultiplied(67, 190, 130, 24)
+    } else {
+        visuals.widgets.inactive.bg_fill
+    };
+    let stroke = if is_open {
+        egui::Stroke::new(0.9_f32, accent)
+    } else {
+        egui::Stroke::new(0.7_f32, visuals.widgets.inactive.bg_stroke.color)
+    };
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(5), fill);
+    ui.painter()
+        .rect_stroke(rect, egui::CornerRadius::same(5), stroke, egui::StrokeKind::Inside);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        if is_open { "POP ON" } else { "POP OFF" },
+        egui::FontId::proportional(8.5),
+        accent,
+    );
+    response.on_hover_text(if is_open {
+        "Pop-out is running · click to show or hide its controls"
+    } else {
+        "No pop-out is running · click to open its controls"
+    })
+}
+
 impl crate::app::types::ViewerApp {
+    /// Resolve the active Image tab's own texture and animation. A stale texture
+    /// from the previously active tab must never be shown in a new pop-out.
+    pub(crate) fn active_image_popout_source(
+        &self,
+    ) -> Option<(
+        u64,
+        Option<egui::TextureHandle>,
+        Option<crate::decoder::gif::animation::GifAnimation>,
+        Option<(usize, usize, std::sync::Arc<Vec<u8>>)>,
+    )> {
+        let tab = self.workspace.tabs.get(self.workspace.active_index)?;
+        if tab.kind != WorkspaceTabKind::Image {
+            return None;
+        }
+        let tab_id = tab.id;
+        let entry_id = tab.entries.first()?.get_id();
+        let texture = if self.texture_image_id.as_deref() == Some(entry_id.as_str()) {
+            self.texture.clone()
+        } else {
+            None
+        };
+        let animation = texture.as_ref().and_then(|_| self.gif_animation.clone());
+        // Retain the original RGBA pixels for static images. Pop-out opacity is
+        // applied to alpha in the pixel buffer, preserving color and PNG alpha.
+        // Animated images use each GIF frame's own RGBA buffer instead.
+        let source_pixels = if texture.is_some() && animation.is_none() {
+            self.current_decoded_pixels
+                .as_ref()
+                .filter(|(source_id, _, _, _)| source_id == &entry_id)
+                .map(|(_, width, height, pixels)| {
+                    (*width as usize, *height as usize, std::sync::Arc::clone(pixels))
+                })
+        } else {
+            None
+        };
+        Some((tab_id, texture, animation, source_pixels))
+    }
+
+    /// Current Image tab entry associated with its pop-out controller. Preset
+    /// linking/bundling must use the workspace entry rather than infer a path
+    /// from the rendered texture (which also covers archive members and GIFs).
+    pub(crate) fn active_image_popout_entry(&self) -> Option<ImageEntry> {
+        let tab = self.workspace.tabs.get(self.workspace.active_index)?;
+        if tab.kind != WorkspaceTabKind::Image {
+            return None;
+        }
+        tab.entries.first().cloned()
+    }
+
     /// Switch ordinary file-open actions back to the collection-based Viewer tab.
     /// Explicitly opening a new path must take precedence over a restored Masonry
     /// or comparison workspace rather than silently changing an invisible viewer.
@@ -27,6 +121,154 @@ impl crate::app::types::ViewerApp {
         self.workspace.home_page_visible = false;
     }
 
+    /// Sort the persistent Browse/Viewer collection without replacing whichever
+    /// Image tab is currently displayed. The stable selected entry stays selected.
+    pub(crate) fn sort_primary_viewer_entries(&mut self) {
+        let Some(viewer_index) = self
+            .workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+            .or_else(|| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.kind == WorkspaceTabKind::Viewer)
+            })
+        else {
+            return;
+        };
+
+        let viewer_is_active = self.workspace.active_index == viewer_index;
+        let live_entries = viewer_is_active.then(|| self.image_entries.clone());
+        let live_index = self.current_index;
+        let (entries, current_index) = {
+            let tab = &mut self.workspace.tabs[viewer_index];
+            if let Some(entries) = live_entries {
+                tab.entries = entries;
+                tab.current_index = live_index;
+                tab.directory = self.current_directory.clone();
+            }
+            if tab.entries.is_empty() {
+                return;
+            }
+            let selected_id = tab.entries.get(tab.current_index).map(ImageEntry::get_id);
+            crate::imaging::sort::sort_images(&mut tab.entries, self.sort_method);
+            if let Some(selected_id) = selected_id
+                && let Some(index) = tab
+                    .entries
+                    .iter()
+                    .position(|entry| entry.get_id() == selected_id)
+            {
+                tab.current_index = index;
+            }
+            (tab.entries.clone(), tab.current_index)
+        };
+
+        if viewer_is_active {
+            self.set_image_entries_preserving_cache(entries, current_index);
+        }
+        self.sidebar_last_current_index = None;
+    }
+
+    /// Reorder the primary Browse collection by its stable entry index. The
+    /// current image is retained by identity, even when a different Image tab
+    /// is active while the Browse sidebar remains visible.
+    pub(crate) fn reorder_primary_viewer_entries(
+        &mut self,
+        from: usize,
+        to: usize,
+    ) -> bool {
+        let Some(viewer_index) = self
+            .workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+            .or_else(|| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.kind == WorkspaceTabKind::Viewer)
+            })
+        else {
+            return false;
+        };
+        let viewer_is_active = self.workspace.active_index == viewer_index;
+        let live_entries = viewer_is_active.then(|| self.image_entries.clone());
+        let live_index = self.current_index;
+        let live_directory = self.current_directory.clone();
+        let (entries, current_index, changed) = {
+            let tab = &mut self.workspace.tabs[viewer_index];
+            if let Some(entries) = live_entries {
+                tab.entries = entries;
+                tab.current_index = live_index;
+                tab.directory = live_directory;
+            }
+            let len = tab.entries.len();
+            if from >= len || to > len {
+                return false;
+            }
+            let insert_at = if from < to { to.saturating_sub(1) } else { to };
+            if insert_at == from || insert_at >= len {
+                return false;
+            }
+            let selected_id = tab.entries.get(tab.current_index).map(ImageEntry::get_id);
+            let entry = tab.entries.remove(from);
+            tab.entries.insert(insert_at.min(tab.entries.len()), entry);
+            if let Some(selected_id) = selected_id
+                && let Some(index) = tab
+                    .entries
+                    .iter()
+                    .position(|entry| entry.get_id() == selected_id)
+            {
+                tab.current_index = index;
+            }
+            (tab.entries.clone(), tab.current_index, true)
+        };
+
+        if changed && viewer_is_active {
+            self.set_image_entries_preserving_cache(entries, current_index);
+        }
+        if changed {
+            self.sidebar_last_current_index = None;
+        }
+        changed
+    }
+
+    /// Open Masonry from the Browse collection even when a one-image tab is
+    /// currently active in the main Viewer surface.
+    pub(crate) fn open_browse_masonry(&mut self) {
+        let viewer_index = self
+            .workspace
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Viewer && tab.id == 1)
+            .or_else(|| {
+                self.workspace
+                    .tabs
+                    .iter()
+                    .position(|tab| tab.kind == WorkspaceTabKind::Viewer)
+            });
+        let Some(viewer_index) = viewer_index else {
+            return;
+        };
+        let (entries, directory) = if self.workspace.active_index == viewer_index {
+            (self.image_entries.clone(), self.current_directory.clone())
+        } else {
+            let tab = &self.workspace.tabs[viewer_index];
+            (tab.entries.clone(), tab.directory.clone())
+        };
+        if entries.is_empty() {
+            self.queue_status = Some("There are no Browse images to show in Masonry.".into());
+            return;
+        }
+        self.open_masonry_collection(
+            entries,
+            "Masonry · Browse".to_owned(),
+            directory,
+        );
+    }
+
     pub(crate) fn activate_workspace_tab(&mut self, id: u64) {
         self.zoom_animation = None;
         let Some(target_index) = self.workspace.tabs.iter().position(|tab| tab.id == id) else {
@@ -35,6 +277,7 @@ impl crate::app::types::ViewerApp {
         if target_index == self.workspace.active_index {
             return;
         }
+        self.sidebar_last_current_index = None;
         if self.workspace.active_kind() == WorkspaceTabKind::Image {
             self.workspace.last_image_tab_id = self.workspace.active_tab().map(|tab| tab.id);
         }
@@ -108,7 +351,6 @@ impl crate::app::types::ViewerApp {
         // "Open in New Tab" is an explicit request for a distinct tab. Do not
         // reuse the active or most recently used Image tab: successive opens
         // must preserve every previously opened image in its own tab.
-        self.snapshot_active_viewer_tab();
         let id = self.workspace.allocate_id();
         let mut tab = WorkspaceTab::new(id, entry_display_name(&entry), WorkspaceTabKind::Image);
         tab.directory = entry_parent(&entry);
@@ -116,11 +358,16 @@ impl crate::app::types::ViewerApp {
         self.workspace.tabs.push(tab);
         let index = self.workspace.tabs.len() - 1;
         self.workspace.last_image_tab_id = Some(id);
+        // Grow the LRU before snapshotting the outgoing image so caching it
+        // cannot evict a useful Browse preload before the new tab slot exists.
+        self.sync_image_cache_capacity();
+        self.snapshot_active_viewer_tab();
         if activate {
             self.workspace.active_index = index;
+            self.sidebar_last_current_index = None;
             let entries = self.workspace.tabs[index].entries.clone();
             self.current_directory = self.workspace.tabs[index].directory.clone();
-            self.set_image_entries(entries, 0);
+            self.set_image_entries_preserving_cache(entries, 0);
             self.should_stop_caching = false;
             self.workspace.tabs[index].zoom = 1.0;
             self.workspace.tabs[index].pan = egui::Vec2::ZERO;
@@ -255,6 +502,8 @@ impl crate::app::types::ViewerApp {
             return;
         }
         let closing_active_tab = self.workspace.active_index == index;
+        // A pop-out belongs to its Image tab and must not outlive that tab.
+        self.popouts.close_tab(id);
         if self.workspace.pending_compare_target_id == Some(id) {
             self.workspace.pending_compare_target_id = None;
         }
@@ -262,6 +511,7 @@ impl crate::app::types::ViewerApp {
             self.workspace.masonry_return_tab_id = None;
         }
         self.workspace.tabs.remove(index);
+        self.sync_image_cache_capacity();
         if self.workspace.last_image_tab_id == Some(id) {
             self.workspace.last_image_tab_id = self
                 .workspace
@@ -361,7 +611,14 @@ impl crate::app::types::ViewerApp {
                     && tab.kind != WorkspaceTabKind::Masonry
                     && tab.kind != WorkspaceTabKind::Welcome
             })
-            .map(|tab| (tab.id, tab.title.clone(), tab.kind))
+            .map(|tab| {
+                (
+                    tab.id,
+                    tab.title.clone(),
+                    tab.kind,
+                    self.popouts.has_tab_popout(tab.id),
+                )
+            })
             .collect::<Vec<_>>();
         if tabs.is_empty() {
             return 0.0;
@@ -375,7 +632,7 @@ impl crate::app::types::ViewerApp {
         let tab_gap = 3.0;
         let desired_tabs_width = tabs
             .iter()
-            .map(|(_, title, kind)| {
+            .map(|(_, title, kind, _)| {
                 let icon = match kind {
                     WorkspaceTabKind::Viewer => "▣",
                     WorkspaceTabKind::Image => "▧",
@@ -389,13 +646,16 @@ impl crate::app::types::ViewerApp {
                     title.clone()
                 };
                 let label = format!("{icon}  {short_title}");
-                (label.chars().count() as f32 * 7.0 + 42.0).clamp(88.0, 220.0)
+                (label.chars().count() as f32 * 7.0
+                    + 42.0
+                    + if *kind == WorkspaceTabKind::Image { 56.0 } else { 0.0 })
+                    .clamp(88.0, 220.0)
             })
             .sum::<f32>()
             + tab_gap * tabs.len().saturating_sub(1) as f32;
         let min_drag_width = 84.0;
         let tab_width = desired_tabs_width.min(
-            (ui.available_width() - controls_width - min_drag_width)
+            (ui.available_width() - controls_width - min_drag_width - 4.0)
                 .max(0.0)
                 .min(720.0),
         );
@@ -405,22 +665,21 @@ impl crate::app::types::ViewerApp {
 
         let mut activate = None;
         let mut close = None;
-        // Match the actual caption-control row height and center the chips in
-        // that full-height host, including the shorter Win98 title-bar profile.
+        let mut toggle_popout_sidebar = None;
         let row_height = if win98 { 24.0 } else { 36.0 };
         let chip_height = if win98 { 22.0 } else { 28.0 };
         ui.allocate_ui_with_layout(
             egui::vec2(tab_width, row_height),
             egui::Layout::left_to_right(egui::Align::Center),
-            |host| {
-                host.set_min_width(tab_width);
-                host.set_max_width(tab_width);
+            |tab_host| {
+                tab_host.set_min_width(tab_width);
+                tab_host.set_max_width(tab_width);
                 egui::ScrollArea::horizontal()
                     .id_salt("custom_titlebar_workspace_tabs")
                     .auto_shrink([false, false])
                     .max_width(tab_width)
                     .max_height(row_height)
-                    .show(host, |scroll| {
+                    .show(tab_host, |scroll| {
                         scroll.set_min_height(row_height);
                         scroll.set_max_height(row_height);
                         scroll.with_layout(
@@ -429,10 +688,11 @@ impl crate::app::types::ViewerApp {
                                 row.set_min_height(row_height);
                                 row.set_max_height(row_height);
                                 row.spacing_mut().item_spacing.x = 3.0;
-                                for (id, title, kind) in &tabs {
+                                for (id, title, kind, has_popout) in &tabs {
                                     let active = Some(*id) == active_id;
                                     let can_close =
                                         !(*kind == WorkspaceTabKind::Viewer && *id == 1);
+                                    let has_popout_indicator = *kind == WorkspaceTabKind::Image;
                                     let icon = match kind {
                                         WorkspaceTabKind::Viewer => "▣",
                                         WorkspaceTabKind::Image => "▧",
@@ -447,22 +707,26 @@ impl crate::app::types::ViewerApp {
                                     };
                                     let label = format!("{icon}  {short_title}");
                                     let width = (label.chars().count() as f32 * 7.0
-                                        + if can_close { 42.0 } else { 22.0 })
+                                        + if can_close { 42.0 } else { 22.0 }
+                                        + if has_popout_indicator { 56.0 } else { 0.0 })
                                     .clamp(88.0, 220.0);
-                                    let (rect, response) = row.allocate_exact_size(
+                                    let (rect, _) = row.allocate_exact_size(
                                         egui::vec2(width, chip_height),
-                                        egui::Sense::click_and_drag(),
+                                        egui::Sense::hover(),
                                     );
-                                    let visuals = row.visuals();
+                                    let visuals = row.visuals().clone();
                                     let rounding =
                                         if crate::ui_theme::current_look_profile(ctx) == "win98" {
                                             egui::CornerRadius::ZERO
                                         } else {
                                             egui::CornerRadius::same(7)
                                         };
+                                    let hovered = ctx
+                                        .pointer_hover_pos()
+                                        .is_some_and(|pos| rect.contains(pos));
                                     let fill = if active {
                                         visuals.selection.bg_fill
-                                    } else if response.hovered() {
+                                    } else if hovered {
                                         visuals.widgets.hovered.bg_fill
                                     } else {
                                         egui::Color32::TRANSPARENT
@@ -485,16 +749,32 @@ impl crate::app::types::ViewerApp {
                                         egui::pos2(rect.right() - 13.0, rect.center().y),
                                         egui::vec2(20.0, 20.0),
                                     );
-                                    let label_rect = egui::Rect::from_min_max(
-                                        rect.min + egui::vec2(8.0, 1.0),
-                                        egui::pos2(
+                                    const POPOUT_BADGE_WIDTH: f32 = 48.0;
+                                    let popout_rect = has_popout_indicator.then(|| {
+                                        egui::Rect::from_center_size(
+                                            egui::pos2(
+                                                if can_close {
+                                                    close_rect.left() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                } else {
+                                                    rect.right() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                },
+                                                rect.center().y,
+                                            ),
+                                            egui::vec2(POPOUT_BADGE_WIDTH, 17.0),
+                                        )
+                                    });
+                                    let label_right = popout_rect
+                                        .map(|badge| badge.left() - 3.0)
+                                        .unwrap_or_else(|| {
                                             if can_close {
                                                 close_rect.left() - 2.0
                                             } else {
                                                 rect.right() - 5.0
-                                            },
-                                            rect.bottom() - 1.0,
-                                        ),
+                                            }
+                                        });
+                                    let label_rect = egui::Rect::from_min_max(
+                                        rect.min + egui::vec2(8.0, 1.0),
+                                        egui::pos2(label_right, rect.bottom() - 1.0),
                                     );
                                     row.painter().with_clip_rect(label_rect).text(
                                         egui::pos2(rect.left() + 8.0, rect.center().y),
@@ -507,47 +787,84 @@ impl crate::app::types::ViewerApp {
                                             visuals.weak_text_color()
                                         },
                                     );
-                                    let close_hovered = can_close
-                                        && ctx
-                                            .pointer_hover_pos()
-                                            .is_some_and(|pos| close_rect.contains(pos));
-                                    if can_close && (response.hovered() || close_hovered) {
-                                        row.painter().circle_filled(
-                                            close_rect.center(),
-                                            8.5,
-                                            visuals.widgets.hovered.bg_fill,
+
+                                    // The compact per-tab indicator replaces the old
+                                    // global POP-OUT ON/OFF button. Its color reports
+                                    // state; clicking it opens this tab's controls.
+                                    if let Some(badge_rect) = popout_rect {
+                                        let badge_response = render_tab_popout_badge(
+                                            row,
+                                            badge_rect,
+                                            egui::Id::new(("workspace_tab_popout", id)),
+                                            *has_popout,
                                         );
-                                        row.painter().text(
-                                            close_rect.center(),
-                                            egui::Align2::CENTER_CENTER,
-                                            "×",
-                                            egui::FontId::proportional(16.0),
-                                            visuals.text_color(),
-                                        );
+                                        if badge_response.clicked() {
+                                            activate = Some(*id);
+                                            toggle_popout_sidebar = Some(*id);
+                                        }
                                     }
 
-                                    if response.clicked_by(egui::PointerButton::Middle) {
-                                        if can_close {
-                                            close = Some(*id);
+                                    if can_close {
+                                        let close_response = row.interact(
+                                            close_rect,
+                                            egui::Id::new(("workspace_tab_close", id)),
+                                            egui::Sense::click(),
+                                        );
+                                        if close_response.hovered() || hovered {
+                                            row.painter().circle_filled(
+                                                close_rect.center(),
+                                                8.5,
+                                                visuals.widgets.hovered.bg_fill,
+                                            );
+                                            row.painter().text(
+                                                close_rect.center(),
+                                                egui::Align2::CENTER_CENTER,
+                                                "×",
+                                                egui::FontId::proportional(16.0),
+                                                visuals.text_color(),
+                                            );
                                         }
-                                    } else if response.clicked() {
-                                        if can_close
-                                            && response
-                                                .interact_pointer_pos()
-                                                .is_some_and(|pos| close_rect.contains(pos))
-                                        {
+                                        if close_response.clicked() {
                                             close = Some(*id);
-                                        } else {
-                                            activate = Some(*id);
                                         }
                                     }
-                                    if response.drag_started()
-                                        && !self.window_mouse_operation_active
-                                        && response
-                                            .interact_pointer_pos()
-                                            .is_some_and(|pos| !close_rect.contains(pos))
-                                    {
-                                        self.workspace.dragging_tab_id = Some(*id);
+
+                                    let main_rect = egui::Rect::from_min_max(
+                                        rect.min,
+                                        egui::pos2(label_right, rect.bottom()),
+                                    );
+                                    if main_rect.is_positive() {
+                                        let response = row.interact(
+                                            main_rect,
+                                            egui::Id::new(("workspace_tab_body", id)),
+                                            egui::Sense::click_and_drag(),
+                                        );
+                                        if response.clicked_by(egui::PointerButton::Middle)
+                                            && can_close
+                                        {
+                                            close = Some(*id);
+                                        } else if response.clicked() {
+                                            activate = Some(*id);
+                                        }
+                                        if response.drag_started()
+                                            && !self.window_mouse_operation_active
+                                        {
+                                            self.workspace.dragging_tab_id = Some(*id);
+                                        }
+                                        if response.hovered()
+                                            && self.workspace.dragging_tab_id.is_some()
+                                        {
+                                            row.output_mut(|output| {
+                                                output.cursor_icon = egui::CursorIcon::Grabbing
+                                            });
+                                        }
+                                        if has_popout_indicator {
+                                            response.on_hover_text(if *has_popout {
+                                                "Image tab · Pop-out active"
+                                            } else {
+                                                "Image tab · Pop-out inactive"
+                                            });
+                                        }
                                     }
                                 }
                             },
@@ -560,6 +877,15 @@ impl crate::app::types::ViewerApp {
             self.close_workspace_tab(id);
         } else if let Some(id) = activate {
             self.activate_workspace_tab(id);
+        }
+        if let Some(tab_id) = toggle_popout_sidebar {
+            if !self.popouts.settings_sidebar_open(tab_id) {
+                self.show_settings_menu = false;
+                self.show_edit_menu = false;
+                self.crop_tool_active = false;
+                self.crop_drag_start_image = None;
+            }
+            self.popouts.toggle_settings_sidebar(tab_id);
         }
         tab_width
     }
@@ -662,6 +988,7 @@ impl crate::app::types::ViewerApp {
                     tab.title.clone(),
                     tab.kind,
                     Some(tab.id) == active_id,
+                    self.popouts.has_tab_popout(tab.id),
                 )
             })
             .collect::<Vec<_>>();
@@ -675,6 +1002,7 @@ impl crate::app::types::ViewerApp {
         let show_tab_strip_masonry_toggle = masonry_available && fullscreen;
         let mut activate = None;
         let mut close = None;
+        let mut toggle_popout_sidebar = None;
         let mut tab_rects: Vec<(u64, egui::Rect)> = Vec::with_capacity(descriptors.len());
 
         let profile = crate::ui_theme::current_look_profile(ctx);
@@ -764,7 +1092,9 @@ impl crate::app::types::ViewerApp {
                                             .show(scroll_host, |tabs_ui| {
                                                 tabs_ui.spacing_mut().item_spacing.x = 4.0;
                                                 tabs_ui.horizontal(|tabs_ui| {
-                                                    for (id, title, kind, active) in descriptors {
+                                                    for (id, title, kind, active, has_popout) in
+                                                        &descriptors
+                                                    {
                                                         let icon = match kind {
                                                             WorkspaceTabKind::Viewer => "▣",
                                                             WorkspaceTabKind::Image => "▧",
@@ -776,40 +1106,38 @@ impl crate::app::types::ViewerApp {
                                                             if title.chars().count() > 20 {
                                                                 format!(
                                                                     "{}…",
-                                                                    title
-                                                                        .chars()
-                                                                        .take(19)
-                                                                        .collect::<String>()
+                                                                    title.chars().take(19).collect::<String>()
                                                                 )
                                                             } else {
                                                                 title.clone()
                                                             };
-                                                        let can_close = kind
-                                                            != WorkspaceTabKind::Viewer
-                                                            || id != 1;
-                                                        // Reserve a predictable close-button gutter and clip the
-                                                        // label to its own tab, even for long folder/image titles.
+                                                        let can_close =
+                                                            *kind != WorkspaceTabKind::Viewer || *id != 1;
+                                                        let has_popout_indicator =
+                                                            *kind == WorkspaceTabKind::Image;
                                                         let label_width =
-                                                            display_title.chars().count() as f32
-                                                                * 6.7
+                                                            display_title.chars().count() as f32 * 6.7
                                                                 + 19.0;
                                                         let width = (label_width
-                                                            + if can_close { 38.0 } else { 20.0 })
+                                                            + if can_close { 38.0 } else { 20.0 }
+                                                            + if has_popout_indicator { 56.0 } else { 0.0 })
                                                         .clamp(96.0, 196.0);
-                                                        let (rect, response) = tabs_ui
-                                                            .allocate_exact_size(
-                                                                egui::vec2(width, 32.0),
-                                                                egui::Sense::click_and_drag(),
-                                                            );
-                                                        let visuals = tabs_ui.visuals();
-                                                        let fill = if active {
+                                                        let (rect, _) = tabs_ui.allocate_exact_size(
+                                                            egui::vec2(width, 32.0),
+                                                            egui::Sense::hover(),
+                                                        );
+                                                        let visuals = tabs_ui.visuals().clone();
+                                                        let pointer_hovered = ctx
+                                                            .pointer_hover_pos()
+                                                            .is_some_and(|pos| rect.contains(pos));
+                                                        let fill = if *active {
                                                             visuals.selection.bg_fill
-                                                        } else if response.hovered() {
+                                                        } else if pointer_hovered {
                                                             visuals.widgets.hovered.bg_fill
                                                         } else {
                                                             egui::Color32::TRANSPARENT
                                                         };
-                                                        let stroke = if active {
+                                                        let stroke = if *active {
                                                             visuals.selection.stroke
                                                         } else {
                                                             visuals.widgets.inactive.bg_stroke
@@ -822,101 +1150,89 @@ impl crate::app::types::ViewerApp {
                                                         tabs_ui.painter().rect_stroke(
                                                             rect,
                                                             tab_rounding,
-                                                            if active {
+                                                            if *active {
                                                                 stroke
                                                             } else {
                                                                 egui::Stroke::new(
                                                                     0.5_f32,
-                                                                    stroke.color,
+                                                                    visuals.widgets.inactive.bg_stroke.color,
                                                                 )
                                                             },
                                                             egui::StrokeKind::Inside,
                                                         );
-                                                        let close_rect =
+                                                        let close_rect = egui::Rect::from_center_size(
+                                                            egui::pos2(
+                                                                rect.right() - 13.0,
+                                                                rect.center().y,
+                                                            ),
+                                                            egui::vec2(20.0, 20.0),
+                                                        );
+                                                        const POPOUT_BADGE_WIDTH: f32 = 48.0;
+                                                        let popout_rect = has_popout_indicator.then(|| {
                                                             egui::Rect::from_center_size(
                                                                 egui::pos2(
-                                                                    rect.right() - 14.0,
+                                                                    if can_close {
+                                                                        close_rect.left() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                                    } else {
+                                                                        rect.right() - POPOUT_BADGE_WIDTH * 0.5 - 5.0
+                                                                    },
                                                                     rect.center().y,
                                                                 ),
-                                                                egui::vec2(22.0, 22.0),
-                                                            );
-                                                        let label_rect = egui::Rect::from_min_max(
-                                                            egui::pos2(
-                                                                rect.left() + 9.0,
-                                                                rect.top() + 2.0,
-                                                            ),
-                                                            egui::pos2(
+                                                                egui::vec2(POPOUT_BADGE_WIDTH, 17.0),
+                                                            )
+                                                        });
+                                                        let label_right = popout_rect
+                                                            .map(|badge| badge.left() - 3.0)
+                                                            .unwrap_or_else(|| {
                                                                 if can_close {
                                                                     close_rect.left() - 2.0
                                                                 } else {
                                                                     rect.right() - 5.0
-                                                                },
-                                                                rect.bottom() - 2.0,
-                                                            ),
+                                                                }
+                                                            });
+                                                        let label_rect = egui::Rect::from_min_max(
+                                                            rect.min + egui::vec2(8.0, 1.0),
+                                                            egui::pos2(label_right, rect.bottom() - 1.0),
                                                         );
-                                                        let label_color = if active {
+                                                        let label_color = if *active {
                                                             visuals.text_color()
                                                         } else {
                                                             visuals.weak_text_color()
                                                         };
-                                                        if kind == WorkspaceTabKind::Masonry {
-                                                            let mark_rect =
-                                                                egui::Rect::from_center_size(
-                                                                    egui::pos2(
-                                                                        rect.left() + 18.0,
-                                                                        rect.center().y,
-                                                                    ),
-                                                                    egui::vec2(14.0, 14.0),
-                                                                );
-                                                            crate::app::ui::draw_masonry_icon(
-                                                                &tabs_ui
-                                                                    .painter()
-                                                                    .with_clip_rect(label_rect),
-                                                                mark_rect,
-                                                                label_color,
+                                                        tabs_ui.painter().with_clip_rect(label_rect).text(
+                                                            egui::pos2(
+                                                                rect.left() + 9.0,
+                                                                rect.center().y,
+                                                            ),
+                                                            egui::Align2::LEFT_CENTER,
+                                                            format!("{icon}  {display_title}"),
+                                                            egui::FontId::proportional(12.5),
+                                                            label_color,
+                                                        );
+
+                                                        if let Some(badge_rect) = popout_rect {
+                                                            let badge_response = render_tab_popout_badge(
+                                                                tabs_ui,
+                                                                badge_rect,
+                                                                egui::Id::new((
+                                                                    "workspace_strip_tab_popout",
+                                                                    id,
+                                                                )),
+                                                                *has_popout,
                                                             );
-                                                            tabs_ui
-                                                                .painter()
-                                                                .with_clip_rect(label_rect)
-                                                                .text(
-                                                                    egui::pos2(
-                                                                        rect.left() + 30.0,
-                                                                        rect.center().y,
-                                                                    ),
-                                                                    egui::Align2::LEFT_CENTER,
-                                                                    display_title,
-                                                                    egui::FontId::proportional(
-                                                                        12.5,
-                                                                    ),
-                                                                    label_color,
-                                                                );
-                                                        } else {
-                                                            tabs_ui
-                                                                .painter()
-                                                                .with_clip_rect(label_rect)
-                                                                .text(
-                                                                    egui::pos2(
-                                                                        rect.left() + 9.0,
-                                                                        rect.center().y,
-                                                                    ),
-                                                                    egui::Align2::LEFT_CENTER,
-                                                                    format!(
-                                                                        "{icon}  {display_title}"
-                                                                    ),
-                                                                    egui::FontId::proportional(
-                                                                        12.5,
-                                                                    ),
-                                                                    label_color,
-                                                                );
+                                                            if badge_response.clicked() {
+                                                                activate = Some(*id);
+                                                                toggle_popout_sidebar = Some(*id);
+                                                            }
                                                         }
+
                                                         if can_close {
-                                                            let close_hovered = response.hovered()
-                                                                || ctx
-                                                                    .pointer_hover_pos()
-                                                                    .is_some_and(|pos| {
-                                                                        close_rect.contains(pos)
-                                                                    });
-                                                            if close_hovered {
+                                                            let close_response = tabs_ui.interact(
+                                                                close_rect,
+                                                                egui::Id::new(("workspace_strip_tab_close", id)),
+                                                                egui::Sense::click(),
+                                                            );
+                                                            if close_response.hovered() || pointer_hovered {
                                                                 tabs_ui.painter().circle_filled(
                                                                     close_rect.center(),
                                                                     9.5,
@@ -926,56 +1242,54 @@ impl crate::app::types::ViewerApp {
                                                                     close_rect.center(),
                                                                     egui::Align2::CENTER_CENTER,
                                                                     "×",
-                                                                    egui::FontId::proportional(
-                                                                        17.0,
-                                                                    ),
+                                                                    egui::FontId::proportional(17.0),
                                                                     visuals.text_color(),
                                                                 );
                                                             }
-                                                        }
-                                                        if response
-                                                            .clicked_by(egui::PointerButton::Middle)
-                                                        {
-                                                            // Middle-click is the browser-style close gesture.
-                                                            if can_close {
-                                                                close = Some(id);
+                                                            if close_response.clicked() {
+                                                                close = Some(*id);
                                                             }
-                                                        } else if response.clicked() {
-                                                            if can_close
-                                                                && response
-                                                                    .interact_pointer_pos()
-                                                                    .is_some_and(|pos| {
-                                                                        close_rect.contains(pos)
-                                                                    })
+                                                        }
+
+                                                        let main_rect = egui::Rect::from_min_max(
+                                                            rect.min,
+                                                            egui::pos2(label_right, rect.bottom()),
+                                                        );
+                                                        if main_rect.is_positive() {
+                                                            let response = tabs_ui.interact(
+                                                                main_rect,
+                                                                egui::Id::new(("workspace_strip_tab_body", id)),
+                                                                egui::Sense::click_and_drag(),
+                                                            );
+                                                            if response.clicked_by(egui::PointerButton::Middle)
+                                                                && can_close
                                                             {
-                                                                close = Some(id);
-                                                            } else {
-                                                                activate = Some(id);
+                                                                close = Some(*id);
+                                                            } else if response.clicked() {
+                                                                activate = Some(*id);
+                                                            }
+                                                            if response.drag_started()
+                                                                && !self.window_mouse_operation_active
+                                                            {
+                                                                self.workspace.dragging_tab_id = Some(*id);
+                                                            }
+                                                            if response.hovered()
+                                                                && self.workspace.dragging_tab_id.is_some()
+                                                            {
+                                                                tabs_ui.output_mut(|output| {
+                                                                    output.cursor_icon =
+                                                                        egui::CursorIcon::Grabbing
+                                                                });
+                                                            }
+                                                            if has_popout_indicator {
+                                                                response.on_hover_text(if *has_popout {
+                                                                    "Image tab · Pop-out active"
+                                                                } else {
+                                                                    "Image tab · Pop-out inactive"
+                                                                });
                                                             }
                                                         }
-                                                        if response.drag_started()
-                                                            && !self.window_mouse_operation_active
-                                                            && response
-                                                                .interact_pointer_pos()
-                                                                .is_some_and(|pos| {
-                                                                    !close_rect.contains(pos)
-                                                                })
-                                                        {
-                                                            self.workspace.dragging_tab_id =
-                                                                Some(id);
-                                                        }
-                                                        if response.hovered()
-                                                            && self
-                                                                .workspace
-                                                                .dragging_tab_id
-                                                                .is_some()
-                                                        {
-                                                            tabs_ui.output_mut(|output| {
-                                                                output.cursor_icon =
-                                                                    egui::CursorIcon::Grabbing
-                                                            });
-                                                        }
-                                                        tab_rects.push((id, rect));
+                                                        tab_rects.push((*id, rect));
                                                     }
                                                 });
                                             });
@@ -1010,6 +1324,15 @@ impl crate::app::types::ViewerApp {
             self.close_workspace_tab(id);
         } else if let Some(id) = activate {
             self.activate_workspace_tab(id);
+        }
+        if let Some(tab_id) = toggle_popout_sidebar {
+            if !self.popouts.settings_sidebar_open(tab_id) {
+                self.show_settings_menu = false;
+                self.show_edit_menu = false;
+                self.crop_tool_active = false;
+                self.crop_drag_start_image = None;
+            }
+            self.popouts.toggle_settings_sidebar(tab_id);
         }
     }
 

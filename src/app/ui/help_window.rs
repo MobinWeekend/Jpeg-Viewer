@@ -188,6 +188,7 @@ impl ViewerApp {
             "Open images inside ZIP, 7z, and RAR archives without extracting them",
             "Browse, Queue, Favorites, and Info sidebar tabs",
             "Firefox-style workspace tabs with drag-and-drop and keyboard reordering",
+            "Image-tab pop-outs with click-through, opacity, monitor-aware DVD and Ball movement, right-drag throws, hover controls, and looping GIF playback",
             "Local and Folder Masonry galleries with size-adaptive thumbnails, sorting, recursive folder sections, multi-select, and a centered eye marker on the current image",
             "Masonry Ctrl+click enters Select mode; plain clicks toggle entries while Select mode is active, with hover and selection feedback shown independently",
             "Loaded Folder Masonry views update after file moves and deletes",
@@ -235,6 +236,8 @@ impl ViewerApp {
                     "Drag an image, folder, or supported archive into the window to open it.",
                     "Use File → Open Folder + Subfolders to include nested folders.",
                     "Open Compare from the desktop menu bar or hamburger; drop images or choose Add Images…",
+                    "Open an Image tab's POP-OUT status button to show the right-hand controls sidebar for its floating window, click-through, size, DVD and Ball tricks",
+                    "In Ball mode, right-drag the pop-out image to throw it; left-drag moves the window",
                     "Press F5 to open Settings, or F1 to return to this help window.",
                     "Use the Keyboard and Mouse tabs for the complete control reference.",
                 ] {

@@ -154,6 +154,7 @@ impl crate::app::types::ViewerApp {
                 .any(|tab| tab.id == *id && tab.kind == WorkspaceTabKind::Image)
         });
         self.workspace.tabs = tabs;
+        self.sync_image_cache_capacity();
         self.workspace.home_page_visible = false;
         self.workspace.active_index = usize::MAX;
         self.workspace.next_id = next_id.max(

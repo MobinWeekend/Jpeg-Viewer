@@ -68,7 +68,7 @@ impl ViewerApp {
         self.set_loading_state(LoadingState::Idle);
 
         // Reset preload state – discard all pending tasks and invalidate results.
-        self.image_cache.clear();
+        self.retain_open_image_tab_cache();
         self.preloading_indices.clear();
         self.cancel_all_preload_tasks();
 
@@ -300,7 +300,7 @@ impl ViewerApp {
                 self.b_zoom_used = false;
 
                 // Reset preload state
-                self.image_cache.clear();
+                self.retain_open_image_tab_cache();
                 self.preloading_indices.clear();
                 self.cancel_all_preload_tasks();
 
@@ -362,7 +362,7 @@ impl ViewerApp {
         self.indexing_receiver = None;
 
         // Reset preload state
-        self.image_cache.clear();
+        self.retain_open_image_tab_cache();
         self.preloading_indices.clear();
         self.cancel_all_preload_tasks();
 
@@ -593,35 +593,6 @@ impl ViewerApp {
             Err(e) => {
                 eprintln!("Failed to copy image file to clipboard: {}", e);
             }
-        }
-    }
-
-    /// Rebuild the image index from the current directory
-    pub fn rebuild_image_index(&mut self) {
-        use std::fs;
-        if let Some(directory) = &self.current_directory {
-            // Read directory and get image files
-            let mut files: Vec<PathBuf> = fs::read_dir(directory)
-                .ok()
-                .into_iter()
-                .flat_map(|entries| {
-                    entries
-                        .filter_map(|entry| {
-                            let entry = entry.ok()?;
-                            let path = entry.path();
-                            if path.is_file() && crate::imaging::helpers::is_supported_image(&path)
-                            {
-                                Some(path)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect();
-
-            // Sort images using current sort method
-            crate::imaging::sort::sort_images(&mut files, self.sort_method);
         }
     }
 }

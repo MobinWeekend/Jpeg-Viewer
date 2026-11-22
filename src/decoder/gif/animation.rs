@@ -1,9 +1,11 @@
 use image::RgbaImage;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct GifAnimation {
-    frames: Vec<RgbaImage>,
+    // Share decoded pixels between the main tab and pop-out animation clocks.
+    frames: Arc<Vec<RgbaImage>>,
     pub delays: Vec<Duration>,
     pub current_frame: usize,
     pub last_update: Instant,
@@ -35,7 +37,7 @@ impl GifAnimation {
         }
 
         Ok(Self {
-            frames,
+            frames: Arc::new(frames),
             delays,
             current_frame: 0,
             last_update: Instant::now(),
@@ -87,7 +89,7 @@ impl GifAnimation {
         }
 
         Ok(Self {
-            frames,
+            frames: Arc::new(frames),
             delays,
             current_frame: 0,
             last_update: Instant::now(),
@@ -116,7 +118,7 @@ impl GifAnimation {
         let buffer = first_frame.into_buffer();
 
         Ok(Self {
-            frames: vec![buffer],
+            frames: Arc::new(vec![buffer]),
             delays: vec![delay],
             current_frame: 0,
             last_update: Instant::now(),

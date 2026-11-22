@@ -75,6 +75,72 @@ impl ViewerApp {
         let settings = self.settings_manager.get().clone();
         self.update_tricks_assets(ctx, &settings);
         let main_accent = crate::ui_theme::main_accent_color(ctx);
+
+        // Only one right-side tool drawer should be visible at a time. The
+        // Settings and Edit panels take priority over the per-Image Pop-out deck.
+        if self.show_settings_menu || self.show_edit_menu {
+            self.popouts.close_settings_sidebar();
+        }
+
+        // Pop-out controls use the same docked-sidebar surface, width range,
+        // spacing and scroll/footer structure as Settings. Register the panel
+        // before CentralPanel so the image canvas receives the remaining width.
+        if let Some((tab_id, texture, animation, source_pixels)) = self
+            .active_image_popout_source()
+            .filter(|(tab_id, _, _, _)| self.popouts.settings_sidebar_open(*tab_id))
+        {
+            let image_entry = self.active_image_popout_entry();
+            let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
+                ctx.style().visuals.panel_fill
+            } else {
+                crate::ui_theme::main_view_surface_color(
+                    ctx,
+                    &settings.main_view_background,
+                    settings.main_view_background_opacity,
+                )
+            };
+            let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+                .fill(sidebar_background)
+                .stroke(egui::Stroke::NONE);
+            let sidebar_response = egui::SidePanel::right("jpeg_viewer_popout_tricks_sidebar")
+                .resizable(true)
+                .default_width(settings.settings_sidebar_width.clamp(260.0, 640.0))
+                .width_range(260.0..=640.0)
+                .frame(sidebar_frame)
+                .show(ctx, |sidebar_ui| {
+                    if settings.tricks_backdrop_enabled {
+                        let sidebar_clip = sidebar_ui.painter().clip_rect();
+                        let backdrop_rect =
+                            crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
+                        self.paint_tricks_backdrop(
+                            sidebar_ui.painter(),
+                            sidebar_clip,
+                            backdrop_rect,
+                            crate::ui_theme::main_accent_color(ctx),
+                            settings.tricks_backdrop_tint,
+                            settings.tricks_backdrop_opacity,
+                        );
+                    }
+                    self.popouts.render_settings_sidebar(
+                        sidebar_ui,
+                        ctx,
+                        tab_id,
+                        texture,
+                        animation,
+                        source_pixels,
+                        image_entry,
+                    );
+                });
+            self.right_sidebar_actual_width = sidebar_response.response.rect.width().max(0.0);
+            let width = sidebar_response.response.rect.width().clamp(260.0, 640.0);
+            let previous_width = self.settings_manager.get().settings_sidebar_width;
+            if !ctx.input(|input| input.pointer.any_down()) && (width - previous_width).abs() > 2.0
+            {
+                let _ = self
+                    .settings_manager
+                    .update(|settings| settings.settings_sidebar_width = width);
+            }
+        }
         let view_bg = crate::ui_theme::main_view_surface_color(
             ctx,
             &settings.main_view_background,
@@ -154,10 +220,17 @@ impl ViewerApp {
 
             // Get the available image rectangle. Navigation toolbars are foreground
             // overlays, so their geometry must not reduce this content area.
-            let available_rect = ui
-                .available_rect_before_wrap()
-                .intersect(ui.clip_rect())
-                .intersect(self.central_panel_rect);
+            let remaining = ui.available_rect_before_wrap();
+            // Workspace-tab widgets can leave the layout cursor horizontally
+            // offset even though the image viewer should occupy the full
+            // CentralPanel width. Rebuild the viewer rectangle from the true
+            // panel bounds while retaining the layout's post-tab top edge.
+            let available_rect = egui::Rect::from_min_max(
+                egui::pos2(self.central_panel_rect.left(), remaining.top()),
+                self.central_panel_rect.right_bottom(),
+            )
+            .intersect(ui.clip_rect())
+            .intersect(self.central_panel_rect);
             let platform_overlay_padding = matches!(
                 crate::ui_theme::current_look_profile(ctx),
                 "win98" | "cosmic" | "gnome"
@@ -678,6 +751,21 @@ impl ViewerApp {
                 Self::draw_loading_overlay(painter, available_rect, message);
             }
         });
+
+        if let Some((entry, preset)) = self.popouts.take_pending_image_open() {
+            self.open_entry_in_image_tab(entry, true);
+            if let Some(tab_id) = self
+                .workspace
+                .active_tab()
+                .filter(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Image)
+                .map(|tab| tab.id)
+            {
+                self.popouts.assign_preset(tab_id, preset, ctx);
+            }
+        }
+        if let Some(message) = self.popouts.take_status_message() {
+            self.queue_status = Some(message);
+        }
     }
 
     /// Allow the empty portion of the central view to move a window even while

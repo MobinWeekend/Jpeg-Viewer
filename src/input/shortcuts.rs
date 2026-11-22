@@ -25,7 +25,6 @@ pub enum ViewerCommand {
     Help,
     CopyPath,
     CopyImage,
-    RebuildIndex,
     // Slideshow commands
     ToggleSlideshow,
     SlideshowSpeedUp,

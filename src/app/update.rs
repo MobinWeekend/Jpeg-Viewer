@@ -34,6 +34,33 @@ impl eframe::App for ViewerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
+        // Deferred pop-outs own their rendering and animation callbacks. Keep
+        // their viewport registrations alive on the minimize transition, while
+        // avoiding the full Viewer/sidebar/layout/preload pass for a hidden root.
+        // The child callbacks continue repainting independently while this root
+        // sleeps; a low-frequency root wake re-registers them on older backends.
+        let (root_minimized, root_focused, root_interaction_this_frame) = ctx.input(|input| {
+            (
+                input.viewport().minimized.unwrap_or(false),
+                input.viewport().focused.unwrap_or(false),
+                input.raw.events.iter().any(|event| {
+                    matches!(
+                        event,
+                        egui::Event::WindowFocused(true)
+                            | egui::Event::PointerMoved(_)
+                            | egui::Event::PointerButton { pressed: true, .. }
+                            | egui::Event::Key { pressed: true, .. }
+                            | egui::Event::MouseWheel { .. }
+                    )
+                }),
+            )
+        });
+        if root_minimized && !root_focused && !root_interaction_this_frame {
+            self.popouts.render_viewports(ctx);
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            return;
+        }
+
         if let Some(attempted_at) = self.updater.maybe_start_automatic_check(
             self.settings_manager.get().update_check_last_attempt_unix,
             ctx,
@@ -776,6 +803,19 @@ impl eframe::App for ViewerApp {
             }
         }
 
+        // Keep the active Image tab's pop-out animation in the same playback
+        // speed domain as its source. Each pop-out retains a private decoder state
+        // so it continues looping while another workspace tab is active.
+        if let Some(tab_id) = self
+            .workspace
+            .tabs
+            .get(self.workspace.active_index)
+            .filter(|tab| tab.kind == super::workspace::WorkspaceTabKind::Image)
+            .map(|tab| tab.id)
+        {
+            self.popouts.sync_active_animation(tab_id, self.gif_animation.as_ref());
+        }
+
         // Workspace activation and tab creation happen during UI rendering;
         // update the native title after those interactions in the same frame.
         self.update_window_title(ctx);
@@ -816,11 +856,18 @@ impl eframe::App for ViewerApp {
                     });
                 });
         }
+
+        self.popouts.render_viewports(ctx);
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        if self.settings_manager.get().os_background_blur
-            && crate::ui_theme::platform_backdrop::is_active()
+        // Pop-out viewports are transparent overlays. eframe uses this shared
+        // clear color for its immediate child viewports too, so keep the clear
+        // buffer transparent while any overlay exists. The main UI paints its
+        // own panel surfaces over the clear buffer.
+        if self.popouts.has_active_popouts()
+            || (self.settings_manager.get().os_background_blur
+            && crate::ui_theme::platform_backdrop::is_active())
         {
             egui::Color32::TRANSPARENT.to_normalized_gamma_f32()
         } else {

@@ -12,3 +12,5 @@ pub mod linux_thumbnails;
 // Temporary egui 0.33 / winit 0.30 Wayland pointer-release workaround.
 #[cfg(target_os = "linux")]
 pub mod wayland_pointer_recovery;
+
+pub mod pointer;

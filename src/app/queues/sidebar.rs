@@ -3,6 +3,185 @@ use super::ui::{GAP, fit_cards};
 use crate::app::types::ViewerApp;
 use crate::imaging::entry::ImageEntry;
 use eframe::egui;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Clone)]
+struct BrowseSidebarItem {
+    entry: ImageEntry,
+    /// Index in the persistent primary Viewer collection. Tab-only entries do
+    /// not participate in Browse sorting or reordering.
+    browse_index: Option<usize>,
+    image_tab: Option<(u64, bool)>,
+}
+
+fn browse_sidebar_items(app: &ViewerApp) -> (Vec<BrowseSidebarItem>, usize) {
+    let viewer_tab = app
+        .workspace
+        .tabs
+        .iter()
+        .find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer && tab.id == 1)
+        .or_else(|| {
+            app.workspace
+                .tabs
+                .iter()
+                .find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer)
+        });
+    let (browse_entries, browse_current_index) = if app.workspace.active_kind()
+        == crate::app::workspace::WorkspaceTabKind::Viewer
+    {
+        (app.image_entries.clone(), app.current_index)
+    } else if let Some(tab) = viewer_tab {
+        (tab.entries.clone(), tab.current_index)
+    } else {
+        (app.image_entries.clone(), app.current_index)
+    };
+
+    let mut tab_for_entry = HashMap::<String, (u64, bool)>::new();
+    let mut tab_only_entries = Vec::new();
+    for tab in app
+        .workspace
+        .tabs
+        .iter()
+        .filter(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Image)
+    {
+        let Some(entry) = tab.entries.first() else {
+            continue;
+        };
+        let entry_id = entry.get_id();
+        let details = (tab.id, app.popouts.has_tab_popout(tab.id));
+        tab_for_entry.entry(entry_id).or_insert(details);
+        tab_only_entries.push((entry.clone(), details));
+    }
+
+    let mut seen = HashSet::with_capacity(browse_entries.len() + tab_only_entries.len());
+    let mut items = Vec::with_capacity(browse_entries.len() + tab_only_entries.len());
+    for (index, entry) in browse_entries.iter().cloned().enumerate() {
+        let id = entry.get_id();
+        seen.insert(id.clone());
+        items.push(BrowseSidebarItem {
+            entry,
+            browse_index: Some(index),
+            image_tab: tab_for_entry.get(&id).copied(),
+        });
+    }
+    // Image tabs opened from another folder/archive remain discoverable in the
+    // same Browse grid, but never duplicate an image already present there.
+    for (entry, details) in tab_only_entries {
+        if seen.insert(entry.get_id()) {
+            items.push(BrowseSidebarItem {
+                entry,
+                browse_index: None,
+                image_tab: Some(details),
+            });
+        }
+    }
+
+    let active_entry_id = match app.workspace.active_tab() {
+        Some(tab) if tab.kind == crate::app::workspace::WorkspaceTabKind::Image => {
+            tab.entries.first().map(ImageEntry::get_id)
+        }
+        Some(tab) if tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer => {
+            browse_entries.get(browse_current_index).map(ImageEntry::get_id)
+        }
+        _ => browse_entries.get(browse_current_index).map(ImageEntry::get_id),
+    };
+    let current_grid_index = active_entry_id
+        .as_deref()
+        .and_then(|id| items.iter().position(|item| item.entry.get_id() == id))
+        .unwrap_or(usize::MAX);
+
+    (items, current_grid_index)
+}
+
+fn render_browse_sort_control(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    let old_method = app.sort_method;
+    ui.horizontal(|ui| {
+        ui.label("Sort:");
+        egui::ComboBox::from_id_salt("sort_method_combobox")
+            .selected_text(format!("{:?}", app.sort_method))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut app.sort_method, crate::imaging::sort::SortMethod::Natural, "Natural");
+                ui.selectable_value(&mut app.sort_method, crate::imaging::sort::SortMethod::DateNewest, "Newest");
+                ui.selectable_value(&mut app.sort_method, crate::imaging::sort::SortMethod::DateOldest, "Oldest");
+                ui.selectable_value(&mut app.sort_method, crate::imaging::sort::SortMethod::Shuffle, "Shuffle");
+            });
+    });
+    if old_method != app.sort_method {
+        app.sort_primary_viewer_entries();
+    }
+}
+
+fn paint_image_tab_controls(
+    ui: &mut egui::Ui,
+    card_rect: egui::Rect,
+    tab_id: u64,
+    has_popout: bool,
+) -> bool {
+    let size = card_rect.height().min(20.0).max(14.0);
+    let top = card_rect.top() + ((card_rect.height() - size) * 0.5).max(1.0);
+    let close_rect = egui::Rect::from_min_size(
+        egui::pos2(card_rect.right() - size - 5.0, top),
+        egui::vec2(size, size),
+    );
+    let badge_rect = egui::Rect::from_min_size(
+        egui::pos2(close_rect.left() - size - 3.0, top),
+        egui::vec2(size, size),
+    );
+    let badge_response = ui.interact(
+        badge_rect,
+        egui::Id::new(("browse_image_tab_badge", tab_id)),
+        egui::Sense::hover(),
+    );
+    badge_response.on_hover_text(if has_popout {
+        "Open Image tab · Pop-out active"
+    } else {
+        "Open Image tab"
+    });
+    ui.painter().rect_filled(
+        badge_rect,
+        egui::CornerRadius::same(5),
+        egui::Color32::from_rgba_unmultiplied(30, 105, 150, 225),
+    );
+    ui.painter().text(
+        badge_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "▣",
+        egui::FontId::proportional((size * 0.64).clamp(9.0, 13.0)),
+        egui::Color32::WHITE,
+    );
+    if has_popout {
+        let dot = egui::Rect::from_center_size(
+            badge_rect.right_bottom() - egui::vec2(2.0, 2.0),
+            egui::vec2(7.0, 7.0),
+        );
+        ui.painter().circle_filled(dot.center(), 3.5, egui::Color32::from_rgb(75, 215, 145));
+    }
+
+    let close_response = ui
+        .interact(
+            close_rect,
+            egui::Id::new(("browse_image_tab_close", tab_id)),
+            egui::Sense::click(),
+        )
+        .on_hover_text("Close Image tab");
+    ui.painter().circle_filled(
+        close_rect.center(),
+        size * 0.5,
+        if close_response.hovered() {
+            egui::Color32::from_rgb(185, 55, 60)
+        } else {
+            egui::Color32::from_black_alpha(205)
+        },
+    );
+    ui.painter().text(
+        close_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "×",
+        egui::FontId::proportional((size * 0.78).clamp(10.0, 15.0)),
+        egui::Color32::WHITE,
+    );
+    close_response.clicked()
+}
 
 pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     if !app.settings_manager.get().show_file_sidebar {
@@ -189,14 +368,27 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                 });
             } else {
                 app.queue_drop_rect = None;
-
+                // Browse always renders the primary Viewer collection, even while
+                // a dedicated Image tab is active. An open Image tab decorates the
+                // matching Browse tile; entries outside the collection are appended
+                // to this same grid rather than placed in a separate tab section.
+                let (browse_items, _) = browse_sidebar_items(app);
+                let base_count = browse_items
+                    .iter()
+                    .filter(|item| item.browse_index.is_some())
+                    .count();
+                let extra_tabs = browse_items
+                    .iter()
+                    .filter(|item| item.browse_index.is_none())
+                    .count();
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(format!("{} images  |  ", app.image_entries.len()));
-
-                    // Sorting and Masonry both operate on the current Browse collection.
-                    crate::app::settings_menu::general::sort_method_horizontal_ui(app, ctx, ui);
-                    if crate::app::ui::masonry_button(ui, "Open in Masonry", !app.image_entries.is_empty(), 0.0, false, true).clicked() {
-                        app.open_local_masonry();
+                    ui.label(format!("{} images", browse_items.len()));
+                    if extra_tabs > 0 {
+                        ui.label(egui::RichText::new(format!("+ {extra_tabs} outside Browse")).weak());
+                    }
+                    render_browse_sort_control(app, ui);
+                    if crate::app::ui::masonry_button(ui, "Open in Masonry", base_count > 0, 0.0, false, true).clicked() {
+                        app.open_browse_masonry();
                     }
                 });
                 let mut entry_size = app.settings_manager.get().browse_entry_size;
@@ -208,14 +400,19 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     ui.label(if entry_size < 104.0 { "Compact" } else if entry_size < 176.0 { "Medium" } else { "Large" });
                 });
 
-                let entries = app.image_entries.clone();
+                // Sorting can change tile order in the header above, so refresh
+                // the presentation list after the sort control has run.
+                let (browse_items, current_grid_index) = browse_sidebar_items(app);
+                let active_workspace_tab_id = app.workspace.active_tab().map(|tab| tab.id);
+                let entries = browse_items.iter().map(|item| item.entry.clone()).collect::<Vec<_>>();
                 let available = ui.available_width();
                 let (columns, card_size) = fit_cards(available, app.settings_manager.get().browse_entry_size);
 
                 let auto_scroll_current =
-                    app.sidebar_last_current_index != Some(app.current_index);
+                    app.sidebar_last_current_index != Some(current_grid_index);
 
                 let mut selected = None;
+                let mut close_tab_requested = None;
                 let mut visible_indices = Vec::new();
 
                 let scroll_output = egui::ScrollArea::both()
@@ -230,14 +427,21 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                             .num_columns(columns)
                             .spacing(egui::vec2(GAP, GAP))
                             .show(ui, |ui| {
-                                for (index, entry) in entries.iter().enumerate() {
+                                for (index, item) in browse_items.iter().enumerate() {
+                                    let entry = &item.entry;
+                                    let tab_meta = item.image_tab;
+                                    let browse_index = item.browse_index;
+                                    let is_current = index == current_grid_index;
                                     // Grid keeps every row in the scroll area's content size, but
                                     // don't build thumbnail widgets for rows outside the viewport.
                                     // This is a lightweight form of virtualization: it preserves
                                     // scrolling geometry while avoiding per-card work off-screen.
                                     let compact_entry = app.settings_manager.get().browse_entry_size < 112.0;
+                                    // Match render_thumbnail_card's actual compact
+                                    // row height so Grid virtualization, hit testing,
+                                    // and the tab controls share the same geometry.
                                     let estimated_height = if compact_entry {
-                                        card_size / 8.0
+                                        (card_size / 7.0).max(24.0)
                                     } else {
                                         card_size
                                     };
@@ -251,7 +455,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                     // previous visibility guard skipped the scroll
                                     // request for off-screen entries, which made
                                     // navigation toward earlier entries unreliable.
-                                    if index == app.current_index
+                                    if is_current
                                         && auto_scroll_current
                                         && !ui.clip_rect().contains_rect(estimated_rect)
                                     {
@@ -273,10 +477,10 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                             // so image sizing, selection outlines, and filename fitting
                                             // stay consistent between Browse and Queue.
                                             let mut clicked = false;
-                                            ui.allocate_ui_with_layout(
+                                            let card_output = ui.allocate_ui_with_layout(
                                                 egui::vec2(
                                                     card_size,
-                                                    if entry_size < 112.0 { card_size / 8.0 } else { card_size },
+                                                    if entry_size < 112.0 { (card_size / 7.0).max(24.0) } else { card_size },
                                                 ),
                                                 egui::Layout::centered_and_justified(
                                                     egui::Direction::TopDown,
@@ -287,18 +491,26 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         path,
                                                         &key,
                                                         &name,
-                                                        index == app.current_index,
-                                                        auto_scroll_current
-                                                            && index == app.current_index,
+                                                        is_current,
+                                                        auto_scroll_current && is_current,
                                                         card_size,
                                                         entry_size,
-                                                        Some(index),
+                                                        browse_index,
                                                         0,
+                                                        tab_meta.map(|(tab_id, _)| tab_id),
                                                         ctx,
                                                     );
                                                 },
                                             );
-                                            clicked
+                                            let close_clicked = if let Some((tab_id, has_popout)) = tab_meta {
+                                                paint_image_tab_controls(ui, card_output.response.rect, tab_id, has_popout)
+                                            } else {
+                                                false
+                                            };
+                                            if close_clicked {
+                                                close_tab_requested = tab_meta.map(|(tab_id, _)| tab_id);
+                                            }
+                                            clicked && !close_clicked
                                         }
                                         _ => {
                                             let key = entry.get_id();
@@ -310,7 +522,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
 
                                             // Allocate the whole card as a top-down vertical
                                             // block: thumbnail on top, label directly below it.
-                                            ui.allocate_ui_with_layout(
+                                            let card_output = ui.allocate_ui_with_layout(
                                                 egui::vec2(card_size, card_size),
                                                 egui::Layout::top_down(egui::Align::Center),
                                                 |ui| {
@@ -321,7 +533,12 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         );
                                                     response.context_menu(|ui| {
                                                         if ui.button("Open image").clicked() {
-                                                            app.navigate_to_index(ctx, index);
+                                                            if let Some((tab_id, _)) = tab_meta {
+                                                                app.activate_workspace_tab(tab_id);
+                                                            } else if let Some(browse_index) = browse_index {
+                                                                app.activate_primary_viewer_tab();
+                                                                app.navigate_to_index(ctx, browse_index);
+                                                            }
                                                             ui.close();
                                                         }
                                                         if ui.button("Open in New Tab").clicked() {
@@ -357,7 +574,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                     let target_thumbnail_size = crate::app::queues::thumbnail_request_size(rect, ctx);
                                                     if ui.is_rect_visible(rect) {
                                                         app.sidebar_visible_sources.insert(key.clone());
-                                                        let current_item = index == app.current_index;
+                                                        let current_item = is_current;
                                                         let priority = if current_item {
                                                             crate::app::queues::SIDEBAR_CURRENT_PRIORITY
                                                         } else if response.hovered() {
@@ -413,7 +630,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         );
                                                     }
 
-                                                    if index == app.current_index
+                                                    if is_current
                                                         && auto_scroll_current
                                                         && !ui.clip_rect().contains_rect(rect)
                                                     {
@@ -423,7 +640,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         );
                                                     }
 
-                                                    let label_selected = index == app.current_index;
+                                                    let label_selected = is_current;
                                                     let label_position = ui.cursor().min;
                                                     let label_rect = egui::Rect::from_min_size(
                                                         label_position,
@@ -459,16 +676,35 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                                         || text.on_hover_text(&name).clicked();
                                                 },
                                             );
+                                            let close_clicked = if let Some((tab_id, has_popout)) = tab_meta {
+                                                paint_image_tab_controls(ui, card_output.response.rect, tab_id, has_popout)
+                                            } else {
+                                                false
+                                            };
+                                            if close_clicked {
+                                                close_tab_requested = tab_meta.map(|(tab_id, _)| tab_id);
+                                            }
 
-                                            clicked
+                                            clicked && !close_clicked
                                         }
                                     }
                                     };
 
-                                    if clicked && index != app.current_index {
-                                        // The shared navigation method owns unsaved-edit
-                                        // validation and all per-image state transitions.
-                                        selected = Some(index);
+                                    if clicked && close_tab_requested.is_none() {
+                                        let should_activate = browse_items.get(index).is_some_and(|item| {
+                                            match item.image_tab {
+                                                Some((tab_id, _)) => active_workspace_tab_id != Some(tab_id),
+                                                None => !is_current,
+                                            }
+                                        });
+                                        if should_activate {
+                                            // The shared navigation method owns unsaved-edit
+                                            // validation and per-image transitions. A tile
+                                            // linked to an Image tab activates that tab even
+                                            // when the primary Viewer happens to show the same
+                                            // source image.
+                                            selected = Some(index);
+                                        }
                                     }
 
                                     if (index + 1) % columns == 0 {
@@ -537,14 +773,26 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     }
                 }
 
-                if let Some(index) = selected {
-                    // Use the same navigation pipeline as keyboard/toolbar navigation.
-                    // This keeps the window title, current path, file-type detection,
-                    // edit/view state, navigation timer, loading, and metadata in sync.
-                    app.navigate_to_index(ctx, index);
+                if let Some(tab_id) = close_tab_requested {
+                    app.close_workspace_tab(tab_id);
+                    app.sidebar_last_current_index = None;
+                    selected = None;
+                }
+                if let Some(index) = selected
+                    && let Some(item) = browse_items.get(index)
+                {
+                    if let Some((tab_id, _)) = item.image_tab {
+                        app.activate_workspace_tab(tab_id);
+                    } else if let Some(browse_index) = item.browse_index {
+                        // A normal Browse tile activates the primary collection
+                        // before navigating; the active Image tab is never used
+                        // as the index source for the Browse grid.
+                        app.activate_primary_viewer_tab();
+                        app.navigate_to_index(ctx, browse_index);
+                    }
                 }
 
-                app.sidebar_last_current_index = Some(app.current_index);
+                app.sidebar_last_current_index = Some(current_grid_index);
 
             }
         });
@@ -580,26 +828,19 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             if let Ok(position) = text.trim().parse::<usize>() {
                 let target = position.saturating_sub(1);
                 match collection {
-                    0 if index < app.image_entries.len() && target < app.image_entries.len() => {
-                        let selected_path = app.current_image_path.clone();
-                        let item = app.image_entries.remove(index);
-                        app.image_entries
-                            .insert(target.min(app.image_entries.len()), item);
-                        if let Some(path) = selected_path
-                            && let Some(new_index) = app
-                                .image_entries
-                                .iter()
-                                .position(|e| matches!(e, ImageEntry::File(p) if p == &path))
-                        {
-                            app.current_index = new_index;
-                        }
-                        app.image_cache.clear();
-                        app.preloading_indices.clear();
-                        app.cancel_all_preload_tasks();
-                        app.preload_generation = app.preload_generation.wrapping_add(1);
-                        app.preloading_indices.clear();
-                        if !app.image_entries.is_empty() {
-                            app.load_current_image_with_cache();
+                    0 => {
+                        let viewer_len = app.workspace.tabs.iter()
+                            .find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer && tab.id == 1)
+                            .or_else(|| app.workspace.tabs.iter().find(|tab| tab.kind == crate::app::workspace::WorkspaceTabKind::Viewer))
+                            .map(|tab| tab.entries.len())
+                            .unwrap_or(app.image_entries.len());
+                        if index < viewer_len && target < viewer_len {
+                            // `reorder_primary_viewer_entries` takes a drop slot,
+                            // while this dialog specifies the final 0-based index.
+                            let drop_slot = if index < target { target + 1 } else { target };
+                            app.reorder_primary_viewer_entries(index, drop_slot);
+                        } else {
+                            app.queue_status = Some("Position is outside the list.".into());
                         }
                     }
                     1 if index < app.queue_paths.len() && target < app.queue_paths.len() => {

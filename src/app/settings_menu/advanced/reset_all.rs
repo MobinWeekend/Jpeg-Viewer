@@ -160,6 +160,7 @@ fn apply_runtime_defaults(
     app.image_cache = lru::LruCache::new(
         NonZeroUsize::new(cache_capacity).expect("cache capacity must be non-zero"),
     );
+    app.sync_image_cache_capacity();
     app.preloaded_mipmap_pixels = None;
     app.current_mipmap_state = None;
     if let Ok(mut gif_cache) = app.gif_detection_cache.lock() {

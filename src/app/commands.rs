@@ -182,9 +182,6 @@ impl ViewerApp {
             ViewerCommand::CopyImage => {
                 self.copy_image_to_clipboard();
             }
-            ViewerCommand::RebuildIndex => {
-                self.rebuild_image_index();
-            }
             ViewerCommand::ShowFileSidebar => {
                 let sidebar_visible = self.settings_manager.get().show_file_sidebar;
                 let _ = self

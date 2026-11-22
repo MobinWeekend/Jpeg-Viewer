@@ -15,7 +15,7 @@ pub(super) fn absolute_path(path: &Path) -> PathBuf {
     }
 }
 
-pub fn paths_equal(a: &Path, b: &Path) -> bool {
+pub(crate) fn paths_equal(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
         a.to_string_lossy()
             .eq_ignore_ascii_case(&b.to_string_lossy())

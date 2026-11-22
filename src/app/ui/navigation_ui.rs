@@ -233,7 +233,7 @@ impl ViewerApp {
             let _ = self
                 .settings_manager
                 .update(|settings| settings.slideshow_random = false);
-            self.image_cache.clear();
+            self.retain_open_image_tab_cache();
             self.preloading_indices.clear();
             self.cancel_all_preload_tasks();
             self.preload_generation = self.preload_generation.wrapping_add(1);

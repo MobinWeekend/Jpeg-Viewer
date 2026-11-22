@@ -126,7 +126,7 @@ impl ViewerApp {
 
             // Any cache created while the temporary one-entry list was active
             // used temporary indices, so discard it before enabling preloading.
-            self.image_cache.clear();
+            self.retain_open_image_tab_cache();
             self.preloading_indices.clear();
             self.cancel_all_preload_tasks();
 
@@ -166,7 +166,7 @@ impl ViewerApp {
         self.file_type_detection = None;
         self.file_metadata_open = false;
         if clear_cache {
-            self.image_cache.clear();
+            self.retain_open_image_tab_cache();
         }
         self.preloading_indices.clear();
         self.cancel_all_preload_tasks();
@@ -345,7 +345,7 @@ impl ViewerApp {
         self.virtual_texture_thread = None;
 
         if !preserve_cache {
-            self.image_cache.clear();
+            self.retain_open_image_tab_cache();
         }
         self.preloading_indices.clear();
         self.cancel_all_preload_tasks();
