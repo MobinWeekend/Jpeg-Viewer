@@ -17,10 +17,10 @@ pub fn global_position_available() -> bool {
 
 /// Return the global pointer position in the same logical desktop coordinates
 /// used by monitor bounds and egui viewport outer rectangles.
-pub fn global_position(ctx: &egui::Context) -> Option<egui::Pos2> {
+pub fn global_position(_ctx: &egui::Context) -> Option<egui::Pos2> {
     #[cfg(target_os = "windows")]
     {
-        return windows_global_position(ctx);
+        return windows_global_position(_ctx);
     }
     #[cfg(target_os = "linux")]
     {

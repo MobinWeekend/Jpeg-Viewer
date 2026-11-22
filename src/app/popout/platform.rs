@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 pub(super) fn enable_popout_dwm_transparency(tab_id: u64, generation: u64) -> bool {
     use windows::core::{BOOL, PCWSTR};
     use windows::Win32::Graphics::Dwm::{
