@@ -23,7 +23,7 @@ pub fn apply_polished_style_with_options(
         )
     });
 
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     let look_profile = current_look_profile(ctx);
     // Windows 98 was a light, classic-gray interface regardless of modern system theme.
     let dark = style.visuals.dark_mode;
@@ -607,5 +607,5 @@ pub fn apply_polished_style_with_options(
         font_id.size = base_size * text_scale;
     }
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }

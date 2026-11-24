@@ -136,7 +136,7 @@ impl ViewerApp {
             let has_pointer_input = has_focus
                 && (i.pointer.any_down()
                     || i.pointer.delta() != egui::Vec2::ZERO
-                    || i.raw_scroll_delta != egui::Vec2::ZERO);
+                    || i.is_scrolling());
 
             (has_pointer_input, has_key_down, has_focus)
         })

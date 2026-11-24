@@ -12,7 +12,17 @@ categories = ["multimedia::images"]
 
 [dependencies]
 # GUI / rendering
-eframe = "0.33" # do not update this one!
+eframe = { version = "0.37.0", default-features = false, features = [
+    "accesskit",
+    "clipboard",
+    "default_fonts",
+    "glow",
+    "links",
+    "system_fonts",
+    "wayland",
+    "web_screen_reader",
+    "x11",
+] }
 # Direct handle access for optional native window backdrop effects.
 raw-window-handle = "0.6.2"
 

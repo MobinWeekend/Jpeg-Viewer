@@ -5,7 +5,7 @@ use eframe::egui;
 use std::time::Instant;
 
 impl eframe::App for ViewerApp {
-    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         // Check for a stable GitHub release at most once every seven days. The
         // request runs on a dedicated thread and never blocks the UI frame.
         if let Some(status) = self.updater.poll() {
@@ -34,31 +34,20 @@ impl eframe::App for ViewerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
-        // Deferred pop-outs own their rendering and animation callbacks. Keep
-        // their viewport registrations alive on the minimize transition, while
-        // avoiding the full Viewer/sidebar/layout/preload pass for a hidden root.
-        // The child callbacks continue repainting independently while this root
-        // sleeps; a low-frequency root wake re-registers them on older backends.
-        let (root_minimized, root_focused, root_interaction_this_frame) = ctx.input(|input| {
+        // In eframe 0.37, logic can run without a UI pass while the root
+        // viewport is hidden. Only viewport state is fresh in that path; do not
+        // inspect raw events, keys, pointer deltas, or other last-frame input.
+        // Deferred child viewports are rendered from ui(), so request a bounded
+        // hidden UI pass while at least one pop-out is active.
+        let (root_minimized, root_focused) = ctx.input(|input| {
             (
                 input.viewport().minimized.unwrap_or(false),
                 input.viewport().focused.unwrap_or(false),
-                input.raw.events.iter().any(|event| {
-                    matches!(
-                        event,
-                        egui::Event::WindowFocused(true)
-                            | egui::Event::PointerMoved(_)
-                            | egui::Event::PointerButton { pressed: true, .. }
-                            | egui::Event::Key { pressed: true, .. }
-                            | egui::Event::MouseWheel { .. }
-                    )
-                }),
             )
         });
-        if root_minimized && !root_focused && !root_interaction_this_frame {
-            self.popouts.render_viewports(ctx);
+        if root_minimized && !root_focused && self.popouts.has_active_popouts() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
-            return;
         }
 
         if let Some(attempted_at) = self.updater.maybe_start_automatic_check(
@@ -81,12 +70,7 @@ impl eframe::App for ViewerApp {
             self.settings_manager.get().publish_generated_thumbnails,
         );
 
-        // Reset a shared upload allowance once per UI frame. Every current-image
-        // and virtual-tile callback spends from this same budget.
-        self.mipmap_upload_budget.store(
-            super::texture_mipmap::MAX_MIP_UPLOAD_BYTES_PER_FRAME,
-            std::sync::atomic::Ordering::Relaxed,
-        );
+        // Cache completed current-image mipmap state independently of rendering.
         self.cache_ready_current_mipmap();
 
         // Keep context-only layout helpers synchronized with the persisted setting.
@@ -170,19 +154,6 @@ impl eframe::App for ViewerApp {
 
         // Indexing process so ui would load fast
         self.process_indexing();
-        // ========== UPDATE CURRENT FPS (throttled to 0.5s) ==========
-        let now = std::time::Instant::now();
-        // Use last_repaint_time to compute delta
-        let delta = now - self.last_repaint_time;
-        if delta.as_secs_f32() > 0.001 {
-            let instant_fps = 1.0 / delta.as_secs_f32();
-            let smoothed = self.current_fps * 0.9 + instant_fps * 0.1;
-            if now - self.last_fps_update >= std::time::Duration::from_millis(500) {
-                self.current_fps = smoothed;
-                self.last_fps_update = now;
-            }
-        }
-
         // Initialize logo texture
         if self.logo_texture.is_none() {
             match image::load_from_memory(include_bytes!("../../assets/icons/icon.ico")) {
@@ -328,15 +299,6 @@ impl eframe::App for ViewerApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
             }
         }
-
-        // ========== HELP MENU ==========
-        if self.show_help_menu {
-            self.render_help_window(ctx);
-        }
-
-        // ========== HARDCODED INPUT HANDLING ==========
-        self.handle_input(ctx);
-        self.handle_window_resize(ctx);
 
         // ========== UPDATE ANIMATION STATE ==========
         let is_animating = if let Some(gif) = &self.gif_animation {
@@ -754,6 +716,53 @@ impl eframe::App for ViewerApp {
         // Prepare mipmaps for one cached neighbour at a time after navigation
         // settles. Current-image mip work is prioritized by this scheduler.
         self.prepare_next_cached_mipmap(ctx);
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
+        // A hidden root UI pass exists only to keep deferred child viewport
+        // registrations alive. Avoid interpreting any retained input as fresh
+        // interaction and avoid laying out the hidden main viewer.
+        let (root_minimized, root_focused) = ctx.input(|input| {
+            (
+                input.viewport().minimized.unwrap_or(false),
+                input.viewport().focused.unwrap_or(false),
+            )
+        });
+        if root_minimized && !root_focused {
+            self.popouts.render_viewports(&ctx);
+            return;
+        }
+
+        // Reset the shared upload allowance once per visible UI frame. Current
+        // image and virtual-tile callbacks spend from this same budget.
+        self.mipmap_upload_budget.store(
+            super::texture_mipmap::MAX_MIP_UPLOAD_BYTES_PER_FRAME,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+
+        // ========== UPDATE CURRENT FPS (throttled to 0.5s) ==========
+        let now = std::time::Instant::now();
+        // Use last_repaint_time to compute delta
+        let delta = now - self.last_repaint_time;
+        if delta.as_secs_f32() > 0.001 {
+            let instant_fps = 1.0 / delta.as_secs_f32();
+            let smoothed = self.current_fps * 0.9 + instant_fps * 0.1;
+            if now - self.last_fps_update >= std::time::Duration::from_millis(500) {
+                self.current_fps = smoothed;
+                self.last_fps_update = now;
+            }
+        }
+
+        // ========== HELP MENU ==========
+        if self.show_help_menu {
+            self.render_help_window(&ctx);
+        }
+
+        // ========== HARDCODED INPUT HANDLING ==========
+        self.handle_input(&ctx);
+        self.handle_window_resize(&ctx);
 
         // ========== UI RENDERING ==========
         // The menu bar is a top panel and must be registered before sidebars and
@@ -762,30 +771,30 @@ impl eframe::App for ViewerApp {
         self.right_sidebar_actual_width = 0.0;
         // Custom title-bar chrome is a real top-panel reservation, not just a
         // foreground overlay; it therefore pushes the menu and central UI downward.
-        crate::app::ui::reserve_custom_titlebar_space(self, ctx);
-        crate::app::ui::render_desktop_menu_bar(self, ctx);
+        crate::app::ui::reserve_custom_titlebar_space(self, ui, &ctx);
+        crate::app::ui::render_desktop_menu_bar(self, ui, &ctx);
         // Docked panels must be registered before the central panel so the image
         // canvas is laid out in the remaining space rather than underneath them.
-        crate::app::queues::render_left_sidebar(self, ctx);
+        crate::app::queues::render_left_sidebar(self, ui, &ctx);
         // Dock the active right-side tool panel before the central canvas so
         // it receives a proper share of the available layout width.
-        self.render_editing_ui(ctx);
+        self.render_editing_ui(ui, &ctx);
         if self.show_settings_menu && !self.show_edit_menu {
-            crate::app::ui::render_settings_menu(self, ctx);
+            crate::app::ui::render_settings_menu(self, ui, &ctx);
         }
-        self.render_central_panel(ctx);
+        self.render_central_panel(ui, &ctx);
         // File-operation confirmations are shared by Viewer, Compare, and Masonry
         // entry context menus, so render them outside the Masonry-only surface.
-        self.render_delete_confirmation(ctx);
-        self.render_file_conflict_dialog(ctx);
-        self.render_workspace_session_prompt(ctx);
-        crate::app::ui::render_overlay_ui(self, ctx);
+        self.render_delete_confirmation(&ctx);
+        self.render_file_conflict_dialog(&ctx);
+        self.render_workspace_session_prompt(&ctx);
+        crate::app::ui::render_overlay_ui(self, &ctx);
 
         // Cached-neighbour mip uploads run after visible image/tile callbacks so
         // current-image rendering always gets first claim on the shared budget.
         // A tooltip-order layer ensures these callbacks are still submitted when
         // the central panel is showing a loading/error/virtual-texture branch.
-        let background_mipmap_rect = self.main_view_rect(ctx);
+        let background_mipmap_rect = self.main_view_rect(&ctx);
         if background_mipmap_rect.is_positive() {
             let background_mipmap_painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Tooltip,
@@ -818,22 +827,23 @@ impl eframe::App for ViewerApp {
 
         // Workspace activation and tab creation happen during UI rendering;
         // update the native title after those interactions in the same frame.
-        self.update_window_title(ctx);
+        self.update_window_title(&ctx);
 
         // Empty Viewer tabs deliberately remain empty; the launch/recent UI is
         // rendered only by an explicit Welcome workspace tab.
 
         // ========== FRAME LIMITER ==========
-        self.schedule_repaint(ctx);
+        self.schedule_repaint(&ctx);
         if self.preload_working || self.is_loading() {
             ctx.request_repaint();
         }
 
         // ========== CLEANUP ==========
-        if ctx.input(|i| i.viewport().close_requested()) {
+        if !self.close_persistence_saved && ctx.input(|i| i.viewport().close_requested()) {
+            self.close_persistence_saved = true;
             self.stop_caching();
             self.save_workspace_session();
-            self.save_window_state(ctx);
+            self.save_window_state(&ctx);
         }
 
         // ========== DELETE CONFIRMATION ==========
@@ -842,7 +852,7 @@ impl eframe::App for ViewerApp {
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(ctx, |ui| {
+                .show(&ctx, |ui| {
                     ui.label("Move this file to the Trash/Recycle Bin?");
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
@@ -857,7 +867,7 @@ impl eframe::App for ViewerApp {
                 });
         }
 
-        self.popouts.render_viewports(ctx);
+        self.popouts.render_viewports(&ctx);
     }
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {

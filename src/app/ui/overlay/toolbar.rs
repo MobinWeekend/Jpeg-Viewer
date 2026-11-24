@@ -6,7 +6,7 @@ const TOOLBAR_BG_ALPHA: u8 = 198;
 const MENU_OFFSET: f32 = 8.0;
 
 pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
-    let visuals = &ctx.style().visuals;
+    let visuals = &ctx.global_style().visuals;
     let win98 = crate::ui_theme::current_look_profile(ctx) == "win98";
     let glass = crate::ui_theme::os_background_blur_enabled(ctx) && !win98;
     let surface = visuals.window_fill;
@@ -31,7 +31,7 @@ pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
 
 pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
     let profile = crate::ui_theme::current_look_profile(ctx);
-    let panel_color = ctx.style().visuals.panel_fill;
+    let panel_color = ctx.global_style().visuals.panel_fill;
 
     // Native glass is used where available; egui surfaces become opaque when it is
     // disabled. Win98 always uses classic opaque, square, beveled surfaces.
@@ -74,7 +74,7 @@ pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Fr
         let stroke = if profile == "win98" {
             egui::Color32::from_rgb(128, 128, 128)
         } else {
-            ctx.style().visuals.widgets.noninteractive.bg_stroke.color
+            ctx.global_style().visuals.widgets.noninteractive.bg_stroke.color
         };
         frame = frame.stroke(egui::Stroke::new(1.0_f32, stroke));
     }

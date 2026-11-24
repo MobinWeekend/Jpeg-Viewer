@@ -63,7 +63,7 @@ impl ViewerApp {
         (viewport_width - self.main_view_rect(ctx).right()).max(0.0)
     }
 
-    pub fn render_central_panel(&mut self, ctx: &egui::Context) {
+    pub fn render_central_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         self.update_zoom_animation(ctx);
         if self.inspect_mode && self.inspect_source_path != self.current_image_path {
             self.inspect_source = None;
@@ -71,7 +71,7 @@ impl ViewerApp {
             self.inspect_mipmap_state = None;
             self.prepare_inspect_source(ctx);
         }
-        let style = ctx.style();
+        let style = ctx.global_style();
         let settings = self.settings_manager.get().clone();
         self.update_tricks_assets(ctx, &settings);
         let main_accent = crate::ui_theme::main_accent_color(ctx);
@@ -91,7 +91,7 @@ impl ViewerApp {
         {
             let image_entry = self.active_image_popout_entry();
             let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
-                ctx.style().visuals.panel_fill
+                ctx.global_style().visuals.panel_fill
             } else {
                 crate::ui_theme::main_view_surface_color(
                     ctx,
@@ -99,15 +99,15 @@ impl ViewerApp {
                     settings.main_view_background_opacity,
                 )
             };
-            let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+            let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
                 .fill(sidebar_background)
                 .stroke(egui::Stroke::NONE);
-            let sidebar_response = egui::SidePanel::right("jpeg_viewer_popout_tricks_sidebar")
+            let sidebar_response = egui::Panel::right("jpeg_viewer_popout_tricks_sidebar")
                 .resizable(true)
-                .default_width(settings.settings_sidebar_width.clamp(260.0, 640.0))
-                .width_range(260.0..=640.0)
+                .default_size(settings.settings_sidebar_width.clamp(260.0, 640.0))
+                .size_range(260.0..=640.0)
                 .frame(sidebar_frame)
-                .show(ctx, |sidebar_ui| {
+                .show(ui, |sidebar_ui| {
                     if settings.tricks_backdrop_enabled {
                         let sidebar_clip = sidebar_ui.painter().clip_rect();
                         let backdrop_rect =
@@ -150,7 +150,7 @@ impl ViewerApp {
             .inner_margin(0.0)
             .fill(view_bg)
             .stroke(egui::Stroke::NONE);
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+        egui::CentralPanel::default().frame(frame).show(ui, |ui| {
             // CentralPanel already excludes the actual left/right SidePanel widths.
             // Store its real screen rectangle so overlays and workspace surfaces do
             // not subtract sidebar widths a second time.
@@ -935,7 +935,7 @@ impl ViewerApp {
         let content_rect = Self::loading_content_rect(rect);
         let center = content_rect.center();
 
-        let panel_fill = painter.ctx().style().visuals.panel_fill;
+        let panel_fill = painter.ctx().global_style().visuals.panel_fill;
         let semi_transparent = panel_fill.linear_multiply(0.85);
 
         painter.rect_filled(content_rect, 12.0, semi_transparent);
@@ -946,7 +946,7 @@ impl ViewerApp {
             message,
             None,
             false,
-            &painter.ctx().style(),
+            &painter.ctx().global_style(),
         );
     }
 

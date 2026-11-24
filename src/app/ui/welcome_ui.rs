@@ -124,7 +124,7 @@ impl ViewerApp {
                                 let hero_surface = if settings.tricks_backdrop_enabled {
                                     let mut color = crate::ui_theme::main_view_background_color(
                                         &settings.main_view_background,
-                                        ctx.style().visuals.dark_mode,
+                                        ctx.global_style().visuals.dark_mode,
                                     );
                                     if glass {
                                         let [r, g, b, _] = color.to_srgba_unmultiplied();

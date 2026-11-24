@@ -81,7 +81,7 @@ pub fn desktop_menu_bar_height(ctx: &egui::Context) -> f32 {
 /// Render the desktop menu in its own row only when it is not embedded in the
 /// custom title bar. The inline flag is refreshed every frame to prevent stale
 /// geometry after settings or fullscreen changes.
-pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn render_desktop_menu_bar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     let inline = desktop_menu_bar_in_custom_titlebar(app, ctx);
     ctx.data_mut(|data| {
         data.insert_temp(egui::Id::new(MENU_BAR_INLINE_ID), inline);
@@ -96,14 +96,14 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
     let profile = crate::ui_theme::current_look_profile(ctx);
     // The menu strip shares the main-view background, including its configured
     // opacity when OS/DE backdrop blur is enabled.
-    let dark_mode = ctx.style().visuals.dark_mode;
+    let dark_mode = ctx.global_style().visuals.dark_mode;
     let settings = app.settings_manager.get();
     let background = crate::ui_theme::main_view_surface_color(
         ctx,
         &settings.main_view_background,
         settings.main_view_background_opacity,
     );
-    let mut visuals = ctx.style().visuals.clone();
+    let mut visuals = ctx.global_style().visuals.clone();
     visuals.panel_fill = background;
     visuals.window_fill = background;
     if crate::ui_theme::os_background_blur_enabled(ctx) && profile != "win98" {
@@ -240,7 +240,7 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
 
     // Keep the top panel only as a dynamic-height layout reservation. The
     // visible menu frame is a content-wrapping frame, not a full-window strip.
-    let panel_response = egui::TopBottomPanel::top("jpeg_viewer_desktop_menu_bar")
+    let panel_response = egui::Panel::top("jpeg_viewer_desktop_menu_bar")
         .show_separator_line(false)
         .frame(
             egui::Frame::new()
@@ -248,7 +248,7 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ctx: &egui::Context) {
                 .inner_margin(egui::Margin::ZERO)
                 .stroke(egui::Stroke::NONE),
         )
-        .show(ctx, |panel_ui| {
+        .show(ui, |panel_ui| {
             panel_ui.style_mut().visuals = bar_visuals.clone();
             let total_width = panel_ui.available_width().max(0.0);
             let compact_labels = total_width < 520.0;

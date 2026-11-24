@@ -4,7 +4,7 @@ use eframe::egui;
 const PROJECT_URL: &str = "https://github.com/MobinWeekend/Jpeg-Viewer";
 const RELEASES_URL: &str = "https://github.com/MobinWeekend/Jpeg-Viewer/releases";
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 enum HelpTab {
     #[default]
     Overview,
@@ -16,7 +16,7 @@ enum HelpTab {
 impl ViewerApp {
     pub fn render_help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_help_menu;
-        let content_rect = ctx.available_rect();
+        let content_rect = ctx.viewport_rect();
         // Keep the window comfortable on normal displays, but allow its content to
         // remain usable in a compact 512x512 window.
         let default_size = egui::vec2(

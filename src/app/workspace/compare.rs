@@ -639,7 +639,7 @@ impl crate::app::types::ViewerApp {
                                         (delta.is_finite() && (delta - 1.0).abs() > 0.001)
                                             .then_some(delta)
                                     });
-                                    if (response.hovered() || right_drag_zoom.is_some()) && !ctx.wants_keyboard_input() {
+                                    if (response.hovered() || right_drag_zoom.is_some()) && !ctx.egui_wants_keyboard_input() {
                                         let zoom_command = ctx.input(|input| {
                                             [
                                                 crate::input::shortcuts::ViewerCommand::ZoomIn,
@@ -653,7 +653,7 @@ impl crate::app::types::ViewerApp {
                                                 .is_some_and(|bindings| bindings.iter().any(|binding| binding.matches(input))))
                                         });
                                         let wheel_zoom = ctx.input(|input| {
-                                            let delta = input.raw_scroll_delta.y;
+                                            let delta = input.smooth_scroll_delta.y;
                                             let zooming = (!self.b_ctrl_invert && input.modifiers.ctrl)
                                                 || (self.b_ctrl_invert && !input.modifiers.ctrl);
                                             let step = self.settings_manager.get().zoom_step_mouse_wheel.clamp(1.05, 2.0);

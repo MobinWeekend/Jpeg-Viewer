@@ -541,7 +541,7 @@ impl crate::app::types::ViewerApp {
                                                     search_ui.add_sized(
                                                         egui::vec2(128.0, 22.0),
                                                         egui::TextEdit::singleline(&mut tab.search)
-                                                            .frame(false)
+                                                            .frame(egui::Frame::NONE)
                                                             .hint_text("Search filename…"),
                                                     );
                                                     if !tab.search.is_empty() && search_ui.small_button("×").clicked() {

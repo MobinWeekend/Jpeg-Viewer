@@ -16,7 +16,7 @@ pub fn main_view_surface_color(
     main_view_background: &str,
     opacity: f32,
 ) -> egui::Color32 {
-    let color = main_view_background_color(main_view_background, ctx.style().visuals.dark_mode);
+    let color = main_view_background_color(main_view_background, ctx.global_style().visuals.dark_mode);
     if os_background_blur_enabled(ctx) {
         with_alpha(color, (opacity.clamp(0.15, 1.0) * 255.0).round() as u8)
     } else {
@@ -33,7 +33,7 @@ pub fn title_bar_surface_color(
     color_mode: &str,
     main_view_background: &str,
 ) -> egui::Color32 {
-    let visuals = &ctx.style().visuals;
+    let visuals = &ctx.global_style().visuals;
     let color = match color_mode {
         "main_view" => main_view_background_color(main_view_background, visuals.dark_mode),
         "main_color" => main_accent_color(ctx),
@@ -50,7 +50,7 @@ pub fn native_title_bar_color(
     color_mode: &str,
     main_view_background: &str,
 ) -> Option<[u8; 3]> {
-    let visuals = &ctx.style().visuals;
+    let visuals = &ctx.global_style().visuals;
     let color = match color_mode {
         "main_view" => main_view_background_color(main_view_background, visuals.dark_mode),
         "main_color" => main_accent_color(ctx),

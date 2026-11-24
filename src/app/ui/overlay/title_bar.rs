@@ -23,7 +23,7 @@ pub fn custom_titlebar_height(ctx: &egui::Context) -> f32 {
     })
 }
 
-pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn reserve_layout_space(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     if app.settings_manager.get().show_titlebar
         || ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
     {
@@ -54,7 +54,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
             egui::vec2(46.0, 37.0),
         )
     };
-    let panel_response = egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar")
+    let panel_response = egui::Panel::top("jpeg_viewer_custom_titlebar")
         .show_separator_line(false)
         .frame(
             egui::Frame::new()
@@ -62,7 +62,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 .inner_margin(egui::Margin::same(0))
                 .stroke(egui::Stroke::NONE),
         )
-        .show(ctx, |panel_ui| {
+        .show(ui, |panel_ui| {
             let window_width = panel_ui.available_width().max(0.0);
             panel_ui.set_min_width(window_width);
             panel_ui.set_max_width(window_width);
@@ -100,7 +100,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 // up a different tint when it crosses the title-bar boundary.
                 let mut color = crate::ui_theme::main_view_background_color(
                     &settings.main_view_background,
-                    ctx.style().visuals.dark_mode,
+                    ctx.global_style().visuals.dark_mode,
                 );
                 if crate::ui_theme::os_background_blur_enabled(ctx) {
                     let [r, g, b, _] = color.to_srgba_unmultiplied();
@@ -129,7 +129,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                     se: 0,
                 }
             };
-            let visuals = ctx.style().visuals.clone();
+            let visuals = ctx.global_style().visuals.clone();
             let foreground = if crate::ui_theme::contrast_prefers_light_text(background) {
                 egui::Color32::WHITE
             } else {

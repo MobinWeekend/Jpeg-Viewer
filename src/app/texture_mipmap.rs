@@ -369,9 +369,9 @@ fn upload_next_mipmap_chunk(
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
         gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
         if !pending.allocated {
-            // egui_glow 0.33.3 creates desktop managed color textures as
-            // RGBA8 (its `srgb_textures` setting is false). Use that same
-            // format for every manually allocated mip level.
+            // egui_glow 0.37.0 still sets `srgb_textures = false` for egui's
+            // normal gamma-space textures and uploads them as RGBA8 on desktop.
+            // Keep every manually allocated mip level in that same format.
             let internal_format = glow::RGBA8 as i32;
             gl.tex_image_2d(
                 glow::TEXTURE_2D,

@@ -81,7 +81,7 @@ pub fn navigation_auto_hide_enabled(
 pub fn set_look_profile(ctx: &egui::Context, preference: &str) {
     let profile = resolve_look_profile(preference);
     let cosmic_frosted = if profile == "cosmic" {
-        super::platform::detect_cosmic_frosted(ctx.style().visuals.dark_mode).unwrap_or(true)
+        super::platform::detect_cosmic_frosted(ctx.global_style().visuals.dark_mode).unwrap_or(true)
     } else {
         false
     };

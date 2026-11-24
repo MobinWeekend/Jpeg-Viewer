@@ -217,7 +217,7 @@ impl ViewerApp {
                 ctx,
                 &self.input_bindings,
                 response.hovered(),
-                ctx.is_pointer_over_area(),
+                ctx.is_pointer_over_egui(),
                 self.b_ctrl_invert,
             ) {
                 self.handle_command(ctx, command);
@@ -305,7 +305,7 @@ impl ViewerApp {
             i.pointer.any_down()
                 || i.pointer.delta().length() > 0.0
                 || !i.keys_down.is_empty()
-                || i.raw_scroll_delta != egui::Vec2::ZERO
+                || i.is_scrolling()
         });
 
         if has_input {
@@ -321,7 +321,7 @@ impl ViewerApp {
 
         // Do not steal keystrokes while a TextEdit (search, rename, numeric input,
         // etc.) owns keyboard focus. egui widgets still receive their normal keys.
-        if ctx.wants_keyboard_input() {
+        if ctx.egui_wants_keyboard_input() {
             self.delete_key_was_pressed = false;
         } else {
             // Masonry owns selection shortcuts while it is active. Consume these
@@ -453,7 +453,7 @@ impl ViewerApp {
 
         let dropped_paths: Vec<PathBuf> = dropped_files
             .iter()
-            .filter_map(|file| file.path.clone())
+            .map(|file| file.path().to_path_buf())
             .collect();
         // Compare owns its entire central workspace. Do not let a drop that lands
         // near a split border, toolbar edge, or during the first layout frame fall

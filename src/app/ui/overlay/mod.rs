@@ -247,13 +247,13 @@ fn render_custom_frame_resize_handles(app: &ViewerApp, ctx: &egui::Context) {
     let thickness = app.settings_manager.get().custom_window_frame_thickness;
     let win98 = crate::ui_theme::current_look_profile(ctx) == "win98";
     let border = if win98 {
-        if ctx.style().visuals.dark_mode {
+        if ctx.global_style().visuals.dark_mode {
             egui::Color32::from_rgb(96, 99, 104)
         } else {
             egui::Color32::BLACK
         }
     } else {
-        ctx.style().visuals.window_stroke.color
+        ctx.global_style().visuals.window_stroke.color
     };
     resize_handles::render_resize_handles(
         ctx,
@@ -458,8 +458,8 @@ pub fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) 
 }
 
 /// Reserve the top layout strip for a custom title bar before docked panels are drawn.
-pub fn reserve_custom_titlebar_space(app: &mut ViewerApp, ctx: &egui::Context) {
-    title_bar::reserve_layout_space(app, ctx);
+pub fn reserve_custom_titlebar_space(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    title_bar::reserve_layout_space(app, ui, ctx);
 }
 
 pub fn custom_titlebar_height(ctx: &egui::Context) -> f32 {

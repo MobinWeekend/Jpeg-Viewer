@@ -120,6 +120,8 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport,
+        // The custom progressive mipmap path uses egui_glow callbacks and GL textures.
+        renderer: eframe::Renderer::Glow,
         // Geometry is persisted in settings.ini by save_window_state(), which
         // normalizes egui's zoom-scaled viewport coordinates before saving. Disable
         // eframe's separate persistence path to avoid competing geometry restorations.

@@ -57,7 +57,7 @@ pub fn handle_mouse(
             }
         }
 
-        let scroll = input.raw_scroll_delta.y;
+        let scroll = input.smooth_scroll_delta.y;
 
         // Don't allow image scrolling/zooming while over UI.
         if scroll != 0.0 && !over_ui {

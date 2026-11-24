@@ -183,7 +183,7 @@ fn paint_image_tab_controls(
     close_response.clicked()
 }
 
-pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     if !app.settings_manager.get().show_file_sidebar {
         app.sidebar_visible_sources.clear();
         app.sidebar_prefetch_sources.clear();
@@ -223,7 +223,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
         // Use the active Win98 palette for both Light and Dark themes; other looks
         // retain the existing image-view surface behavior.
-        ctx.style().visuals.panel_fill
+        ctx.global_style().visuals.panel_fill
     } else {
         crate::ui_theme::main_view_surface_color(
             ctx,
@@ -231,16 +231,16 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             sidebar_settings.main_view_background_opacity,
         )
     };
-    let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+    let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
         .fill(sidebar_background)
         .stroke(egui::Stroke::NONE);
 
-    let response = egui::SidePanel::left("file_sidebar")
+    let response = egui::Panel::left("file_sidebar")
         .resizable(true)
-        .default_width(default_width)
-        .width_range(min_sidebar_width..=max_sidebar_width)
+        .default_size(default_width)
+        .size_range(min_sidebar_width..=max_sidebar_width)
         .frame(sidebar_frame)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             // Extend the same window-local blurred photo backdrop behind the sidebar.
             // The panel painter is clipped to this sidebar, while the backdrop target
             // remains the full client area so its crop aligns with the title bar/canvas.
@@ -717,7 +717,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                 }
                             });
                     });
-                let scroll_offset = scroll_output.state.offset.y;
+                let scroll_offset = scroll_output.state.unclamped_offset().y;
                 let scroll_delta_y = app.sidebar_last_scroll_offset
                     .map(|previous| scroll_offset - previous)
                     .unwrap_or(0.0);

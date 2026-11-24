@@ -381,7 +381,7 @@ impl ViewerApp {
         }
     }
 
-    pub fn render_editing_ui(&mut self, ctx: &egui::Context) {
+    pub fn render_editing_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if self.show_edit_menu {
             let mut action = None;
             let dimensions = self
@@ -432,7 +432,7 @@ impl ViewerApp {
             let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
                 // Use the active Win98 palette for both Light and Dark themes; other looks
                 // retain the existing image-view surface behavior.
-                ctx.style().visuals.panel_fill
+                ctx.global_style().visuals.panel_fill
             } else {
                 crate::ui_theme::main_view_surface_color(
                     ctx,
@@ -440,15 +440,15 @@ impl ViewerApp {
                     sidebar_settings.main_view_background_opacity,
                 )
             };
-            let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+            let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
                 .fill(sidebar_background)
                 .stroke(egui::Stroke::NONE);
-            let panel_response = egui::SidePanel::right("edit_tools_sidebar")
+            let panel_response = egui::Panel::right("edit_tools_sidebar")
                 .resizable(true)
-                .default_width(default_width)
-                .width_range(280.0..=560.0)
+                .default_size(default_width)
+                .size_range(280.0..=560.0)
                 .frame(sidebar_frame)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     if sidebar_settings.tricks_backdrop_enabled {
                         let sidebar_clip = ui.painter().clip_rect();
                         let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);

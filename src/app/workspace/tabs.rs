@@ -904,7 +904,7 @@ impl crate::app::types::ViewerApp {
     pub(super) fn handle_workspace_tab_shortcuts(&mut self, ctx: &egui::Context) {
         // Browser-style keyboard navigation/reordering. Do not steal shortcuts
         // while the user is typing in a search field or another text editor.
-        if ctx.wants_keyboard_input() {
+        if ctx.egui_wants_keyboard_input() {
             return;
         }
         let tab_action = ctx.input(|input| {

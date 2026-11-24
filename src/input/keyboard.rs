@@ -161,7 +161,7 @@ pub(super) fn default_bindings() -> HashMap<ViewerCommand, Vec<KeyBinding>> {
 
 pub fn handle_keyboard(ctx: &egui::Context, bindings: &InputBindings) -> Vec<ViewerCommand> {
     let mut commands = Vec::new();
-    if ctx.wants_keyboard_input() {
+    if ctx.egui_wants_keyboard_input() {
         return commands;
     }
 
