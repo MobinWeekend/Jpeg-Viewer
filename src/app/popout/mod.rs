@@ -23,9 +23,8 @@ use platform::*;
 
 use crate::decoder::gif::animation::GifAnimation;
 use crate::imaging::entry::ImageEntry;
-use jvp::{LoadedJvp, PopoutPreset, SaveImageChoice};
 use eframe::egui;
-use rand::Rng;
+use jvp::{LoadedJvp, PopoutPreset, SaveImageChoice};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -189,4 +188,3 @@ struct ResizeGesture {
     /// viewport and the integration briefly cannot provide a total delta.
     accumulated_delta: egui::Vec2,
 }
-

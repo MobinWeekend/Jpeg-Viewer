@@ -35,7 +35,13 @@ pub fn scan_zip(path: &Path) -> Vec<ImageEntry> {
             continue;
         }
 
-        let name = entry.name().to_string();
+        let name = match entry.name() {
+            Ok(name) => name.into_owned(),
+            Err(err) => {
+                eprintln!("Warning: Failed to read ZIP entry name: {err}");
+                continue;
+            }
+        };
         if is_supported_image(Path::new(&name)) {
             images.push(ImageEntry::Zip(ArchiveImage {
                 archive_path: path.to_path_buf(),

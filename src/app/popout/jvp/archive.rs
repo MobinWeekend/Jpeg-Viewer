@@ -10,7 +10,10 @@ pub(super) fn linked_image(entry: &ImageEntry) -> Result<JvpImage, String> {
     let _ = validate_linked_archive_entry(entry)?;
     let canonical_file = |path: &Path, description: &str| -> Result<String, String> {
         if !path.is_file() {
-            return Err(format!("The {description} is unavailable: {}", path.display()));
+            return Err(format!(
+                "The {description} is unavailable: {}",
+                path.display()
+            ));
         }
         path.canonicalize()
             .map(|path| path.to_string_lossy().into_owned())
@@ -40,7 +43,10 @@ pub(super) fn validate_linked_archive_entry(entry: &ImageEntry) -> Result<u64, S
     match entry {
         ImageEntry::File(path) => {
             if !path.is_file() {
-                return Err(format!("The linked image file is unavailable: {}", path.display()));
+                return Err(format!(
+                    "The linked image file is unavailable: {}",
+                    path.display()
+                ));
             }
             fs::metadata(path)
                 .map(|metadata| metadata.len())
@@ -54,11 +60,14 @@ pub(super) fn validate_linked_archive_entry(entry: &ImageEntry) -> Result<u64, S
             let member = archive
                 .by_index(item.entry_index)
                 .map_err(|error| format!("The linked ZIP entry is unavailable: {error}"))?;
-            if member.name() != item.name.as_str() {
+            let member_name = member
+                .name()
+                .map_err(|e| format!("Failed to read ZIP entry name: {e}"))?;
+
+            if member_name != item.name.as_str() {
                 return Err(format!(
                     "The linked ZIP entry changed: expected '{}', found '{}'",
-                    item.name,
-                    member.name()
+                    item.name, member_name
                 ));
             }
             Ok(member.size())
@@ -71,7 +80,12 @@ pub(super) fn validate_linked_archive_entry(entry: &ImageEntry) -> Result<u64, S
                 .iter()
                 .find(|file| file.name() == item.name.as_str())
                 .map(|file| file.size)
-                .ok_or_else(|| format!("The linked image '{}' is missing from the 7z archive.", item.name))
+                .ok_or_else(|| {
+                    format!(
+                        "The linked image '{}' is missing from the 7z archive.",
+                        item.name
+                    )
+                })
         }
         ImageEntry::Rar(item) => {
             let archive = unrar::Archive::new(&item.archive_path)
@@ -79,21 +93,23 @@ pub(super) fn validate_linked_archive_entry(entry: &ImageEntry) -> Result<u64, S
                 .map_err(|error| format!("Could not read the linked RAR archive: {error}"))?;
             let mut archive = archive;
             loop {
-                let header = archive
-                    .read_header()
-                    .map_err(|error| format!("Could not inspect the linked RAR archive: {error}"))?;
+                let header = archive.read_header().map_err(|error| {
+                    format!("Could not inspect the linked RAR archive: {error}")
+                })?;
                 let Some(header) = header else {
-                    return Err(format!("The linked image '{}' is missing from the RAR archive.", item.name));
+                    return Err(format!(
+                        "The linked image '{}' is missing from the RAR archive.",
+                        item.name
+                    ));
                 };
                 let name = header.entry().filename.to_string_lossy().to_string();
                 if name.as_str() == item.name.as_str() {
                     return Ok(header.entry().unpacked_size);
                 }
-                archive = header
-                    .skip()
-                    .map_err(|error| format!("Could not inspect the linked RAR archive: {error}"))?;
+                archive = header.skip().map_err(|error| {
+                    format!("Could not inspect the linked RAR archive: {error}")
+                })?;
             }
         }
     }
 }
-

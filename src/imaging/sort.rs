@@ -1,6 +1,5 @@
 // sort.rs
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -150,7 +149,7 @@ fn sort_by_cached_modified_time<T: AsPath>(images: &mut [T], newest_first: bool)
 
 /// Shuffle images randomly
 pub fn sort_shuffle<T: AsPath>(images: &mut [T]) {
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     images.shuffle(&mut rng);
 }
 

@@ -28,16 +28,23 @@ impl LoadedJvp {
             } => {
                 let archive_path = PathBuf::from(archive_path);
                 if !archive_path.is_file() {
-                    return Err(format!("Linked ZIP archive does not exist: {}", archive_path.display()));
+                    return Err(format!(
+                        "Linked ZIP archive does not exist: {}",
+                        archive_path.display()
+                    ));
                 }
                 let mut archive = super::archive::open_zip(&archive_path)?;
                 let member = archive.by_index(*entry_index).map_err(|error| {
                     format!("The linked ZIP entry at index {entry_index} is unavailable: {error}")
                 })?;
-                if member.name() != name {
+                let member_name = member
+                    .name()
+                    .map_err(|e| format!("Failed to read ZIP entry name: {e}"))?;
+
+                if member_name.as_ref() != name.as_str() {
                     return Err(format!(
                         "The linked ZIP entry changed: expected '{name}', found '{}'",
-                        member.name()
+                        member_name
                     ));
                 }
                 ImageEntry::Zip(ArchiveImage {
@@ -49,7 +56,10 @@ impl LoadedJvp {
             JvpImage::SevenZip { archive_path, name } => {
                 let archive_path = PathBuf::from(archive_path);
                 if !archive_path.is_file() {
-                    return Err(format!("Linked 7z archive does not exist: {}", archive_path.display()));
+                    return Err(format!(
+                        "Linked 7z archive does not exist: {}",
+                        archive_path.display()
+                    ));
                 }
                 ImageEntry::S7z(S7ArchiveImage {
                     archive_path,
@@ -59,7 +69,10 @@ impl LoadedJvp {
             JvpImage::Rar { archive_path, name } => {
                 let archive_path = PathBuf::from(archive_path);
                 if !archive_path.is_file() {
-                    return Err(format!("Linked RAR archive does not exist: {}", archive_path.display()));
+                    return Err(format!(
+                        "Linked RAR archive does not exist: {}",
+                        archive_path.display()
+                    ));
                 }
                 ImageEntry::Rar(RarArchiveImage {
                     archive_path,
@@ -69,9 +82,9 @@ impl LoadedJvp {
             JvpImage::Bundled { member_path } => {
                 super::bundle::validate_bundle_member_path(member_path)?;
                 let mut archive = super::archive::open_zip(&self.archive_path)?;
-                let member = archive
-                    .by_name(member_path)
-                    .map_err(|error| format!("The bundled image is missing from this JVP: {error}"))?;
+                let member = archive.by_name(member_path).map_err(|error| {
+                    format!("The bundled image is missing from this JVP: {error}")
+                })?;
                 if member.size() > MAX_BUNDLED_IMAGE_BYTES {
                     return Err("The bundled image exceeds the 2 GiB safety limit.".into());
                 }
@@ -96,4 +109,3 @@ impl LoadedJvp {
         Ok(Some(entry))
     }
 }
-

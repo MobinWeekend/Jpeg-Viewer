@@ -912,19 +912,45 @@ jobs:
           printf 'Image packages: '; pacman -Q base-devel pacman 2>/dev/null || true
 
           if [[ "$BUILD_ARCH" == "ARM64" ]]; then
-            pacman-key --init
-            pacman-key --populate archlinuxarm
-          fi
+              pacman-key --init
+              pacman-key --populate archlinuxarm
 
-          # The pinned images already contain base-devel. Install the packages
-          # required by this PKGBUILD and its native desktop dependencies.
-          # Arch Linux ARM containers may run on a GitHub-hosted Docker kernel
-          # that does not expose the Landlock feature pacman uses for download
-          # sandboxing. Disable only pacman's downloader sandbox for this
-          # container package-install transaction; Docker isolation remains on.
-          pacman --disable-sandbox -Syu --noconfirm --needed \
-            base-devel rust cargo pkgconf dbus libx11 libxkbcommon \
-            wayland mesa git zstd unrar python
+              echo '=== Synchronizing Arch Linux ARM repositories ==='
+
+              # Refresh repository databases.
+              pacman --disable-sandbox -Syy --noconfirm
+
+              # Install dependencies without downloading an unnecessary full
+              # system upgrade. Retry transient mirror synchronization failures.
+              install_packages() {
+                  local attempt
+
+                  for attempt in 1 2 3; do
+                      echo "Package installation attempt $attempt/3"
+
+                      if pacman --disable-sandbox -S --needed --noconfirm \
+                          base-devel rust cargo pkgconf dbus libx11 libxkbcommon \
+                          wayland mesa git zstd unrar python; then
+                          return 0
+                      fi
+
+                      if [[ "$attempt" -lt 3 ]]; then
+                          echo 'Package installation failed. Refreshing repositories...'
+                          sleep 15
+                          pacman --disable-sandbox -Syy --noconfirm
+                      fi
+                  done
+
+                  echo '::error::Unable to install Arch Linux ARM dependencies.'
+                  return 1
+              }
+
+              install_packages
+          else
+              pacman --disable-sandbox -Syu --noconfirm --needed \
+                  base-devel rust cargo pkgconf dbus libx11 libxkbcommon \
+                  wayland mesa git zstd unrar python
+          fi
 
           for tool in makepkg runuser git cargo rustc; do
             command -v "$tool" >/dev/null || {

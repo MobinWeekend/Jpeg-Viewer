@@ -1,3 +1,5 @@
+use rand::RngExt;
+
 use super::*;
 
 impl PopoutWindow {
@@ -94,14 +96,13 @@ impl PopoutWindow {
         let monitor_bounds = monitor.bounds();
         let max_horizontal_inset = (monitor_bounds.width() - 1.0).max(0.0) * 0.5;
         let max_vertical_inset = (monitor_bounds.height() - 1.0).max(0.0) * 0.5;
-        let left = monitor_bounds.left()
-            + self.dvd_edge_offsets[0].clamp(0.0, max_horizontal_inset);
-        let top = monitor_bounds.top()
-            + self.dvd_edge_offsets[1].clamp(0.0, max_vertical_inset);
-        let right = monitor_bounds.right()
-            - self.dvd_edge_offsets[2].clamp(0.0, max_horizontal_inset);
-        let bottom = monitor_bounds.bottom()
-            - self.dvd_edge_offsets[3].clamp(0.0, max_vertical_inset);
+        let left =
+            monitor_bounds.left() + self.dvd_edge_offsets[0].clamp(0.0, max_horizontal_inset);
+        let top = monitor_bounds.top() + self.dvd_edge_offsets[1].clamp(0.0, max_vertical_inset);
+        let right =
+            monitor_bounds.right() - self.dvd_edge_offsets[2].clamp(0.0, max_horizontal_inset);
+        let bottom =
+            monitor_bounds.bottom() - self.dvd_edge_offsets[3].clamp(0.0, max_vertical_inset);
         Some(egui::Rect::from_min_max(
             egui::pos2(left, top),
             egui::pos2(right.max(left), bottom.max(top)),
@@ -156,12 +157,12 @@ impl PopoutWindow {
     }
 
     pub(super) fn random_direction() -> egui::Vec2 {
-        let angle = rand::thread_rng().gen_range(0.0..std::f32::consts::TAU);
+        let angle = rand::rng().random_range(0.0..std::f32::consts::TAU);
         egui::vec2(angle.cos(), angle.sin())
     }
 
     pub(super) fn randomize_rotation(&mut self) {
-        let rotation = rand::thread_rng().gen_range(0.0..std::f32::consts::TAU);
+        let rotation = rand::rng().random_range(0.0..std::f32::consts::TAU);
         if self.dvd_mode {
             self.dvd_rotation_target = rotation;
         } else {
@@ -197,8 +198,8 @@ impl PopoutWindow {
         // In screen coordinates, a positive angle is clockwise. For a contact
         // point at r = -normal * radius, its tangential speed is v·t - ωr.
         let tangent = egui::vec2(-normal.y, normal.x);
-        let tangential_speed = self.ball_velocity.dot(tangent)
-            - self.ball_angular_velocity * radius;
+        let tangential_speed =
+            self.ball_velocity.dot(tangent) - self.ball_angular_velocity * radius;
         let inverse_effective_mass = 1.0 + radius * radius / inertia;
         let max_friction_impulse = self.ball_friction.max(0.0) * normal_impulse;
         let tangent_impulse = (-tangential_speed / inverse_effective_mass)
@@ -238,8 +239,8 @@ impl PopoutWindow {
             - std::f32::consts::PI;
         let time_constant = self.dvd_rotation_ease.clamp(0.1, 4.0);
         let amount = 1.0 - (-6.0 * delta / time_constant).exp();
-        self.rotation_radians = (self.rotation_radians + angle_delta * amount)
-            .rem_euclid(std::f32::consts::TAU);
+        self.rotation_radians =
+            (self.rotation_radians + angle_delta * amount).rem_euclid(std::f32::consts::TAU);
         if angle_delta.abs() < 0.001 {
             self.rotation_radians = self.dvd_rotation_target;
         }
@@ -253,8 +254,12 @@ impl PopoutWindow {
                 if self.pass_hover_enabled && rect.contains(pointer) {
                     eased_target = Some(self.pass_hover_opacity);
                 } else if self.pass_near_enabled {
-                    let dx = (rect.left() - pointer.x).max(0.0).max(pointer.x - rect.right());
-                    let dy = (rect.top() - pointer.y).max(0.0).max(pointer.y - rect.bottom());
+                    let dx = (rect.left() - pointer.x)
+                        .max(0.0)
+                        .max(pointer.x - rect.right());
+                    let dy = (rect.top() - pointer.y)
+                        .max(0.0)
+                        .max(pointer.y - rect.bottom());
                     if egui::vec2(dx, dy).length() <= self.pass_near_distance {
                         eased_target = Some(self.pass_near_opacity);
                     }
@@ -271,8 +276,7 @@ impl PopoutWindow {
         let delta = ctx.input(|input| input.stable_dt).clamp(0.0, 0.1);
         // Exponential easing gives a smooth transition independent of frame rate.
         let amount = 1.0 - (-10.0 * delta).exp();
-        self.displayed_opacity_percent +=
-            (target - self.displayed_opacity_percent) * amount;
+        self.displayed_opacity_percent += (target - self.displayed_opacity_percent) * amount;
         if (target - self.displayed_opacity_percent).abs() > 0.15 {
             ctx.request_repaint_after(Duration::from_millis(16));
         } else {
@@ -366,8 +370,8 @@ impl PopoutWindow {
 
         if self.random_bounce_enabled && now >= self.next_random_bounce {
             self.dvd_velocity = Self::random_direction();
-            self.next_random_bounce = now
-                + Duration::from_secs_f32(self.random_bounce_interval.clamp(0.5, 60.0));
+            self.next_random_bounce =
+                now + Duration::from_secs_f32(self.random_bounce_interval.clamp(0.5, 60.0));
         }
 
         self.update_dvd_rotation(delta);
@@ -397,8 +401,7 @@ impl PopoutWindow {
         if (fitted_size - self.size).length_sq() > 0.1 {
             self.request_inner_size(ctx, fitted_size);
         }
-        let (min_position, max_position) =
-            Self::collision_position_limits(bounds, self.size, true);
+        let (min_position, max_position) = Self::collision_position_limits(bounds, self.size, true);
 
         if self.random_bounce_enabled && now >= self.next_random_bounce {
             self.ball_velocity += Self::random_direction() * 650.0;
@@ -409,8 +412,8 @@ impl PopoutWindow {
             if self.ball_rotate {
                 self.ball_angular_velocity = self.rolling_angular_velocity();
             }
-            self.next_random_bounce = now
-                + Duration::from_secs_f32(self.random_bounce_interval.clamp(0.5, 60.0));
+            self.next_random_bounce =
+                now + Duration::from_secs_f32(self.random_bounce_interval.clamp(0.5, 60.0));
         }
 
         // A fixed 120 Hz step keeps gravity, contact impulses and rotation stable
@@ -486,5 +489,4 @@ impl PopoutWindow {
         }
         ctx.request_repaint_after(Duration::from_millis(16));
     }
-
 }
