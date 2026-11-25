@@ -2,23 +2,23 @@
 
 use super::helpers::*;
 use super::*;
+use crate::app::ui::{SvgIcon, paint_svg_icon};
 use eframe::egui;
-use crate::app::ui::{paint_svg_icon, SvgIcon};
 
 fn entry_context_menu_item(ui: &mut egui::Ui, icon: SvgIcon, label: &str) -> bool {
     let text_color = ui.visuals().text_color();
     let font_id = egui::TextStyle::Button.resolve(ui.style());
-    let galley = ui.painter().layout_no_wrap(label.to_owned(), font_id, text_color);
-    const MENU_MAX_WIDTH: f32 = 360.0;
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font_id, text_color);
+    const MENU_MAX_WIDTH: f32 = 180.0;
     ui.set_max_width(MENU_MAX_WIDTH);
-    let glyph_width = 19.0;
     // Let the menu grow only to the width required by its longest label.
     // No fixed minimum is applied, so short actions produce a compact menu.
-    let desired_width = (galley.size().x + 12.0 + glyph_width + 14.0)
-        .min(MENU_MAX_WIDTH);
     let height = ui.spacing().interact_size.y.max(25.0);
+    let available_width = ui.available_width().min(MENU_MAX_WIDTH);
     let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(desired_width, height), egui::Sense::click());
+        ui.allocate_exact_size(egui::vec2(available_width, height), egui::Sense::click());
 
     if response.hovered() || response.is_pointer_button_down_on() {
         let visuals = if response.is_pointer_button_down_on() {
@@ -26,7 +26,8 @@ fn entry_context_menu_item(ui: &mut egui::Ui, icon: SvgIcon, label: &str) -> boo
         } else {
             &ui.visuals().widgets.hovered
         };
-        ui.painter().rect_filled(rect, egui::CornerRadius::same(4), visuals.bg_fill);
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(4), visuals.bg_fill);
     }
 
     let icon_rect = egui::Rect::from_center_size(
@@ -35,7 +36,10 @@ fn entry_context_menu_item(ui: &mut egui::Ui, icon: SvgIcon, label: &str) -> boo
     );
     paint_svg_icon(ui, icon_rect, icon, text_color);
     ui.painter().galley(
-        egui::pos2(icon_rect.right() + 9.0, rect.center().y - galley.size().y * 0.5),
+        egui::pos2(
+            icon_rect.right() + 9.0,
+            rect.center().y - galley.size().y * 0.5,
+        ),
         galley,
         text_color,
     );
@@ -67,8 +71,7 @@ impl crate::app::types::ViewerApp {
                 self.open_entry_in_image_tab(entry.clone(), true);
                 menu.close();
             }
-            if path.is_some()
-                && entry_context_menu_item(menu, SvgIcon::ContextEdit, "Edit Image…")
+            if path.is_some() && entry_context_menu_item(menu, SvgIcon::ContextEdit, "Edit Image…")
             {
                 self.start_editing(ctx);
                 menu.close();
@@ -105,7 +108,8 @@ impl crate::app::types::ViewerApp {
                 menu.separator();
                 if entry_context_menu_item(menu, SvgIcon::ContextOpenWith, "Open With…") {
                     if let Err(error) = crate::app::external_open::open_with(path) {
-                        self.queue_status = Some(format!("Could not open external application: {error}"));
+                        self.queue_status =
+                            Some(format!("Could not open external application: {error}"));
                     }
                     menu.close();
                 }
@@ -165,18 +169,15 @@ impl crate::app::types::ViewerApp {
                 }
 
                 if entry_context_menu_item(menu, SvgIcon::ContextReorder, "Move to position…") {
-                    self.sidebar_number_edit = Some((
-                        0,
-                        self.current_index,
-                        (self.current_index + 1).to_string(),
-                    ));
+                    self.sidebar_number_edit =
+                        Some((0, self.current_index, (self.current_index + 1).to_string()));
                     menu.close();
                 }
                 if entry_context_menu_item(menu, SvgIcon::ContextCopyPath, "Copy File Path") {
                     self.queue_status = Some(
-                        match arboard::Clipboard::new()
-                            .and_then(|mut clipboard| clipboard.set_text(path.display().to_string()))
-                        {
+                        match arboard::Clipboard::new().and_then(|mut clipboard| {
+                            clipboard.set_text(path.display().to_string())
+                        }) {
                             Ok(()) => "Copied file path to clipboard.".into(),
                             Err(error) => format!("Could not copy file path: {error}"),
                         },
@@ -192,11 +193,16 @@ impl crate::app::types::ViewerApp {
                             "Open Containing Archive",
                         ) {
                             if let Err(error) = open::that(&item.archive_path) {
-                                self.queue_status = Some(format!("Could not open archive: {error}"));
+                                self.queue_status =
+                                    Some(format!("Could not open archive: {error}"));
                             }
                             menu.close();
                         }
-                        if entry_context_menu_item(menu, SvgIcon::ContextCopyName, "Copy Entry Name") {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextCopyName,
+                            "Copy Entry Name",
+                        ) {
                             self.queue_status = Some(
                                 match arboard::Clipboard::new()
                                     .and_then(|mut clipboard| clipboard.set_text(item.name.clone()))
@@ -215,11 +221,16 @@ impl crate::app::types::ViewerApp {
                             "Open Containing Archive",
                         ) {
                             if let Err(error) = open::that(&item.archive_path) {
-                                self.queue_status = Some(format!("Could not open archive: {error}"));
+                                self.queue_status =
+                                    Some(format!("Could not open archive: {error}"));
                             }
                             menu.close();
                         }
-                        if entry_context_menu_item(menu, SvgIcon::ContextCopyName, "Copy Entry Name") {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextCopyName,
+                            "Copy Entry Name",
+                        ) {
                             self.queue_status = Some(
                                 match arboard::Clipboard::new()
                                     .and_then(|mut clipboard| clipboard.set_text(item.name.clone()))
@@ -238,11 +249,16 @@ impl crate::app::types::ViewerApp {
                             "Open Containing Archive",
                         ) {
                             if let Err(error) = open::that(&item.archive_path) {
-                                self.queue_status = Some(format!("Could not open archive: {error}"));
+                                self.queue_status =
+                                    Some(format!("Could not open archive: {error}"));
                             }
                             menu.close();
                         }
-                        if entry_context_menu_item(menu, SvgIcon::ContextCopyName, "Copy Entry Name") {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextCopyName,
+                            "Copy Entry Name",
+                        ) {
                             self.queue_status = Some(
                                 match arboard::Clipboard::new()
                                     .and_then(|mut clipboard| clipboard.set_text(item.name.clone()))

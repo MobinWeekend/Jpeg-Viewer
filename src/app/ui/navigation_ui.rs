@@ -343,7 +343,7 @@ impl ViewerApp {
         // percentage is painted independently so its text may visually overflow the
         // slot instead of forcing neighboring toolbar controls to shift.
         let (zoom_rect, response) = ui.allocate_exact_size(
-            egui::vec2(BTN_HEIGHT + 6.0, BTN_HEIGHT),
+            egui::vec2(BTN_HEIGHT * 2.0, BTN_HEIGHT),
             egui::Sense::click(),
         );
         let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), BTN_HEIGHT - 4.0));

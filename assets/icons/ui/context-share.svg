@@ -22,9 +22,9 @@
      inkscape:pageopacity="0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#505050"
-     inkscape:zoom="50.625"
-     inkscape:cx="11.990123"
-     inkscape:cy="12"
+     inkscape:zoom="35.797281"
+     inkscape:cx="12.040021"
+     inkscape:cy="11.215936"
      inkscape:window-width="2512"
      inkscape:window-height="1417"
      inkscape:window-x="-8"
@@ -33,20 +33,22 @@
      inkscape:current-layer="svg3" />
   <!-- Placeholder: share nodes and connecting branches. -->
   <g
-     id="g4">
+     id="g4"
+     transform="matrix(0.84420819,0,0,0.84420819,1.7916058,1.8695017)">
     <g
        fill="none"
-       stroke="#fff"
+       stroke="#ffffff"
        stroke-width="1.8"
        stroke-linecap="round"
        stroke-linejoin="round"
        id="g1">
       <path
-         d="m6 12 11-7M6 12l11 7"
-         id="path1" />
+         d="M 6,12 17,5 m -11,7 11,7"
+         id="path1"
+         style="stroke-width:2.4;stroke-dasharray:none" />
     </g>
     <g
-       fill="#fff"
+       fill="#ffffff"
        id="g3">
       <circle
          cx="5"

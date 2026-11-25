@@ -1,6 +1,6 @@
 use crate::app::types::ViewerApp;
 use crate::app::ui::toolbar_frame;
-use crate::app::ui::{paint_svg_icon, SvgIcon};
+use crate::app::ui::{SvgIcon, paint_svg_icon};
 use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -41,10 +41,7 @@ impl ViewerApp {
             )
             .on_hover_text("Menu");
 
-        let icon_rect = egui::Rect::from_center_size(
-            button.rect.center(),
-            egui::vec2(24.0, 24.0),
-        );
+        let icon_rect = egui::Rect::from_center_size(button.rect.center(), egui::vec2(24.0, 24.0));
         paint_svg_icon(ui, icon_rect, SvgIcon::Hamburger, ui.visuals().text_color());
 
         self.hamburger_button_rect = Some(button.rect);
@@ -83,8 +80,8 @@ impl ViewerApp {
             }
 
             ui.vertical(|ui| {
-                ui.set_min_width(224.0);
-                ui.set_max_width(264.0);
+                ui.set_min_width(220.0);
+                ui.set_max_width(240.0);
                 ui.spacing_mut().item_spacing.y = 2.0;
                 // ---- Toolbar row (horizontal cluster of icon actions) ----
                 ui.horizontal(|ui| {
@@ -96,6 +93,8 @@ impl ViewerApp {
                     self.hamburger_fullscreen_button(ctx, ui);
                     ui.add_space(2.0);
                     self.hamburger_pin_button(ctx, ui);
+                    ui.separator();
+                    self.hamburger_home_button(ui);
                 });
 
                 ui.separator();
@@ -107,7 +106,6 @@ impl ViewerApp {
                 self.hamburger_locate_in_file_manager_button(ctx, ui);
 
                 ui.separator();
-                self.hamburger_home_button(ui);
                 self.hamburger_masonry_buttons(ui);
 
                 ui.separator();
@@ -129,15 +127,25 @@ impl ViewerApp {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let item_width = ((ui.available_width() - 4.0) * 0.5).max(1.0);
                     if Self::hamburger_menu_item_sized(
-                        ui, SvgIcon::Settings, "Settings", true,
-                        "Application settings", item_width, 28.0,
+                        ui,
+                        SvgIcon::Settings,
+                        "Settings",
+                        true,
+                        "Application settings",
+                        item_width,
+                        28.0,
                     ) {
                         crate::app::ui::toggle_settings_menu(self);
                         self.hamburger_menu_open = false;
                     }
                     if Self::hamburger_menu_item_sized(
-                        ui, SvgIcon::Help, "Help & About", true,
-                        "Keyboard shortcuts, features, and about", item_width, 28.0,
+                        ui,
+                        SvgIcon::Help,
+                        "Help & About",
+                        true,
+                        "Keyboard shortcuts, features, and about",
+                        item_width,
+                        28.0,
                     ) {
                         self.toggle_help_menu(ctx);
                         self.hamburger_menu_open = false;
@@ -191,7 +199,11 @@ impl ViewerApp {
     ) -> bool {
         let (rect, response) = ui.allocate_exact_size(
             egui::vec2(width.max(1.0), height.max(24.0)),
-            if enabled { egui::Sense::click() } else { egui::Sense::hover() },
+            if enabled {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            },
         );
 
         // Draw the hover/pressed surface ourselves. The hitbox and row geometry
@@ -212,7 +224,8 @@ impl ViewerApp {
             } else {
                 visuals.bg_fill
             };
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(5), fill);
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::same(5), fill);
             let stroke = if visuals.bg_stroke.width > 0.0 {
                 visuals.bg_stroke
             } else {
@@ -241,7 +254,10 @@ impl ViewerApp {
             egui::pos2(icon_rect.right() + 9.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             label,
-            egui::FontId::proportional(scaled_text_size(ui.ctx(), if height < 29.0 { 12.0 } else { 13.5 })),
+            egui::FontId::proportional(scaled_text_size(
+                ui.ctx(),
+                if height < 29.0 { 12.0 } else { 13.5 },
+            )),
             tint,
         );
         response.on_hover_text(tooltip).clicked()
@@ -259,7 +275,11 @@ impl ViewerApp {
     ) -> egui::Response {
         let (rect, response) = ui.allocate_exact_size(
             egui::vec2(34.0, 30.0),
-            if enabled { egui::Sense::click() } else { egui::Sense::hover() },
+            if enabled {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            },
         );
 
         if active || response.hovered() || response.is_pointer_button_down_on() {
@@ -271,11 +291,15 @@ impl ViewerApp {
                 &ui.visuals().widgets.hovered
             };
             let fill = if visuals.bg_fill == egui::Color32::TRANSPARENT {
-                crate::ui_theme::with_alpha(ui.visuals().selection.bg_fill, if active { 112 } else { 72 })
+                crate::ui_theme::with_alpha(
+                    ui.visuals().selection.bg_fill,
+                    if active { 112 } else { 72 },
+                )
             } else {
                 visuals.bg_fill
             };
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(5), fill);
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::same(5), fill);
             let stroke = if visuals.bg_stroke.width > 0.0 {
                 visuals.bg_stroke
             } else {
@@ -307,7 +331,11 @@ impl ViewerApp {
         let (icon, tooltip, command) = if self.b_zoom_used {
             (SvgIcon::Fit, "Fit to window", ViewerCommand::MakeFit)
         } else {
-            (SvgIcon::OneToOne, "Make 1:1 ratio", ViewerCommand::ResetZoom)
+            (
+                SvgIcon::OneToOne,
+                "Make 1:1 ratio",
+                ViewerCommand::ResetZoom,
+            )
         };
         if Self::hamburger_icon_action_button(ui, icon, true, false, tooltip).clicked() {
             self.handle_command(ctx, command);
@@ -335,14 +363,8 @@ impl ViewerApp {
         } else {
             (SvgIcon::Pin, "Pin window to top")
         };
-        if Self::hamburger_icon_action_button(
-            ui,
-            icon,
-            true,
-            self.window_always_on_top,
-            tooltip,
-        )
-        .clicked()
+        if Self::hamburger_icon_action_button(ui, icon, true, self.window_always_on_top, tooltip)
+            .clicked()
         {
             self.window_always_on_top = !self.window_always_on_top;
             let level = if self.window_always_on_top {
@@ -356,53 +378,92 @@ impl ViewerApp {
 
     /// Share control in the top toolbar row, using the SVG share symbol.
     fn hamburger_share_button(&mut self, ui: &mut egui::Ui) {
-        let enabled = !self.is_home_surface_active()
-            && self.image_entries.get(self.current_index).is_some();
-        let (rect, response) = ui.allocate_exact_size(egui::vec2(34.0, 30.0), if enabled {
-            egui::Sense::click()
-        } else {
-            egui::Sense::hover()
-        });
+        let enabled =
+            !self.is_home_surface_active() && self.image_entries.get(self.current_index).is_some();
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(34.0, 30.0),
+            if enabled {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            },
+        );
         if response.hovered() || response.is_pointer_button_down_on() {
             let visuals = if response.is_pointer_button_down_on() {
                 &ui.visuals().widgets.active
             } else {
                 &ui.visuals().widgets.hovered
             };
-            ui.painter().rect_filled(rect, egui::CornerRadius::same(5), visuals.bg_fill);
+            ui.painter()
+                .rect_filled(rect, egui::CornerRadius::same(5), visuals.bg_fill);
         }
         let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(18.0, 18.0));
-        let tint = if enabled { ui.visuals().text_color() } else { ui.visuals().weak_text_color() };
+        let tint = if enabled {
+            ui.visuals().text_color()
+        } else {
+            ui.visuals().weak_text_color()
+        };
         paint_svg_icon(ui, icon_rect, SvgIcon::ContextShare, tint);
-        if response.on_hover_text(if enabled { "Share current image" } else { "No image to share" }).clicked() {
+        if response
+            .on_hover_text(if enabled {
+                "Share current image"
+            } else {
+                "No image to share"
+            })
+            .clicked()
+        {
             self.share_current_image();
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_open_file_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if Self::hamburger_menu_item(ui, SvgIcon::OpenFile, "Open File…", true, "Load an image or archive") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::OpenFile,
+            "Open File…",
+            true,
+            "Load an image or archive",
+        ) {
             self.handle_command(ctx, ViewerCommand::OpenFile);
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_open_folder_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if Self::hamburger_menu_item(ui, SvgIcon::OpenFolder, "Open Folder…", true, "Open a folder of images") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::OpenFolder,
+            "Open Folder…",
+            true,
+            "Open a folder of images",
+        ) {
             self.handle_command(ctx, ViewerCommand::OpenFolder);
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_open_folder_recursive_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        if Self::hamburger_menu_item(ui, SvgIcon::FolderTree, "Open Folder + Subfolders…", true, "Include supported images from nested folders") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::FolderTree,
+            "Open Folder + Subfolders…",
+            true,
+            "Include supported images from nested folders",
+        ) {
             self.open_folder_recursively_dialog();
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_home_button(&mut self, ui: &mut egui::Ui) {
-        if Self::hamburger_menu_item(ui, SvgIcon::Home, "Home", true, "Show Home in the primary Viewer") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::Home,
+            "",
+            true,
+            "Show Home in the primary Viewer",
+        ) {
             self.open_home_page();
             self.hamburger_menu_open = false;
         }
@@ -410,41 +471,87 @@ impl ViewerApp {
 
     fn hamburger_masonry_buttons(&mut self, ui: &mut egui::Ui) {
         let entries_enabled = !self.image_entries.is_empty();
-        if Self::hamburger_menu_item(ui, SvgIcon::Masonry, "Current entries", entries_enabled, "Open Masonry for current entries") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::Masonry,
+            "Current entries",
+            entries_enabled,
+            "Open Masonry for current entries",
+        ) {
             self.open_local_masonry();
             self.hamburger_menu_open = false;
         }
         let folder_enabled = self.current_directory.is_some();
-        if Self::hamburger_menu_item(ui, SvgIcon::MasonryFolder, "Current folder", folder_enabled, "Open Folder Masonry") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::MasonryFolder,
+            "Current folder",
+            folder_enabled,
+            "Open Folder Masonry",
+        ) {
             self.open_folder_masonry();
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_raw_develop_button(&mut self, ui: &mut egui::Ui) {
-        let current_is_raw = self.image_entries.get(self.current_index).is_some_and(|entry| {
-            let name = match entry {
-                crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
-                crate::imaging::entry::ImageEntry::Zip(item) => std::path::Path::new(&item.name),
-                crate::imaging::entry::ImageEntry::S7z(item) => std::path::Path::new(&item.name),
-                crate::imaging::entry::ImageEntry::Rar(item) => std::path::Path::new(&item.name),
-            };
-            name.extension().and_then(|extension| extension.to_str())
-                .and_then(crate::imaging::core::ImageFormat::from_extension)
-                == Some(crate::imaging::core::ImageFormat::CameraRaw)
-        });
-        if !current_is_raw { return; }
-        let label = if self.showing_raw_developed { "RAW developed (full resolution)" } else { "View RAW (full quality)" };
-        if Self::hamburger_menu_item(ui, SvgIcon::Raw, label, !self.showing_raw_developed && !self.is_loading(), "Develop the original RAW sensor data") {
+        let current_is_raw = self
+            .image_entries
+            .get(self.current_index)
+            .is_some_and(|entry| {
+                let name = match entry {
+                    crate::imaging::entry::ImageEntry::File(path) => path.as_path(),
+                    crate::imaging::entry::ImageEntry::Zip(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                    crate::imaging::entry::ImageEntry::S7z(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                    crate::imaging::entry::ImageEntry::Rar(item) => {
+                        std::path::Path::new(&item.name)
+                    }
+                };
+                name.extension()
+                    .and_then(|extension| extension.to_str())
+                    .and_then(crate::imaging::core::ImageFormat::from_extension)
+                    == Some(crate::imaging::core::ImageFormat::CameraRaw)
+            });
+        if !current_is_raw {
+            return;
+        }
+        let label = if self.showing_raw_developed {
+            "RAW developed (full resolution)"
+        } else {
+            "View RAW (full quality)"
+        };
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::Raw,
+            label,
+            !self.showing_raw_developed && !self.is_loading(),
+            "Develop the original RAW sensor data",
+        ) {
             self.load_current_image_as_raw();
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_compare_button(&mut self, ui: &mut egui::Ui) {
-        if Self::hamburger_menu_item(ui, SvgIcon::ContextCompare, "Compare Images…", true, "Compare images side by side or in rows") {
-            let entries = if self.is_home_surface_active() { Vec::new() } else {
-                self.image_entries.get(self.current_index).cloned().into_iter().collect()
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::ContextCompare,
+            "Compare Images…",
+            true,
+            "Compare images side by side or in rows",
+        ) {
+            let entries = if self.is_home_surface_active() {
+                Vec::new()
+            } else {
+                self.image_entries
+                    .get(self.current_index)
+                    .cloned()
+                    .into_iter()
+                    .collect()
             };
             self.open_compare_workspace(entries);
             self.hamburger_menu_open = false;
@@ -453,9 +560,18 @@ impl ViewerApp {
 
     fn hamburger_open_with_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         let path = self.current_image_path.clone();
-        let enabled = !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
-        if Self::hamburger_menu_item(ui, SvgIcon::ContextOpenWith, "Open With…", enabled, "Choose an application using the operating system") {
-            if let Some(path) = path && let Err(error) = super::super::external_open::open_with(&path) {
+        let enabled =
+            !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::ContextOpenWith,
+            "Open With…",
+            enabled,
+            "Choose an application using the operating system",
+        ) {
+            if let Some(path) = path
+                && let Err(error) = super::super::external_open::open_with(&path)
+            {
                 self.queue_status = Some(format!("Could not open external application: {error}"));
             }
             self.hamburger_menu_open = false;
@@ -464,9 +580,18 @@ impl ViewerApp {
 
     fn hamburger_locate_in_file_manager_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
         let path = self.current_image_path.clone();
-        let enabled = !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
-        if Self::hamburger_menu_item(ui, SvgIcon::ContextLocate, "Locate in File Manager", enabled, "Reveal the current image in the file manager") {
-            if let Some(path) = path && let Err(error) = super::super::external_open::reveal_in_file_manager(&path) {
+        let enabled =
+            !self.is_home_surface_active() && path.as_ref().is_some_and(|path| path.is_file());
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::ContextLocate,
+            "Locate in File Manager",
+            enabled,
+            "Reveal the current image in the file manager",
+        ) {
+            if let Some(path) = path
+                && let Err(error) = super::super::external_open::reveal_in_file_manager(&path)
+            {
                 self.queue_status = Some(format!("Could not locate file: {error}"));
             }
             self.hamburger_menu_open = false;
@@ -475,7 +600,13 @@ impl ViewerApp {
 
     fn hamburger_wrap_window_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let enabled = !self.is_home_surface_active() && !self.image_entries.is_empty();
-        if Self::hamburger_menu_item(ui, SvgIcon::Wrap, "Wrap Window Around Image", enabled, "Resize the window around the current image · Ctrl+Alt+W") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::Wrap,
+            "Wrap Window Around Image",
+            enabled,
+            "Resize the window around the current image · Ctrl+Alt+W",
+        ) {
             self.handle_command(ctx, ViewerCommand::WrapWindowToImage);
             self.hamburger_menu_open = false;
         }
@@ -483,19 +614,38 @@ impl ViewerApp {
 
     fn hamburger_edit_image_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let can_edit = !self.is_home_surface_active() && !self.image_entries.is_empty();
-        let label = if self.show_edit_menu { "Exit Edit Mode" } else if self.edit_session.is_some() { "Resume Edit Mode" } else { "Edit Image" };
-        if Self::hamburger_menu_item(ui, SvgIcon::ContextEdit, label, can_edit, "Edit the current image") {
+        let label = if self.show_edit_menu {
+            "Exit Edit Mode"
+        } else if self.edit_session.is_some() {
+            "Resume Edit Mode"
+        } else {
+            "Edit Image"
+        };
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::ContextEdit,
+            label,
+            can_edit,
+            "Edit the current image",
+        ) {
             self.start_editing(ctx);
             self.hamburger_menu_open = false;
         }
     }
 
     fn hamburger_delete_image_button(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        let can_delete = !self.is_home_surface_active() && matches!(
-            self.image_entries.get(self.current_index),
-            Some(crate::imaging::entry::ImageEntry::File(_))
-        );
-        if Self::hamburger_menu_item(ui, SvgIcon::ContextDelete, "Delete Image…", can_delete, "Move the current image to the system Trash/Recycle Bin") {
+        let can_delete = !self.is_home_surface_active()
+            && matches!(
+                self.image_entries.get(self.current_index),
+                Some(crate::imaging::entry::ImageEntry::File(_))
+            );
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::ContextDelete,
+            "Delete Image…",
+            can_delete,
+            "Move the current image to the system Trash/Recycle Bin",
+        ) {
             self.show_delete_confirmation = true;
             self.hamburger_menu_open = false;
         }
@@ -503,15 +653,22 @@ impl ViewerApp {
 
     fn hamburger_inspect_button(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         let enabled = !self.is_home_surface_active() && !self.image_entries.is_empty();
-        if Self::hamburger_menu_item(ui, SvgIcon::Inspect, "Inspect Channels", enabled, "Show or hide individual color and alpha channels") {
+        if Self::hamburger_menu_item(
+            ui,
+            SvgIcon::Inspect,
+            "Inspect Channels",
+            enabled,
+            "Show or hide individual color and alpha channels",
+        ) {
             self.toggle_inspect_mode(ctx);
             self.hamburger_menu_open = false;
         }
     }
 
-
     fn hamburger_loading_indicator(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
-        if !self.is_loading() { return; }
+        if !self.is_loading() {
+            return;
+        }
         ui.separator();
         ui.horizontal(|ui| {
             ui.add(egui::Spinner::new());
@@ -524,5 +681,4 @@ impl ViewerApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
-
 }

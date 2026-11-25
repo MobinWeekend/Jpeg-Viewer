@@ -20,9 +20,9 @@
      inkscape:pageopacity="0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#505050"
-     inkscape:zoom="50.625"
-     inkscape:cx="11.990123"
-     inkscape:cy="12"
+     inkscape:zoom="25.3125"
+     inkscape:cx="7.8617284"
+     inkscape:cy="12.582716"
      inkscape:window-width="2512"
      inkscape:window-height="1417"
      inkscape:window-x="-8"
@@ -30,14 +30,14 @@
      inkscape:window-maximized="1"
      inkscape:current-layer="svg1" />
   <rect
-     x="5.5"
-     y="5.5"
-     width="13"
-     height="13"
-     rx=".4"
+     x="5.8493743"
+     y="5.8493743"
+     width="12.301251"
+     height="12.301251"
+     rx="0.37850004"
      fill="none"
      stroke="#000"
-     stroke-width="1.7"
+     stroke-width="1.60863"
      id="rect1"
-     style="stroke:#ffffff" />
+     style="stroke:#ffffff;stroke-width:2;stroke-dasharray:none" />
 </svg>

@@ -20,9 +20,9 @@
      inkscape:pageopacity="0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#505050"
-     inkscape:zoom="50.625"
-     inkscape:cx="11.990123"
-     inkscape:cy="12"
+     inkscape:zoom="25.3125"
+     inkscape:cx="7.6246914"
+     inkscape:cy="8.8691358"
      inkscape:window-width="2512"
      inkscape:window-height="1417"
      inkscape:window-x="-8"
@@ -30,11 +30,11 @@
      inkscape:window-maximized="1"
      inkscape:current-layer="svg1" />
   <path
-     d="M5 17h14"
+     d="M 6.1061728,15 H 17.893827"
      fill="none"
      stroke="#000"
      stroke-width="1.8"
      stroke-linecap="round"
      id="path1"
-     style="stroke:#ffffff" />
+     style="stroke:#ffffff;stroke-width:2;stroke-dasharray:none" />
 </svg>
