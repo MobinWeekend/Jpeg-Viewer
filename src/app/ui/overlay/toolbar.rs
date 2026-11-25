@@ -82,7 +82,7 @@ pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Fr
 }
 
 fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
-    egui::Area::new(egui::Id::new(id))
+    egui::Area::new(egui::Id::unique(id))
         .order(egui::Order::Foreground)
         .anchor(anchor, offset)
 }
@@ -112,7 +112,7 @@ pub fn render_top_toolbar(
         crate::app::ui::uses_desktop_menu_bar(ctx),
         app.slideshow_enabled,
     );
-    egui::Area::new(egui::Id::new("toolbar_top_center"))
+    egui::Area::new(egui::Id::unique("toolbar_top_center"))
         .sizing_pass(sizing_changed)
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(offset_x, offset_y))
@@ -336,7 +336,7 @@ pub fn render_platform_toolbar(
         has_desktop_menu_bar,
         app.slideshow_enabled,
     );
-    egui::Area::new(egui::Id::new(id))
+    egui::Area::new(egui::Id::unique(id))
         .sizing_pass(sizing_changed)
         .order(egui::Order::Foreground)
         .anchor(anchor, offset)
@@ -666,7 +666,7 @@ fn toolbar_area_sizing_changed(
     has_desktop_menu_bar: bool,
     slideshow_enabled: bool,
 ) -> bool {
-    let state_id = egui::Id::new(("toolbar_layout_signature", area_key));
+    let state_id = egui::Id::unique(("toolbar_layout_signature", area_key));
     let current = (
         profile.to_owned(),
         compact,

@@ -18,12 +18,12 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             )
             .clicked()
         {
-            ctx.data_mut(|data| data.insert_temp(egui::Id::new(RESET_CONFIRM_ID), true));
+            ctx.data_mut(|data| data.insert_temp(egui::Id::unique(RESET_CONFIRM_ID), true));
         }
     });
 
     let mut confirmation_open = ctx.data(|data| {
-        data.get_temp::<bool>(egui::Id::new(RESET_CONFIRM_ID))
+        data.get_temp::<bool>(egui::Id::unique(RESET_CONFIRM_ID))
             .unwrap_or(false)
     });
     if confirmation_open {
@@ -31,7 +31,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         let mut confirmed = false;
         let mut cancelled = false;
         egui::Window::new("Reset all settings?")
-            .id(egui::Id::new("settings_reset_all_dialog"))
+            .id(egui::Id::unique("settings_reset_all_dialog"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -72,14 +72,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                     format!("Settings were reset in memory, but could not be saved: {error}"),
                 ),
             };
-            ctx.data_mut(|data| data.insert_temp(egui::Id::new(RESET_FEEDBACK_ID), feedback));
+            ctx.data_mut(|data| data.insert_temp(egui::Id::unique(RESET_FEEDBACK_ID), feedback));
             confirmation_open = false;
         }
     }
-    ctx.data_mut(|data| data.insert_temp(egui::Id::new(RESET_CONFIRM_ID), confirmation_open));
+    ctx.data_mut(|data| data.insert_temp(egui::Id::unique(RESET_CONFIRM_ID), confirmation_open));
 
     if let Some((is_error, message)) =
-        ctx.data(|data| data.get_temp::<(bool, String)>(egui::Id::new(RESET_FEEDBACK_ID)))
+        ctx.data(|data| data.get_temp::<(bool, String)>(egui::Id::unique(RESET_FEEDBACK_ID)))
     {
         let color = if is_error {
             ui.visuals().error_fg_color

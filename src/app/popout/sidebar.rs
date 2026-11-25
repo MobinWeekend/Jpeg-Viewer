@@ -143,6 +143,38 @@ impl PopoutManager {
                         );
                         if crate::ui_theme::switch(
                             section,
+                            &mut window.remove_os_decorations,
+                            "Remove OS window decorations",
+                        ) {
+                            ctx.send_viewport_cmd_to(
+                                window.viewport_id,
+                                egui::ViewportCommand::Decorations(!window.remove_os_decorations),
+                            );
+                        }
+                        section.label(
+                            egui::RichText::new(
+                                "Hides the desktop title bar, borders and window buttons. Some compositors may enforce their own decoration policy.",
+                            )
+                            .small()
+                            .weak(),
+                        );
+                        if crate::ui_theme::switch(
+                            section,
+                            &mut window.remove_os_window_effects,
+                            "Remove OS rounded corners, shadows and borders",
+                        ) {
+                            window.native_window_effects_applied = None;
+                            ctx.request_repaint();
+                        }
+                        section.label(
+                            egui::RichText::new(
+                                "Requests square corners and no native shadow, border or system backdrop. Desktop environments may override these hints.",
+                            )
+                            .small()
+                            .weak(),
+                        );
+                        if crate::ui_theme::switch(
+                            section,
                             &mut window.stay_on_top,
                             "Stay on top",
                         ) && window.stay_on_top

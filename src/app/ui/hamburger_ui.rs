@@ -1,5 +1,6 @@
 use crate::app::types::ViewerApp;
 use crate::app::ui::toolbar_frame;
+use crate::app::ui::{paint_svg_icon, SvgIcon};
 use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -12,7 +13,6 @@ impl ViewerApp {
     /// window-edge affordance and is intentionally not repeated in this toolbar.
     pub fn render_hamburger_ui(&mut self, ui: &mut egui::Ui) {
         let platform_profile = crate::ui_theme::current_look_profile(ui.ctx());
-        let button_label = "☰";
         let win98 = platform_profile == "win98";
         let unframed_custom_titlebar = !self.settings_manager.get().show_titlebar;
         let button_fill = if win98 && !unframed_custom_titlebar {
@@ -25,23 +25,27 @@ impl ViewerApp {
         } else {
             egui::Stroke::NONE
         };
+        let button_width = if platform_profile == "cosmic" || platform_profile == "gnome" {
+            76.0
+        } else {
+            HAMBURGER_SIZE
+        };
+        // A blank button provides the normal egui hit target and visual states;
+        // its appearance comes from an editable, theme-tinted SVG asset.
         let button = ui
             .add(
-                egui::Button::new(
-                    egui::RichText::new(button_label).size(scaled_text_size(ui.ctx(), 20.0)),
-                )
-                .min_size(egui::vec2(
-                    if platform_profile == "cosmic" || platform_profile == "gnome" {
-                        76.0
-                    } else {
-                        HAMBURGER_SIZE
-                    },
-                    HAMBURGER_SIZE,
-                ))
-                .fill(button_fill)
-                .stroke(button_stroke),
+                egui::Button::new(egui::RichText::new(""))
+                    .min_size(egui::vec2(button_width, HAMBURGER_SIZE))
+                    .fill(button_fill)
+                    .stroke(button_stroke),
             )
             .on_hover_text("Menu");
+
+        let icon_rect = egui::Rect::from_center_size(
+            button.rect.center(),
+            egui::vec2(24.0, 24.0),
+        );
+        paint_svg_icon(ui, icon_rect, SvgIcon::Hamburger, ui.visuals().text_color());
 
         self.hamburger_button_rect = Some(button.rect);
         if button.clicked() {

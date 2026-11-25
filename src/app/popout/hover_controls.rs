@@ -175,7 +175,7 @@ impl PopoutWindow {
         for (name, rect, horizontal, vertical, cursor) in zones {
             let response = ui.interact(
                 rect,
-                egui::Id::new(("jpeg_viewer_popout_resize", tab_id, name)),
+                egui::Id::unique(("jpeg_viewer_popout_resize", tab_id, name)),
                 egui::Sense::drag(),
             );
             if response.hovered() {
@@ -265,7 +265,7 @@ impl PopoutWindow {
     ) -> bool {
         let response = ui.interact(
             rect,
-            egui::Id::new(("jpeg_viewer_popout_button", tab_id, label)),
+            egui::Id::unique(("jpeg_viewer_popout_button", tab_id, label)),
             egui::Sense::click(),
         );
         ui.painter().rect_filled(

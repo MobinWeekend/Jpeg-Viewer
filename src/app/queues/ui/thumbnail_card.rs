@@ -44,7 +44,7 @@ impl ViewerApp {
         let visuals = ui.visuals().clone();
         // Short hover animation adds depth without changing layout or hitboxes.
         let hover_t = ctx.animate_bool_with_time(
-            egui::Id::new(("thumbnail-card-hover", key)),
+            egui::Id::unique(("thumbnail-card-hover", key)),
             response.hovered(),
             0.14,
         );
@@ -266,7 +266,7 @@ impl ViewerApp {
             // an ImageEntry only when a pane accepts the drop.
             ctx.data_mut(|data| {
                 data.insert_temp(
-                    egui::Id::new("jpeg_viewer_compare_drag_entry"),
+                    egui::Id::unique("jpeg_viewer_compare_drag_entry"),
                     path.to_path_buf(),
                 );
             });
@@ -673,7 +673,7 @@ impl ViewerApp {
                     != crate::app::workspace::WorkspaceTabKind::Compare
             {
                 ctx.data_mut(|data| {
-                    data.remove_temp::<std::path::PathBuf>(egui::Id::new(
+                    data.remove_temp::<std::path::PathBuf>(egui::Id::unique(
                         "jpeg_viewer_compare_drag_entry",
                     ));
                 });

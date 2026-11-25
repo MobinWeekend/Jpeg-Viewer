@@ -798,7 +798,7 @@ impl eframe::App for ViewerApp {
         if background_mipmap_rect.is_positive() {
             let background_mipmap_painter = ctx.layer_painter(egui::LayerId::new(
                 egui::Order::Tooltip,
-                egui::Id::new("jpeg_viewer_background_mipmap_uploads"),
+                egui::Id::unique("jpeg_viewer_background_mipmap_uploads"),
             ));
             for (texture_id, state) in self.cached_mipmap_uploads_for_frame() {
                 super::texture_mipmap::append_mipmap_upload_callback(

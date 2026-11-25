@@ -122,7 +122,7 @@ pub fn render_resize_handles(
     };
     ctx.layer_painter(egui::LayerId::new(
         egui::Order::Foreground,
-        egui::Id::new("jpeg_viewer_custom_window_frame"),
+        egui::Id::unique("jpeg_viewer_custom_window_frame"),
     ))
     .rect_stroke(
         rect.shrink(s * 0.5),
@@ -142,11 +142,11 @@ fn render_handle(
     direction: egui::ResizeDirection,
     cursor: egui::CursorIcon,
 ) {
-    let layer_id = egui::LayerId::new(egui::Order::Foreground, egui::Id::new(id));
+    let layer_id = egui::LayerId::new(egui::Order::Foreground, egui::Id::unique(id));
     // Areas can retain a prior z-order from interaction history; explicitly raise
     // the resize hitbox so title-bar controls cannot swallow corner/edge drags.
     ctx.move_to_top(layer_id);
-    egui::Area::new(egui::Id::new(id))
+    egui::Area::new(egui::Id::unique(id))
         .order(egui::Order::Foreground)
         .interactable(true)
         .movable(false)
@@ -158,7 +158,7 @@ fn render_handle(
             let (_id, rect) = ui.allocate_space(size);
             let response = ui.interact(
                 rect,
-                ui.id().with("resize_handle"),
+                ui.scope_id().with("resize_handle"),
                 egui::Sense::click_and_drag(),
             );
             if response.hovered() {

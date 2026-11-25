@@ -18,7 +18,7 @@ pub fn apply_polished_style_with_options(
     ctx.set_zoom_factor(ui_scale.clamp(0.75, 1.50));
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new("ui_text_scale_factor"),
+            egui::Id::unique("ui_text_scale_factor"),
             text_scale.clamp(0.80, 1.40),
         )
     });
@@ -108,7 +108,7 @@ pub fn apply_polished_style_with_options(
         .or(cosmic_accent)
         .unwrap_or(if dark { dark_accent } else { light_accent });
     ctx.data_mut(|data| {
-        data.insert_temp(egui::Id::new(MAIN_ACCENT_COLOR_ID), accent);
+        data.insert_temp(egui::Id::unique(MAIN_ACCENT_COLOR_ID), accent);
     });
     let accent_soft = if dark {
         accent.linear_multiply(0.34)

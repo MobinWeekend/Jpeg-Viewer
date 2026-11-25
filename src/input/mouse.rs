@@ -32,6 +32,44 @@ pub(super) fn default_bindings() -> HashMap<ViewerCommand, Vec<MouseBinding>> {
 
 const MOUSE_COMMANDS_ALLOWED_OVER_UI: &[ViewerCommand] = &[ViewerCommand::ToggleFullscreen];
 
+/// Convert wheel movement events from this frame into viewer commands.
+///
+/// Use the modifiers recorded on each event rather than `InputState::modifiers`:
+/// on some platforms the aggregate modifier state can lag the native wheel
+/// event. This is especially important for Invert scroll zoom, where Ctrl+wheel
+/// must navigate while an unmodified wheel gesture zooms.
+fn scroll_commands_from_events(
+    events: &[egui::Event],
+    b_ctrl_invert: bool,
+) -> Vec<ViewerCommand> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            egui::Event::MouseWheel {
+                delta,
+                phase: egui::TouchPhase::Move,
+                modifiers,
+                ..
+            } if delta.y.abs() > f32::EPSILON => {
+                let ctrl = modifiers.ctrl;
+                let zooming = if b_ctrl_invert { !ctrl } else { ctrl };
+                Some(if zooming {
+                    if delta.y > 0.0 {
+                        ViewerCommand::ZoomIn
+                    } else {
+                        ViewerCommand::ZoomOut
+                    }
+                } else if delta.y > 0.0 {
+                    ViewerCommand::PreviousImage
+                } else {
+                    ViewerCommand::NextImage
+                })
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 pub fn handle_mouse(
     ctx: &egui::Context,
     bindings: &InputBindings,
@@ -57,28 +95,80 @@ pub fn handle_mouse(
             }
         }
 
-        let scroll = input.smooth_scroll_delta.y;
-
-        // Don't allow image scrolling/zooming while over UI.
-        if scroll != 0.0 && !over_ui {
-            let ctrl = input.modifiers.ctrl;
-            let zooming = (!b_ctrl_invert && ctrl) || (b_ctrl_invert && !ctrl);
-
-            if zooming {
-                commands.push(if scroll > 0.0 {
-                    ViewerCommand::ZoomIn
-                } else {
-                    ViewerCommand::ZoomOut
-                });
-            } else {
-                commands.push(if scroll > 0.0 {
-                    ViewerCommand::PreviousImage
-                } else {
-                    ViewerCommand::NextImage
-                });
-            }
+        // Navigation is discrete: use only wheel movement events received this
+        // frame, never egui's smoothed delta from previous frames. Each event
+        // carries its own modifier snapshot so Ctrl+wheel remains navigation
+        // when Invert scroll zoom is enabled.
+        if !over_ui {
+            commands.extend(scroll_commands_from_events(&input.events, b_ctrl_invert));
         }
     });
 
     commands
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::scroll_commands_from_events;
+    use eframe::egui;
+    use crate::input::shortcuts::ViewerCommand;
+
+    fn wheel_event(phase: egui::TouchPhase, y: f32, ctrl: bool) -> egui::Event {
+        egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, y),
+            phase,
+            source: egui::MouseWheelSource::Wheel,
+            modifiers: egui::Modifiers {
+                ctrl,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn invert_scroll_zoom_keeps_ctrl_wheel_for_navigation() {
+        let events = [
+            wheel_event(egui::TouchPhase::Move, 120.0, true),
+            wheel_event(egui::TouchPhase::Move, -120.0, true),
+        ];
+        assert_eq!(
+            scroll_commands_from_events(&events, true),
+            vec![ViewerCommand::PreviousImage, ViewerCommand::NextImage]
+        );
+    }
+
+    #[test]
+    fn invert_scroll_zoom_uses_plain_wheel_for_zoom() {
+        let events = [
+            wheel_event(egui::TouchPhase::Move, 120.0, false),
+            wheel_event(egui::TouchPhase::Move, -120.0, false),
+        ];
+        assert_eq!(
+            scroll_commands_from_events(&events, true),
+            vec![ViewerCommand::ZoomIn, ViewerCommand::ZoomOut]
+        );
+    }
+
+    #[test]
+    fn normal_scroll_zoom_uses_ctrl_wheel_for_zoom() {
+        let events = [
+            wheel_event(egui::TouchPhase::Move, 120.0, true),
+            wheel_event(egui::TouchPhase::Move, -120.0, true),
+        ];
+        assert_eq!(
+            scroll_commands_from_events(&events, false),
+            vec![ViewerCommand::ZoomIn, ViewerCommand::ZoomOut]
+        );
+    }
+
+    #[test]
+    fn non_movement_wheel_phases_do_not_trigger_commands() {
+        let events = [
+            wheel_event(egui::TouchPhase::Start, 120.0, false),
+            wheel_event(egui::TouchPhase::End, -120.0, true),
+        ];
+        assert!(scroll_commands_from_events(&events, true).is_empty());
+    }
 }

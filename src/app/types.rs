@@ -861,7 +861,7 @@ impl ViewerApp {
         const LAST_TITLE_ID: &str = "jpeg_viewer_last_viewport_title";
         let title = self.window_title();
         let unchanged = ctx.data(|data| {
-            data.get_temp::<String>(egui::Id::new(LAST_TITLE_ID))
+            data.get_temp::<String>(egui::Id::unique(LAST_TITLE_ID))
                 .is_some_and(|last_title| last_title == title)
         });
         if unchanged {
@@ -869,7 +869,7 @@ impl ViewerApp {
         }
 
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
-        ctx.data_mut(|data| data.insert_temp(egui::Id::new(LAST_TITLE_ID), title));
+        ctx.data_mut(|data| data.insert_temp(egui::Id::unique(LAST_TITLE_ID), title));
     }
 
     // ====== TEXTURE ======

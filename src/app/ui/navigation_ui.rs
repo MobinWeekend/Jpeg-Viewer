@@ -1,6 +1,7 @@
 //use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::app::ui::helpers::paint_sidebar_drawer_icon;
+use crate::app::ui::{paint_svg_icon, SvgIcon};
 use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -26,6 +27,23 @@ impl ProfileToolbarButtonExt for egui::Ui {
         }
         response
     }
+}
+
+fn paint_navigation_icon(ui: &egui::Ui, button_rect: egui::Rect, icon: SvgIcon) {
+    let icon_rect = egui::Rect::from_center_size(
+        button_rect.center(),
+        egui::vec2(18.0, 18.0),
+    );
+    paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
+}
+
+fn paint_zoom_sign_icon(ui: &egui::Ui, button_rect: egui::Rect, zoom_in: bool) {
+    let icon = if zoom_in { SvgIcon::ZoomIn } else { SvgIcon::ZoomOut };
+    let icon_rect = egui::Rect::from_center_size(
+        button_rect.center(),
+        egui::vec2(17.0, 17.0),
+    );
+    paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
 }
 
 impl ViewerApp {
@@ -66,36 +84,34 @@ impl ViewerApp {
     }
 
     // NAVIGATION BUTTONS
-    /// Previous and next image buttons.
+    /// Previous and next image buttons. The solid triangles are painted with
+    /// vector geometry so their appearance does not depend on symbol fonts.
     pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("◀").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Previous")
-            .clicked()
-        {
+            .on_hover_text("Previous");
+        paint_navigation_icon(ui, response.rect, SvgIcon::NavigationPrevious);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::PreviousImage);
         }
     }
+
     pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("▶").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Next")
-            .clicked()
-        {
+            .on_hover_text("Next");
+        paint_navigation_icon(ui, response.rect, SvgIcon::NavigationNext);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::NextImage);
         }
     }
@@ -353,35 +369,32 @@ impl ViewerApp {
 
     // Zoom in
     pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("+").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size_small())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size_small())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Zoom in")
-            .clicked()
-        {
+            .on_hover_text("Zoom in");
+        paint_zoom_sign_icon(ui, response.rect, true);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::ZoomIn);
         }
     }
+
     // Zoom out
     pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("−").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size_small())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size_small())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Zoom out")
-            .clicked()
-        {
+            .on_hover_text("Zoom out");
+        paint_zoom_sign_icon(ui, response.rect, false);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::ZoomOut);
         }
     }

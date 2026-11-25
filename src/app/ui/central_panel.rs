@@ -182,6 +182,29 @@ impl ViewerApp {
                 return;
             }
 
+            // An empty Viewer/Image collection is Home, even if a stale texture
+            // handle survived an unusual collection transition. Real indexing or
+            // image loading states retain their progress UI below.
+            if self.image_entries.is_empty()
+                && !self.is_loading()
+                && matches!(
+                    self.workspace.active_kind(),
+                    crate::app::workspace::WorkspaceTabKind::Viewer
+                        | crate::app::workspace::WorkspaceTabKind::Image
+                )
+                && !self.workspace.session_prompt
+            {
+                self.current_image_path = None;
+                self.file_metadata = None;
+                if self.workspace.active_kind()
+                    == crate::app::workspace::WorkspaceTabKind::Viewer
+                {
+                    self.workspace.home_page_visible = true;
+                }
+                self.render_welcome_ui(ctx, ui);
+                return;
+            }
+
             // ---------- VIRTUAL TEXTURE LOADING STATE ----------
             // Check if virtual texture is loading in background
             if self.is_loading_virtual() {
@@ -271,13 +294,41 @@ impl ViewerApp {
                     return;
                 }
                 if self.image_entries.is_empty() {
-                    // Welcome is a dedicated workspace tab. An empty Viewer tab
-                    // remains visually empty instead of reusing Welcome content.
+                    // A clean empty Viewer surface is Home, not a blank canvas.
+                    // Keep real loading errors in the error UI above, and avoid
+                    // replacing the session-restore prompt while it is active.
+                    if !self.workspace.session_prompt
+                        && matches!(
+                            self.workspace.active_kind(),
+                            crate::app::workspace::WorkspaceTabKind::Viewer
+                                | crate::app::workspace::WorkspaceTabKind::Image
+                        )
+                    {
+                        self.workspace.home_page_visible = true;
+                        self.render_welcome_ui(ctx, ui);
+                    }
                     return;
-                } else if self.is_gif {
+                } else if self.is_gif && self.is_loading() {
                     self.render_loading_ui(ui, "Loading GIF frame...", None, false);
                     self.handle_background_window_drag(ui, ctx);
                     return;
+                }
+
+                // A missing renderable image without an error is an empty Home
+                // state, not a permanent "No image loaded" blank surface.
+                if !self.workspace.session_prompt
+                    && matches!(
+                        self.workspace.active_kind(),
+                        crate::app::workspace::WorkspaceTabKind::Viewer
+                            | crate::app::workspace::WorkspaceTabKind::Image
+                    )
+                {
+                    if self.workspace.active_kind()
+                        == crate::app::workspace::WorkspaceTabKind::Viewer
+                    {
+                        self.workspace.home_page_visible = true;
+                    }
+                    self.render_welcome_ui(ctx, ui);
                 }
                 return;
             }
@@ -773,7 +824,7 @@ impl ViewerApp {
     fn handle_background_window_drag(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let response = ui.interact(
             ui.max_rect(),
-            ui.id().with("main_view_background_drag"),
+            ui.scope_id().with("main_view_background_drag"),
             egui::Sense::click_and_drag(),
         );
         self.handle_image_mouse_input(ctx, &response, None, None);

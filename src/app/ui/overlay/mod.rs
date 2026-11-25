@@ -185,7 +185,7 @@ pub fn render_overlay_ui(app: &mut ViewerApp, ctx: &egui::Context) {
 
     // Inspect controls belong to normal image navigation, not the Masonry browser.
     if app.inspect_mode && !hide_image_navigation {
-        egui::Area::new(egui::Id::new("inspect_channel_navigation_row"))
+        egui::Area::new(egui::Id::unique("inspect_channel_navigation_row"))
             .order(egui::Order::Foreground)
             .anchor(
                 egui::Align2::CENTER_TOP,
@@ -292,7 +292,7 @@ fn render_main_surface_navigation_controls(
     // views must share the same hit targets without a view-specific frame inset.
     let unframed_custom_titlebar = !app.settings_manager.get().show_titlebar;
 
-    egui::Area::new(egui::Id::new("main_surface_navigation_controls"))
+    egui::Area::new(egui::Id::unique("main_surface_navigation_controls"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
         .show(ctx, |ui| {
@@ -345,7 +345,7 @@ fn render_sidebar_drawer_button(app: &mut ViewerApp, ctx: &egui::Context) {
     };
     let y = (viewport_size.y * 0.25 - DRAWER_HEIGHT * 0.5).max(0.0);
 
-    egui::Area::new(egui::Id::new("sidebar_drawer_handle"))
+    egui::Area::new(egui::Id::unique("sidebar_drawer_handle"))
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(x, y))
         .show(ctx, |ui| {
@@ -413,7 +413,7 @@ fn render_hamburger_menu(app: &mut ViewerApp, ctx: &egui::Context, placement: &s
         egui::Align2::LEFT_TOP
     };
 
-    egui::Area::new(egui::Id::new("hamburger_menu"))
+    egui::Area::new(egui::Id::unique("hamburger_menu"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
         .pivot(pivot)
@@ -452,7 +452,7 @@ fn get_menu_offset_y(app: &ViewerApp, ctx: &egui::Context) -> f32 {
 
 /// Helper to create an overlay area – used internally by child modules.
 pub fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
-    egui::Area::new(egui::Id::new(id))
+    egui::Area::new(egui::Id::unique(id))
         .order(egui::Order::Foreground)
         .anchor(anchor, offset)
 }

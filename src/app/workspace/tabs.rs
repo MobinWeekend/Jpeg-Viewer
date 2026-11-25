@@ -795,7 +795,7 @@ impl crate::app::types::ViewerApp {
                                         let badge_response = render_tab_popout_badge(
                                             row,
                                             badge_rect,
-                                            egui::Id::new(("workspace_tab_popout", id)),
+                                            egui::Id::unique(("workspace_tab_popout", id)),
                                             *has_popout,
                                         );
                                         if badge_response.clicked() {
@@ -807,7 +807,7 @@ impl crate::app::types::ViewerApp {
                                     if can_close {
                                         let close_response = row.interact(
                                             close_rect,
-                                            egui::Id::new(("workspace_tab_close", id)),
+                                            egui::Id::unique(("workspace_tab_close", id)),
                                             egui::Sense::click(),
                                         );
                                         if close_response.hovered() || hovered {
@@ -836,7 +836,7 @@ impl crate::app::types::ViewerApp {
                                     if main_rect.is_positive() {
                                         let response = row.interact(
                                             main_rect,
-                                            egui::Id::new(("workspace_tab_body", id)),
+                                            egui::Id::unique(("workspace_tab_body", id)),
                                             egui::Sense::click_and_drag(),
                                         );
                                         if response.clicked_by(egui::PointerButton::Middle)
@@ -1214,7 +1214,7 @@ impl crate::app::types::ViewerApp {
                                                             let badge_response = render_tab_popout_badge(
                                                                 tabs_ui,
                                                                 badge_rect,
-                                                                egui::Id::new((
+                                                                egui::Id::unique((
                                                                     "workspace_strip_tab_popout",
                                                                     id,
                                                                 )),
@@ -1229,7 +1229,7 @@ impl crate::app::types::ViewerApp {
                                                         if can_close {
                                                             let close_response = tabs_ui.interact(
                                                                 close_rect,
-                                                                egui::Id::new(("workspace_strip_tab_close", id)),
+                                                                egui::Id::unique(("workspace_strip_tab_close", id)),
                                                                 egui::Sense::click(),
                                                             );
                                                             if close_response.hovered() || pointer_hovered {
@@ -1258,7 +1258,7 @@ impl crate::app::types::ViewerApp {
                                                         if main_rect.is_positive() {
                                                             let response = tabs_ui.interact(
                                                                 main_rect,
-                                                                egui::Id::new(("workspace_strip_tab_body", id)),
+                                                                egui::Id::unique(("workspace_strip_tab_body", id)),
                                                                 egui::Sense::click_and_drag(),
                                                             );
                                                             if response.clicked_by(egui::PointerButton::Middle)

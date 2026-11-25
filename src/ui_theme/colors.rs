@@ -7,7 +7,7 @@ pub(super) const MAIN_ACCENT_COLOR_ID: &str = "jpeg_viewer_main_accent_color";
 /// The resolved accent selected by Settings > Main color. Cached with the style so
 /// custom-drawn elements (such as the title bar) use the same color as egui widgets.
 pub fn main_accent_color(ctx: &egui::Context) -> egui::Color32 {
-    ctx.data(|data| data.get_temp::<egui::Color32>(egui::Id::new(MAIN_ACCENT_COLOR_ID)))
+    ctx.data(|data| data.get_temp::<egui::Color32>(egui::Id::unique(MAIN_ACCENT_COLOR_ID)))
         .unwrap_or_else(|| ctx.global_style().visuals.selection.stroke.color)
 }
 

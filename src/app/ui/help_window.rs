@@ -29,14 +29,14 @@ impl ViewerApp {
         );
 
         let generation = crate::app::ui::desktop_menu_bar_generation_for_help(ctx);
-        let tab_id = egui::Id::new(("jpeg_viewer_help_tab", generation));
+        let tab_id = egui::Id::unique(("jpeg_viewer_help_tab", generation));
         let mut active_tab = ctx
             .data(|data| data.get_temp::<HelpTab>(tab_id))
             .unwrap_or_default();
         let previous_tab = active_tab;
 
         egui::Window::new("Help & About · JPEG Viewer")
-            .id(egui::Id::new(("jpeg_viewer_help_window", generation)))
+            .id(egui::Id::unique(("jpeg_viewer_help_window", generation)))
             .title_bar(true)
             .collapsible(false)
             .resizable(true)

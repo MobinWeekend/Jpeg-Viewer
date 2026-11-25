@@ -7,7 +7,7 @@ impl PopoutManager {
             let mut close_dialog = false;
             let mut save_requested = false;
             egui::Window::new("Save Pop-out Preset (.jvp)")
-                .id(egui::Id::new(("popout_jvp_save_dialog", dialog.tab_id)))
+                .id(egui::Id::unique(("popout_jvp_save_dialog", dialog.tab_id)))
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut keep_open)
@@ -84,7 +84,7 @@ impl PopoutManager {
             let mut load_image = false;
             let mut options_only = false;
             egui::Window::new("Load Pop-out Preset (.jvp)")
-                .id(egui::Id::new(("popout_jvp_load_dialog", dialog.tab_id)))
+                .id(egui::Id::unique(("popout_jvp_load_dialog", dialog.tab_id)))
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut keep_open)

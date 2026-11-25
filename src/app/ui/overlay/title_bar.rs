@@ -18,7 +18,7 @@ enum CaptionControl {
 /// from extending into the desktop menu bar or main view.
 pub fn custom_titlebar_height(ctx: &egui::Context) -> f32 {
     ctx.data(|data| {
-        data.get_temp::<f32>(egui::Id::new(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID))
+        data.get_temp::<f32>(egui::Id::unique(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID))
             .unwrap_or(0.0)
     })
 }
@@ -30,7 +30,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::
         // Clear cached geometry when the custom title bar is not being rendered;
         // otherwise callers can mistake an old windowed height for live layout.
         ctx.data_mut(|data| {
-            data.insert_temp(egui::Id::new(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID), 0.0_f32);
+            data.insert_temp(egui::Id::unique(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID), 0.0_f32);
         });
         return;
     }
@@ -310,7 +310,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::
                         let show_window_title = title_visible;
                         let title_response = ui.interact(
                             drag_rect,
-                            egui::Id::new("custom_titlebar_title"),
+                            egui::Id::unique("custom_titlebar_title"),
                             egui::Sense::click_and_drag(),
                         );
                         if show_window_title {
@@ -446,7 +446,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::
         });
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID),
+            egui::Id::unique(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID),
             panel_response.response.rect.height(),
         );
     });

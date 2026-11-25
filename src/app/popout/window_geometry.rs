@@ -53,8 +53,8 @@ impl PopoutWindow {
             .with_max_inner_size(self.maximum_size())
             .with_clamp_size_to_monitor_size(true)
             .with_transparent(true)
-            .with_has_shadow(false)
-            .with_decorations(false)
+            .with_has_shadow(!self.remove_os_window_effects)
+            .with_decorations(!self.remove_os_decorations)
             // Resizing is deliberately owned by the eight egui edge/corner
             // handles below. Enabling native resizing as well lets the OS take
             // pointer capture at the same edges, competing with aspect-ratio

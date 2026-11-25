@@ -68,7 +68,7 @@ impl ViewerApp {
 pub fn render_drag_area(ctx: &egui::Context, ui: &mut egui::Ui) {
     let drag_response = ui.interact(
         ui.max_rect(),
-        ui.id().with("window_drag"),
+        ui.scope_id().with("window_drag"),
         egui::Sense::click_and_drag(),
     );
 
@@ -99,42 +99,13 @@ pub fn format_file_size(bytes: u64) -> String {
     }
 }
 
-/// Paint a scale-independent sidebar/drawer glyph using vector primitives so it
-/// does not depend on a particular symbol font being installed. `show_sidebar`
-/// points the arrow into the window; `false` points it back toward the left edge.
+/// Paint the theme-tinted SVG sidebar/drawer icon. `show_sidebar` points the
+/// arrow into the window; `false` points it back toward the left edge.
 pub fn paint_sidebar_drawer_icon(ui: &egui::Ui, rect: egui::Rect, show_sidebar: bool) {
-    let painter = ui.painter();
-    let color = ui.visuals().text_color();
-    let stroke = egui::Stroke::new(1.4_f32, color);
-    let frame = rect.shrink2(egui::vec2(4.0, 5.0));
-    let corner_radius = if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" {
-        egui::CornerRadius::ZERO
+    let icon = if show_sidebar {
+        super::svg_icons::SvgIcon::SidebarShow
     } else {
-        egui::CornerRadius::same(2)
+        super::svg_icons::SvgIcon::SidebarHide
     };
-    painter.rect_stroke(frame, corner_radius, stroke, egui::StrokeKind::Inside);
-
-    let divider_x = frame.left() + frame.width() * 0.32;
-    painter.line_segment(
-        [
-            egui::pos2(divider_x, frame.top() + 1.5),
-            egui::pos2(divider_x, frame.bottom() - 1.5),
-        ],
-        stroke,
-    );
-
-    let center_y = frame.center().y;
-    if show_sidebar {
-        let start = egui::pos2(divider_x + 2.0, center_y);
-        let tip = egui::pos2(frame.right() - 2.0, center_y);
-        painter.line_segment([start, tip], stroke);
-        painter.line_segment([egui::pos2(tip.x - 3.0, tip.y - 2.5), tip], stroke);
-        painter.line_segment([egui::pos2(tip.x - 3.0, tip.y + 2.5), tip], stroke);
-    } else {
-        let start = egui::pos2(frame.right() - 2.0, center_y);
-        let tip = egui::pos2(divider_x + 2.0, center_y);
-        painter.line_segment([start, tip], stroke);
-        painter.line_segment([egui::pos2(tip.x + 3.0, tip.y - 2.5), tip], stroke);
-        painter.line_segment([egui::pos2(tip.x + 3.0, tip.y + 2.5), tip], stroke);
-    }
+    super::svg_icons::paint_svg_icon(ui, rect, icon, ui.visuals().text_color());
 }

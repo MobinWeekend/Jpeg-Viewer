@@ -190,7 +190,7 @@ impl PopoutWindow {
                 }
                 let drag = ui.interact(
                     rect,
-                    egui::Id::new(("jpeg_viewer_popout_move", tab_id, name)),
+                    egui::Id::unique(("jpeg_viewer_popout_move", tab_id, name)),
                     egui::Sense::drag(),
                 );
 

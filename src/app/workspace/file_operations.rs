@@ -3,6 +3,21 @@
 use super::helpers::*;
 use super::*;
 
+/// After removing the current entry, its old numeric position is occupied by
+/// the next entry. Wrap to the beginning when navigation normally wraps; a
+/// non-repeating Queue instead stays on its final remaining entry.
+fn next_index_after_removal(previous_index: usize, remaining_len: usize, wrap: bool) -> usize {
+    if remaining_len == 0 {
+        0
+    } else if previous_index < remaining_len {
+        previous_index
+    } else if wrap {
+        0
+    } else {
+        remaining_len - 1
+    }
+}
+
 impl crate::app::types::ViewerApp {
     pub(super) fn copy_or_move_selected(&mut self, entries: Vec<ImageEntry>, move_files: bool) {
         if entries.is_empty() {
@@ -60,7 +75,7 @@ impl crate::app::types::ViewerApp {
         let move_files = pending.move_files;
         let mut resolution = None;
         egui::Window::new("File name conflicts")
-            .id(egui::Id::new("masonry_file_conflicts"))
+            .id(egui::Id::unique("masonry_file_conflicts"))
             .collapsible(false)
             .resizable(true)
             .show(ctx, |ui| {
@@ -200,58 +215,62 @@ impl crate::app::types::ViewerApp {
                     && tab.directory.as_deref().is_some_and(|folder| folder.is_dir());
                 let recursive_folder = is_folder_masonry && tab.recursive;
                 let folder = tab.directory.clone();
+                let previous_tab_index = tab.current_index;
                 let current_entry_id = tab
                     .entries
-                    .get(tab.current_index)
+                    .get(previous_tab_index)
                     .map(ImageEntry::get_id);
 
                 if is_folder_masonry || is_browse_folder {
-                    let belongs_to_folder = |path: &std::path::Path| {
-                        folder.as_deref().is_some_and(|root| {
-                            if recursive_folder {
-                                path.starts_with(root)
-                            } else {
-                                path.parent() == Some(root)
-                            }
-                        })
-                    };
-                    let mut updated_entries = Vec::with_capacity(tab.entries.len());
-                    for mut entry in std::mem::take(&mut tab.entries) {
-                        let old_id = entry.get_id();
-                        if let Some(new_path) = moved_paths.get(&old_id) {
-                            if belongs_to_folder(new_path) {
-                                if let ImageEntry::File(path) = &mut entry {
-                                    *path = new_path.clone();
-                                }
-                                updated_entries.push(entry);
-                            }
+                    // A move can change the order of more than the moved item (date
+                    // sorting, natural sorting, and shuffle all depend on the full
+                    // collection). Re-index the complete folder instead of patching
+                    // just the moved entry into the stale list.
+                    if let Some(root) = folder.as_deref()
+                        && std::fs::read_dir(root).is_ok()
+                    {
+                        let paths = if recursive_folder {
+                            crate::app::queues::collect_folder_images(root)
                         } else {
-                            updated_entries.push(entry);
-                        }
+                            crate::imaging::loader::load_directory_images(
+                                root,
+                                crate::imaging::sort::SortMethod::Natural,
+                            )
+                        };
+                        let mut updated_entries = paths
+                            .into_iter()
+                            .map(ImageEntry::File)
+                            .collect::<Vec<_>>();
+                        crate::imaging::sort::sort_images(&mut updated_entries, self.sort_method);
+
+                        // If the selected file itself was moved but remains inside a
+                        // recursive collection, follow its new path identity. When it
+                        // left the collection, retaining the old numeric position picks
+                        // the next image now occupying that slot.
+                        let selected_id_after_move = current_entry_id
+                            .as_ref()
+                            .and_then(|old_id| {
+                                moved_paths.get(old_id).map(|new_path| {
+                                    ImageEntry::File(new_path.clone()).get_id()
+                                })
+                            })
+                            .or_else(|| current_entry_id.clone());
+                        tab.entries = std::mem::take(&mut updated_entries);
+                        tab.current_index = selected_id_after_move
+                            .as_ref()
+                            .and_then(|selected_id| {
+                                tab.entries
+                                    .iter()
+                                    .position(|entry| entry.get_id() == *selected_id)
+                            })
+                            .unwrap_or_else(|| {
+                                next_index_after_removal(
+                                    previous_tab_index,
+                                    tab.entries.len(),
+                                    true,
+                                )
+                            });
                     }
-                    // Any already-loaded destination folder collection must reflect
-                    // incoming files too; collections outside the destination drop
-                    // moved files rather than retaining stale source-folder entries.
-                    for new_path in moved_paths.values() {
-                        if belongs_to_folder(new_path) && new_path.is_file() {
-                            let new_entry = ImageEntry::File(new_path.clone());
-                            let new_id = new_entry.get_id();
-                            if !updated_entries
-                                .iter()
-                                .any(|entry| entry.get_id() == new_id)
-                            {
-                                updated_entries.push(new_entry);
-                            }
-                        }
-                    }
-                    crate::imaging::sort::sort_images(&mut updated_entries, self.sort_method);
-                    tab.entries = updated_entries;
-                    tab.current_index = current_entry_id
-                        .as_ref()
-                        .and_then(|current_id| {
-                            tab.entries.iter().position(|entry| entry.get_id() == *current_id)
-                        })
-                        .unwrap_or_else(|| tab.current_index.min(tab.entries.len().saturating_sub(1)));
                 } else {
                     // Image tabs and collection-based Masonry retain their
                     // entries when moved; only the backing path and stable ID change.
@@ -354,10 +373,28 @@ impl crate::app::types::ViewerApp {
                 .iter()
                 .find(|tab| tab.id == browse_tab_id && tab.kind != WorkspaceTabKind::Masonry && tab.kind != WorkspaceTabKind::Compare)
             {
-                self.image_entries = browse_tab.entries.clone();
-                self.current_index = browse_tab
+                let entries = browse_tab.entries.clone();
+                let current_index = browse_tab
                     .current_index
-                    .min(self.image_entries.len().saturating_sub(1));
+                    .min(entries.len().saturating_sub(1));
+                if matches!(
+                    self.workspace.active_kind(),
+                    WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
+                ) {
+                    self.current_directory = browse_tab.directory.clone();
+                    self.set_image_entries_preserving_cache(entries, current_index);
+                    if self.image_entries.is_empty() {
+                        self.current_image_path = None;
+                        if self.workspace.active_kind() == WorkspaceTabKind::Viewer {
+                            self.workspace.home_page_visible = true;
+                        }
+                    }
+                } else {
+                    // Masonry/Compare own their visible surfaces. Keep the hidden
+                    // viewer collection current without disrupting their renderer.
+                    self.image_entries = entries;
+                    self.current_index = current_index;
+                }
             }
 
             // Old cache keys no longer identify the moved paths.
@@ -399,7 +436,7 @@ impl crate::app::types::ViewerApp {
         let mut close = false;
         let mut confirm = false;
         egui::Window::new("Move selected images to trash?")
-            .id(egui::Id::new("masonry_delete_confirmation"))
+            .id(egui::Id::unique("masonry_delete_confirmation"))
             .collapsible(false)
             .resizable(true)
             .show(ctx, |ui| {
@@ -432,6 +469,15 @@ impl crate::app::types::ViewerApp {
                 });
             });
         if confirm {
+            // Snapshot only when the user confirms. Doing this every frame while
+            // the dialog is open needlessly re-caches the current image.
+            if matches!(
+                self.workspace.active_kind(),
+                WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
+            ) {
+                self.snapshot_active_viewer_tab();
+            }
+
             let mut removed_entries = Vec::new();
             let mut failures = Vec::new();
             for entry in &entries {
@@ -450,6 +496,15 @@ impl crate::app::types::ViewerApp {
                 .iter()
                 .map(ImageEntry::get_id)
                 .collect::<HashSet<_>>();
+            let previous_renderer_index = self.current_index;
+            let previous_renderer_entry_id = self
+                .image_entries
+                .get(self.current_index)
+                .map(ImageEntry::get_id);
+            let active_renderer_entry_was_removed = previous_renderer_entry_id
+                .as_ref()
+                .is_some_and(|id| removed_ids.contains(id));
+            let queue_does_not_repeat = self.queue_mode && !self.queue_repeat;
             if !removed_ids.is_empty() {
                 for tab in &mut self.workspace.tabs {
                     if tab.kind == WorkspaceTabKind::Compare {
@@ -486,6 +541,11 @@ impl crate::app::types::ViewerApp {
                         tab.anchor_editing_point = 0;
                         tab.title = format!("Compare ({})", tab.entries.len());
                     } else {
+                        let previous_tab_index = tab.current_index;
+                        let previous_tab_entry_id = tab
+                            .entries
+                            .get(tab.current_index)
+                            .map(ImageEntry::get_id);
                         tab.entries
                             .retain(|entry| !removed_ids.contains(&entry.get_id()));
                         tab.selected.retain(|id| !removed_ids.contains(id));
@@ -519,8 +579,22 @@ impl crate::app::types::ViewerApp {
                                 .retain(|id, _| valid_ids.contains(id));
                             tab.invalidate_masonry_layout();
                         }
-                        tab.current_index =
-                            tab.current_index.min(tab.entries.len().saturating_sub(1));
+                        let non_repeating_viewer =
+                            tab.kind == WorkspaceTabKind::Viewer && queue_does_not_repeat;
+                        tab.current_index = previous_tab_entry_id
+                            .as_ref()
+                            .and_then(|selected_id| {
+                                tab.entries
+                                    .iter()
+                                    .position(|entry| entry.get_id() == *selected_id)
+                            })
+                            .unwrap_or_else(|| {
+                                next_index_after_removal(
+                                    previous_tab_index,
+                                    tab.entries.len(),
+                                    !non_repeating_viewer,
+                                )
+                            });
                     }
                 }
                 self.workspace
@@ -531,9 +605,20 @@ impl crate::app::types::ViewerApp {
                     .retain(|key| !removed_ids.contains(key));
                 self.image_entries
                     .retain(|entry| !removed_ids.contains(&entry.get_id()));
-                self.current_index = self
-                    .current_index
-                    .min(self.image_entries.len().saturating_sub(1));
+                self.current_index = previous_renderer_entry_id
+                    .as_ref()
+                    .and_then(|selected_id| {
+                        self.image_entries
+                            .iter()
+                            .position(|entry| entry.get_id() == *selected_id)
+                    })
+                    .unwrap_or_else(|| {
+                        next_index_after_removal(
+                            previous_renderer_index,
+                            self.image_entries.len(),
+                            !queue_does_not_repeat,
+                        )
+                    });
             }
 
             let empty_image_tabs = self
@@ -545,6 +630,42 @@ impl crate::app::types::ViewerApp {
                 .collect::<Vec<_>>();
             for id in empty_image_tabs {
                 self.close_workspace_tab(id);
+            }
+
+            if matches!(
+                self.workspace.active_kind(),
+                WorkspaceTabKind::Viewer | WorkspaceTabKind::Image
+            ) {
+                let active_state = self.workspace.active_tab().map(|tab| {
+                    (
+                        tab.id,
+                        tab.kind,
+                        tab.entries.clone(),
+                        tab.current_index,
+                        tab.directory.clone(),
+                    )
+                });
+                if let Some((tab_id, tab_kind, active_entries, active_index, directory)) = active_state {
+                    let active_index = active_index.min(active_entries.len().saturating_sub(1));
+                    let renderer_matches = self.image_entries.len() == active_entries.len()
+                        && self
+                            .image_entries
+                            .iter()
+                            .zip(active_entries.iter())
+                            .all(|(current, active)| current.get_id() == active.get_id())
+                        && self.current_index == active_index;
+                    if !renderer_matches || active_renderer_entry_was_removed {
+                        self.current_directory = directory;
+                        self.set_image_entries_preserving_cache(active_entries, active_index);
+                    }
+                    if self.image_entries.is_empty() {
+                        self.current_image_path = None;
+                        self.file_metadata = None;
+                        self.image_rect = None;
+                        self.workspace.home_page_visible =
+                            tab_kind == WorkspaceTabKind::Viewer && tab_id == 1;
+                    }
+                }
             }
 
             self.queue_status = Some(if failures.is_empty() {
@@ -564,5 +685,31 @@ impl crate::app::types::ViewerApp {
         if close {
             self.workspace.delete_confirmation = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_index_after_removal;
+
+    #[test]
+    fn removal_selects_the_entry_that_moves_into_the_old_slot() {
+        assert_eq!(next_index_after_removal(2, 5, true), 2);
+    }
+
+    #[test]
+    fn removal_of_the_last_entry_wraps_when_navigation_wraps() {
+        assert_eq!(next_index_after_removal(4, 4, true), 0);
+    }
+
+    #[test]
+    fn non_repeating_queue_stays_on_its_last_remaining_entry() {
+        assert_eq!(next_index_after_removal(4, 4, false), 3);
+    }
+
+    #[test]
+    fn removing_every_entry_resets_the_index_to_zero() {
+        assert_eq!(next_index_after_removal(2, 0, true), 0);
+        assert_eq!(next_index_after_removal(2, 0, false), 0);
     }
 }

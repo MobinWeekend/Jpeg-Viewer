@@ -129,7 +129,7 @@ fn paint_image_tab_controls(
     );
     let badge_response = ui.interact(
         badge_rect,
-        egui::Id::new(("browse_image_tab_badge", tab_id)),
+        egui::Id::unique(("browse_image_tab_badge", tab_id)),
         egui::Sense::hover(),
     );
     badge_response.on_hover_text(if has_popout {
@@ -160,7 +160,7 @@ fn paint_image_tab_controls(
     let close_response = ui
         .interact(
             close_rect,
-            egui::Id::new(("browse_image_tab_close", tab_id)),
+            egui::Id::unique(("browse_image_tab_close", tab_id)),
             egui::Sense::click(),
         )
         .on_hover_text("Close Image tab");
@@ -804,7 +804,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
         let mut commit = false;
         let mut cancel = false;
         egui::Window::new("Move entry to position")
-            .id(egui::Id::new("sidebar_number_editor"))
+            .id(egui::Id::unique("sidebar_number_editor"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -953,7 +953,7 @@ pub fn render_rename_dialog(app: &mut ViewerApp, ctx: &egui::Context) {
         let mut commit = false;
         let mut cancel = false;
         egui::Window::new("Rename file")
-            .id(egui::Id::new("rename_file_dialog"))
+            .id(egui::Id::unique("rename_file_dialog"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)

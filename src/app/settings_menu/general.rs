@@ -295,7 +295,7 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     let current = app.settings_manager.get().clone();
 
     // Keep the UI-scale draft in egui temporary data while the slider is being dragged.
-    let scale_id = egui::Id::new("ui_scale_draft");
+    let scale_id = egui::Id::unique("ui_scale_draft");
     let mut scale = ctx
         .data(|d| d.get_temp::<f32>(scale_id))
         .unwrap_or(current.ui_scale);
@@ -321,7 +321,7 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     });
 
     let saved_text_scale = app.settings_manager.get().ui_text_scale;
-    let text_scale_id = egui::Id::new("ui_text_scale_draft");
+    let text_scale_id = egui::Id::unique("ui_text_scale_draft");
     let mut text_scale = ctx
         .data(|d| d.get_temp::<f32>(text_scale_id))
         .unwrap_or(saved_text_scale);

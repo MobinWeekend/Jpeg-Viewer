@@ -213,11 +213,20 @@ impl ViewerApp {
         // configurable mouse bindings for all other gestures, but do not let a
         // right-click shortcut consume that click before the popup can open.
         if !right_down && !response.secondary_clicked() {
+            // The main image is itself an egui interaction widget. The global
+            // is_pointer_over_egui() flag therefore also becomes true over the
+            // image, accidentally suppressing wheel navigation and double-click
+            // fit. Only treat a different top-most layer as UI covering the image.
+            let pointer_over_other_layer = ctx
+                .input(|input| input.pointer.hover_pos())
+                .and_then(|pointer_pos| ctx.layer_id_at(pointer_pos))
+                .is_some_and(|layer_id| layer_id != response.layer_id);
+
             for command in handle_mouse(
                 ctx,
                 &self.input_bindings,
                 response.hovered(),
-                ctx.is_pointer_over_egui(),
+                pointer_over_other_layer,
                 self.b_ctrl_invert,
             ) {
                 self.handle_command(ctx, command);

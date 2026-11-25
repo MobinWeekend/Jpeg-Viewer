@@ -46,7 +46,7 @@ impl crate::app::types::ViewerApp {
         let mut restore = false;
         let mut discard = false;
         egui::Window::new("Restore previous session?")
-            .id(egui::Id::new("workspace_session_restore_prompt"))
+            .id(egui::Id::unique("workspace_session_restore_prompt"))
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {

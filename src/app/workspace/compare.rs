@@ -510,7 +510,7 @@ impl crate::app::types::ViewerApp {
                                         egui::vec2(pane_width, pane_height),
                                         egui::Sense::click_and_drag(),
                                     );
-                                    let compare_drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+                                    let compare_drag_payload_id = egui::Id::unique("jpeg_viewer_compare_drag_entry");
                                     if response.hovered()
                                         && ctx.input(|input| input.pointer.any_released())
                                         && let Some(path) = ctx.data(|data| data.get_temp::<std::path::PathBuf>(compare_drag_payload_id))
@@ -1004,7 +1004,7 @@ impl crate::app::types::ViewerApp {
                                             egui::vec2(base_width, placeholder_height),
                                             egui::Sense::click_and_drag(),
                                         );
-                                        let compare_drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+                                        let compare_drag_payload_id = egui::Id::unique("jpeg_viewer_compare_drag_entry");
                                         if empty_response.hovered()
                                             && ctx.input(|input| input.pointer.any_released())
                                             && let Some(path) = ctx.data(|data| data.get_temp::<std::path::PathBuf>(compare_drag_payload_id))
@@ -1391,7 +1391,7 @@ impl crate::app::types::ViewerApp {
             }
         if let Some((index, path)) = drop_pane_request {
             self.sidebar_drag_index = None;
-            let drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+            let drag_payload_id = egui::Id::unique("jpeg_viewer_compare_drag_entry");
             ctx.data_mut(|data| { data.remove_temp::<std::path::PathBuf>(drag_payload_id); });
             if path.is_file() && crate::imaging::helpers::is_supported_image(&path) {
                 let replaced = self.replace_compare_pane(tab_id, index, ImageEntry::File(path));
@@ -1407,7 +1407,7 @@ impl crate::app::types::ViewerApp {
             self.sidebar_drag_index = None;
             // Do not leave a stale sidebar payload that could be consumed by a
             // later unrelated click after the user drops outside a split.
-            let drag_payload_id = egui::Id::new("jpeg_viewer_compare_drag_entry");
+            let drag_payload_id = egui::Id::unique("jpeg_viewer_compare_drag_entry");
             ctx.data_mut(|data| { data.remove_temp::<std::path::PathBuf>(drag_payload_id); });
         }
 

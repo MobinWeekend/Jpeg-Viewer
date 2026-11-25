@@ -708,6 +708,7 @@ fn command_output(command: &str, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
+#[cfg(any(windows, target_os = "linux"))]
 fn same_path(first: &Path, second: &Path) -> bool {
     let first = fs::canonicalize(first).unwrap_or_else(|_| first.to_path_buf());
     let second = fs::canonicalize(second).unwrap_or_else(|_| second.to_path_buf());

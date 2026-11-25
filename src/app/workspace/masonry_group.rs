@@ -302,7 +302,7 @@ impl crate::app::types::ViewerApp {
             let response = ui
                 .interact(
                     tile_rect,
-                    egui::Id::new(("masonry_entry", tab_id, key.clone())),
+                    egui::Id::unique(("masonry_entry", tab_id, key.clone())),
                     egui::Sense::click(),
                 )
                 .on_hover_text(format!(

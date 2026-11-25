@@ -280,7 +280,7 @@ fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
 /// Scale explicit RichText/FontId sizes alongside egui's default text styles.
 pub fn scaled_text_size(ctx: &egui::Context, base: f32) -> f32 {
     let factor = ctx
-        .data(|data| data.get_temp::<f32>(egui::Id::new("ui_text_scale_factor")))
+        .data(|data| data.get_temp::<f32>(egui::Id::unique("ui_text_scale_factor")))
         .unwrap_or(1.0);
     base * factor
 }

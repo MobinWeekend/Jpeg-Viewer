@@ -21,7 +21,7 @@ pub fn set_desktop_menu_bar_preference(ctx: &egui::Context, preference: &str) {
         _ => "auto",
     };
     ctx.data_mut(|data| {
-        data.insert_temp(egui::Id::new(MENU_BAR_PREF_ID), safe.to_owned());
+        data.insert_temp(egui::Id::unique(MENU_BAR_PREF_ID), safe.to_owned());
     });
 }
 
@@ -32,7 +32,7 @@ pub fn uses_desktop_menu_bar(ctx: &egui::Context) -> bool {
     }
     let profile = crate::ui_theme::current_look_profile(ctx);
     let preference = ctx.data(|data| {
-        data.get_temp::<String>(egui::Id::new(MENU_BAR_PREF_ID))
+        data.get_temp::<String>(egui::Id::unique(MENU_BAR_PREF_ID))
             .unwrap_or_else(|| "auto".to_owned())
     });
     // An explicit Off setting always wins. Otherwise the Windows 98 profile
@@ -64,9 +64,9 @@ pub fn desktop_menu_bar_height(ctx: &egui::Context) -> f32 {
     }
     let (menu_height, inline) = ctx.data(|data| {
         (
-            data.get_temp::<f32>(egui::Id::new(MENU_BAR_LAYOUT_HEIGHT_ID))
+            data.get_temp::<f32>(egui::Id::unique(MENU_BAR_LAYOUT_HEIGHT_ID))
                 .unwrap_or(0.0),
-            data.get_temp::<bool>(egui::Id::new(MENU_BAR_INLINE_ID))
+            data.get_temp::<bool>(egui::Id::unique(MENU_BAR_INLINE_ID))
                 .unwrap_or(false),
         )
     });
@@ -84,7 +84,7 @@ pub fn desktop_menu_bar_height(ctx: &egui::Context) -> f32 {
 pub fn render_desktop_menu_bar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     let inline = desktop_menu_bar_in_custom_titlebar(app, ctx);
     ctx.data_mut(|data| {
-        data.insert_temp(egui::Id::new(MENU_BAR_INLINE_ID), inline);
+        data.insert_temp(egui::Id::unique(MENU_BAR_INLINE_ID), inline);
     });
     if !uses_desktop_menu_bar(ctx) || inline {
         return;
@@ -301,7 +301,7 @@ pub fn render_desktop_menu_bar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egu
         });
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new(MENU_BAR_LAYOUT_HEIGHT_ID),
+            egui::Id::unique(MENU_BAR_LAYOUT_HEIGHT_ID),
             panel_response.response.rect.height(),
         );
     });
@@ -961,14 +961,14 @@ fn select_sidebar_tab(app: &mut ViewerApp, tab: &str) {
 /// but remains movable for the duration of that opening.
 pub fn desktop_menu_bar_generation_for_help(ctx: &egui::Context) -> u64 {
     ctx.data(|data| {
-        data.get_temp::<u64>(egui::Id::new(HELP_WINDOW_GENERATION_ID))
+        data.get_temp::<u64>(egui::Id::unique(HELP_WINDOW_GENERATION_ID))
             .unwrap_or(0)
     })
 }
 
 pub fn bump_help_window_generation(ctx: &egui::Context) {
     ctx.data_mut(|data| {
-        let id = egui::Id::new(HELP_WINDOW_GENERATION_ID);
+        let id = egui::Id::unique(HELP_WINDOW_GENERATION_ID);
         let next = data.get_temp::<u64>(id).unwrap_or(0).wrapping_add(1);
         data.insert_temp(id, next);
     });

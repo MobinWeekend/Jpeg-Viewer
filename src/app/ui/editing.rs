@@ -890,7 +890,7 @@ impl ViewerApp {
             let mut open = true;
             let target = self.confirm_overwrite_path.clone().unwrap();
             egui::Window::new("Confirm overwrite")
-                .id(egui::Id::new("edit_overwrite_confirmation"))
+                .id(egui::Id::unique("edit_overwrite_confirmation"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -917,7 +917,7 @@ impl ViewerApp {
 
         if self.confirm_discard_edits {
             egui::Window::new("Discard unsaved edits?")
-                .id(egui::Id::new("discard_edit_confirmation"))
+                .id(egui::Id::unique("discard_edit_confirmation"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
