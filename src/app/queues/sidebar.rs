@@ -305,14 +305,14 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
                     ui.spacing_mut().button_padding.x = 1.0;
 
                     let tab_width = ((tab_available_width - 3.0).max(0.0) / 4.0).max(0.0);
-                    let (browse_label, queue_label, favorites_label, info_label) = if tab_width >= 118.0 {
-                        ("▦ Browse", "↕ Queue", "★ Favorites", "ⓘ Info")
+                    let (browse_label, queue_label, info_label) = if tab_width >= 118.0 {
+                        ("▦ Browse", "↕ Queue", "ⓘ Info")
                     } else if tab_width >= 72.0 {
-                        ("Browse", "Queue", "Favorites", "Info")
+                        ("Browse", "Queue", "Info")
                     } else if tab_width >= 42.0 {
-                        ("Brw", "Que", "Fav", "Info")
+                        ("Brw", "Que", "Info")
                     } else {
-                        ("▦", "↕", "★", "ⓘ")
+                        ("▦", "↕", "ⓘ")
                     };
                     let browse = !app.sidebar_queue_tab && !app.sidebar_favorites_tab && !app.sidebar_info_tab;
                     if ui.add_sized([tab_width, 30.0], egui::Button::selectable(browse, browse_label))
@@ -323,8 +323,49 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
                         .on_hover_text(format!("Queue ({})", app.queue_paths.len())).clicked() {
                         app.sidebar_queue_tab = true; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false;
                     }
-                    if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_favorites_tab, favorites_label))
-                        .on_hover_text(format!("Favorites ({})", app.favorite_paths.len())).clicked() {
+                    let favorites_selected = app.sidebar_favorites_tab;
+                    let (favorites_rect, favorites_response) = ui.allocate_exact_size(
+                        egui::vec2(tab_width, 30.0),
+                        egui::Sense::click(),
+                    );
+                    if favorites_selected || favorites_response.hovered() {
+                        let fill = if favorites_selected {
+                            ui.visuals().selection.bg_fill
+                        } else {
+                            ui.visuals().widgets.hovered.bg_fill
+                        };
+                        ui.painter().rect_filled(
+                            favorites_rect,
+                            egui::CornerRadius::same(4),
+                            fill,
+                        );
+                    }
+                    let fav_style = app.settings_manager.get().favorite_icon_style.as_str();
+                    let fav_icon = crate::app::ui::favorite_svg_icon(fav_style, true);
+                    let fav_icon_rect = if tab_width >= 72.0 {
+                        egui::Rect::from_center_size(
+                            egui::pos2(favorites_rect.left() + 16.0, favorites_rect.center().y),
+                            egui::vec2(16.0, 16.0),
+                        )
+                    } else {
+                        egui::Rect::from_center_size(favorites_rect.center(), egui::vec2(17.0, 17.0))
+                    };
+                    crate::app::ui::paint_svg_icon(
+                        ui,
+                        fav_icon_rect,
+                        fav_icon,
+                        egui::Color32::WHITE,
+                    );
+                    if tab_width >= 72.0 {
+                        ui.painter().text(
+                            egui::pos2(fav_icon_rect.right() + 4.0, favorites_rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            if tab_width >= 118.0 { "Favorites" } else { "Fav" },
+                            egui::FontId::proportional(12.0),
+                            ui.visuals().text_color(),
+                        );
+                    }
+                    if favorites_response.on_hover_text(format!("Favorites ({})", app.favorite_paths.len())).clicked() {
                         app.sidebar_queue_tab = false; app.sidebar_favorites_tab = true; app.sidebar_info_tab = false;
                     }
                     if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_info_tab, info_label))
@@ -908,15 +949,16 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
     if app.sidebar_resize_dragging && primary_down {
         let previous = app.settings_manager.get().file_sidebar_width;
         if (width - previous).abs() > 1.0 {
-            app.settings_manager.settings.file_sidebar_width = width;
+            let _ = app.settings_manager.update(|settings| {
+                settings.file_sidebar_width = width;
+            });
             app.sidebar_width_needs_save = true;
         }
     }
 
     if app.sidebar_resize_dragging && any_released {
-        if app.sidebar_width_needs_save {
-            let _ = app.settings_manager.save();
-        }
+        // Do not force a settings.ini write from a sidebar resize. The shared
+        // save scheduler waits until the Settings drawer is closed.
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
     } else if !primary_down
@@ -924,7 +966,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
         && app.sidebar_width_needs_save
     {
         // Recovery path if the release happened outside the application window.
-        let _ = app.settings_manager.save();
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
     }

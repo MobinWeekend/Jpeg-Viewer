@@ -3,6 +3,7 @@
 //! The title bar is rendered inside its own top panel, so the reserved layout
 //! height and the visible/hit-testable chrome are always identical.
 use crate::app::types::ViewerApp;
+use crate::app::ui::{paint_svg_icon, SvgIcon};
 use eframe::egui;
 
 const CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID: &str = "jpeg_viewer_custom_titlebar_layout_height";
@@ -514,62 +515,20 @@ fn render_caption_button(
     } else {
         foreground
     };
-    let icon_stroke = egui::Stroke::new(if win98 { 1.5_f32 } else { 1.7_f32 }, icon_color);
-    let center = rect.center();
-    let painter = ui.painter();
-    match control {
-        CaptionControl::Minimize => {
-            painter.line_segment(
-                [
-                    egui::pos2(center.x - 4.0, center.y + 4.0),
-                    egui::pos2(center.x + 4.0, center.y + 4.0),
-                ],
-                icon_stroke,
-            );
-        }
-        CaptionControl::Maximize => {
-            let box_rect = egui::Rect::from_center_size(center, egui::vec2(12.0, 12.0));
-            if ui
-                .ctx()
-                .input(|input| input.viewport().maximized.unwrap_or(false))
-            {
-                painter.rect_stroke(
-                    box_rect.translate(egui::vec2(-1.5, 1.5)),
-                    egui::CornerRadius::ZERO,
-                    icon_stroke,
-                    egui::StrokeKind::Inside,
-                );
-                painter.rect_stroke(
-                    box_rect.translate(egui::vec2(1.5, -1.5)),
-                    egui::CornerRadius::ZERO,
-                    icon_stroke,
-                    egui::StrokeKind::Inside,
-                );
-            } else {
-                painter.rect_stroke(
-                    box_rect,
-                    egui::CornerRadius::ZERO,
-                    icon_stroke,
-                    egui::StrokeKind::Inside,
-                );
-            }
-        }
-        CaptionControl::Close => {
-            painter.line_segment(
-                [
-                    egui::pos2(center.x - 4.0, center.y - 4.0),
-                    egui::pos2(center.x + 4.0, center.y + 4.0),
-                ],
-                icon_stroke,
-            );
-            painter.line_segment(
-                [
-                    egui::pos2(center.x + 4.0, center.y - 4.0),
-                    egui::pos2(center.x - 4.0, center.y + 4.0),
-                ],
-                icon_stroke,
-            );
-        }
-    }
+    let maximized = ui
+        .ctx()
+        .input(|input| input.viewport().maximized.unwrap_or(false));
+    let icon = match control {
+        CaptionControl::Minimize => SvgIcon::CaptionMinimize,
+        CaptionControl::Maximize if maximized => SvgIcon::CaptionRestore,
+        CaptionControl::Maximize => SvgIcon::CaptionMaximize,
+        CaptionControl::Close => SvgIcon::CaptionClose,
+    };
+    let icon_size = if win98 { 13.0 } else { 16.0 };
+    let icon_rect = egui::Rect::from_center_size(
+        rect.center(),
+        egui::vec2(icon_size, icon_size),
+    );
+    paint_svg_icon(ui, icon_rect, icon, icon_color);
     response.on_hover_text(tooltip)
 }

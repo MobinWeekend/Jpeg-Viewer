@@ -1,7 +1,7 @@
 //use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::app::ui::helpers::paint_sidebar_drawer_icon;
-use crate::app::ui::{paint_svg_icon, SvgIcon};
+use crate::app::ui::{SvgIcon, paint_svg_icon};
 use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -30,19 +30,17 @@ impl ProfileToolbarButtonExt for egui::Ui {
 }
 
 fn paint_navigation_icon(ui: &egui::Ui, button_rect: egui::Rect, icon: SvgIcon) {
-    let icon_rect = egui::Rect::from_center_size(
-        button_rect.center(),
-        egui::vec2(18.0, 18.0),
-    );
+    let icon_rect = egui::Rect::from_center_size(button_rect.center(), egui::vec2(18.0, 18.0));
     paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
 }
 
 fn paint_zoom_sign_icon(ui: &egui::Ui, button_rect: egui::Rect, zoom_in: bool) {
-    let icon = if zoom_in { SvgIcon::ZoomIn } else { SvgIcon::ZoomOut };
-    let icon_rect = egui::Rect::from_center_size(
-        button_rect.center(),
-        egui::vec2(17.0, 17.0),
-    );
+    let icon = if zoom_in {
+        SvgIcon::ZoomIn
+    } else {
+        SvgIcon::ZoomOut
+    };
+    let icon_rect = egui::Rect::from_center_size(button_rect.center(), egui::vec2(17.0, 17.0));
     paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
 }
 
@@ -399,39 +397,6 @@ impl ViewerApp {
         }
     }
 
-    pub fn zoom_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        // Fit / 1:1
-        if self.b_zoom_used {
-            if ui
-                .add_profile_button(
-                    egui::Button::new(
-                        egui::RichText::new("⊞").size(scaled_text_size(ui.ctx(), 14.0)),
-                    )
-                    .min_size(self.btn_size_medium())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
-                )
-                .on_hover_text("Fit")
-                .clicked()
-            {
-                self.handle_command(ctx, ViewerCommand::MakeFit);
-            }
-        } else if ui
-            .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("1:1").size(scaled_text_size(ui.ctx(), 14.0)),
-                )
-                .min_size(self.btn_size_medium())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
-            )
-            .on_hover_text("Make 1:1 Ratio")
-            .clicked()
-        {
-            self.handle_command(ctx, ViewerCommand::ResetZoom);
-        }
-    }
-
     // GIF CONTROLS
     /// Display GIF playback controls if the current image is an animated GIF.
     pub fn gif_controls_ui(&mut self, ui: &mut egui::Ui) {
@@ -536,53 +501,6 @@ impl ViewerApp {
 
         if self.is_preview {
             ui.label(egui::RichText::new("Loading...").size(scaled_text_size(ui.ctx(), 12.0)));
-        }
-    }
-
-    // Fullscreen
-    pub fn fullscreen_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
-            .add_profile_button(
-                egui::Button::new(egui::RichText::new("⛶").size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(self.btn_size_small())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
-            )
-            .on_hover_text("Toggle Fullscreen")
-            .clicked()
-        {
-            self.toggle_fullscreen(ctx);
-            self.hamburger_menu_open = false;
-        }
-    }
-
-    // Toggle whether the application window stays above all other windows.
-    pub fn pin_window_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let (icon, tooltip, fill) = if self.window_always_on_top {
-            ("📌", "Unpin Window", egui::Color32::RED)
-        } else {
-            ("📌", "Pin Window to Top", egui::Color32::TRANSPARENT)
-        };
-
-        if ui
-            .add_profile_button(
-                egui::Button::new(egui::RichText::new(icon).size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(self.btn_size_small())
-                    .fill(fill)
-                    .stroke(toolbar_button_stroke(ui)),
-            )
-            .on_hover_text(tooltip)
-            .clicked()
-        {
-            self.window_always_on_top = !self.window_always_on_top;
-
-            let window_level = if self.window_always_on_top {
-                egui::WindowLevel::AlwaysOnTop
-            } else {
-                egui::WindowLevel::Normal
-            };
-
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(window_level));
         }
     }
 

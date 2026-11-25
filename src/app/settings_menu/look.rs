@@ -12,7 +12,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 }
 
 fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("🎨 Appearance").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "look_appearance", crate::app::ui::SvgIcon::Palette, "Appearance", false, |ui| {
         ui.add_space(4.0);
         let settings = app.settings_manager.get().clone();
         let current = settings.look_preference.clone();
@@ -76,7 +76,7 @@ fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
         if effective == "win98" {
             ui.add_space(6.0);
             ui.separator();
-            ui.label(egui::RichText::new("☎ Windows 98 dial-up effect").strong());
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::General, "Windows 98 dial-up effect");
             let settings = app.settings_manager.get().clone();
             let mut enabled = settings.win98_dialup_enabled;
             if crate::ui_theme::switch(ui, &mut enabled, "Reveal images like a dial-up download") {
@@ -107,14 +107,38 @@ fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
         }
 
         ui.separator();
-        ui.label(egui::RichText::new("Theme and UI appearance").strong());
         crate::app::settings_menu::general::render_theme(app, ui, ctx);
         crate::app::settings_menu::general::render_ui_appearance(app, ui, ctx);
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            let current = app.settings_manager.get().favorite_icon_style.clone();
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(
+                ui,
+                icon_rect,
+                crate::app::ui::favorite_svg_icon(&current, true),
+                egui::Color32::WHITE,
+            );
+            ui.label(egui::RichText::new("Favorites icon").strong());
+            let mut selected = current.clone();
+            egui::ComboBox::from_id_salt("favorite_icon_style")
+                .selected_text(if selected == "heart" { "Colored heart" } else { "Colored star" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut selected, "star".to_owned(), "Colored star");
+                    ui.selectable_value(&mut selected, "heart".to_owned(), "Colored heart");
+                });
+            if selected != current {
+                let _ = app.settings_manager.update(|settings| settings.favorite_icon_style = selected);
+            }
+        });
+        ui.label(egui::RichText::new("Favorites use an outlined icon when adding and a filled icon when removing.").small().weak());
     });
 }
 
 fn render_layout(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("☷ Layout & Navigation").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "look_layout", crate::app::ui::SvgIcon::Layout, "Layout & Navigation", false, |ui| {
         ui.add_space(4.0);
         let effective = crate::ui_theme::current_look_profile(ctx);
         ui.label(egui::RichText::new("Main toolbar and navigation placement").strong());
@@ -220,8 +244,9 @@ fn render_layout(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 }
 
 fn render_window(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("▣ Window & Backdrop").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "look_window", crate::app::ui::SvgIcon::WindowFrame, "Window & Backdrop", false, |ui| {
         ui.add_space(4.0);
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::WindowFrame, "OS/DE glass");
         let mut background_blur = app.settings_manager.get().os_background_blur;
         if crate::ui_theme::switch(ui, &mut background_blur, "Use OS/DE blur or glass when available") {
             let _ = app.settings_manager.update(|settings| settings.os_background_blur = background_blur);

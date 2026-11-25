@@ -59,11 +59,16 @@ impl eframe::App for ViewerApp {
             });
         }
 
-        if let Some(Err(error)) = self.settings_manager.save_if_due() {
-            eprintln!("Could not persist updated settings: {error}");
-        }
-        if let Some(delay) = self.settings_manager.time_until_save() {
-            ctx.request_repaint_after(delay.max(std::time::Duration::from_millis(1)));
+        // Settings edited in the docked Settings panel remain in memory while
+        // that panel is open. Persist only after it closes, and only when dirty.
+        // The normal 750 ms debounce still coalesces other changes outside Settings.
+        if !self.show_settings_menu {
+            if let Some(Err(error)) = self.settings_manager.save_if_due() {
+                eprintln!("Could not persist updated settings: {error}");
+            }
+            if let Some(delay) = self.settings_manager.time_until_save() {
+                ctx.request_repaint_after(delay.max(std::time::Duration::from_millis(1)));
+            }
         }
         #[cfg(target_os = "linux")]
         crate::platform::linux_thumbnails::set_publish_enabled(
@@ -145,10 +150,9 @@ impl eframe::App for ViewerApp {
         } else if !ctx.input(|input| input.viewport().fullscreen.unwrap_or(false)) {
             let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
             if maximized != self.settings_manager.get().window_maximized {
-                self.settings_manager.settings.window_maximized = maximized;
-                if let Err(error) = self.settings_manager.save() {
-                    eprintln!("Could not save maximize state: {error}");
-                }
+                let _ = self.settings_manager.update(|settings| {
+                    settings.window_maximized = maximized;
+                });
             }
         }
 

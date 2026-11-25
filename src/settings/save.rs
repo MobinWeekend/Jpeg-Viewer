@@ -237,7 +237,7 @@ impl SettingsManager {
         section.set("title_bar_color_mode", &settings.title_bar_color_mode);
         section.set(
             "custom_window_frame_thickness",
-            settings.custom_window_frame_thickness.to_string(),
+            settings.custom_window_frame_thickness.clamp(2.0, 8.0).to_string(),
         );
         section.set(
             "center_custom_window_title",
@@ -300,6 +300,7 @@ impl SettingsManager {
         section.set("ui_scale", settings.ui_scale.to_string());
         section.set("ui_text_scale", settings.ui_text_scale.to_string());
         section.set("ui_accent_color", &settings.ui_accent_color);
+        section.set("favorite_icon_style", &settings.favorite_icon_style);
         section.set("main_view_background", &settings.main_view_background);
         section.set(
             "main_view_background_opacity",

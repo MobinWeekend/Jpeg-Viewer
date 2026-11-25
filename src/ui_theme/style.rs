@@ -188,11 +188,12 @@ pub fn apply_polished_style_with_options(
     visuals.widgets.hovered.weak_bg_fill = hover;
     visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, accent);
     visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.5_f32, text_color);
-    visuals.widgets.hovered.expansion = 1.0;
+    visuals.widgets.hovered.expansion = 0.0;
     visuals.widgets.active.bg_fill = active;
     visuals.widgets.active.weak_bg_fill = active;
     visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, accent);
     visuals.widgets.active.expansion = 0.0;
+    visuals.widgets.open.expansion = 0.0;
     visuals.widgets.open.bg_fill = accent_soft;
     visuals.widgets.open.weak_bg_fill = accent_soft;
     visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0_f32, accent);
@@ -588,6 +589,12 @@ pub fn apply_polished_style_with_options(
     };
     visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.35_f32, hovered_text);
     visuals.override_text_color = None;
+
+    // egui enables sub-pixel glyph binning by default. It can soften text at
+    // common desktop scales; keeping pixel hinting enabled while disabling
+    // sub-pixel binning favors crisp UI text over the slightly smoother kerning.
+    visuals.text_options.font_hinting = true;
+    visuals.text_options.subpixel_binning = false;
 
     let text_scale = text_scale.clamp(0.80, 1.40);
     for (text_style, font_id) in style.text_styles.iter_mut() {

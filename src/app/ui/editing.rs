@@ -27,6 +27,89 @@ enum EditAction {
     Discard,
 }
 
+/// Compact icon-and-label action used throughout the Edit sidebar. The control
+/// keeps fixed dimensions across hover/pressed states, so its neighbors never
+/// shift when egui changes widget visuals.
+fn edit_icon_button(
+    ui: &mut egui::Ui,
+    icon: crate::app::ui::SvgIcon,
+    label: &str,
+    enabled: bool,
+) -> egui::Response {
+    let tint = if enabled { ui.visuals().text_color() } else { ui.visuals().weak_text_color() };
+    let font_id = egui::FontId::proportional(crate::ui_theme::scaled_text_size(ui.ctx(), 12.0));
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font_id, tint);
+    let width = (16.0 + 7.0 + galley.size().x + 14.0)
+        .max(64.0)
+        .min(ui.available_width().max(1.0));
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(width, 28.0),
+        if enabled { egui::Sense::click() } else { egui::Sense::hover() },
+    );
+    let visuals = if response.is_pointer_button_down_on() {
+        &ui.visuals().widgets.active
+    } else if response.hovered() {
+        &ui.visuals().widgets.hovered
+    } else if enabled {
+        &ui.visuals().widgets.inactive
+    } else {
+        &ui.visuals().widgets.noninteractive
+    };
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(5), visuals.bg_fill);
+    ui.painter().rect_stroke(
+        rect,
+        egui::CornerRadius::same(5),
+        egui::Stroke::new(1.0, visuals.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 14.0, rect.center().y),
+        egui::vec2(15.0, 15.0),
+    );
+    crate::app::ui::paint_svg_icon(ui, icon_rect, icon, tint);
+    ui.painter().galley(
+        egui::pos2(icon_rect.right() + 6.0, rect.center().y - galley.size().y * 0.5),
+        galley,
+        tint,
+    );
+    response
+}
+
+fn edit_icon_only_button(
+    ui: &mut egui::Ui,
+    icon: crate::app::ui::SvgIcon,
+    tooltip: &str,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::click());
+    let visuals = if response.is_pointer_button_down_on() {
+        &ui.visuals().widgets.active
+    } else if response.hovered() {
+        &ui.visuals().widgets.hovered
+    } else {
+        &ui.visuals().widgets.inactive
+    };
+    if response.hovered() || response.is_pointer_button_down_on() {
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(5), visuals.bg_fill);
+        ui.painter().rect_stroke(
+            rect,
+            egui::CornerRadius::same(5),
+            egui::Stroke::new(1.0, visuals.bg_stroke.color),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(15.0, 15.0));
+    crate::app::ui::paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
+    response.on_hover_text(tooltip)
+}
+
+fn edit_section_heading(ui: &mut egui::Ui, icon: crate::app::ui::SvgIcon, label: &str) {
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(17.0, 17.0), egui::Sense::hover());
+        crate::app::ui::paint_svg_icon(ui, rect, icon, ui.visuals().text_color());
+        ui.label(egui::RichText::new(label).strong());
+    });
+}
+
 impl ViewerApp {
     pub fn start_editing(&mut self, ctx: &egui::Context) {
         if self.is_home_surface_active() {
@@ -465,7 +548,11 @@ impl ViewerApp {
                     ui.horizontal(|ui| {
                         ui.heading("Image editor");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("×").on_hover_text("Exit edit mode; keep this working copy").clicked() {
+                            if edit_icon_only_button(
+                                ui,
+                                crate::app::ui::SvgIcon::CaptionClose,
+                                "Exit edit mode; keep this working copy",
+                            ).clicked() {
                                 action = Some(EditAction::ExitMode);
                             }
                         });
@@ -492,14 +579,14 @@ impl ViewerApp {
                         });
                         ui.add_space(6.0);
 
-                        ui.horizontal(|ui| {
-                            if ui.add_enabled(can_undo, egui::Button::new("↶ Undo")).clicked() {
+                        ui.horizontal_wrapped(|ui| {
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::Undo, "Undo", can_undo).clicked() {
                                 action = Some(EditAction::Undo);
                             }
-                            if ui.add_enabled(can_redo, egui::Button::new("↷ Redo")).clicked() {
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::Redo, "Redo", can_redo).clicked() {
                                 action = Some(EditAction::Redo);
                             }
-                            if ui.button("Reset All Edits").clicked() {
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::Reset, "Reset All", true).clicked() {
                                 action = Some(EditAction::Reset);
                             }
                         });
@@ -508,18 +595,26 @@ impl ViewerApp {
                         }
 
                         ui.separator();
-                        ui.label(egui::RichText::new("Transform").strong());
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::RotateRight, "Transform");
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("↺").clicked() { action = Some(EditAction::RotateLeft); }
-                            if ui.button("↻").clicked() { action = Some(EditAction::RotateRight); }
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::RotateLeft, "Rotate left", true).clicked() {
+                                action = Some(EditAction::RotateLeft);
+                            }
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::RotateRight, "Rotate right", true).clicked() {
+                                action = Some(EditAction::RotateRight);
+                            }
                         });
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("↔️").clicked() { action = Some(EditAction::FlipHorizontal); }
-                            if ui.button("↕️").clicked() { action = Some(EditAction::FlipVertical); }
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::FlipHorizontal, "Flip H", true).clicked() {
+                                action = Some(EditAction::FlipHorizontal);
+                            }
+                            if edit_icon_button(ui, crate::app::ui::SvgIcon::FlipVertical, "Flip V", true).clicked() {
+                                action = Some(EditAction::FlipVertical);
+                            }
                         });
 
                         ui.separator();
-                        ui.label(egui::RichText::new("Resize").strong());
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Resize, "Resize");
                         if self.resize_width == 0 || self.resize_height == 0 {
                             self.resize_width = width;
                             self.resize_height = height;
@@ -527,7 +622,7 @@ impl ViewerApp {
                         let mut resize_width = self.resize_width.max(1);
                         let mut resize_height = self.resize_height.max(1);
                         let mut resize_linked = self.resize_linked;
-                        ui.checkbox(&mut resize_linked, "Keep aspect ratio");
+                        crate::ui_theme::switch(ui, &mut resize_linked, "Keep aspect ratio");
                         let aspect = width as f64 / height.max(1) as f64;
                         let mut width_changed = false;
                         let mut height_changed = false;
@@ -555,13 +650,13 @@ impl ViewerApp {
                         ui.small("Crop and resize cannot be undone step by step. Use Restore to original size to return to the source dimensions. Very large output dimensions may exceed available memory.");
 
                         ui.separator();
-                        ui.label(egui::RichText::new("✂️ Crop").strong());
-                        let crop_button = if crop_tool_active { "Stop crop selection" } else { "Draw crop on image" };
-                        if ui.button(crop_button).clicked() {
-                            crop_tool_active = !crop_tool_active;
-                            if crop_tool_active {
-                                crop_selection = None;
-                            }
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Crop, "Crop");
+                        let crop_was_active = crop_tool_active;
+                        if crate::ui_theme::switch(ui, &mut crop_tool_active, "Crop selection mode")
+                            && crop_tool_active
+                            && !crop_was_active
+                        {
+                            crop_selection = None;
                         }
                         if crop_tool_active {
                             ui.label("Drag a rectangle over the image. Then apply it here.");
@@ -613,21 +708,25 @@ impl ViewerApp {
                         });
 
                         ui.separator();
-                        let response = ui.checkbox(&mut adjustments.per_channel, "Enable independent RGB controls");
-                        adjustments_changed |= response.changed();
+                        if crate::ui_theme::switch(ui, &mut adjustments.per_channel, "Independent RGB controls") {
+                            adjustments_changed = true;
+                        }
                         if !adjustments.per_channel {
-                            ui.label(egui::RichText::new("🎨 Colour adjustments").strong());
-                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).text("☀️ Brightness")));
+                            edit_section_heading(ui, crate::app::ui::SvgIcon::Palette, "Colour adjustments");
+                            edit_section_heading(ui, crate::app::ui::SvgIcon::Brightness, "Brightness");
+                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).show_value(true)));
                             adjustments_changed |= response.changed();
                             adjustment_dragging |= response.dragged();
                             adjustment_drag_stopped |= response.drag_stopped();
 
-                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).text("◐ Contrast")));
+                            edit_section_heading(ui, crate::app::ui::SvgIcon::Contrast, "Contrast");
+                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).show_value(true)));
                             adjustments_changed |= response.changed();
                             adjustment_dragging |= response.dragged();
                             adjustment_drag_stopped |= response.drag_stopped();
 
                         }else{
+                            edit_section_heading(ui, crate::app::ui::SvgIcon::Palette, "Independent RGB adjustments");
                             for (index, name) in ["Red", "Green", "Blue"].iter().enumerate() {
                                 ui.label(*name);
                                 let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness_rgb[index], -100..=100).text("Brightness")));
@@ -641,17 +740,19 @@ impl ViewerApp {
                             }
                             ui.separator();
                         };
-                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.saturation, 0..=200).text("🌈 Saturation")));
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Saturation, "Saturation");
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.saturation, 0..=200).show_value(true)));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.hue, -180..=180).text("🎨 Hue")));
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Hue, "Hue");
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.hue, -180..=180).show_value(true)));
                         adjustments_changed |= response.changed();
                         adjustment_dragging |= response.dragged();
                         adjustment_drag_stopped |= response.drag_stopped();
 
-                        if ui.button("Reset colour adjustments").clicked() {
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::Reset, "Reset colour adjustments", true).clicked() {
                             adjustments = ImageAdjustments::default();
                             reset_adjustments_clicked = true;
                             adjustments_changed = adjustments != original_adjustments;

@@ -2,9 +2,9 @@
 use eframe::egui;
 
 const MIN_RESIZE_HANDLE_SIZE: f32 = 2.0;
-const MAX_RESIZE_HANDLE_SIZE: f32 = 12.0;
+const MAX_RESIZE_HANDLE_SIZE: f32 = 8.0;
 pub(super) const CORNER_RESIZE_HIT_SIZE: f32 = 26.0;
-const FRAME_STROKE_ALPHA: u8 = 72; // visually subtle; hit areas stay fully active
+const FRAME_STROKE_ALPHA: u8 = 0; // fully transparent frame; resize hit areas remain active
 
 pub fn render_resize_handles(
     ctx: &egui::Context,

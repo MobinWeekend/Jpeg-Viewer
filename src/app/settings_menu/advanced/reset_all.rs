@@ -9,10 +9,17 @@ const RESET_FEEDBACK_ID: &str = "settings_reset_all_feedback";
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
+        let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+        crate::app::ui::paint_svg_icon(
+            ui,
+            icon_rect,
+            crate::app::ui::SvgIcon::Reset,
+            ui.visuals().text_color(),
+        );
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new("⚠ Reset All Settings to Default").size(13.0),
+                    egui::RichText::new("Reset All Settings to Default").size(13.0),
                 )
                 .min_size(egui::vec2(220.0, 32.0)),
             )
@@ -56,21 +63,16 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             let update_result = app.settings_manager.update(|settings| {
                 *settings = defaults.clone();
             });
-            let save_result = update_result.and_then(|()| app.settings_manager.save());
-
-            // Apply in-memory defaults even if the disk write fails. The settings
-            // manager retains its dirty/error state and will retry via save_if_due.
+            // Keep reset changes in memory while the Settings panel is open. The
+            // normal save path writes them after the panel closes.
             apply_runtime_defaults(app, ctx, &defaults);
 
-            let feedback = match save_result {
+            let feedback = match update_result {
                 Ok(()) => (
                     false,
-                    "Settings were reset and saved. Restart to apply startup-only options, the thumbnail worker pool, and default window placement.".to_owned(),
+                    "Settings were reset. Changes will be written when Settings closes. Restart to apply startup-only options, the thumbnail worker pool, and default window placement.".to_owned(),
                 ),
-                Err(error) => (
-                    true,
-                    format!("Settings were reset in memory, but could not be saved: {error}"),
-                ),
+                Err(error) => (true, format!("Could not reset settings: {error}")),
             };
             ctx.data_mut(|data| data.insert_temp(egui::Id::unique(RESET_FEEDBACK_ID), feedback));
             confirmation_open = false;

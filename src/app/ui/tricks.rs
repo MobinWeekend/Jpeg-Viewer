@@ -92,30 +92,47 @@ impl ViewerApp {
 
         if settings.tricks_backdrop_enabled && self.virtual_texture.is_none() {
             if let Some(path) = current_path.clone() {
-                // Cache hits do not carry decoded pixels, so use a bounded background
-                // decode only in that case. Normal image loads populate the preview
-                // directly from LoadedImage::Static above.
+                // A texture-cache hit may still have a retained CPU-side buffer.
+                // Reuse it when its identity matches both the selected entry and
+                // the texture currently on screen; otherwise the outgoing image's
+                // pixels could be mistaken for the newly selected file during load.
                 if current_ready
                     && self.tricks_backdrop_source_preview.is_none()
                     && self.tricks_backdrop_source_receiver.is_none()
                     && self.tricks_backdrop_source_requested_path.as_ref() != Some(&path)
                 {
-                    self.tricks_backdrop_source_requested_path = Some(path.clone());
-                    let (tx, rx) = mpsc::channel();
-                    self.tricks_backdrop_source_receiver = Some(rx);
-                    std::thread::spawn(move || {
-                        // This fallback is only used for a texture-cache hit where the
-                        // decoded pixels are unavailable. Keep its decode ceiling much
-                        // lower than the main viewer's image limit; the decorative
-                        // backdrop does not justify decoding enormous sources again.
-                        let result = open_bounded_image(&path, 12_000_000).and_then(|image| {
-                            let width = image.width();
-                            let height = image.height();
-                            let rgba = image.to_rgba8().into_raw();
-                            downsample_rgba_nearest(width, height, &rgba, 256)
+                    let current_image_id = self.get_image_id(self.current_index);
+                    let retained_pixels = self.current_decoded_pixels.as_ref().and_then(
+                        |(source_id, width, height, pixels)| {
+                            (current_image_id.as_ref() == Some(source_id)
+                                && self.texture_image_id.as_ref() == Some(source_id))
+                            .then(|| (*width, *height, Arc::clone(pixels)))
+                        },
+                    );
+                    if let Some((width, height, pixels)) = retained_pixels {
+                        self.cache_tricks_backdrop_from_decoded(
+                            Some(path.clone()),
+                            width,
+                            height,
+                            pixels,
+                        );
+                    } else {
+                        self.tricks_backdrop_source_requested_path = Some(path.clone());
+                        let (tx, rx) = mpsc::channel();
+                        self.tricks_backdrop_source_receiver = Some(rx);
+                        std::thread::spawn(move || {
+                            // Cache entries without retained pixels need a separate
+                            // decode. Keep it bounded to the viewer's 25 MP editing
+                            // ceiling, then reduce to the tiny decorative preview.
+                            let result = open_bounded_image(&path, 25_000_000).and_then(|image| {
+                                let width = image.width();
+                                let height = image.height();
+                                let rgba = image.to_rgba8().into_raw();
+                                downsample_rgba_nearest(width, height, &rgba, 256)
+                            });
+                            let _ = tx.send((path, result));
                         });
-                        let _ = tx.send((path, result));
-                    });
+                    }
                 }
             } else {
                 // Navigation can temporarily leave no current path when an image
@@ -211,10 +228,19 @@ impl ViewerApp {
                         color,
                         egui::TextureOptions::LINEAR,
                     );
-                    // With an existing texture this cross-fades from the previous image;
-                    // without one, the incoming texture fades in from transparency.
-                    self.tricks_backdrop_next_texture = Some(next);
-                    self.tricks_backdrop_transition_started = Some(std::time::Instant::now());
+                    // The first blur must be visible immediately: fading from no
+                    // texture leaves the whole first transition transparent unless
+                    // the viewport happens to repaint repeatedly. Later image changes
+                    // retain the 320 ms cross-fade.
+                    if self.tricks_backdrop_texture.is_none() {
+                        self.tricks_backdrop_texture = Some(next);
+                        self.tricks_backdrop_next_texture = None;
+                        self.tricks_backdrop_transition_started = None;
+                    } else {
+                        self.tricks_backdrop_next_texture = Some(next);
+                        self.tricks_backdrop_transition_started = Some(std::time::Instant::now());
+                    }
+                    ctx.request_repaint();
                 }
             }
             Some(Ok((_path, _blur, Err(error)))) => {
@@ -722,11 +748,11 @@ fn reflected_phase(value: f32) -> f32 {
 
 /// Settings section for the three main-view decoration effects.
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("🎉 Tricks").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "tricks", crate::app::ui::SvgIcon::Image, "Tricks", false, |ui| {
         ui.label(egui::RichText::new("Decorative effects inside the main image view. They are rendered below application controls and sidebars.").small().weak());
 
         ui.separator();
-        ui.label(egui::RichText::new("❄ Falling particles").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Image, "Falling particles");
         let settings = app.settings_manager.get().clone();
         let mut enabled = settings.tricks_snow_enabled;
         if crate::ui_theme::switch(ui, &mut enabled, "Enable falling particles") {
@@ -774,7 +800,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("◇ Watermark").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::SettingsFile, "Watermark");
         let settings = app.settings_manager.get().clone();
         let mut enabled = settings.tricks_watermark_enabled;
         if crate::ui_theme::switch(ui, &mut enabled, "Enable watermark") {
@@ -799,6 +825,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 }
             });
             ui.horizontal(|ui| {
+                let (choose_icon, _) =
+                    ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                crate::app::ui::paint_svg_icon(
+                    ui,
+                    choose_icon,
+                    crate::app::ui::SvgIcon::OpenFile,
+                    ui.visuals().text_color(),
+                );
                 if ui.button("Choose logo…").clicked()
                     && let Some(path) = rfd::FileDialog::new()
                         .add_filter("Watermark image", &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "gif"])
@@ -807,8 +841,18 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                         let value = path.to_string_lossy().into_owned();
                         let _ = app.settings_manager.update(|s| s.tricks_watermark_image_path = value);
                     }
-                if !settings.tricks_watermark_image_path.is_empty() && ui.small_button("Clear").clicked() {
-                    let _ = app.settings_manager.update(|s| s.tricks_watermark_image_path.clear());
+                if !settings.tricks_watermark_image_path.is_empty() {
+                    let (clear_icon, _) =
+                        ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+                    crate::app::ui::paint_svg_icon(
+                        ui,
+                        clear_icon,
+                        crate::app::ui::SvgIcon::Reset,
+                        ui.visuals().text_color(),
+                    );
+                    if ui.small_button("Clear").clicked() {
+                        let _ = app.settings_manager.update(|s| s.tricks_watermark_image_path.clear());
+                    }
                 }
             });
             if !settings.tricks_watermark_image_path.is_empty() {
@@ -856,7 +900,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("▧ Blurred photo backdrop").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Viewing, "Blurred photo backdrop");
         let settings = app.settings_manager.get().clone();
         let mut enabled = settings.tricks_backdrop_enabled;
         if crate::ui_theme::switch(ui, &mut enabled, "Show blurred photo behind the image") {

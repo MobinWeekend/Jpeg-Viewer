@@ -295,7 +295,7 @@ impl SettingsManager {
                         && thickness.is_finite()
                         && (2.0..=12.0).contains(&thickness)
                     {
-                        settings.custom_window_frame_thickness = thickness;
+                        settings.custom_window_frame_thickness = thickness.clamp(2.0, 8.0);
                     }
                     if let Some(value) = section.get("center_custom_window_title") {
                         settings.center_custom_window_title = Self::parse_bool(value);
@@ -509,6 +509,15 @@ impl SettingsManager {
                                 && value[8..].chars().all(|c| c.is_ascii_hexdigit())))
                     {
                         settings.ui_accent_color = value.to_string();
+                    }
+                    if let Some(value) = section.get("favorite_icon_style") {
+                        // The former combined heart + star option is retired; keep
+                        // older settings files usable by falling back to the star.
+                        settings.favorite_icon_style = if value == "heart" {
+                            "heart".to_string()
+                        } else {
+                            "star".to_string()
+                        };
                     }
                     if let Some(value) = section.get("main_view_background")
                         && (value == "dark"

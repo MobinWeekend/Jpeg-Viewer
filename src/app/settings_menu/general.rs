@@ -9,40 +9,40 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("⚙ General").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "general", crate::app::ui::SvgIcon::General, "General", false, |ui| {
         ui.add_space(4.0);
 
         // Keep General as one settings section, but show its individual options
         // directly. Nested collapsibles made commonly used controls unnecessarily
         // difficult to discover and inconsistent with the other settings sections.
-        ui.label(egui::RichText::new("Interface").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Interface, "Interface");
         render_toggle_compactui(app, ui);
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("Input").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Input, "Input");
         render_invert_scroll_zoom(app, ui);
         render_window_mouse_shortcuts(app, ui);
         render_recursive_folder_drop(app, ui);
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("Masonry browsing").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::MasonryFolder, "Masonry browsing");
         render_masonry_folder_headers(app, ui);
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("Home").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::HomeStart, "Home");
         render_new_tab_recent_options(app, ui);
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("Image rendering").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Image, "Image rendering");
         render_texture_filter(app, ui, ctx);
 
         ui.add_space(6.0);
         ui.separator();
-        ui.label(egui::RichText::new("Startup").strong());
+        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Startup, "Startup");
         render_startup_fullscreen(app, ui);
         render_start_centered(app, ui);
         render_session_restore(app, ui);
@@ -249,9 +249,12 @@ fn reload_current_image_for_filter(app: &mut ViewerApp, ctx: &egui::Context) {
 
 // Theme
 pub(crate) fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    crate::app::settings_menu::subsection_heading(
+        ui,
+        crate::app::ui::SvgIcon::Palette,
+        "Theme",
+    );
     ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        ui.label("◐ Theme");
         ui.add_space(8.0);
 
         // Read current theme from settings (not from ctx directly)
@@ -291,7 +294,7 @@ pub(crate) fn render_theme(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
 
 pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.separator();
-    ui.label(egui::RichText::new("🎚 UI appearance").strong());
+    crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Interface, "UI appearance");
     let current = app.settings_manager.get().clone();
 
     // Keep the UI-scale draft in egui temporary data while the slider is being dragged.
@@ -424,7 +427,7 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     }
 
     ui.separator();
-    ui.label(egui::RichText::new("▧ Main view").strong());
+    crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Viewing, "Main view");
     let settings = app.settings_manager.get().clone();
     let mut bg = settings.main_view_background.clone();
     ui.horizontal(|ui| {

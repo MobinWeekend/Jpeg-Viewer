@@ -20,7 +20,7 @@ pub use desktop_menu_bar::{
     render_desktop_menu_bar_in_titlebar, set_desktop_menu_bar_preference, uses_desktop_menu_bar,
 };
 pub(crate) use masonry_icon::{draw_home_icon, masonry_button, masonry_toggle_button};
-pub(crate) use svg_icons::{paint_svg_icon, SvgIcon};
+pub(crate) use svg_icons::{favorite_svg_icon, paint_svg_icon, SvgIcon};
 pub use overlay::{
     custom_titlebar_height, render_overlay_ui, reserve_custom_titlebar_space, toolbar_frame,
     update_overlay_visibility,

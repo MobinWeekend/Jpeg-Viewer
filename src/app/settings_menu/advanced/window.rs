@@ -2,7 +2,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("▣ Window frame").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "window_frame", crate::app::ui::SvgIcon::WindowFrame, "Window frame", false, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
@@ -21,7 +21,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_enabled_ui(!app.settings_manager.get().show_titlebar, |ui| {
             let response = ui.add(
                 crate::ui_theme::BorderedSlider::new(
-                    egui::Slider::new(&mut thickness, 1.0..=4.0)
+                    egui::Slider::new(&mut thickness, 2.0..=8.0)
                         .step_by(1.0)
                         .text("Custom frame thickness")
                         .suffix(" px"),
@@ -29,12 +29,12 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             );
             if response.changed() {
                 let _ = app.settings_manager.update(|settings| {
-                    settings.custom_window_frame_thickness = thickness.clamp(2.0, 12.0);
+                    settings.custom_window_frame_thickness = thickness.clamp(2.0, 8.0);
                 });
                 ctx.request_repaint();
             }
         });
-        ui.label(egui::RichText::new("The custom frame provides the resize hit area when native window decorations are disabled.").small().weak());
+        ui.label(egui::RichText::new("The invisible custom frame spans the full window edge and provides the resize hit area when native window decorations are disabled. Thickness: 2–8 px.").small().weak());
 
         let mut tabs_in_titlebar = app.settings_manager.get().workspace_tabs_in_titlebar;
         ui.add_enabled_ui(!app.settings_manager.get().show_titlebar, |ui| {
@@ -122,6 +122,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.horizontal_wrapped(|ui| {
             ui.add_space(8.0);
+            let (position_icon, _) =
+                ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(
+                ui,
+                position_icon,
+                crate::app::ui::SvgIcon::Reset,
+                ui.visuals().text_color(),
+            );
             if ui
                 .add(
                     egui::Button::new(egui::RichText::new("Reset Window Position").size(13.0))
@@ -133,6 +141,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                     settings.window_pos = None;
                 });
             }
+            let (size_icon, _) =
+                ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(
+                ui,
+                size_icon,
+                crate::app::ui::SvgIcon::WindowFrame,
+                ui.visuals().text_color(),
+            );
             if ui
                 .add(
                     egui::Button::new(egui::RichText::new("Reset Window Size").size(13.0))

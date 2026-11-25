@@ -2,7 +2,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("🛠️ Cache Settings").size(13.0).strong());
+    crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Cache, "Cache settings");
     ui.add_space(4.0);
 
     // Cache Radius
@@ -160,15 +160,16 @@ fn render_cache_progress(app: &mut ViewerApp, ui: &mut egui::Ui) {
 
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-
+        let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+        crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Cache, ui.visuals().text_color());
         if skipped_count > 0 {
             ui.label(format!(
-                "📊 Cache: {}/{} images ({} skipped)",
+                "Cache: {}/{} images ({} skipped)",
                 completed_count, target_count, skipped_count
             ));
         } else {
             ui.label(format!(
-                "📊 Cache: {}/{} images",
+                "Cache: {}/{} images",
                 completed_count, target_count
             ));
         }
@@ -184,7 +185,13 @@ fn render_cache_progress(app: &mut ViewerApp, ui: &mut egui::Ui) {
         );
 
         ui.add_space(8.0);
-
+        let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        crate::app::ui::paint_svg_icon(
+            ui,
+            icon_rect,
+            crate::app::ui::SvgIcon::Reset,
+            ui.visuals().text_color(),
+        );
         if ui
             .add(
                 egui::Button::new(egui::RichText::new("Clear Cache").size(13.0))
