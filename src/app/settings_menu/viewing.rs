@@ -40,17 +40,32 @@ pub(crate) fn effective_padding(
 }
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("▧ Viewing").strong(), |ui| {
+    crate::app::settings_menu::section(ui, "viewing", crate::app::ui::SvgIcon::Viewing, "Viewing", false, |ui| {
         ui.add_space(4.0);
         render_zoom_step(app, ui);
         ui.separator();
-        ui.collapsing("Padding", |ui| render_padding(app, ui, ctx));
+        crate::app::settings_menu::section(
+            ui,
+            "viewing_padding",
+            crate::app::ui::SvgIcon::Layout,
+            "Padding",
+            false,
+            |ui| render_padding(app, ui, ctx),
+        );
         ui.separator();
-        ui.collapsing("Window sizing", |ui| render_window_sizing(app, ui, ctx));
+        crate::app::settings_menu::section(
+            ui,
+            "viewing_window_sizing",
+            crate::app::ui::SvgIcon::WindowFrame,
+            "Window sizing",
+            false,
+            |ui| render_window_sizing(app, ui, ctx),
+        );
     });
 }
 
 fn render_zoom_step(app: &mut ViewerApp, ui: &mut egui::Ui) {
+    crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Input, "Zoom sensitivity");
     let mut step_mouse_right_button = app
         .settings_manager
         .get()

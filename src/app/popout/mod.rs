@@ -57,6 +57,8 @@ pub(crate) struct PopoutManager {
     /// Image tab whose right-hand Pop-out settings sidebar is currently open.
     settings_sidebar_tab: Option<u64>,
     status_message: Option<String>,
+    /// Main viewport repaint deadline after opening/closing a pop-out.
+    lifecycle_repaint_until: Option<Instant>,
 }
 
 struct SaveDialogState {
@@ -111,6 +113,14 @@ struct PopoutWindow {
     /// click-through is enabled (the pop-out itself intentionally receives no input).
     pointer_screen_pos: Option<egui::Pos2>,
     show_bounds: bool,
+    /// Hide native title bars, borders and window buttons supplied by the OS/DE.
+    remove_os_decorations: bool,
+    /// Request square native corners and suppress OS/DE shadows, borders and backdrops.
+    remove_os_window_effects: bool,
+    /// Keep both the native child and the main viewport awake briefly after lifecycle changes.
+    lifecycle_repaint_until: Option<Instant>,
+    /// Last value applied to the native window's platform-specific chrome.
+    native_window_effects_applied: Option<bool>,
     dvd_mode: bool,
     /// True while the user temporarily moves a DVD-mode pop-out with native
     /// window dragging. Physics pauses, but the mode resumes on release.

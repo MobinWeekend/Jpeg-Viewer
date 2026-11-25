@@ -37,7 +37,7 @@ pub fn update_overlay_visibility(app: &mut ViewerApp, ctx: &egui::Context) {
         return;
     }
 
-    let mouse_over_ui = ctx.is_pointer_over_area();
+    let mouse_over_ui = ctx.is_pointer_over_egui();
     let elapsed = app.last_interaction_time.elapsed();
     let hide_delay = Duration::from_millis(settings.navigation_ui_auto_hide_ms.clamp(500, 5000));
 

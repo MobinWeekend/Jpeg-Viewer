@@ -5,6 +5,16 @@
 - Pop-out settings frame fills now derive from the active egui theme visuals instead of fixed dark colors.
 
 ## Unreleased
+- Added editable SVG source assets for every custom UI icon (app-logo fallback, hamburger, sidebar, navigation, zoom, Home, Masonry, and remaining context-menu actions); icons are rasterized through the existing `resvg` dependency, cached per egui context, and tinted by the active theme.
+- Simplified the main-view context menu to use font glyphs for common file actions and shrink-wrapped rows, capped to one third of the viewport width.
+- Changed zoom toolbar icons to unframed bold plus/minus marks.
+- Added a Pop-out option to suppress native window corner rounding, shadows, borders and system backdrops where supported; saved in JVP presets.
+- Added a one-second repaint window for the main UI and active pop-outs when pop-outs open or close.
+- Kept Ball and DVD movement pop-outs repainting continuously, including when a physics update exits early.
+- Fixed Invert scroll zoom modifier routing so Ctrl+wheel navigates, replaced navigation/zoom toolbar glyphs with custom vector icons, and added custom icons plus an Edit action to the main-view context menu. File moves now rescan and re-sort the complete folder index; deleting the displayed image advances to the next entry, and an empty or non-renderable error-free Viewer returns to Home.
+- Fixed mouse-wheel navigation skipping multiple images: navigation now reacts once to wheel movement events received in the current frame instead of replaying egui’s multi-frame smoothed scroll delta. Added regression coverage for wheel event phases and idle frames.
+- Fixed main-view mouse wheel navigation and double-left-click-to-fit by distinguishing the image interaction layer from UI overlays; replaced the font-dependent hamburger glyph with a custom-drawn three-line icon.
+- Added a per-Pop-out option to remove native OS/desktop window decorations. The option defaults to enabled to preserve the existing undecorated appearance and is stored in `.jvp` presets.
 - Redesigned the Pop-out side deck to match the Settings sidebar layout and sizing; Image tabs now show an in-tab `POP ON` / `POP OFF` control, and new pop-outs default to Active monitor so DVD/Ball bounds follow the display the window is dragged onto. Both tricks pause during native manual dragging and resume against the new display; explicit monitor selections remain pinned.
 - Ball mode now uses right-button dragging to set throw velocity while left-button dragging remains dedicated to compositor-managed window movement. Edge/corner resizing is primary-button-only, and drag/resize states recover when a button is released outside the pop-out or PASS interrupts input. The saved `.jvp` preset now also preserves the manual rotation angle.
 - Moved Pop-out controls into a docked right-hand sidebar opened from an Image tab's POP-OUT ON/OFF status button (including the custom title-bar tab row). Ball dragging now uses per-frame pointer-position deltas instead of cumulative drag displacement, preventing throw acceleration and window jitter. The minimized root viewport now wakes periodically during Pop-out physics and exits its minimized fast path on focus or pointer/key input after restoration.

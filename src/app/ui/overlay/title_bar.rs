@@ -3,6 +3,7 @@
 //! The title bar is rendered inside its own top panel, so the reserved layout
 //! height and the visible/hit-testable chrome are always identical.
 use crate::app::types::ViewerApp;
+use crate::app::ui::{paint_svg_icon, SvgIcon};
 use eframe::egui;
 
 const CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID: &str = "jpeg_viewer_custom_titlebar_layout_height";
@@ -18,19 +19,19 @@ enum CaptionControl {
 /// from extending into the desktop menu bar or main view.
 pub fn custom_titlebar_height(ctx: &egui::Context) -> f32 {
     ctx.data(|data| {
-        data.get_temp::<f32>(egui::Id::new(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID))
+        data.get_temp::<f32>(egui::Id::unique(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID))
             .unwrap_or(0.0)
     })
 }
 
-pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn reserve_layout_space(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     if app.settings_manager.get().show_titlebar
         || ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
     {
         // Clear cached geometry when the custom title bar is not being rendered;
         // otherwise callers can mistake an old windowed height for live layout.
         ctx.data_mut(|data| {
-            data.insert_temp(egui::Id::new(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID), 0.0_f32);
+            data.insert_temp(egui::Id::unique(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID), 0.0_f32);
         });
         return;
     }
@@ -54,7 +55,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
             egui::vec2(46.0, 37.0),
         )
     };
-    let panel_response = egui::TopBottomPanel::top("jpeg_viewer_custom_titlebar")
+    let panel_response = egui::Panel::top("jpeg_viewer_custom_titlebar")
         .show_separator_line(false)
         .frame(
             egui::Frame::new()
@@ -62,7 +63,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 .inner_margin(egui::Margin::same(0))
                 .stroke(egui::Stroke::NONE),
         )
-        .show(ctx, |panel_ui| {
+        .show(ui, |panel_ui| {
             let window_width = panel_ui.available_width().max(0.0);
             panel_ui.set_min_width(window_width);
             panel_ui.set_max_width(window_width);
@@ -100,7 +101,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                 // up a different tint when it crosses the title-bar boundary.
                 let mut color = crate::ui_theme::main_view_background_color(
                     &settings.main_view_background,
-                    ctx.style().visuals.dark_mode,
+                    ctx.global_style().visuals.dark_mode,
                 );
                 if crate::ui_theme::os_background_blur_enabled(ctx) {
                     let [r, g, b, _] = color.to_srgba_unmultiplied();
@@ -129,7 +130,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                     se: 0,
                 }
             };
-            let visuals = ctx.style().visuals.clone();
+            let visuals = ctx.global_style().visuals.clone();
             let foreground = if crate::ui_theme::contrast_prefers_light_text(background) {
                 egui::Color32::WHITE
             } else {
@@ -310,7 +311,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
                         let show_window_title = title_visible;
                         let title_response = ui.interact(
                             drag_rect,
-                            egui::Id::new("custom_titlebar_title"),
+                            egui::Id::unique("custom_titlebar_title"),
                             egui::Sense::click_and_drag(),
                         );
                         if show_window_title {
@@ -446,7 +447,7 @@ pub fn reserve_layout_space(app: &mut ViewerApp, ctx: &egui::Context) {
         });
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID),
+            egui::Id::unique(CUSTOM_TITLEBAR_LAYOUT_HEIGHT_ID),
             panel_response.response.rect.height(),
         );
     });
@@ -514,62 +515,20 @@ fn render_caption_button(
     } else {
         foreground
     };
-    let icon_stroke = egui::Stroke::new(if win98 { 1.5_f32 } else { 1.7_f32 }, icon_color);
-    let center = rect.center();
-    let painter = ui.painter();
-    match control {
-        CaptionControl::Minimize => {
-            painter.line_segment(
-                [
-                    egui::pos2(center.x - 4.0, center.y + 4.0),
-                    egui::pos2(center.x + 4.0, center.y + 4.0),
-                ],
-                icon_stroke,
-            );
-        }
-        CaptionControl::Maximize => {
-            let box_rect = egui::Rect::from_center_size(center, egui::vec2(12.0, 12.0));
-            if ui
-                .ctx()
-                .input(|input| input.viewport().maximized.unwrap_or(false))
-            {
-                painter.rect_stroke(
-                    box_rect.translate(egui::vec2(-1.5, 1.5)),
-                    egui::CornerRadius::ZERO,
-                    icon_stroke,
-                    egui::StrokeKind::Inside,
-                );
-                painter.rect_stroke(
-                    box_rect.translate(egui::vec2(1.5, -1.5)),
-                    egui::CornerRadius::ZERO,
-                    icon_stroke,
-                    egui::StrokeKind::Inside,
-                );
-            } else {
-                painter.rect_stroke(
-                    box_rect,
-                    egui::CornerRadius::ZERO,
-                    icon_stroke,
-                    egui::StrokeKind::Inside,
-                );
-            }
-        }
-        CaptionControl::Close => {
-            painter.line_segment(
-                [
-                    egui::pos2(center.x - 4.0, center.y - 4.0),
-                    egui::pos2(center.x + 4.0, center.y + 4.0),
-                ],
-                icon_stroke,
-            );
-            painter.line_segment(
-                [
-                    egui::pos2(center.x + 4.0, center.y - 4.0),
-                    egui::pos2(center.x - 4.0, center.y + 4.0),
-                ],
-                icon_stroke,
-            );
-        }
-    }
+    let maximized = ui
+        .ctx()
+        .input(|input| input.viewport().maximized.unwrap_or(false));
+    let icon = match control {
+        CaptionControl::Minimize => SvgIcon::CaptionMinimize,
+        CaptionControl::Maximize if maximized => SvgIcon::CaptionRestore,
+        CaptionControl::Maximize => SvgIcon::CaptionMaximize,
+        CaptionControl::Close => SvgIcon::CaptionClose,
+    };
+    let icon_size = if win98 { 13.0 } else { 16.0 };
+    let icon_rect = egui::Rect::from_center_size(
+        rect.center(),
+        egui::vec2(icon_size, icon_size),
+    );
+    paint_svg_icon(ui, icon_rect, icon, icon_color);
     response.on_hover_text(tooltip)
 }

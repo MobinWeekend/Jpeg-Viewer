@@ -2,11 +2,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
-    ui.label(
-        egui::RichText::new("⚙ Virtual texture Settings")
-            .size(13.0)
-            .strong(),
-    );
+    crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::VirtualTexture, "Virtual texture settings");
 
     ui.horizontal(|ui| {
         ui.add_space(8.0);

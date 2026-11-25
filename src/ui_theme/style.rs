@@ -18,12 +18,12 @@ pub fn apply_polished_style_with_options(
     ctx.set_zoom_factor(ui_scale.clamp(0.75, 1.50));
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new("ui_text_scale_factor"),
+            egui::Id::unique("ui_text_scale_factor"),
             text_scale.clamp(0.80, 1.40),
         )
     });
 
-    let mut style = (*ctx.style()).clone();
+    let mut style = (*ctx.global_style()).clone();
     let look_profile = current_look_profile(ctx);
     // Windows 98 was a light, classic-gray interface regardless of modern system theme.
     let dark = style.visuals.dark_mode;
@@ -108,7 +108,7 @@ pub fn apply_polished_style_with_options(
         .or(cosmic_accent)
         .unwrap_or(if dark { dark_accent } else { light_accent });
     ctx.data_mut(|data| {
-        data.insert_temp(egui::Id::new(MAIN_ACCENT_COLOR_ID), accent);
+        data.insert_temp(egui::Id::unique(MAIN_ACCENT_COLOR_ID), accent);
     });
     let accent_soft = if dark {
         accent.linear_multiply(0.34)
@@ -188,11 +188,12 @@ pub fn apply_polished_style_with_options(
     visuals.widgets.hovered.weak_bg_fill = hover;
     visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, accent);
     visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.5_f32, text_color);
-    visuals.widgets.hovered.expansion = 1.0;
+    visuals.widgets.hovered.expansion = 0.0;
     visuals.widgets.active.bg_fill = active;
     visuals.widgets.active.weak_bg_fill = active;
     visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, accent);
     visuals.widgets.active.expansion = 0.0;
+    visuals.widgets.open.expansion = 0.0;
     visuals.widgets.open.bg_fill = accent_soft;
     visuals.widgets.open.weak_bg_fill = accent_soft;
     visuals.widgets.open.bg_stroke = egui::Stroke::new(1.0_f32, accent);
@@ -589,6 +590,12 @@ pub fn apply_polished_style_with_options(
     visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.35_f32, hovered_text);
     visuals.override_text_color = None;
 
+    // egui enables sub-pixel glyph binning by default. It can soften text at
+    // common desktop scales; keeping pixel hinting enabled while disabling
+    // sub-pixel binning favors crisp UI text over the slightly smoother kerning.
+    visuals.text_options.font_hinting = true;
+    visuals.text_options.subpixel_binning = false;
+
     let text_scale = text_scale.clamp(0.80, 1.40);
     for (text_style, font_id) in style.text_styles.iter_mut() {
         let base_size = if *text_style == egui::TextStyle::Small {
@@ -607,5 +614,5 @@ pub fn apply_polished_style_with_options(
         font_id.size = base_size * text_scale;
     }
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }

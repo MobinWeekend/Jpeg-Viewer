@@ -1,59 +1,17 @@
 //! Shared custom Masonry mark and buttons.
 //!
-//! The mark is a small staggered tile layout rather than a font glyph so it
-//! remains consistent across platforms and font configurations.
+//! The mark is an editable SVG asset rather than a font glyph, so it remains
+//! consistent across platforms and font configurations.
 use eframe::egui;
+use super::svg_icons::{paint_svg_icon, SvgIcon};
 
-pub(crate) fn draw_masonry_icon(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
-    let scale = (rect.width().min(rect.height()) / 20.0).max(0.1);
-    let origin = rect.center() - egui::vec2(9.5 * scale, 9.0 * scale);
-    let rounding = egui::CornerRadius::same((1.1 * scale).round() as u8);
-    // Three uneven columns make the mark read as a masonry image layout.
-    let tiles = [
-        (0.0, 0.0, 5.0, 8.0),
-        (0.0, 10.0, 5.0, 8.0),
-        (7.0, 0.0, 5.0, 5.0),
-        (7.0, 7.0, 5.0, 11.0),
-        (14.0, 0.0, 5.0, 10.0),
-        (14.0, 12.0, 5.0, 6.0),
-    ];
-    for (x, y, width, height) in tiles {
-        let tile = egui::Rect::from_min_size(
-            origin + egui::vec2(x * scale, y * scale),
-            egui::vec2(width * scale, height * scale),
-        );
-        painter.rect_filled(tile, rounding, color);
-    }
+pub(crate) fn draw_masonry_icon(ui: &egui::Ui, rect: egui::Rect, color: egui::Color32) {
+    paint_svg_icon(ui, rect, SvgIcon::Masonry, color);
 }
 
-/// Draw the application's Home mark: a compact roof and doorway glyph that
-/// remains crisp at small menu and title-bar sizes.
-pub(crate) fn draw_home_icon(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
-    // Design space is a 24×24 viewBox centered at (0, 0).
-    let s = (rect.width().min(rect.height()) / 24.0).max(0.1);
-    let c = rect.center();
-    let p = |x: f32, y: f32| c + egui::vec2(x * s, y * s);
-
-    painter.add(egui::Shape::convex_polygon(
-        vec![p(0.0, -10.0), p(-11.0, -1.0), p(11.0, -1.0)],
-        color,
-        egui::Stroke::NONE,
-    ));
-    painter.rect_filled(
-        egui::Rect::from_min_max(p(-8.0, -1.0), p(8.0, 4.0)),
-        0.0,
-        color,
-    );
-    painter.rect_filled(
-        egui::Rect::from_min_max(p(-8.0, 4.0), p(-2.5, 10.0)),
-        0.0,
-        color,
-    );
-    painter.rect_filled(
-        egui::Rect::from_min_max(p(2.5, 4.0), p(8.0, 10.0)),
-        0.0,
-        color,
-    );
+/// Draw the application's Home mark from its editable SVG asset.
+pub(crate) fn draw_home_icon(ui: &egui::Ui, rect: egui::Rect, color: egui::Color32) {
+    paint_svg_icon(ui, rect, SvgIcon::Home, color);
 }
 
 /// Render a compact button that carries the shared Masonry icon.
@@ -136,7 +94,7 @@ fn masonry_button_impl(
     } else {
         text_color
     };
-    draw_masonry_icon(&ui.painter().with_clip_rect(rect), icon_rect, icon_color);
+    draw_masonry_icon(ui, icon_rect.intersect(rect), icon_color);
     if let Some(galley) = galley {
         ui.painter().galley(
             egui::pos2(
@@ -197,6 +155,6 @@ pub(crate) fn masonry_toggle_button(
         visuals.weak_text_color()
     };
     let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(19.0, 19.0));
-    draw_masonry_icon(&ui.painter().with_clip_rect(rect), icon_rect, icon_color);
+    draw_masonry_icon(ui, icon_rect.intersect(rect), icon_color);
     response
 }

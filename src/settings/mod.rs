@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SETTINGS_SCHEMA_VERSION: u32 = 13;
-const CURRENT_WINDOW_MONITOR_DEFAULT_SCHEMA: u32 = 13;
+const SETTINGS_SCHEMA_VERSION: u32 = 14;
+const CURRENT_WINDOW_MONITOR_DEFAULT_SCHEMA: u32 = 14;
 const WINDOW_GEOMETRY_NORMALIZED_SCHEMA: u32 = 4;
 
 mod load;
@@ -92,6 +92,8 @@ pub struct AppSettings {
     pub ui_text_scale: f32,
     /// Accent color preset: auto, teal, blue, purple, orange, rose, green, yellow, red.
     pub ui_accent_color: String,
+    /// Favorite marker: colored star or colored heart.
+    pub favorite_icon_style: String,
     /// Main image-view background: dark, light, or custom:#RRGGBB.
     pub main_view_background: String,
     /// Main image-view background opacity when OS/DE glass is enabled (0.15-1.0).
@@ -139,8 +141,8 @@ pub struct AppSettings {
     pub custom_titlebar_navigation_preference_configured: bool,
     /// Title-bar color source: system, main_view, or main_color.
     pub title_bar_color_mode: String,
-    /// Thickness in logical points of the custom window border and resize hit areas (2-12).
-    pub custom_window_frame_thickness: f32,
+    /// Thickness in logical points of the transparent custom window frame and resize hit areas (2-8).
+    pub custom_window_frame_thickness: f32, // Transparent resize frame thickness (2–8 px)
     /// Center the custom title-bar caption in the remaining space between controls.
     pub center_custom_window_title: bool,
     /// Allow clicking the custom title to open the existing file rename dialog.
@@ -239,6 +241,7 @@ impl Default for AppSettings {
             ui_scale: 1.0,
             ui_text_scale: 1.0,
             ui_accent_color: "auto".to_string(),
+            favorite_icon_style: "star".to_string(),
             main_view_background: "dark".to_string(),
             main_view_background_opacity: 0.35,
             show_alpha_checkerboard: false,
@@ -505,9 +508,13 @@ impl SettingsManager {
         }
         let size = [size[0].max(100.0), size[1].max(100.0)];
 
-        self.settings.window_pos = Some(pos);
-        self.settings.window_size = Some(size);
-        self.save()
+        self.update(|settings| {
+            settings.window_pos = Some(pos);
+            settings.window_size = Some(size);
+        })?;
+        // Window geometry is persisted at shutdown, but do not rewrite an
+        // unchanged settings file merely because the window was closed.
+        self.save_if_dirty()
     }
 }
 

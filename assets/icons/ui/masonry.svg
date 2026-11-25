@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- Placeholder: staggered masonry/gallery tile mark. -->
+  <g fill="#fff">
+    <rect x="2" y="2" width="5.5" height="9" rx="1"/>
+    <rect x="2" y="13" width="5.5" height="9" rx="1"/>
+    <rect x="9.25" y="2" width="5.5" height="6" rx="1"/>
+    <rect x="9.25" y="10" width="5.5" height="12" rx="1"/>
+    <rect x="16.5" y="2" width="5.5" height="11" rx="1"/>
+    <rect x="16.5" y="15" width="5.5" height="7" rx="1"/>
+  </g>
+</svg>

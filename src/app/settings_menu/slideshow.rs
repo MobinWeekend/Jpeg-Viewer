@@ -5,12 +5,13 @@ use eframe::egui;
 use std::time::Duration;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("🎬 Slideshow").size(15.0), |ui| {
+    crate::app::settings_menu::section(ui, "slideshow", crate::app::ui::SvgIcon::Slideshow, "Slideshow", false, |ui| {
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             let mut enabled = app.slideshow_enabled;
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Slideshow, "Playback");
             if crate::ui_theme::switch(ui, &mut enabled, "Enable Slideshow") {
                 app.slideshow_enabled = enabled;
                 app.update_window_title(ctx);
@@ -20,6 +21,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Sleep, "System sleep");
             let mut prevent_sleep = app.settings_manager.get().prevent_sleep_during_slideshow;
             if crate::ui_theme::switch(ui, &mut prevent_sleep, "Prevent system sleep") {
                 let _ = app.settings_manager.update(|settings| {
@@ -36,6 +38,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Interval, ui.visuals().text_color());
             ui.label("Interval (seconds):");
             ui.add_space(8.0);
             let mut interval_secs = app.slideshow_interval.as_secs_f32();
@@ -61,6 +65,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Loop, ui.visuals().text_color());
             let mut loop_enabled = app.slideshow_loop;
             if crate::ui_theme::switch(ui, &mut loop_enabled, "Loop") {
                 app.slideshow_loop = loop_enabled;
@@ -86,6 +92,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Transition, ui.visuals().text_color());
             ui.label("Transition:");
             let mut transition = app.slideshow_transition.clone();
             egui::ComboBox::from_id_salt("slideshow_transition")
@@ -110,6 +118,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         });
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Motion, ui.visuals().text_color());
             ui.label("Image motion:");
             let mut motion = app.slideshow_motion.clone();
             egui::ComboBox::from_id_salt("slideshow_motion")
@@ -142,6 +152,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         });
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Strength, ui.visuals().text_color());
             ui.label("Motion strength:");
             let mut strength = app.slideshow_motion_strength;
             if ui
@@ -169,6 +181,8 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 
         ui.horizontal(|ui| {
             ui.add_space(8.0);
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Input, ui.visuals().text_color());
             ui.label("Shortcuts:");
             ui.add_space(4.0);
             ui.colored_label(ui.visuals().hyperlink_color, "L");

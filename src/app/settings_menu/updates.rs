@@ -3,7 +3,7 @@ use crate::app::updater::{UpdateInstallStatus, UpdateStatus};
 use eframe::egui;
 
 pub(super) fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("🔄 Software updates").size(15.0), |ui| {
+    crate::app::settings_menu::section(ui, "updates", crate::app::ui::SvgIcon::Updates, "Software updates", false, |ui| {
         ui.add_space(4.0);
 
         let status = app.updater.status().clone();

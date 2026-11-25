@@ -2,7 +2,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.label(egui::RichText::new("🎮 Frame Limiter").size(13.0).strong());
+    crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Performance, "Frame limiter");
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.add_space(8.0);

@@ -13,8 +13,75 @@ use crate::app::types::ViewerApp;
 use crate::app::ui::tricks;
 use eframe::egui;
 
+
+/// Collapsible settings section with a consistent SVG icon and hover state.
+pub(crate) fn section(
+    ui: &mut egui::Ui,
+    id: &'static str,
+    icon: crate::app::ui::SvgIcon,
+    title: &str,
+    default_open: bool,
+    contents: impl FnOnce(&mut egui::Ui),
+) {
+    let section_id = egui::Id::unique(("jpeg_viewer_settings_section", id));
+    let mut open = ui.ctx().data(|data| data.get_temp::<bool>(section_id)).unwrap_or(default_open);
+    let width = ui.available_width().max(1.0);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 28.0), egui::Sense::click());
+    if response.hovered() || response.is_pointer_button_down_on() {
+        let visuals = if response.is_pointer_button_down_on() {
+            &ui.visuals().widgets.active
+        } else {
+            &ui.visuals().widgets.hovered
+        };
+        ui.painter().rect_filled(rect, egui::CornerRadius::same(5), visuals.bg_fill);
+    }
+    let center_y = rect.center().y;
+    let chevron = if open { "▾" } else { "▸" };
+    ui.painter().text(
+        egui::pos2(rect.left() + 10.0, center_y),
+        egui::Align2::CENTER_CENTER,
+        chevron,
+        egui::FontId::proportional(14.0),
+        ui.visuals().weak_text_color(),
+    );
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 31.0, center_y),
+        egui::vec2(16.0, 16.0),
+    );
+    crate::app::ui::paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
+    ui.painter().text(
+        egui::pos2(rect.left() + 46.0, center_y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional(14.0),
+        ui.visuals().text_color(),
+    );
+    if response.clicked() {
+        open = !open;
+        ui.ctx().data_mut(|data| data.insert_temp(section_id, open));
+    }
+    if open {
+        ui.add_space(2.0);
+        ui.indent(section_id, contents);
+        ui.add_space(3.0);
+    }
+}
+
+/// Compact icon-and-label heading used for grouped options inside a section.
+pub(crate) fn subsection_heading(
+    ui: &mut egui::Ui,
+    icon: crate::app::ui::SvgIcon,
+    title: &str,
+) {
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        crate::app::ui::paint_svg_icon(ui, rect, icon, ui.visuals().text_color());
+        ui.label(egui::RichText::new(title).strong());
+    });
+}
+
 /// Render settings in a docked, resizable sidebar on the right.
-pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn render_settings_menu(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     if !app.show_settings_menu {
         return;
     }
@@ -24,7 +91,7 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
     let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
         // Use the active Win98 palette for both Light and Dark themes; other looks
         // retain the existing image-view surface behavior.
-        ctx.style().visuals.panel_fill
+        ctx.global_style().visuals.panel_fill
     } else {
         crate::ui_theme::main_view_surface_color(
             ctx,
@@ -32,15 +99,15 @@ pub fn render_settings_menu(app: &mut ViewerApp, ctx: &egui::Context) {
             sidebar_settings.main_view_background_opacity,
         )
     };
-    let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+    let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
         .fill(sidebar_background)
         .stroke(egui::Stroke::NONE);
-    let response = egui::SidePanel::right("settings_sidebar")
+    let response = egui::Panel::right("settings_sidebar")
         .resizable(true)
-        .default_width(default_width)
-        .width_range(260.0..=640.0)
+        .default_size(default_width)
+        .size_range(260.0..=640.0)
         .frame(sidebar_frame)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             if sidebar_settings.tricks_backdrop_enabled {
                 let sidebar_clip = ui.painter().clip_rect();
                 let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);

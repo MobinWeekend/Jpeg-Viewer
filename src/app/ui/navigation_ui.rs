@@ -1,6 +1,7 @@
 //use crate::app::aspect_ratio::AspectRatio;
 use crate::app::types::ViewerApp;
 use crate::app::ui::helpers::paint_sidebar_drawer_icon;
+use crate::app::ui::{SvgIcon, paint_svg_icon};
 use crate::input::shortcuts::ViewerCommand;
 use crate::ui_theme::scaled_text_size;
 use eframe::egui;
@@ -26,6 +27,21 @@ impl ProfileToolbarButtonExt for egui::Ui {
         }
         response
     }
+}
+
+fn paint_navigation_icon(ui: &egui::Ui, button_rect: egui::Rect, icon: SvgIcon) {
+    let icon_rect = egui::Rect::from_center_size(button_rect.center(), egui::vec2(18.0, 18.0));
+    paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
+}
+
+fn paint_zoom_sign_icon(ui: &egui::Ui, button_rect: egui::Rect, zoom_in: bool) {
+    let icon = if zoom_in {
+        SvgIcon::ZoomIn
+    } else {
+        SvgIcon::ZoomOut
+    };
+    let icon_rect = egui::Rect::from_center_size(button_rect.center(), egui::vec2(17.0, 17.0));
+    paint_svg_icon(ui, icon_rect, icon, ui.visuals().text_color());
 }
 
 impl ViewerApp {
@@ -66,36 +82,34 @@ impl ViewerApp {
     }
 
     // NAVIGATION BUTTONS
-    /// Previous and next image buttons.
+    /// Previous and next image buttons. The solid triangles are painted with
+    /// vector geometry so their appearance does not depend on symbol fonts.
     pub fn navigation_previous_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("◀").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Previous")
-            .clicked()
-        {
+            .on_hover_text("Previous");
+        paint_navigation_icon(ui, response.rect, SvgIcon::NavigationPrevious);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::PreviousImage);
         }
     }
+
     pub fn navigation_next_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("▶").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Next")
-            .clicked()
-        {
+            .on_hover_text("Next");
+        paint_navigation_icon(ui, response.rect, SvgIcon::NavigationNext);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::NextImage);
         }
     }
@@ -329,7 +343,7 @@ impl ViewerApp {
         // percentage is painted independently so its text may visually overflow the
         // slot instead of forcing neighboring toolbar controls to shift.
         let (zoom_rect, response) = ui.allocate_exact_size(
-            egui::vec2(BTN_HEIGHT + 6.0, BTN_HEIGHT),
+            egui::vec2(BTN_HEIGHT * 2.0, BTN_HEIGHT),
             egui::Sense::click(),
         );
         let font_id = egui::FontId::proportional(scaled_text_size(ui.ctx(), BTN_HEIGHT - 4.0));
@@ -353,69 +367,33 @@ impl ViewerApp {
 
     // Zoom in
     pub fn zoom_in_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("+").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size_small())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
+                egui::Button::new("")
+                    .min_size(self.btn_size_small())
+                    .fill(toolbar_button_fill(ui))
+                    .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Zoom in")
-            .clicked()
-        {
+            .on_hover_text("Zoom in");
+        paint_zoom_sign_icon(ui, response.rect, true);
+        if response.clicked() {
             self.handle_command(ctx, ViewerCommand::ZoomIn);
         }
     }
+
     // Zoom out
     pub fn zoom_out_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
+        let response = ui
             .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("−").size(scaled_text_size(ui.ctx(), BTN_HEIGHT)),
-                )
-                .min_size(self.btn_size_small())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
-            )
-            .on_hover_text("Zoom out")
-            .clicked()
-        {
-            self.handle_command(ctx, ViewerCommand::ZoomOut);
-        }
-    }
-
-    pub fn zoom_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        // Fit / 1:1
-        if self.b_zoom_used {
-            if ui
-                .add_profile_button(
-                    egui::Button::new(
-                        egui::RichText::new("⊞").size(scaled_text_size(ui.ctx(), 14.0)),
-                    )
-                    .min_size(self.btn_size_medium())
+                egui::Button::new("")
+                    .min_size(self.btn_size_small())
                     .fill(toolbar_button_fill(ui))
                     .stroke(toolbar_button_stroke(ui)),
-                )
-                .on_hover_text("Fit")
-                .clicked()
-            {
-                self.handle_command(ctx, ViewerCommand::MakeFit);
-            }
-        } else if ui
-            .add_profile_button(
-                egui::Button::new(
-                    egui::RichText::new("1:1").size(scaled_text_size(ui.ctx(), 14.0)),
-                )
-                .min_size(self.btn_size_medium())
-                .fill(toolbar_button_fill(ui))
-                .stroke(toolbar_button_stroke(ui)),
             )
-            .on_hover_text("Make 1:1 Ratio")
-            .clicked()
-        {
-            self.handle_command(ctx, ViewerCommand::ResetZoom);
+            .on_hover_text("Zoom out");
+        paint_zoom_sign_icon(ui, response.rect, false);
+        if response.clicked() {
+            self.handle_command(ctx, ViewerCommand::ZoomOut);
         }
     }
 
@@ -523,53 +501,6 @@ impl ViewerApp {
 
         if self.is_preview {
             ui.label(egui::RichText::new("Loading...").size(scaled_text_size(ui.ctx(), 12.0)));
-        }
-    }
-
-    // Fullscreen
-    pub fn fullscreen_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if ui
-            .add_profile_button(
-                egui::Button::new(egui::RichText::new("⛶").size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(self.btn_size_small())
-                    .fill(toolbar_button_fill(ui))
-                    .stroke(toolbar_button_stroke(ui)),
-            )
-            .on_hover_text("Toggle Fullscreen")
-            .clicked()
-        {
-            self.toggle_fullscreen(ctx);
-            self.hamburger_menu_open = false;
-        }
-    }
-
-    // Toggle whether the application window stays above all other windows.
-    pub fn pin_window_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        let (icon, tooltip, fill) = if self.window_always_on_top {
-            ("📌", "Unpin Window", egui::Color32::RED)
-        } else {
-            ("📌", "Pin Window to Top", egui::Color32::TRANSPARENT)
-        };
-
-        if ui
-            .add_profile_button(
-                egui::Button::new(egui::RichText::new(icon).size(scaled_text_size(ui.ctx(), 14.0)))
-                    .min_size(self.btn_size_small())
-                    .fill(fill)
-                    .stroke(toolbar_button_stroke(ui)),
-            )
-            .on_hover_text(tooltip)
-            .clicked()
-        {
-            self.window_always_on_top = !self.window_always_on_top;
-
-            let window_level = if self.window_always_on_top {
-                egui::WindowLevel::AlwaysOnTop
-            } else {
-                egui::WindowLevel::Normal
-            };
-
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(window_level));
         }
     }
 

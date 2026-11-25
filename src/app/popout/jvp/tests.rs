@@ -31,6 +31,20 @@
         let legacy: PopoutPreset = serde_json::from_str(r#"{"ball_mode":true}"#)
             .expect("legacy preset should use defaults for the new field");
         assert_eq!(legacy.rotation_degrees, 0.0);
+        assert!(legacy.remove_os_decorations);
+        assert!(legacy.remove_os_window_effects);
+
+        let native_chrome: PopoutPreset = serde_json::from_str(
+            r#"{"remove_os_decorations":false}"#,
+        )
+        .expect("native decoration preference should deserialize");
+        assert!(!native_chrome.remove_os_decorations);
+
+        let native_effects: PopoutPreset = serde_json::from_str(
+            r#"{"remove_os_window_effects":false}"#,
+        )
+        .expect("native window effects preference should deserialize");
+        assert!(!native_effects.remove_os_window_effects);
     }
 
     #[test]

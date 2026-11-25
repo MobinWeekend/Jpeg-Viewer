@@ -16,7 +16,7 @@ pub fn main_view_surface_color(
     main_view_background: &str,
     opacity: f32,
 ) -> egui::Color32 {
-    let color = main_view_background_color(main_view_background, ctx.style().visuals.dark_mode);
+    let color = main_view_background_color(main_view_background, ctx.global_style().visuals.dark_mode);
     if os_background_blur_enabled(ctx) {
         with_alpha(color, (opacity.clamp(0.15, 1.0) * 255.0).round() as u8)
     } else {
@@ -33,7 +33,7 @@ pub fn title_bar_surface_color(
     color_mode: &str,
     main_view_background: &str,
 ) -> egui::Color32 {
-    let visuals = &ctx.style().visuals;
+    let visuals = &ctx.global_style().visuals;
     let color = match color_mode {
         "main_view" => main_view_background_color(main_view_background, visuals.dark_mode),
         "main_color" => main_accent_color(ctx),
@@ -50,7 +50,7 @@ pub fn native_title_bar_color(
     color_mode: &str,
     main_view_background: &str,
 ) -> Option<[u8; 3]> {
-    let visuals = &ctx.style().visuals;
+    let visuals = &ctx.global_style().visuals;
     let color = match color_mode {
         "main_view" => main_view_background_color(main_view_background, visuals.dark_mode),
         "main_color" => main_accent_color(ctx),
@@ -63,7 +63,7 @@ pub fn native_title_bar_color(
 /// Store the user's OS/DE backdrop preference and immediately reconcile the native backdrop.
 pub fn set_os_background_blur_preference(ctx: &egui::Context, enabled: bool) {
     ctx.data_mut(|data| {
-        data.insert_temp(egui::Id::new(OS_BACKGROUND_BLUR_ID), enabled);
+        data.insert_temp(egui::Id::unique(OS_BACKGROUND_BLUR_ID), enabled);
     });
     sync_os_background_blur(ctx);
 }
@@ -72,7 +72,7 @@ pub fn set_os_background_blur_preference(ctx: &egui::Context, enabled: bool) {
 pub fn set_disable_os_background_blur_in_fullscreen(ctx: &egui::Context, disabled: bool) {
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new(OS_BACKGROUND_BLUR_FULLSCREEN_DISABLE_ID),
+            egui::Id::unique(OS_BACKGROUND_BLUR_FULLSCREEN_DISABLE_ID),
             disabled,
         );
     });
@@ -81,14 +81,14 @@ pub fn set_disable_os_background_blur_in_fullscreen(ctx: &egui::Context, disable
 
 pub fn os_background_blur_preference(ctx: &egui::Context) -> bool {
     ctx.data(|data| {
-        data.get_temp::<bool>(egui::Id::new(OS_BACKGROUND_BLUR_ID))
+        data.get_temp::<bool>(egui::Id::unique(OS_BACKGROUND_BLUR_ID))
             .unwrap_or(true)
     })
 }
 
 pub fn disable_os_background_blur_in_fullscreen_preference(ctx: &egui::Context) -> bool {
     ctx.data(|data| {
-        data.get_temp::<bool>(egui::Id::new(OS_BACKGROUND_BLUR_FULLSCREEN_DISABLE_ID))
+        data.get_temp::<bool>(egui::Id::unique(OS_BACKGROUND_BLUR_FULLSCREEN_DISABLE_ID))
             .unwrap_or(true)
     })
 }
@@ -114,24 +114,24 @@ pub fn os_background_blur_enabled(ctx: &egui::Context) -> bool {
 pub fn sync_os_background_blur(ctx: &egui::Context) -> bool {
     let effective = os_background_blur_enabled(ctx);
     let previous_effective =
-        ctx.data(|data| data.get_temp::<bool>(egui::Id::new(OS_BACKGROUND_BLUR_LAST_EFFECTIVE_ID)));
+        ctx.data(|data| data.get_temp::<bool>(egui::Id::unique(OS_BACKGROUND_BLUR_LAST_EFFECTIVE_ID)));
     let changed = previous_effective != Some(effective);
     if changed {
         ctx.data_mut(|data| {
             data.insert_temp(
-                egui::Id::new(OS_BACKGROUND_BLUR_LAST_EFFECTIVE_ID),
+                egui::Id::unique(OS_BACKGROUND_BLUR_LAST_EFFECTIVE_ID),
                 effective,
             );
         });
     }
 
     let previous_native_request =
-        ctx.data(|data| data.get_temp::<bool>(egui::Id::new(OS_BACKGROUND_BLUR_APPLIED_ID)));
+        ctx.data(|data| data.get_temp::<bool>(egui::Id::unique(OS_BACKGROUND_BLUR_APPLIED_ID)));
     if previous_native_request != Some(effective) {
         // The native module safely handles unsupported versions and desktops.
         crate::ui_theme::platform_backdrop::set_enabled(effective);
         ctx.data_mut(|data| {
-            data.insert_temp(egui::Id::new(OS_BACKGROUND_BLUR_APPLIED_ID), effective);
+            data.insert_temp(egui::Id::unique(OS_BACKGROUND_BLUR_APPLIED_ID), effective);
         });
     }
     changed

@@ -2,6 +2,49 @@
 
 use super::helpers::*;
 use super::*;
+use crate::app::ui::{SvgIcon, paint_svg_icon};
+use eframe::egui;
+
+fn entry_context_menu_item(ui: &mut egui::Ui, icon: SvgIcon, label: &str) -> bool {
+    let text_color = ui.visuals().text_color();
+    let font_id = egui::TextStyle::Button.resolve(ui.style());
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font_id, text_color);
+    const MENU_MAX_WIDTH: f32 = 180.0;
+    ui.set_max_width(MENU_MAX_WIDTH);
+    // Let the menu grow only to the width required by its longest label.
+    // No fixed minimum is applied, so short actions produce a compact menu.
+    let height = ui.spacing().interact_size.y.max(25.0);
+    let available_width = ui.available_width().min(MENU_MAX_WIDTH);
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(available_width, height), egui::Sense::click());
+
+    if response.hovered() || response.is_pointer_button_down_on() {
+        let visuals = if response.is_pointer_button_down_on() {
+            &ui.visuals().widgets.active
+        } else {
+            &ui.visuals().widgets.hovered
+        };
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(4), visuals.bg_fill);
+    }
+
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 16.0, rect.center().y),
+        egui::vec2(16.0, 16.0),
+    );
+    paint_svg_icon(ui, icon_rect, icon, text_color);
+    ui.painter().galley(
+        egui::pos2(
+            icon_rect.right() + 9.0,
+            rect.center().y - galley.size().y * 0.5,
+        ),
+        galley,
+        text_color,
+    );
+    response.clicked()
+}
 
 impl crate::app::types::ViewerApp {
     /// Attach the same single-entry operations available from Browse and Masonry
@@ -9,7 +52,7 @@ impl crate::app::types::ViewerApp {
     pub(crate) fn show_main_entry_context_menu(
         &mut self,
         response: &egui::Response,
-        _ctx: &egui::Context,
+        ctx: &egui::Context,
     ) {
         let Some(entry) = self.image_entries.get(self.current_index).cloned() else {
             return;
@@ -19,32 +62,40 @@ impl crate::app::types::ViewerApp {
             _ => None,
         };
         let entry_name = entry_display_name(&entry);
+        let favorite_style = self.settings_manager.get().favorite_icon_style.clone();
 
         response.clone().context_menu(|menu| {
-            if menu.button("Open in New Tab").clicked() {
+            menu.set_min_width(0.0);
+            menu.set_max_width(360.0);
+            if entry_context_menu_item(menu, SvgIcon::ContextNewTab, "Open in New Tab") {
                 self.open_entry_in_image_tab(entry.clone(), true);
                 menu.close();
             }
-            if menu.button("Share…").clicked() {
+            if path.is_some() && entry_context_menu_item(menu, SvgIcon::ContextEdit, "Edit Image…")
+            {
+                self.start_editing(ctx);
+                menu.close();
+            }
+            if entry_context_menu_item(menu, SvgIcon::ContextShare, "Share…") {
                 self.share_entry(&entry);
                 menu.close();
             }
-            if menu.button("Compare…").clicked() {
+            if entry_context_menu_item(menu, SvgIcon::ContextCompare, "Compare…") {
                 self.open_compare_workspace(vec![entry.clone()]);
                 menu.close();
             }
 
             menu.separator();
-            if menu.button("Copy / Extract…").clicked() {
+            if entry_context_menu_item(menu, SvgIcon::ContextCopy, "Copy / Extract…") {
                 self.copy_or_move_selected(vec![entry.clone()], false);
                 menu.close();
             }
             if let Some(path) = &path {
-                if menu.button("Move…").clicked() {
+                if entry_context_menu_item(menu, SvgIcon::ContextMove, "Move…") {
                     self.copy_or_move_selected(vec![entry.clone()], true);
                     menu.close();
                 }
-                if menu.button("Delete…").clicked() {
+                if entry_context_menu_item(menu, SvgIcon::ContextDelete, "Delete…") {
                     let tab_id = self
                         .workspace
                         .tabs
@@ -55,36 +106,37 @@ impl crate::app::types::ViewerApp {
                     menu.close();
                 }
                 menu.separator();
-                if menu.button("Open With…").clicked() {
+                if entry_context_menu_item(menu, SvgIcon::ContextOpenWith, "Open With…") {
                     if let Err(error) = crate::app::external_open::open_with(path) {
-                        self.queue_status = Some(format!("Could not open external application: {error}"));
+                        self.queue_status =
+                            Some(format!("Could not open external application: {error}"));
                     }
                     menu.close();
                 }
-                if menu.button("Locate in File Manager").clicked() {
+                if entry_context_menu_item(menu, SvgIcon::ContextLocate, "Locate in File Manager") {
                     if let Err(error) = crate::app::external_open::reveal_in_file_manager(path) {
                         self.queue_status = Some(format!("Could not locate file: {error}"));
                     }
                     menu.close();
                 }
-                if menu.button("Rename… (F2)").clicked() {
+                if entry_context_menu_item(menu, SvgIcon::ContextRename, "Rename… (F2)") {
                     self.begin_rename(path);
                     menu.close();
                 }
 
                 menu.separator();
-                let in_queue = self.queue_paths.iter().any(|item| {
-                    crate::app::queues::paths_equal(item, path)
-                });
+                let in_queue = self
+                    .queue_paths
+                    .iter()
+                    .any(|item| crate::app::queues::paths_equal(item, path));
                 if in_queue {
-                    if menu.button("Remove from Queue").clicked() {
-                        self.queue_paths.retain(|item| {
-                            !crate::app::queues::paths_equal(item, path)
-                        });
+                    if entry_context_menu_item(menu, SvgIcon::ContextQueue, "Remove from Queue") {
+                        self.queue_paths
+                            .retain(|item| !crate::app::queues::paths_equal(item, path));
                         self.queue_status = Some("Removed image from Queue.".into());
                         menu.close();
                     }
-                } else if menu.button("Add to Queue").clicked() {
+                } else if entry_context_menu_item(menu, SvgIcon::ContextQueue, "Add to Queue") {
                     let added = self.add_queue_path(path.clone());
                     self.queue_status = Some(if added {
                         "Added image to Queue.".into()
@@ -94,32 +146,38 @@ impl crate::app::types::ViewerApp {
                     menu.close();
                 }
 
-                let in_favorites = self.favorite_paths.iter().any(|item| {
-                    crate::app::queues::paths_equal(item, path)
-                });
+                let in_favorites = self
+                    .favorite_paths
+                    .iter()
+                    .any(|item| crate::app::queues::paths_equal(item, path));
                 if in_favorites {
-                    if menu.button("Remove from Favorites").clicked() {
+                    if entry_context_menu_item(
+                        menu,
+                        crate::app::ui::favorite_svg_icon(&favorite_style, true),
+                        "Remove from Favorites",
+                    ) {
                         self.remove_favorite_path(path);
                         menu.close();
                     }
-                } else if menu.button("Add to Favorites").clicked() {
+                } else if entry_context_menu_item(
+                    menu,
+                    crate::app::ui::favorite_svg_icon(&favorite_style, false),
+                    "Add to Favorites",
+                ) {
                     self.add_favorite_path(path.clone());
                     menu.close();
                 }
 
-                if menu.button("Move to position…").clicked() {
-                    self.sidebar_number_edit = Some((
-                        0,
-                        self.current_index,
-                        (self.current_index + 1).to_string(),
-                    ));
+                if entry_context_menu_item(menu, SvgIcon::ContextReorder, "Move to position…") {
+                    self.sidebar_number_edit =
+                        Some((0, self.current_index, (self.current_index + 1).to_string()));
                     menu.close();
                 }
-                if menu.button("Copy File Path").clicked() {
+                if entry_context_menu_item(menu, SvgIcon::ContextCopyPath, "Copy File Path") {
                     self.queue_status = Some(
-                        match arboard::Clipboard::new()
-                            .and_then(|mut clipboard| clipboard.set_text(path.display().to_string()))
-                        {
+                        match arboard::Clipboard::new().and_then(|mut clipboard| {
+                            clipboard.set_text(path.display().to_string())
+                        }) {
                             Ok(()) => "Copied file path to clipboard.".into(),
                             Err(error) => format!("Could not copy file path: {error}"),
                         },
@@ -129,13 +187,22 @@ impl crate::app::types::ViewerApp {
             } else {
                 match &entry {
                     ImageEntry::Zip(item) => {
-                        if menu.button("Open Containing Archive").clicked() {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextArchive,
+                            "Open Containing Archive",
+                        ) {
                             if let Err(error) = open::that(&item.archive_path) {
-                                self.queue_status = Some(format!("Could not open archive: {error}"));
+                                self.queue_status =
+                                    Some(format!("Could not open archive: {error}"));
                             }
                             menu.close();
                         }
-                        if menu.button("Copy Entry Name").clicked() {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextCopyName,
+                            "Copy Entry Name",
+                        ) {
                             self.queue_status = Some(
                                 match arboard::Clipboard::new()
                                     .and_then(|mut clipboard| clipboard.set_text(item.name.clone()))
@@ -148,13 +215,22 @@ impl crate::app::types::ViewerApp {
                         }
                     }
                     ImageEntry::S7z(item) => {
-                        if menu.button("Open Containing Archive").clicked() {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextArchive,
+                            "Open Containing Archive",
+                        ) {
                             if let Err(error) = open::that(&item.archive_path) {
-                                self.queue_status = Some(format!("Could not open archive: {error}"));
+                                self.queue_status =
+                                    Some(format!("Could not open archive: {error}"));
                             }
                             menu.close();
                         }
-                        if menu.button("Copy Entry Name").clicked() {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextCopyName,
+                            "Copy Entry Name",
+                        ) {
                             self.queue_status = Some(
                                 match arboard::Clipboard::new()
                                     .and_then(|mut clipboard| clipboard.set_text(item.name.clone()))
@@ -167,13 +243,22 @@ impl crate::app::types::ViewerApp {
                         }
                     }
                     ImageEntry::Rar(item) => {
-                        if menu.button("Open Containing Archive").clicked() {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextArchive,
+                            "Open Containing Archive",
+                        ) {
                             if let Err(error) = open::that(&item.archive_path) {
-                                self.queue_status = Some(format!("Could not open archive: {error}"));
+                                self.queue_status =
+                                    Some(format!("Could not open archive: {error}"));
                             }
                             menu.close();
                         }
-                        if menu.button("Copy Entry Name").clicked() {
+                        if entry_context_menu_item(
+                            menu,
+                            SvgIcon::ContextCopyName,
+                            "Copy Entry Name",
+                        ) {
                             self.queue_status = Some(
                                 match arboard::Clipboard::new()
                                     .and_then(|mut clipboard| clipboard.set_text(item.name.clone()))
@@ -190,7 +275,13 @@ impl crate::app::types::ViewerApp {
             }
 
             menu.separator();
-            menu.label(egui::RichText::new(entry_name).weak().small());
+            let compact_name = if entry_name.chars().count() > 34 {
+                format!("{}…", entry_name.chars().take(33).collect::<String>())
+            } else {
+                entry_name.clone()
+            };
+            menu.label(egui::RichText::new(compact_name).weak().small())
+                .on_hover_text(entry_name);
         });
     }
 }

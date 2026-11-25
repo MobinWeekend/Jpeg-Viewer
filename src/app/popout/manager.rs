@@ -1,6 +1,16 @@
 use super::*;
 
 impl PopoutManager {
+    pub(super) fn mark_lifecycle_repaint(&mut self) {
+        let until = Instant::now() + Duration::from_secs(1);
+        self.lifecycle_repaint_until = Some(until);
+        for state in self.windows.values() {
+            if let Ok(mut window) = state.lock() {
+                window.lifecycle_repaint_until = Some(until);
+            }
+        }
+    }
+
     pub(crate) fn has_active_popouts(&self) -> bool {
         !self.windows.is_empty()
     }
@@ -57,6 +67,7 @@ impl PopoutManager {
                 self.presets.insert(tab_id, preset_from_window(&window));
                 self.pending_close.push(window.viewport_id);
             }
+            self.mark_lifecycle_repaint();
         }
     }
 
@@ -124,6 +135,10 @@ impl PopoutManager {
             pass_hover_opacity: 100.0,
             pointer_screen_pos: None,
             show_bounds: false,
+            remove_os_decorations: true,
+            remove_os_window_effects: true,
+            lifecycle_repaint_until: None,
+            native_window_effects_applied: None,
             dvd_mode: false,
             dvd_dragging: false,
             dvd_circle_collision: false,
@@ -167,5 +182,7 @@ impl PopoutManager {
             apply_preset_to_window(preset, &mut window, None);
         }
         self.windows.insert(tab_id, Arc::new(Mutex::new(window)));
+        self.mark_lifecycle_repaint();
+        ctx.request_repaint();
     }
 }

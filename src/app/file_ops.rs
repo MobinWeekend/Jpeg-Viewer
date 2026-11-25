@@ -219,7 +219,9 @@ impl ViewerApp {
         let mut geometry_was_saved = false;
         if !is_fullscreen {
             if !self.startup_restore_maximize_pending {
-                self.settings_manager.settings.window_maximized = is_maximized;
+                let _ = self.settings_manager.update(|settings| {
+                    settings.window_maximized = is_maximized;
+                });
             }
             if !is_maximized
                 && !self.startup_restore_maximize_pending
@@ -237,9 +239,11 @@ impl ViewerApp {
             }
         }
         // If maximized (or closing from fullscreen), preserve the last normal
-        // geometry and persist the maximize flag independently.
-        if !geometry_was_saved && let Err(error) = self.settings_manager.save() {
-            eprintln!("Failed to save window maximize state: {}", error);
+        // geometry. Flush only when a setting or geometry value actually changed.
+        if !geometry_was_saved
+            && let Err(error) = self.settings_manager.save_if_dirty()
+        {
+            eprintln!("Failed to save window state: {}", error);
         }
     }
 

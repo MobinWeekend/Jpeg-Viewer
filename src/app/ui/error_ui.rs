@@ -8,7 +8,7 @@ impl ViewerApp {
         let available_rect = ui.available_rect_before_wrap();
         let response = ui.interact(
             available_rect,
-            ui.id().with("error area"),
+            ui.scope_id().with("error area"),
             egui::Sense::click_and_drag(),
         );
         super::overlay::overlay_area(

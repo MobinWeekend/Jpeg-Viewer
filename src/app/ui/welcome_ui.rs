@@ -53,7 +53,7 @@ impl ViewerApp {
         ui.style_mut().interaction.selectable_labels = false;
         let background_drag = ui.interact(
             ui.max_rect(),
-            egui::Id::new("home_background_window_drag"),
+            egui::Id::unique("home_background_window_drag"),
             egui::Sense::click_and_drag(),
         );
         if background_drag.double_clicked() {
@@ -124,7 +124,7 @@ impl ViewerApp {
                                 let hero_surface = if settings.tricks_backdrop_enabled {
                                     let mut color = crate::ui_theme::main_view_background_color(
                                         &settings.main_view_background,
-                                        ctx.style().visuals.dark_mode,
+                                        ctx.global_style().visuals.dark_mode,
                                     );
                                     if glass {
                                         let [r, g, b, _] = color.to_srgba_unmultiplied();
@@ -173,11 +173,10 @@ impl ViewerApp {
                                                     egui::vec2(160.0, 160.0),
                                                     egui::Sense::hover(),
                                                 );
-                                                hero.painter().text(
-                                                    logo_rect.center(),
-                                                    egui::Align2::CENTER_CENTER,
-                                                    "▣",
-                                                    egui::FontId::proportional(54.0),
+                                                crate::app::ui::paint_svg_icon(
+                                                    hero,
+                                                    logo_rect,
+                                                    crate::app::ui::SvgIcon::AppLogo,
                                                     hero.visuals().text_color(),
                                                 );
                                             }
@@ -189,7 +188,7 @@ impl ViewerApp {
                                                         egui::vec2(30.0, 30.0), egui::Sense::hover(),
                                                     );
                                                     crate::app::ui::draw_home_icon(
-                                                        heading.painter(), icon_rect,
+                                                        heading, icon_rect,
                                                         heading.visuals().text_color(),
                                                     );
                                                     heading.label(egui::RichText::new("Jpeg Viewer").size(29.0).strong());
@@ -824,7 +823,7 @@ fn render_shortcuts_section(
     }
     if ui.ctx().input(|input| input.pointer.any_released()) {
         ui.ctx().data_mut(|data| {
-            data.remove::<PathBuf>(egui::Id::new("home_shortcut_drag_source"));
+            data.remove::<PathBuf>(egui::Id::unique("home_shortcut_drag_source"));
         });
     }
     action
@@ -878,7 +877,7 @@ fn render_new_tab_card(
     // drive one another's hover animation.
     let card_id = response.id.with(("new-tab-card", card.path.clone()));
     const SHORTCUT_DRAG_ID: &str = "home_shortcut_drag_source";
-    let shortcut_drag_id = egui::Id::new(SHORTCUT_DRAG_ID);
+    let shortcut_drag_id = egui::Id::unique(SHORTCUT_DRAG_ID);
     if removable && response.drag_started() && !window_mouse_operation_active {
         ui.ctx()
             .data_mut(|data| data.insert_temp(shortcut_drag_id, card.path.clone()));

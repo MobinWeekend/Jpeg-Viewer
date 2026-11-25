@@ -302,7 +302,7 @@ impl crate::app::types::ViewerApp {
             let response = ui
                 .interact(
                     tile_rect,
-                    egui::Id::new(("masonry_entry", tab_id, key.clone())),
+                    egui::Id::unique(("masonry_entry", tab_id, key.clone())),
                     egui::Sense::click(),
                 )
                 .on_hover_text(format!(
@@ -401,11 +401,15 @@ impl crate::app::types::ViewerApp {
                     eye_diameter * 0.5,
                     egui::Color32::from_black_alpha(165),
                 );
-                ui.painter().text(
+                let eye_icon_size = (eye_diameter * 0.62).clamp(18.0, 52.0);
+                let icon_rect = egui::Rect::from_center_size(
                     eye_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "👁",
-                    egui::FontId::proportional(48.0_f32.min(eye_diameter * (48.0 / 84.0))),
+                    egui::vec2(eye_icon_size, eye_icon_size),
+                );
+                crate::app::ui::paint_svg_icon(
+                    ui,
+                    icon_rect,
+                    crate::app::ui::SvgIcon::Eye,
                     egui::Color32::WHITE,
                 );
             }

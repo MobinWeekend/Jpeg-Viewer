@@ -187,16 +187,28 @@ pub fn switch(ui: &mut egui::Ui, value: &mut bool, label: impl Into<egui::Widget
                 0.09,
             );
 
-            // Track: cross-fades between "off" grey and accent, no stroke.
-            let off_track = visuals.widgets.inactive.weak_bg_fill;
+            // A defined track is important in light mode, where the default
+            // inactive surface can otherwise disappear against the panel.
+            let off_track = if visuals.dark_mode {
+                visuals.widgets.inactive.weak_bg_fill
+            } else {
+                egui::Color32::from_rgb(204, 209, 216)
+            };
             let on_track = visuals.selection.bg_fill;
             let track = lerp_color(off_track, on_track, t);
             let corner = egui::CornerRadius::same((rect.height() * 0.5).round() as u8);
+            let track_border = if t > 0.5 {
+                visuals.selection.stroke.color
+            } else if visuals.dark_mode {
+                egui::Color32::from_rgb(104, 111, 120)
+            } else {
+                egui::Color32::from_rgb(111, 119, 129)
+            };
             ui.painter().rect(
                 rect,
                 corner,
                 track,
-                egui::Stroke::NONE,
+                egui::Stroke::new(1.0, track_border),
                 egui::StrokeKind::Inside,
             );
 
@@ -249,6 +261,11 @@ pub fn switch(ui: &mut egui::Ui, value: &mut bool, label: impl Into<egui::Widget
                 radius,
                 egui::Color32::from_gray(250),
             ));
+            painter.add(egui::Shape::ellipse_stroke(
+                center,
+                radius,
+                egui::Stroke::new(0.8, egui::Color32::from_rgb(108, 114, 122)),
+            ));
         }
 
         if ui
@@ -280,7 +297,7 @@ fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
 /// Scale explicit RichText/FontId sizes alongside egui's default text styles.
 pub fn scaled_text_size(ctx: &egui::Context, base: f32) -> f32 {
     let factor = ctx
-        .data(|data| data.get_temp::<f32>(egui::Id::new("ui_text_scale_factor")))
+        .data(|data| data.get_temp::<f32>(egui::Id::unique("ui_text_scale_factor")))
         .unwrap_or(1.0);
     base * factor
 }

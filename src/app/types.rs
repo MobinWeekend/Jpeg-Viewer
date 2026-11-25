@@ -287,6 +287,8 @@ pub struct ViewerApp {
     /// Keep reset window-geometry defaults from being overwritten by the
     /// current session's native viewport when it closes. Cleared on next launch.
     pub preserve_reset_window_geometry: bool,
+    /// Prevent close-request persistence from running more than once across UI passes.
+    pub close_persistence_saved: bool,
     pub sidebar_width_needs_save: bool,
     /// Actual width allocated to the left sidebar this frame, used to position overlays.
     pub sidebar_actual_width: f32,
@@ -645,6 +647,7 @@ impl ViewerApp {
             startup_restore_maximize_pending: settings.window_maximized
                 && !settings.start_fullscreen,
             preserve_reset_window_geometry: false,
+            close_persistence_saved: false,
             sidebar_width_needs_save: false,
             sidebar_actual_width: 0.0,
             right_sidebar_actual_width: 0.0,
@@ -858,7 +861,7 @@ impl ViewerApp {
         const LAST_TITLE_ID: &str = "jpeg_viewer_last_viewport_title";
         let title = self.window_title();
         let unchanged = ctx.data(|data| {
-            data.get_temp::<String>(egui::Id::new(LAST_TITLE_ID))
+            data.get_temp::<String>(egui::Id::unique(LAST_TITLE_ID))
                 .is_some_and(|last_title| last_title == title)
         });
         if unchanged {
@@ -866,7 +869,7 @@ impl ViewerApp {
         }
 
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
-        ctx.data_mut(|data| data.insert_temp(egui::Id::new(LAST_TITLE_ID), title));
+        ctx.data_mut(|data| data.insert_temp(egui::Id::unique(LAST_TITLE_ID), title));
     }
 
     // ====== TEXTURE ======

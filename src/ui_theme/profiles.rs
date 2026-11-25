@@ -30,7 +30,7 @@ pub fn current_look_profile(ctx: &egui::Context) -> &'static str {
     // allocating a new String in the viewer's rendering path.
     ctx.data(|data| {
         match data
-            .get_temp::<String>(egui::Id::new("jpeg_viewer_look_profile"))
+            .get_temp::<String>(egui::Id::unique("jpeg_viewer_look_profile"))
             .as_deref()
         {
             Some("cosmic") => "cosmic",
@@ -81,17 +81,17 @@ pub fn navigation_auto_hide_enabled(
 pub fn set_look_profile(ctx: &egui::Context, preference: &str) {
     let profile = resolve_look_profile(preference);
     let cosmic_frosted = if profile == "cosmic" {
-        super::platform::detect_cosmic_frosted(ctx.style().visuals.dark_mode).unwrap_or(true)
+        super::platform::detect_cosmic_frosted(ctx.global_style().visuals.dark_mode).unwrap_or(true)
     } else {
         false
     };
     ctx.data_mut(|data| {
         data.insert_temp(
-            egui::Id::new("jpeg_viewer_look_profile"),
+            egui::Id::unique("jpeg_viewer_look_profile"),
             profile.to_string(),
         );
         // Cache this desktop preference rather than reading a config file in every frame.
-        data.insert_temp(egui::Id::new("jpeg_viewer_cosmic_frosted"), cosmic_frosted);
+        data.insert_temp(egui::Id::unique("jpeg_viewer_cosmic_frosted"), cosmic_frosted);
     });
     let effective_blur = super::backdrop::os_background_blur_enabled(ctx);
     crate::ui_theme::platform_backdrop::set_enabled(effective_blur);
@@ -100,7 +100,7 @@ pub fn set_look_profile(ctx: &egui::Context, preference: &str) {
 /// Whether the active COSMIC theme allows frosted window surfaces. When the
 /// setting is absent (older COSMIC versions), preserve the app's normal preference.
 pub fn cosmic_frosted_preference(ctx: &egui::Context) -> bool {
-    ctx.data(|data| data.get_temp::<bool>(egui::Id::new("jpeg_viewer_cosmic_frosted")))
+    ctx.data(|data| data.get_temp::<bool>(egui::Id::unique("jpeg_viewer_cosmic_frosted")))
         .unwrap_or(true)
 }
 

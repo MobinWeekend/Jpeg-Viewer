@@ -4,7 +4,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.collapsing(egui::RichText::new("💾 Settings file").size(15.0), |ui| {
+    crate::app::settings_menu::section(ui, "settings_file", crate::app::ui::SvgIcon::SettingsFile, "Settings file", false, |ui| {
         ui.add_space(4.0);
 
         let path = app.settings_manager.path();
@@ -22,9 +22,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(6.0);
 
         ui.horizontal(|ui| {
+            let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+            crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::OpenFolder, ui.visuals().text_color());
             if ui
                 .add(
-                    egui::Button::new(egui::RichText::new("📂 Open Settings Folder").size(13.0))
+                    egui::Button::new(egui::RichText::new("Open Settings Folder").size(13.0))
                         .min_size(egui::vec2(190.0, 28.0)),
                 )
                 .on_hover_text("Open the folder containing settings.ini in your file manager")

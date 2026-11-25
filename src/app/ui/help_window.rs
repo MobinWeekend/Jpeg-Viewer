@@ -4,154 +4,307 @@ use eframe::egui;
 const PROJECT_URL: &str = "https://github.com/MobinWeekend/Jpeg-Viewer";
 const RELEASES_URL: &str = "https://github.com/MobinWeekend/Jpeg-Viewer/releases";
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 enum HelpTab {
     #[default]
     Overview,
     Keyboard,
     Mouse,
     Tips,
+    CargoVersions,
+}
+
+fn help_nav_item(
+    ui: &mut egui::Ui,
+    active_tab: &mut HelpTab,
+    tab: HelpTab,
+    icon: crate::app::ui::SvgIcon,
+    label: &str,
+) {
+    let selected = *active_tab == tab;
+    let font_id = egui::FontId::proportional(12.5);
+    let text_color = if selected {
+        ui.visuals().text_color()
+    } else {
+        ui.visuals().widgets.inactive.fg_stroke.color
+    };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), font_id.clone(), text_color);
+    let width = galley.size().x + 43.0;
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, 34.0), egui::Sense::click());
+
+    if selected || response.hovered() || response.is_pointer_button_down_on() {
+        let visuals = if response.is_pointer_button_down_on() {
+            &ui.visuals().widgets.active
+        } else if selected {
+            &ui.visuals().widgets.open
+        } else {
+            &ui.visuals().widgets.hovered
+        };
+        let fill = if visuals.bg_fill == egui::Color32::TRANSPARENT {
+            crate::ui_theme::with_alpha(
+                ui.visuals().selection.bg_fill,
+                if selected { 112 } else { 64 },
+            )
+        } else {
+            visuals.bg_fill
+        };
+        ui.painter()
+            .rect_filled(rect, egui::CornerRadius::same(7), fill);
+    }
+
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 16.0, rect.center().y),
+        egui::vec2(16.0, 16.0),
+    );
+    let foreground = if selected || response.hovered() {
+        ui.visuals().text_color()
+    } else {
+        ui.visuals().widgets.inactive.fg_stroke.color
+    };
+    crate::app::ui::paint_svg_icon(ui, icon_rect, icon, foreground);
+    ui.painter().galley(
+        egui::pos2(icon_rect.right() + 7.0, rect.center().y - galley.size().y * 0.5),
+        galley,
+        foreground,
+    );
+
+    if selected {
+        let indicator = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 12.0, rect.bottom() - 2.0),
+            egui::vec2(rect.width() - 24.0, 2.0),
+        );
+        ui.painter().rect_filled(
+            indicator,
+            egui::CornerRadius::same(1),
+            ui.visuals().selection.stroke.color,
+        );
+    }
+
+    if response.clicked() {
+        *active_tab = tab;
+    }
 }
 
 impl ViewerApp {
     pub fn render_help_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_help_menu;
-        let content_rect = ctx.available_rect();
-        // Keep the window comfortable on normal displays, but allow its content to
-        // remain usable in a compact 512x512 window.
+        let viewport = ctx.viewport_rect();
+        let available_width = (viewport.width() - 24.0).max(420.0);
+        let available_height = (viewport.height() - 40.0).max(360.0);
         let default_size = egui::vec2(
-            content_rect.width().clamp(512.0, 760.0),
-            content_rect.height().clamp(512.0, 720.0),
+            (viewport.width() * 0.72).clamp(560.0, 900.0).min(available_width),
+            (viewport.height() * 0.72).clamp(470.0, 740.0).min(available_height),
         );
         let default_pos = egui::pos2(
-            (content_rect.center().x - default_size.x * 0.5).max(content_rect.left()),
-            (content_rect.center().y - default_size.y * 0.5).max(content_rect.top()),
+            (viewport.center().x - default_size.x * 0.5).max(viewport.left() + 8.0),
+            (viewport.center().y - default_size.y * 0.5).max(viewport.top() + 8.0),
         );
 
         let generation = crate::app::ui::desktop_menu_bar_generation_for_help(ctx);
-        let tab_id = egui::Id::new(("jpeg_viewer_help_tab", generation));
+        let tab_id = egui::Id::unique(("jpeg_viewer_help_tab", generation));
         let mut active_tab = ctx
             .data(|data| data.get_temp::<HelpTab>(tab_id))
             .unwrap_or_default();
         let previous_tab = active_tab;
 
         egui::Window::new("Help & About · JPEG Viewer")
-            .id(egui::Id::new(("jpeg_viewer_help_window", generation)))
+            .id(egui::Id::unique(("jpeg_viewer_help_window", generation)))
             .title_bar(true)
             .collapsible(false)
             .resizable(true)
             .movable(true)
             .default_pos(default_pos)
             .default_size(default_size)
-            .min_size([512.0, 512.0])
-            .max_size([960.0, 960.0])
+            .min_size([420.0, 360.0])
+            .max_size([1120.0, 900.0])
             .open(&mut open)
             .show(ctx, |ui| {
-                // Compact identity block: keep navigation and reference content visible
-                // without a large hero panel consuming the small window's height.
-                egui::Frame::group(ui.style())
-                    .fill(ui.visuals().faint_bg_color)
-                    .inner_margin(egui::Margin::same(8))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.label(
-                                    egui::RichText::new("🖼 JPEG Viewer")
-                                        .size(19.0)
-                                        .strong(),
-                                );
-                                ui.label(
-                                    egui::RichText::new("Fast, lightweight image browsing · By Mobin Sasanpour")
-                                        .small()
-                                        .weak(),
-                                );
-                            });
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
+                let available = ui.available_size_before_wrap();
+                let width = available.x.max(1.0);
+                let height = available.y.max(1.0);
+                let border = ui.visuals().widgets.noninteractive.bg_stroke.color;
+                let weak_text = ui.visuals().weak_text_color();
+
+                ui.horizontal(|header| {
+                    header.spacing_mut().item_spacing.x = 10.0;
+                    let (logo_rect, _) = header.allocate_exact_size(
+                        egui::vec2(34.0, 34.0),
+                        egui::Sense::hover(),
+                    );
+                    crate::app::ui::paint_svg_icon(
+                        header,
+                        logo_rect,
+                        crate::app::ui::SvgIcon::AppLogo,
+                        header.visuals().text_color(),
+                    );
+                    header.vertical(|brand| {
+                        brand.label(
+                            egui::RichText::new("JPEG Viewer")
+                                .size(16.0)
+                                .strong(),
+                        );
+                        brand.label(
+                            egui::RichText::new("by Mobin Sasanpour")
+                                .size(11.5)
+                                .color(weak_text),
+                        );
+                    });
+                    header.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |meta| {
+                            egui::Frame::new()
+                                .fill(meta.visuals().faint_bg_color)
+                                .stroke(egui::Stroke::new(0.7, border))
+                                .corner_radius(egui::CornerRadius::same(6))
+                                .inner_margin(egui::Margin::symmetric(8, 4))
+                                .show(meta, |meta| {
+                                    meta.label(
                                         egui::RichText::new(format!(
                                             "v{}",
                                             env!("CARGO_PKG_VERSION")
                                         ))
-                                        .strong()
-                                        .color(ui.visuals().hyperlink_color),
+                                        .monospace()
+                                        .size(11.0)
+                                        .color(meta.visuals().weak_text_color()),
                                     );
-                                },
-                            );
-                        });
-                        ui.add_space(3.0);
-                        ui.horizontal_wrapped(|ui| {
-                            if ui.small_button("GitHub ↗").clicked() {
-                                open_external(PROJECT_URL, "GitHub");
-                            }
-                            if ui.small_button("Releases ↗").clicked() {
-                                open_external(RELEASES_URL, "GitHub Releases");
-                            }
-                            if ui.link("Instagram").clicked() {
-                                open_external("https://instagram.com/artofweekend", "Instagram");
-                            }
-                            if ui.link("X").clicked() {
-                                open_external("https://x.com/artofweekend", "X");
-                            }
-                        });
-                    });
+                                });
+                        },
+                    );
+                });
 
-                ui.add_space(5.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.selectable_value(
+                ui.add_space(10.0);
+                ui.horizontal_wrapped(|tabs| {
+                    tabs.spacing_mut().item_spacing.x = 5.0;
+                    help_nav_item(
+                        tabs,
                         &mut active_tab,
                         HelpTab::Overview,
-                        egui::RichText::new("About").size(12.5),
-                    ).on_hover_text("Features and getting started");
-                    ui.selectable_value(
+                        crate::app::ui::SvgIcon::Home,
+                        "Overview",
+                    );
+                    help_nav_item(
+                        tabs,
                         &mut active_tab,
                         HelpTab::Keyboard,
-                        egui::RichText::new("⌨ Keyboard").size(12.5),
-                    ).on_hover_text("Keyboard shortcuts");
-                    ui.selectable_value(
+                        crate::app::ui::SvgIcon::Input,
+                        "Keyboard",
+                    );
+                    help_nav_item(
+                        tabs,
                         &mut active_tab,
                         HelpTab::Mouse,
-                        egui::RichText::new("🖱 Mouse").size(12.5),
-                    ).on_hover_text("Mouse, touchpad, and window controls");
-                    ui.selectable_value(
+                        crate::app::ui::SvgIcon::Inspect,
+                        "Mouse",
+                    );
+                    help_nav_item(
+                        tabs,
                         &mut active_tab,
                         HelpTab::Tips,
-                        egui::RichText::new("Tips").size(12.5),
-                    ).on_hover_text("Useful workflows and settings");
+                        crate::app::ui::SvgIcon::Image,
+                        "Tips",
+                    );
+                    help_nav_item(
+                        tabs,
+                        &mut active_tab,
+                        HelpTab::CargoVersions,
+                        crate::app::ui::SvgIcon::SettingsFile,
+                        "Cargo versions",
+                    );
                 });
-                ui.separator();
 
-                // Reserve only a small footer; the selected section gets the remaining
-                // height and can scroll independently from the other tabs.
-                const FOOTER_HEIGHT: f32 = 22.0;
-                let scroll_height = (ui.available_height() - FOOTER_HEIGHT).max(0.0);
-                egui::ScrollArea::vertical()
-                    .id_salt(("jpeg_viewer_help_content", generation, active_tab))
-                    .auto_shrink([false; 2])
-                    .max_height(scroll_height)
-                    .show(ui, |ui| match active_tab {
-                        HelpTab::Overview => Self::render_help_overview(ui),
-                        HelpTab::Keyboard => Self::render_keyboard_help(ui),
-                        HelpTab::Mouse => Self::render_mouse_help(ui),
-                        HelpTab::Tips => Self::render_help_tips(ui),
-                    });
-
+                ui.add_space(5.0);
                 ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("Made with ♥ using Rust and egui")
+                ui.add_space(8.0);
+
+                let (heading, subtitle) = match active_tab {
+                    HelpTab::Overview => (
+                        "A focused viewer for your image library",
+                        "Browse, compare, organize, and make quick edits without leaving the viewer.",
+                    ),
+                    HelpTab::Keyboard => (
+                        "Keyboard shortcuts",
+                        "Quick reference for navigation, zoom, display, workspace, and file actions.",
+                    ),
+                    HelpTab::Mouse => (
+                        "Mouse & touch controls",
+                        "Pointer gestures for navigation, zooming, panning, and window control.",
+                    ),
+                    HelpTab::Tips => (
+                        "Tips & workflows",
+                        "Settings and small workflow improvements for everyday use.",
+                    ),
+                    HelpTab::CargoVersions => (
+                        "Cargo & build versions",
+                        "The pinned Rust toolchain and resolved GUI/windowing crate versions used by this build.",
+                    ),
+                };
+                ui.label(egui::RichText::new(heading).size(19.0).strong());
+                ui.label(egui::RichText::new(subtitle).size(12.5).color(weak_text));
+                ui.add_space(8.0);
+
+                // At the minimum window width, the fifth tab wraps to a second row.
+                // Reserve that extra row so the footer remains visible and the article
+                // keeps its own scroll area instead of pushing the window content out.
+                let wrapped_tab_height = if width < 470.0 { 34.0 } else { 0.0 };
+                let body_height = (height - 174.0 - wrapped_tab_height).max(100.0);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(width, body_height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |body| {
+                        body.set_min_width(width);
+                        body.set_max_width(width);
+                        egui::Frame::new()
+                            .fill(body.visuals().extreme_bg_color)
+                            .stroke(egui::Stroke::new(0.7, border))
+                            .corner_radius(egui::CornerRadius::same(9))
+                            .inner_margin(egui::Margin::same(13))
+                            .show(body, |panel| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt(("jpeg_viewer_help_content", generation, active_tab))
+                                    .auto_shrink([false, false])
+                                    .show(panel, |content| match active_tab {
+                                        HelpTab::Overview => Self::render_help_overview(content),
+                                        HelpTab::Keyboard => Self::render_keyboard_help(content),
+                                        HelpTab::Mouse => Self::render_mouse_help(content),
+                                        HelpTab::Tips => Self::render_help_tips(content),
+                                        HelpTab::CargoVersions => {
+                                            Self::render_cargo_versions(content)
+                                        }
+                                    });
+                            });
+                    },
+                );
+
+                ui.add_space(5.0);
+                ui.horizontal(|footer| {
+                    footer.label(
+                        egui::RichText::new("Project")
                             .small()
                             .weak(),
                     );
-                    ui.with_layout(
+                    footer.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.label(
-                                egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-                                    .small()
-                                    .weak(),
-                            );
+                        |links| {
+                            for (label, url) in [
+                                ("Releases ↗", RELEASES_URL),
+                                ("GitHub ↗", PROJECT_URL),
+                            ] {
+                                let response = links.add(
+                                    egui::Button::new(
+                                        egui::RichText::new(label)
+                                            .size(11.5)
+                                            .color(links.visuals().hyperlink_color),
+                                    )
+                                    .fill(egui::Color32::TRANSPARENT)
+                                    .stroke(egui::Stroke::NONE),
+                                );
+                                if response.clicked() {
+                                    open_external(url, label);
+                                }
+                            }
                         },
                     );
                 });
@@ -164,20 +317,7 @@ impl ViewerApp {
     }
 
     fn render_help_overview(ui: &mut egui::Ui) {
-        ui.add_space(3.0);
-        ui.label(
-            egui::RichText::new("A focused viewer for your image library")
-                .size(17.0)
-                .strong(),
-        );
-        ui.label(
-            egui::RichText::new(
-                "Browse, compare, organize, and enjoy images without turning the viewer into a heavy editing suite.",
-            )
-            .small()
-            .color(ui.visuals().weak_text_color()),
-        );
-        ui.add_space(6.0);
+        ui.add_space(2.0);
         ui.label(egui::RichText::new("FEATURES").small().strong().color(ui.visuals().weak_text_color()));
 
         // Two columns are useful on wide windows; a single readable list is much
@@ -250,9 +390,80 @@ impl ViewerApp {
         ui.add_space(4.0);
     }
 
+    fn render_cargo_versions(ui: &mut egui::Ui) {
+        ui.add_space(2.0);
+        ui.label(
+            egui::RichText::new("VERSIONS USED BY THIS PROJECT")
+                .small()
+                .strong()
+                .color(ui.visuals().weak_text_color()),
+        );
+        ui.add_space(7.0);
+
+        let rust_version = env!("JPEG_VIEWER_RUST_VERSION");
+        let eframe_version = env!("JPEG_VIEWER_EFRAME_VERSION");
+        let egui_version = env!("JPEG_VIEWER_EGUI_VERSION");
+        let winit_version = env!("JPEG_VIEWER_WINIT_VERSION");
+
+        egui::Frame::group(ui.style())
+            .inner_margin(egui::Margin::same(10))
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("Rust toolchain").strong().size(13.5));
+                Self::render_version_row(
+                    ui,
+                    "Rust",
+                    rust_version,
+                    "Pinned in rust-toolchain.toml",
+                );
+            });
+        ui.add_space(7.0);
+
+        egui::Frame::group(ui.style())
+            .inner_margin(egui::Margin::same(10))
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("GUI & windowing crates").strong().size(13.5));
+                ui.add_space(3.0);
+                Self::render_version_row(ui, "eframe", eframe_version, "Resolved in Cargo.lock");
+                Self::render_version_row(ui, "egui", egui_version, "Resolved in Cargo.lock");
+                Self::render_version_row(ui, "winit", winit_version, "Resolved in Cargo.lock");
+            });
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(
+                "Rust is pinned in rust-toolchain.toml. The crate versions are resolved from Cargo.lock. Cargo itself is supplied with the Rust toolchain and is not separately pinned by this project.",
+            )
+            .small()
+            .weak(),
+        );
+    }
+
+    fn render_version_row(ui: &mut egui::Ui, name: &str, version: &str, source: &str) {
+        ui.horizontal(|row| {
+            row.vertical(|details| {
+                details.label(egui::RichText::new(name).size(12.5).strong());
+                details.label(egui::RichText::new(source).size(10.5).weak());
+            });
+            row.with_layout(egui::Layout::right_to_left(egui::Align::Center), |value| {
+                egui::Frame::new()
+                    .fill(value.visuals().faint_bg_color)
+                    .stroke(egui::Stroke::new(0.7, value.visuals().widgets.noninteractive.bg_stroke.color))
+                    .corner_radius(egui::CornerRadius::same(5))
+                    .inner_margin(egui::Margin::symmetric(8, 4))
+                    .show(value, |value| {
+                        value.label(
+                            egui::RichText::new(version)
+                                .monospace()
+                                .size(12.5)
+                                .strong(),
+                        );
+                    });
+            });
+        });
+        ui.add_space(5.0);
+    }
+
     fn render_keyboard_help(ui: &mut egui::Ui) {
-        ui.add_space(3.0);
-        ui.label(egui::RichText::new("Keyboard shortcuts").size(17.0).strong());
+        ui.add_space(2.0);
         ui.label(
             egui::RichText::new("Shortcuts are paused while a text field has keyboard focus.")
                 .small()
@@ -364,14 +575,7 @@ impl ViewerApp {
     }
 
     fn render_mouse_help(ui: &mut egui::Ui) {
-        ui.add_space(3.0);
-        ui.label(egui::RichText::new("Mouse & touch controls").size(17.0).strong());
-        ui.label(
-            egui::RichText::new("A quick reference for navigation, zooming, panning, and window control.")
-                .small()
-                .weak(),
-        );
-        ui.add_space(5.0);
+        ui.add_space(2.0);
 
         Self::render_shortcut_group(
             ui,
@@ -411,14 +615,7 @@ impl ViewerApp {
     }
 
     fn render_help_tips(ui: &mut egui::Ui) {
-        ui.add_space(3.0);
-        ui.label(egui::RichText::new("Tips & workflow").size(17.0).strong());
-        ui.label(
-            egui::RichText::new("Small settings and shortcuts that make day-to-day browsing smoother.")
-                .small()
-                .weak(),
-        );
-        ui.add_space(5.0);
+        ui.add_space(2.0);
 
         let tips = [
             "Drag an image, folder, or supported archive into the window to open it.",

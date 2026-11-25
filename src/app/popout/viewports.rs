@@ -38,6 +38,14 @@ impl PopoutManager {
         for viewport_id in self.pending_close.drain(..) {
             ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Close);
         }
+        if self
+            .lifecycle_repaint_until
+            .is_some_and(|until| Instant::now() < until)
+        {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        } else {
+            self.lifecycle_repaint_until = None;
+        }
 
         // A close button in a deferred child cannot directly borrow this manager.
         // It sets a flag in the shared window state; harvest those flags next root pass.
@@ -52,9 +60,12 @@ impl PopoutManager {
                     .map(|window| (*tab_id, preset_from_window(&window)))
             })
             .collect::<Vec<_>>();
-        for (tab_id, preset) in closed {
-            self.windows.remove(&tab_id);
-            self.presets.insert(tab_id, preset);
+        if !closed.is_empty() {
+            for (tab_id, preset) in closed {
+                self.windows.remove(&tab_id);
+                self.presets.insert(tab_id, preset);
+            }
+            self.mark_lifecycle_repaint();
         }
 
         let states = self
@@ -124,6 +135,15 @@ impl PopoutManager {
                     window.dwm_transparency_applied =
                         enable_popout_dwm_transparency(tab_id, window.viewport_generation);
                 }
+                if window.native_window_effects_applied != Some(window.remove_os_window_effects)
+                    && apply_popout_native_window_effects(
+                        tab_id,
+                        window.viewport_generation,
+                        window.remove_os_window_effects,
+                    )
+                {
+                    window.native_window_effects_applied = Some(window.remove_os_window_effects);
+                }
                 if !window.native_owner_detached {
                     window.native_owner_detached =
                         detach_popout_owner(tab_id, window.viewport_generation);
@@ -136,6 +156,12 @@ impl PopoutManager {
                     }
                 }
                 let animated = window.ball_mode || window.dvd_mode;
+                let lifecycle_repaint = window
+                    .lifecycle_repaint_until
+                    .is_some_and(|until| Instant::now() < until);
+                if !lifecycle_repaint {
+                    window.lifecycle_repaint_until = None;
+                }
                 let should_close = egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
                     .show(viewport_ctx, |ui| window.render(ui, tab_id))
@@ -144,7 +170,17 @@ impl PopoutManager {
                 // otherwise remain asleep after the compositor restores it. Keep
                 // a low-rate wake scheduled on the root context while physics is
                 // running; the root's minimized fast path remains lightweight.
+                if lifecycle_repaint {
+                    // Wake both independent UI contexts at frame cadence during
+                    // the short open/close transition window.
+                    viewport_ctx.request_repaint_after(Duration::from_millis(16));
+                    parent_ctx.request_repaint_after(Duration::from_millis(16));
+                }
                 if animated {
+                    // Movement modes must keep the child viewport repainting even
+                    // when a physics update exits early (for example, unavailable
+                    // monitor bounds or a temporary native drag).
+                    viewport_ctx.request_repaint_after(Duration::from_millis(16));
                     parent_ctx.request_repaint_after(Duration::from_millis(250));
                 }
                 if should_close {

@@ -6,7 +6,7 @@ const TOOLBAR_BG_ALPHA: u8 = 198;
 const MENU_OFFSET: f32 = 8.0;
 
 pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
-    let visuals = &ctx.style().visuals;
+    let visuals = &ctx.global_style().visuals;
     let win98 = crate::ui_theme::current_look_profile(ctx) == "win98";
     let glass = crate::ui_theme::os_background_blur_enabled(ctx) && !win98;
     let surface = visuals.window_fill;
@@ -31,7 +31,7 @@ pub fn toolbar_frame(ctx: &egui::Context) -> egui::Frame {
 
 pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Frame {
     let profile = crate::ui_theme::current_look_profile(ctx);
-    let panel_color = ctx.style().visuals.panel_fill;
+    let panel_color = ctx.global_style().visuals.panel_fill;
 
     // Native glass is used where available; egui surfaces become opaque when it is
     // disabled. Win98 always uses classic opaque, square, beveled surfaces.
@@ -74,7 +74,7 @@ pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Fr
         let stroke = if profile == "win98" {
             egui::Color32::from_rgb(128, 128, 128)
         } else {
-            ctx.style().visuals.widgets.noninteractive.bg_stroke.color
+            ctx.global_style().visuals.widgets.noninteractive.bg_stroke.color
         };
         frame = frame.stroke(egui::Stroke::new(1.0_f32, stroke));
     }
@@ -82,7 +82,7 @@ pub(super) fn toolbar_frame_mode(ctx: &egui::Context, compact: bool) -> egui::Fr
 }
 
 fn overlay_area(id: &'static str, anchor: egui::Align2, offset: egui::Vec2) -> egui::Area {
-    egui::Area::new(egui::Id::new(id))
+    egui::Area::new(egui::Id::unique(id))
         .order(egui::Order::Foreground)
         .anchor(anchor, offset)
 }
@@ -112,7 +112,7 @@ pub fn render_top_toolbar(
         crate::app::ui::uses_desktop_menu_bar(ctx),
         app.slideshow_enabled,
     );
-    egui::Area::new(egui::Id::new("toolbar_top_center"))
+    egui::Area::new(egui::Id::unique("toolbar_top_center"))
         .sizing_pass(sizing_changed)
         .order(egui::Order::Foreground)
         .anchor(egui::Align2::LEFT_TOP, egui::vec2(offset_x, offset_y))
@@ -336,7 +336,7 @@ pub fn render_platform_toolbar(
         has_desktop_menu_bar,
         app.slideshow_enabled,
     );
-    egui::Area::new(egui::Id::new(id))
+    egui::Area::new(egui::Id::unique(id))
         .sizing_pass(sizing_changed)
         .order(egui::Order::Foreground)
         .anchor(anchor, offset)
@@ -666,7 +666,7 @@ fn toolbar_area_sizing_changed(
     has_desktop_menu_bar: bool,
     slideshow_enabled: bool,
 ) -> bool {
-    let state_id = egui::Id::new(("toolbar_layout_signature", area_key));
+    let state_id = egui::Id::unique(("toolbar_layout_signature", area_key));
     let current = (
         profile.to_owned(),
         compact,

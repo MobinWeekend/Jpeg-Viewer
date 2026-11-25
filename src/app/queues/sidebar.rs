@@ -129,7 +129,7 @@ fn paint_image_tab_controls(
     );
     let badge_response = ui.interact(
         badge_rect,
-        egui::Id::new(("browse_image_tab_badge", tab_id)),
+        egui::Id::unique(("browse_image_tab_badge", tab_id)),
         egui::Sense::hover(),
     );
     badge_response.on_hover_text(if has_popout {
@@ -160,7 +160,7 @@ fn paint_image_tab_controls(
     let close_response = ui
         .interact(
             close_rect,
-            egui::Id::new(("browse_image_tab_close", tab_id)),
+            egui::Id::unique(("browse_image_tab_close", tab_id)),
             egui::Sense::click(),
         )
         .on_hover_text("Close Image tab");
@@ -183,7 +183,7 @@ fn paint_image_tab_controls(
     close_response.clicked()
 }
 
-pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
+pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     if !app.settings_manager.get().show_file_sidebar {
         app.sidebar_visible_sources.clear();
         app.sidebar_prefetch_sources.clear();
@@ -223,7 +223,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
         // Use the active Win98 palette for both Light and Dark themes; other looks
         // retain the existing image-view surface behavior.
-        ctx.style().visuals.panel_fill
+        ctx.global_style().visuals.panel_fill
     } else {
         crate::ui_theme::main_view_surface_color(
             ctx,
@@ -231,16 +231,16 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
             sidebar_settings.main_view_background_opacity,
         )
     };
-    let sidebar_frame = egui::Frame::side_top_panel(&ctx.style())
+    let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
         .fill(sidebar_background)
         .stroke(egui::Stroke::NONE);
 
-    let response = egui::SidePanel::left("file_sidebar")
+    let response = egui::Panel::left("file_sidebar")
         .resizable(true)
-        .default_width(default_width)
-        .width_range(min_sidebar_width..=max_sidebar_width)
+        .default_size(default_width)
+        .size_range(min_sidebar_width..=max_sidebar_width)
         .frame(sidebar_frame)
-        .show(ctx, |ui| {
+        .show(ui, |ui| {
             // Extend the same window-local blurred photo backdrop behind the sidebar.
             // The panel painter is clipped to this sidebar, while the backdrop target
             // remains the full client area so its crop aligns with the title bar/canvas.
@@ -305,14 +305,14 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                     ui.spacing_mut().button_padding.x = 1.0;
 
                     let tab_width = ((tab_available_width - 3.0).max(0.0) / 4.0).max(0.0);
-                    let (browse_label, queue_label, favorites_label, info_label) = if tab_width >= 118.0 {
-                        ("▦ Browse", "↕ Queue", "★ Favorites", "ⓘ Info")
+                    let (browse_label, queue_label, info_label) = if tab_width >= 118.0 {
+                        ("▦ Browse", "↕ Queue", "ⓘ Info")
                     } else if tab_width >= 72.0 {
-                        ("Browse", "Queue", "Favorites", "Info")
+                        ("Browse", "Queue", "Info")
                     } else if tab_width >= 42.0 {
-                        ("Brw", "Que", "Fav", "Info")
+                        ("Brw", "Que", "Info")
                     } else {
-                        ("▦", "↕", "★", "ⓘ")
+                        ("▦", "↕", "ⓘ")
                     };
                     let browse = !app.sidebar_queue_tab && !app.sidebar_favorites_tab && !app.sidebar_info_tab;
                     if ui.add_sized([tab_width, 30.0], egui::Button::selectable(browse, browse_label))
@@ -323,8 +323,49 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                         .on_hover_text(format!("Queue ({})", app.queue_paths.len())).clicked() {
                         app.sidebar_queue_tab = true; app.sidebar_favorites_tab = false; app.sidebar_info_tab = false;
                     }
-                    if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_favorites_tab, favorites_label))
-                        .on_hover_text(format!("Favorites ({})", app.favorite_paths.len())).clicked() {
+                    let favorites_selected = app.sidebar_favorites_tab;
+                    let (favorites_rect, favorites_response) = ui.allocate_exact_size(
+                        egui::vec2(tab_width, 30.0),
+                        egui::Sense::click(),
+                    );
+                    if favorites_selected || favorites_response.hovered() {
+                        let fill = if favorites_selected {
+                            ui.visuals().selection.bg_fill
+                        } else {
+                            ui.visuals().widgets.hovered.bg_fill
+                        };
+                        ui.painter().rect_filled(
+                            favorites_rect,
+                            egui::CornerRadius::same(4),
+                            fill,
+                        );
+                    }
+                    let fav_style = app.settings_manager.get().favorite_icon_style.as_str();
+                    let fav_icon = crate::app::ui::favorite_svg_icon(fav_style, true);
+                    let fav_icon_rect = if tab_width >= 72.0 {
+                        egui::Rect::from_center_size(
+                            egui::pos2(favorites_rect.left() + 16.0, favorites_rect.center().y),
+                            egui::vec2(16.0, 16.0),
+                        )
+                    } else {
+                        egui::Rect::from_center_size(favorites_rect.center(), egui::vec2(17.0, 17.0))
+                    };
+                    crate::app::ui::paint_svg_icon(
+                        ui,
+                        fav_icon_rect,
+                        fav_icon,
+                        egui::Color32::WHITE,
+                    );
+                    if tab_width >= 72.0 {
+                        ui.painter().text(
+                            egui::pos2(fav_icon_rect.right() + 4.0, favorites_rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            if tab_width >= 118.0 { "Favorites" } else { "Fav" },
+                            egui::FontId::proportional(12.0),
+                            ui.visuals().text_color(),
+                        );
+                    }
+                    if favorites_response.on_hover_text(format!("Favorites ({})", app.favorite_paths.len())).clicked() {
                         app.sidebar_queue_tab = false; app.sidebar_favorites_tab = true; app.sidebar_info_tab = false;
                     }
                     if ui.add_sized([tab_width, 30.0], egui::Button::selectable(app.sidebar_info_tab, info_label))
@@ -717,7 +758,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
                                 }
                             });
                     });
-                let scroll_offset = scroll_output.state.offset.y;
+                let scroll_offset = scroll_output.state.unclamped_offset().y;
                 let scroll_delta_y = app.sidebar_last_scroll_offset
                     .map(|previous| scroll_offset - previous)
                     .unwrap_or(0.0);
@@ -804,7 +845,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         let mut commit = false;
         let mut cancel = false;
         egui::Window::new("Move entry to position")
-            .id(egui::Id::new("sidebar_number_editor"))
+            .id(egui::Id::unique("sidebar_number_editor"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -908,15 +949,16 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
     if app.sidebar_resize_dragging && primary_down {
         let previous = app.settings_manager.get().file_sidebar_width;
         if (width - previous).abs() > 1.0 {
-            app.settings_manager.settings.file_sidebar_width = width;
+            let _ = app.settings_manager.update(|settings| {
+                settings.file_sidebar_width = width;
+            });
             app.sidebar_width_needs_save = true;
         }
     }
 
     if app.sidebar_resize_dragging && any_released {
-        if app.sidebar_width_needs_save {
-            let _ = app.settings_manager.save();
-        }
+        // Do not force a settings.ini write from a sidebar resize. The shared
+        // save scheduler waits until the Settings drawer is closed.
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
     } else if !primary_down
@@ -924,7 +966,6 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ctx: &egui::Context) {
         && app.sidebar_width_needs_save
     {
         // Recovery path if the release happened outside the application window.
-        let _ = app.settings_manager.save();
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
     }
@@ -953,7 +994,7 @@ pub fn render_rename_dialog(app: &mut ViewerApp, ctx: &egui::Context) {
         let mut commit = false;
         let mut cancel = false;
         egui::Window::new("Rename file")
-            .id(egui::Id::new("rename_file_dialog"))
+            .id(egui::Id::unique("rename_file_dialog"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)

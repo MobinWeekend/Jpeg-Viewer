@@ -69,6 +69,8 @@ pub(super) fn preset_from_window(window: &PopoutWindow) -> PopoutPreset {
         pass_hover_enabled: window.pass_hover_enabled,
         pass_hover_opacity: window.pass_hover_opacity,
         show_bounds: window.show_bounds,
+        remove_os_decorations: window.remove_os_decorations,
+        remove_os_window_effects: window.remove_os_window_effects,
         dvd_mode: window.dvd_mode,
         dvd_circle_collision: window.dvd_circle_collision,
         random_reflect_on_bounce: window.random_reflect_on_bounce,
@@ -108,6 +110,8 @@ pub(super) fn apply_preset_to_window(
     window.pass_hover_enabled = preset.pass_hover_enabled;
     window.pass_hover_opacity = preset.pass_hover_opacity;
     window.show_bounds = preset.show_bounds;
+    window.remove_os_decorations = preset.remove_os_decorations;
+    window.remove_os_window_effects = preset.remove_os_window_effects;
     window.dvd_mode = preset.dvd_mode;
     window.dvd_dragging = false;
     window.dvd_circle_collision = preset.dvd_circle_collision;
@@ -141,6 +145,10 @@ pub(super) fn apply_preset_to_window(
         ctx.send_viewport_cmd_to(
             window.viewport_id,
             egui::ViewportCommand::InnerSize(requested_size),
+        );
+        ctx.send_viewport_cmd_to(
+            window.viewport_id,
+            egui::ViewportCommand::Decorations(!window.remove_os_decorations),
         );
         ctx.request_repaint();
     }

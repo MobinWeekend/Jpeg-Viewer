@@ -61,7 +61,7 @@ impl ViewerApp {
         // its previous tier cannot leak into the new image's layout decision.
         let mut hasher = DefaultHasher::new();
         candidates.hash(&mut hasher);
-        let tier_id = ui.id().with(("file_metadata_tier", hasher.finish()));
+        let tier_id = ui.scope_id().with(("file_metadata_tier", hasher.finish()));
         let previous_tier = ui.ctx().data(|data| data.get_temp::<usize>(tier_id));
         let chosen_tier = choose_metadata_tier(&candidate_widths, available, previous_tier);
 
@@ -94,7 +94,7 @@ impl ViewerApp {
             self.file_metadata_open = opening;
             if opening {
                 ui.ctx().data_mut(|data| {
-                    data.remove::<String>(egui::Id::new("file_metadata_clipboard_error"));
+                    data.remove::<String>(egui::Id::unique("file_metadata_clipboard_error"));
                 });
             }
         }
@@ -110,10 +110,10 @@ impl ViewerApp {
 
         let popup_pos = response.rect.left_bottom() + egui::vec2(0.0, 8.0);
         let mut close_popup = false;
-        let clipboard_error_id = egui::Id::new("file_metadata_clipboard_error");
+        let clipboard_error_id = egui::Id::unique("file_metadata_clipboard_error");
         let mut clipboard_error = ctx.data(|data| data.get_temp::<String>(clipboard_error_id));
         let metadata = self.file_metadata.as_ref();
-        let popup_response = egui::Area::new(egui::Id::new("file_metadata_popup"))
+        let popup_response = egui::Area::new(egui::Id::unique("file_metadata_popup"))
             .order(egui::Order::Foreground)
             .fixed_pos(popup_pos)
             .constrain(true)
