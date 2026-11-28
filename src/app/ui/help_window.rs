@@ -75,28 +75,39 @@ fn is_keyboard_key_token(token: &str) -> bool {
 }
 
 fn render_keycap(ui: &mut egui::Ui, key: &str) {
-    let visuals = ui.visuals();
+    let visuals = ui.visuals().clone();
     let fill = if visuals.widgets.inactive.bg_fill == egui::Color32::TRANSPARENT {
         visuals.faint_bg_color
     } else {
         visuals.widgets.inactive.bg_fill
     };
     let outline = visuals.widgets.noninteractive.bg_stroke;
+    let foreground = visuals.text_color();
+    let font_id = egui::FontId::monospace(11.5);
+    let galley = ui.painter().layout_no_wrap(key.to_owned(), font_id, foreground);
 
-    egui::Frame::new()
-        .fill(fill)
-        .stroke(egui::Stroke::new(outline.width.max(0.8), outline.color))
-        .corner_radius(egui::CornerRadius::same(4))
-        .inner_margin(egui::Margin::symmetric(5, 2))
-        .show(ui, |key_ui| {
-            key_ui.label(
-                egui::RichText::new(key)
-                    .monospace()
-                    .strong()
-                    .size(11.5)
-                    .color(key_ui.visuals().text_color()),
-            );
-        });
+    // A single physical key must never collapse into a narrow text badge. Keep
+    // all keycaps at least square; longer keys (Ctrl, Shift, F12, etc.) expand
+    // horizontally only as much as their label requires.
+    let desired_size = egui::vec2((galley.size().x + 10.0).max(24.0), 24.0);
+    let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
+    let key_fill = if response.hovered() {
+        visuals.widgets.hovered.bg_fill
+    } else {
+        fill
+    };
+    ui.painter().rect_filled(rect, egui::CornerRadius::same(3), key_fill);
+    ui.painter().rect_stroke(
+        rect,
+        egui::CornerRadius::same(3),
+        egui::Stroke::new(outline.width.max(0.8), outline.color),
+        egui::epaint::StrokeKind::Inside,
+    );
+    ui.painter().galley(
+        egui::pos2(rect.center().x - galley.size().x * 0.5, rect.center().y - galley.size().y * 0.5),
+        galley,
+        foreground,
+    );
 }
 
 fn render_shortcut_label(ui: &mut egui::Ui, shortcut: &str, key_width: f32) {

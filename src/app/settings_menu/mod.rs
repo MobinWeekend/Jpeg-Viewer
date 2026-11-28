@@ -725,6 +725,19 @@ fn restore_preview_runtime(
 }
 
 fn render_settings_window_contents(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    // Keep the wider slider preference local to this Settings window. Applying it
+    // to the shared Context style would also widen sliders in the main viewer.
+    ui.scope(|ui| {
+        ui.spacing_mut().slider_width *= 2.0;
+        render_settings_window_contents_inner(app, ui, ctx);
+    });
+}
+
+fn render_settings_window_contents_inner(
+    app: &mut ViewerApp,
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+) {
     let page = SettingsPage::from_index(app.settings_active_page);
     let search_id = egui::Id::unique(("jpeg_viewer_settings_search", app.settings_window_generation));
     let mut search_query = ctx.data(|data| data.get_temp::<String>(search_id)).unwrap_or_default();
@@ -733,7 +746,12 @@ fn render_settings_window_contents(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     ui.vertical(|ui| {
         ui.horizontal(|header| {
             let (icon_rect, _) = header.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::hover());
-            crate::app::ui::paint_application_icon(header, icon_rect);
+            crate::app::ui::paint_svg_icon(
+                header,
+                icon_rect,
+                crate::app::ui::SvgIcon::Settings,
+                header.visuals().text_color(),
+            );
             header.vertical(|title| {
                 title.label(egui::RichText::new("Settings").size(17.0).strong());
                 title.label(
@@ -746,12 +764,16 @@ fn render_settings_window_contents(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
         ui.add_space(8.0);
         ui.separator();
 
-        // Keep a generous, fixed footer reservation for the reset control,
-        // Save/Discard actions, optional reset feedback, and save errors. Do not
-        // force a minimum body height: on short displays the page scroll area
-        // must yield space to the footer rather than pushing its buttons out
-        // of the native window's client area.
-        let footer_reserved = if app.settings_save_error.is_some() { 128.0 } else { 96.0 };
+        // Reserve only the space the footer actually needs. Reset feedback and
+        // save errors get additional room when present, avoiding both clipped
+        // buttons on short windows and the oversized empty strip above the footer.
+        let reset_feedback_height = if advanced::reset_all::feedback_is_visible(ctx) {
+            48.0
+        } else {
+            0.0
+        };
+        let save_error_height = if app.settings_save_error.is_some() { 28.0 } else { 0.0 };
+        let footer_reserved = 52.0 + reset_feedback_height + save_error_height;
         let body_height = (ui.available_height() - footer_reserved).max(0.0);
         let body_width = ui.available_width();
         ui.allocate_ui_with_layout(
@@ -944,10 +966,12 @@ fn render_settings_window_contents(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
                 advanced::reset_all::render(app, footer, ctx);
             });
             footer.with_layout(egui::Layout::right_to_left(egui::Align::Center), |actions| {
-                let save = actions.add_enabled(
+                let save = settings_icon_button(
+                    actions,
+                    crate::app::ui::SvgIcon::ContextArchive,
+                    "Save",
+                    egui::vec2(88.0, 34.0),
                     app.settings_manager.is_dirty() || app.settings_reset_all_previewed,
-                    egui::Button::new(egui::RichText::new("Save").strong())
-                        .min_size(egui::vec2(88.0, 34.0)),
                 );
                 if save.clicked() {
                     match app.settings_manager.save_if_dirty() {
@@ -958,9 +982,14 @@ fn render_settings_window_contents(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
                         Err(error) => app.settings_save_error = Some(error),
                     }
                 }
-                if actions
-                    .add(egui::Button::new("Discard").min_size(egui::vec2(84.0, 34.0)))
-                    .clicked()
+                if settings_icon_button(
+                    actions,
+                    crate::app::ui::SvgIcon::Undo,
+                    "Discard",
+                    egui::vec2(90.0, 34.0),
+                    true,
+                )
+                .clicked()
                 {
                     app.discard_settings_session(ctx);
                     actions.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -969,6 +998,49 @@ fn render_settings_window_contents(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
         });
         ui.add_space(2.0);
     });
+}
+
+/// A compact Settings action button that paints one of the shared SVG assets
+/// beside its label while preserving egui's standard button interaction states.
+pub(crate) fn settings_icon_button(
+    ui: &mut egui::Ui,
+    icon: crate::app::ui::SvgIcon,
+    label: &str,
+    min_size: egui::Vec2,
+    enabled: bool,
+) -> egui::Response {
+    let font_id = egui::FontId::proportional(13.0);
+    let measured = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        font_id.clone(),
+        ui.visuals().text_color(),
+    );
+    let content_width = 10.0 + 16.0 + 7.0 + measured.size().x + 10.0;
+    let desired_size = egui::vec2(min_size.x.max(content_width), min_size.y.max(32.0));
+    let response = ui.add_enabled(enabled, egui::Button::new("").min_size(desired_size));
+
+    let foreground = if !enabled {
+        ui.visuals().widgets.noninteractive.fg_stroke.color
+    } else if response.is_pointer_button_down_on() {
+        ui.visuals().widgets.active.fg_stroke.color
+    } else if response.hovered() {
+        ui.visuals().widgets.hovered.fg_stroke.color
+    } else {
+        ui.visuals().widgets.inactive.fg_stroke.color
+    };
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(response.rect.left() + 10.0 + 8.0, response.rect.center().y),
+        egui::vec2(16.0, 16.0),
+    );
+    crate::app::ui::paint_svg_icon(ui, icon_rect, icon, foreground);
+    ui.painter().text(
+        egui::pos2(icon_rect.right() + 7.0, response.rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        font_id,
+        foreground,
+    );
+    response
 }
 
 fn render_settings_close_prompt(app: &mut ViewerApp, ctx: &egui::Context) {

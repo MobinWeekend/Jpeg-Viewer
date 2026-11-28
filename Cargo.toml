@@ -149,3 +149,11 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+# eframe 0.37 uses winit 0.30.13, whose upstream Wayland backend does not
+# emit native file-drop events yet. This pinned compatible fork adds inbound
+# wl_data_device support so Wayland file-manager drops reach egui without
+# switching the application to XWayland. Remove this override once upstream
+# winit includes equivalent support.
+[patch.crates-io]
+winit = { git = "https://github.com/storytold/winit", rev = "ae48c756a3b81125eb796c0cc6dccf60990d1181" }

@@ -6,24 +6,24 @@ use std::time::Instant;
 const RESET_CONFIRM_ID: &str = "settings_reset_all_confirmation";
 const RESET_FEEDBACK_ID: &str = "settings_reset_all_feedback";
 
+pub(crate) fn feedback_is_visible(ctx: &egui::Context) -> bool {
+    ctx.data(|data| {
+        data.get_temp::<(bool, String)>(egui::Id::unique(RESET_FEEDBACK_ID))
+            .is_some()
+    })
+}
+
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.horizontal(|ui| {
         ui.add_space(8.0);
-        let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-        crate::app::ui::paint_svg_icon(
+        if crate::app::settings_menu::settings_icon_button(
             ui,
-            icon_rect,
             crate::app::ui::SvgIcon::Reset,
-            ui.visuals().text_color(),
-        );
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new("Reset All Settings to Default").size(13.0),
-                )
-                .min_size(egui::vec2(220.0, 32.0)),
-            )
-            .clicked()
+            "Reset All Settings to Default",
+            egui::vec2(220.0, 32.0),
+            true,
+        )
+        .clicked()
         {
             ctx.data_mut(|data| data.insert_temp(egui::Id::unique(RESET_CONFIRM_ID), true));
         }

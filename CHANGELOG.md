@@ -11,6 +11,9 @@
 - Added Instagram and X profile links to Help → About, a Help header close button, and the application icon in the Help header and About card.
 
 ### Improved
+- Doubled the Settings slider rail width, added the Settings SVG to its window header, and added SVG icons to Reset, Save, and Discard; reduced the footer's reserved blank space while retaining room for feedback and errors.
+- Help shortcut keycaps now have a minimum square 24×24 shape, expanding horizontally only for longer key names.
+- Added native Wayland file drops through a pinned winit 0.30.13 fork with `wl_data_device` support; incoming file drops remain on the native Wayland backend and are forwarded through eframe’s regular egui file-drop events. Wayland drops route to the main workspace because this backend does not currently expose external-drag pointer coordinates for Queue/Favorites hit testing.
 - Restyled keyboard shortcuts in Help as individual, theme-aware keycaps, including modifier combinations and alternative keys; keycaps wrap cleanly in narrower Help windows while mouse gestures remain descriptive.
 - Restyled keyboard shortcuts in Help as individual, theme-aware keycaps, including modifier combinations and alternative keys; mouse gesture labels remain descriptive rather than being presented as keyboard keys.
 - Fixed the Settings footer so Reset All, Save, and Discard remain inside the window, including when feedback or save errors are displayed.

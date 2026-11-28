@@ -447,7 +447,21 @@ impl ViewerApp {
             return;
         }
 
-        let drop_position = ctx.input(|i| i.pointer.hover_pos().or_else(|| i.pointer.latest_pos()));
+        // The native Wayland data-device DnD protocol reports file enter/motion/drop
+        // events separately from wl_pointer. The compatible winit backend currently
+        // forwards the file events but does not publish drag coordinates as pointer
+        // motion, so egui's latest pointer position may be stale from an earlier
+        // interaction. Treat Wayland file drops as main-workspace drops instead of
+        // accidentally routing them into Queue/Favorites based on that stale point.
+        #[cfg(target_os = "linux")]
+        let wayland_file_drop = std::env::var_os("WAYLAND_DISPLAY").is_some();
+        #[cfg(not(target_os = "linux"))]
+        let wayland_file_drop = false;
+        let drop_position = if wayland_file_drop {
+            None
+        } else {
+            ctx.input(|i| i.pointer.hover_pos().or_else(|| i.pointer.latest_pos()))
+        };
         let dropped_on_sidebar_collection = self
             .queue_drop_rect
             .is_some_and(|rect| drop_position.is_some_and(|position| rect.contains(position)));

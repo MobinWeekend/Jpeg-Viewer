@@ -84,6 +84,9 @@ fn main() -> eframe::Result<()> {
         // Wayland uses ext-background-effect-v1 when supported; other platforms
         // retain an opaque clear color unless their native backdrop is active.
         .with_transparent(true)
+        // Keep file drops enabled for platform backends. On native Wayland,
+        // the pinned winit patch below supplies the missing data-device events.
+        .with_drag_and_drop(true)
         .with_resizable(true);
 
     // A maximized Win32 window must let the window manager calculate its
