@@ -409,6 +409,11 @@ impl SettingsManager {
                     {
                         settings.view_padding_custom = values;
                     }
+                    if let Some(value) = section.get("image_fit_mode")
+                        && matches!(value, "all" | "big_only")
+                    {
+                        settings.image_fit_mode = value.to_string();
+                    }
                     if let Some(value) = section.get("fit_window_to_image") {
                         settings.fit_window_to_image = Self::parse_bool(value);
                     }

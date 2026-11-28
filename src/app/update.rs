@@ -45,7 +45,10 @@ impl eframe::App for ViewerApp {
                 input.viewport().focused.unwrap_or(false),
             )
         });
-        if root_minimized && !root_focused && self.popouts.has_active_popouts() {
+        if root_minimized
+            && !root_focused
+            && (self.popouts.has_active_popouts() || self.show_settings_menu || self.show_help_menu)
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
@@ -59,9 +62,8 @@ impl eframe::App for ViewerApp {
             });
         }
 
-        // Settings edited in the docked Settings panel remain in memory while
-        // that panel is open. Persist only after it closes, and only when dirty.
-        // The normal 750 ms debounce still coalesces other changes outside Settings.
+        // Settings edits are previewed live but remain an uncommitted editing
+        // session until the user explicitly presses Save in the Settings window.
         if !self.show_settings_menu {
             if let Some(Err(error)) = self.settings_manager.save_if_due() {
                 eprintln!("Could not persist updated settings: {error}");
@@ -735,6 +737,8 @@ impl eframe::App for ViewerApp {
             )
         });
         if root_minimized && !root_focused {
+            self.render_help_window(&ctx);
+            crate::app::ui::render_settings_viewport(self, &ctx);
             self.popouts.render_viewports(&ctx);
             return;
         }
@@ -759,11 +763,6 @@ impl eframe::App for ViewerApp {
             }
         }
 
-        // ========== HELP MENU ==========
-        if self.show_help_menu {
-            self.render_help_window(&ctx);
-        }
-
         // ========== HARDCODED INPUT HANDLING ==========
         self.handle_input(&ctx);
         self.handle_window_resize(&ctx);
@@ -783,10 +782,11 @@ impl eframe::App for ViewerApp {
         // Dock the active right-side tool panel before the central canvas so
         // it receives a proper share of the available layout width.
         self.render_editing_ui(ui, &ctx);
-        if self.show_settings_menu && !self.show_edit_menu {
-            crate::app::ui::render_settings_menu(self, ui, &ctx);
-        }
         self.render_central_panel(ui, &ctx);
+        // Utility windows use native OS viewports and are independent of the
+        // main viewer's panels and workspace layout.
+        self.render_help_window(&ctx);
+        crate::app::ui::render_settings_viewport(self, &ctx);
         // File-operation confirmations are shared by Viewer, Compare, and Masonry
         // entry context menus, so render them outside the Masonry-only surface.
         self.render_delete_confirmation(&ctx);
@@ -895,6 +895,12 @@ impl eframe::App for ViewerApp {
 
 impl Drop for ViewerApp {
     fn drop(&mut self) {
+        // A Settings session is transactional: process teardown must not turn
+        // live-preview edits into a disk save when Save was never pressed.
+        if let Some(snapshot) = self.settings_session_snapshot.take() {
+            self.settings_manager
+                .restore_in_memory(snapshot, self.settings_session_was_dirty);
+        }
         // Wayland backdrop proxies borrow eframe's display/surface, so release
         // them before the native window and its display connection are torn down.
         crate::ui_theme::platform_backdrop::shutdown();

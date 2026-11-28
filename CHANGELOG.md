@@ -5,6 +5,19 @@
 - Pop-out settings frame fills now derive from the active egui theme visuals instead of fixed dark colors.
 
 ## Unreleased
+
+### Added
+- Added explicit image-fit policies: fit all images (including upscaling small images) or fit only large images, retaining the existing default behavior.
+- Added Instagram and X profile links to Help → About, a Help header close button, and the application icon in the Help header and About card.
+
+### Improved
+- Restyled keyboard shortcuts in Help as individual, theme-aware keycaps, including modifier combinations and alternative keys; keycaps wrap cleanly in narrower Help windows while mouse gestures remain descriptive.
+- Restyled keyboard shortcuts in Help as individual, theme-aware keycaps, including modifier combinations and alternative keys; mouse gesture labels remain descriptive rather than being presented as keyboard keys.
+- Fixed the Settings footer so Reset All, Save, and Discard remain inside the window, including when feedback or save errors are displayed.
+- Settings search now scrolls to and highlights the matching settings group instead of only highlighting its heading.
+- Added a searchable Settings sidebar with matching setting names and keywords; selecting a result opens its category. Removed accordion drawers from General, Slideshow, Tricks, Advanced, Updates, and Settings file pages, while keeping the remaining drawers expanded by default. Added matching JPEG Viewer icons and desktop app identity to both native utility windows; balanced Settings padding and added top/side padding to Help.
+- Made the Settings and Help native windows opaque regardless of the main viewer backdrop setting, and corrected their left-side navigation to stack vertically.
+- Moved Settings and Help & About into separate native OS windows. Each is single-instance and focuses its existing window when reopened; both open centered on the monitor containing the main viewer. Settings now uses category navigation, live preview with explicit Save/Discard, and an unsaved-changes close prompt; Help has redesigned navigation and an About page. F5 opens Settings, F1 opens Help, and F2 remains Rename.
 - Added editable SVG source assets for every custom UI icon (app-logo fallback, hamburger, sidebar, navigation, zoom, Home, Masonry, and remaining context-menu actions); icons are rasterized through the existing `resvg` dependency, cached per egui context, and tinted by the active theme.
 - Simplified the main-view context menu to use font glyphs for common file actions and shrink-wrapped rows, capped to one third of the viewport width.
 - Changed zoom toolbar icons to unframed bold plus/minus marks.

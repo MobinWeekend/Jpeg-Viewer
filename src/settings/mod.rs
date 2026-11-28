@@ -176,6 +176,8 @@ pub struct AppSettings {
     pub view_padding_fine_tune: HashMap<String, [f32; 4]>,
     /// Explicit custom padding in [top, right, bottom, left] order.
     pub view_padding_custom: [f32; 4],
+    /// Image fitting policy: "big_only" (default) or "all" (also enlarge small images).
+    pub image_fit_mode: String,
     // Window sizing around the currently viewed image.
     pub fit_window_to_image: bool,
     /// monitor or custom.
@@ -300,6 +302,7 @@ impl Default for AppSettings {
                 ("win98".to_string(), [0.0; 4]),
             ]),
             view_padding_custom: [0.0; 4],
+            image_fit_mode: "big_only".to_string(),
             fit_window_to_image: false,
             fit_window_limit: "monitor".to_string(),
             fit_window_monitor_offset: 0.0,
@@ -495,6 +498,14 @@ impl SettingsManager {
 
     pub fn is_dirty(&self) -> bool {
         self.dirty
+    }
+
+    /// Restore an in-memory settings snapshot without writing it to disk.
+    /// This is used when a live-preview Settings session is discarded.
+    pub fn restore_in_memory(&mut self, settings: AppSettings, was_dirty: bool) {
+        self.settings = settings;
+        self.dirty = was_dirty;
+        self.dirty_since = was_dirty.then(std::time::Instant::now);
     }
 
     pub fn update_window_state(&mut self, pos: [f32; 2], size: [f32; 2]) -> Result<(), String> {

@@ -37,7 +37,6 @@ impl ViewerApp {
                 "Save or discard the unsaved working copy before opening another path.".into(),
             );
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return;
         }
         // File-open actions always target the primary collection Viewer, not a
@@ -181,6 +180,15 @@ impl ViewerApp {
     }
 
     pub fn save_window_state(&mut self, ctx: &egui::Context) {
+        // Closing the main viewer does not implicitly commit a separate Settings
+        // editing session. Roll back its preview before persisting window state.
+        if self.show_settings_menu {
+            if let Some(snapshot) = self.settings_session_snapshot.take() {
+                self.settings_manager
+                    .restore_in_memory(snapshot, self.settings_session_was_dirty);
+            }
+            self.finish_settings_window();
+        }
         if self.preserve_reset_window_geometry {
             // Reset All cleared the persisted window geometry. Do not overwrite
             // those defaults with the old in-session native window bounds. Any
@@ -329,7 +337,6 @@ impl ViewerApp {
                 "Save or discard the unsaved working copy before opening dropped files.".into(),
             );
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return;
         }
         if self.edit_session.is_some() {

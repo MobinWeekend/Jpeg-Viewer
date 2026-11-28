@@ -13,14 +13,14 @@ mod svg_icons;
 pub(crate) mod tricks;
 mod welcome_ui;
 
-pub(crate) use crate::app::settings_menu::{render_settings_menu, toggle_settings_menu};
+pub(crate) use crate::app::settings_menu::{render_settings_viewport, toggle_settings_menu};
 pub use desktop_menu_bar::{
     bump_help_window_generation, desktop_menu_bar_generation_for_help, desktop_menu_bar_height,
     desktop_menu_bar_in_custom_titlebar, render_desktop_menu_bar,
     render_desktop_menu_bar_in_titlebar, set_desktop_menu_bar_preference, uses_desktop_menu_bar,
 };
 pub(crate) use masonry_icon::{draw_home_icon, masonry_button, masonry_toggle_button};
-pub(crate) use svg_icons::{favorite_svg_icon, paint_svg_icon, SvgIcon};
+pub(crate) use svg_icons::{favorite_svg_icon, paint_application_icon, paint_svg_icon, SvgIcon};
 pub use overlay::{
     custom_titlebar_height, render_overlay_ui, reserve_custom_titlebar_space, toolbar_frame,
     update_overlay_visibility,

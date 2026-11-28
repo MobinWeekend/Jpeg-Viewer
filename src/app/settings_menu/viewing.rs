@@ -40,27 +40,69 @@ pub(crate) fn effective_padding(
 }
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "viewing", crate::app::ui::SvgIcon::Viewing, "Viewing", false, |ui| {
-        ui.add_space(4.0);
+    ui.add_space(4.0);
+    render_image_fit_mode(app, ui, ctx);
+    ui.separator();
+    crate::app::settings_menu::settings_search_anchor(ui, "viewing_zoom_sensitivity", |ui| {
         render_zoom_step(app, ui);
-        ui.separator();
-        crate::app::settings_menu::section(
+    });
+    ui.separator();
+    crate::app::settings_menu::section(
+        ui,
+        "viewing_padding",
+        crate::app::ui::SvgIcon::Layout,
+        "Padding",
+        true,
+        |ui| render_padding(app, ui, ctx),
+    );
+    ui.separator();
+    crate::app::settings_menu::section(
+        ui,
+        "viewing_window_sizing",
+        crate::app::ui::SvgIcon::WindowFrame,
+        "Window sizing",
+        true,
+        |ui| render_window_sizing(app, ui, ctx),
+    );
+}
+
+fn render_image_fit_mode(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    crate::app::settings_menu::settings_search_anchor(ui, "viewing_fit_mode", |ui| {
+        crate::app::settings_menu::subsection_heading(
             ui,
-            "viewing_padding",
-            crate::app::ui::SvgIcon::Layout,
-            "Padding",
-            false,
-            |ui| render_padding(app, ui, ctx),
+            crate::app::ui::SvgIcon::Fit,
+            "Image fit",
         );
-        ui.separator();
-        crate::app::settings_menu::section(
-            ui,
-            "viewing_window_sizing",
-            crate::app::ui::SvgIcon::WindowFrame,
-            "Window sizing",
-            false,
-            |ui| render_window_sizing(app, ui, ctx),
-        );
+        let settings = app.settings_manager.get().clone();
+        let mut mode = settings.image_fit_mode.clone();
+        ui.vertical(|ui| {
+            ui.radio_value(&mut mode, "all".to_owned(), "Fit images to Window");
+            ui.label(
+                egui::RichText::new("Scales both large and small images to fit the available window area.")
+                    .small()
+                    .weak(),
+            );
+            ui.add_space(4.0);
+            ui.radio_value(
+                &mut mode,
+                "big_only".to_owned(),
+                "Fit only big images to Window",
+            );
+            ui.label(
+                egui::RichText::new("Only shrinks images that are larger than the available area. Smaller images stay at their original size. This is the default behavior.")
+                    .small()
+                    .weak(),
+            );
+        });
+        if mode != settings.image_fit_mode {
+            let _ = app
+                .settings_manager
+                .update(|value| value.image_fit_mode = mode.clone());
+            if !app.image_entries.is_empty() {
+                app.b_fit_to_window = true;
+            }
+            ctx.request_repaint();
+        }
     });
 }
 
@@ -269,7 +311,7 @@ fn render_window_sizing(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Cont
     );
 
     let monitors = crate::platform::monitors::available_monitors();
-    let current_window_rect = ctx.input(|input| input.viewport().outer_rect);
+    let current_window_rect = ctx.input_for(egui::ViewportId::ROOT, |input| input.viewport().outer_rect);
     let current_monitor = crate::platform::monitors::resolve_default_monitor_at(
         &monitors,
         crate::platform::monitors::CURRENT_WINDOW_MONITOR,

@@ -77,13 +77,14 @@ impl ViewerApp {
         let main_accent = crate::ui_theme::main_accent_color(ctx);
 
         // Only one right-side tool drawer should be visible at a time. The
-        // Settings and Edit panels take priority over the per-Image Pop-out deck.
-        if self.show_settings_menu || self.show_edit_menu {
+        // Edit panel takes priority over the per-Image Pop-out deck; Settings
+        // now lives in its own native viewport.
+        if self.show_edit_menu {
             self.popouts.close_settings_sidebar();
         }
 
-        // Pop-out controls use the same docked-sidebar surface, width range,
-        // spacing and scroll/footer structure as Settings. Register the panel
+        // Pop-out controls retain their own right-side drawer surface, width
+        // range, spacing, and scroll/footer structure. Register the panel
         // before CentralPanel so the image canvas receives the remaining width.
         if let Some((tab_id, texture, animation, source_pixels)) = self
             .active_image_popout_source()

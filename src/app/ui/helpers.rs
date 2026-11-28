@@ -18,18 +18,26 @@ impl ViewerApp {
         };
         let zoom_x = available.x / texture_size.x;
         let zoom_y = available.y / texture_size.y;
-        if should_fit {
-            let fit_zoom = zoom_x.min(zoom_y).min(1.0);
-            self.zoom = fit_zoom;
+        let allow_upscale = self.settings_manager.get().image_fit_mode == "all";
+
+        // The all-images policy always contains the complete image in the
+        // available area, including panoramas and very tall images, and may
+        // enlarge small images. The default big-only policy keeps the prior
+        // 1.0 zoom ceiling and the existing extreme-aspect-ratio behavior.
+        if allow_upscale {
+            self.zoom = zoom_x.min(zoom_y);
             self.pan = egui::Vec2::ZERO;
-            true // Applied fit all sides
+            true
+        } else if should_fit {
+            self.zoom = zoom_x.min(zoom_y).min(1.0);
+            self.pan = egui::Vec2::ZERO;
+            true // Applied fit all sides without enlarging small images.
         } else {
-            // For extreme ratios
             let max_fit_zoom = zoom_x.max(zoom_y).min(1.0);
             self.zoom = max_fit_zoom;
             let snap_to_top = (texture_size.y / 2.0) - (available.y / 2.0) / max_fit_zoom;
             self.pan = egui::Vec2::new(0.0, snap_to_top);
-            false // fit to one side
+            false // Preserve the existing one-axis fit for extreme ratios.
         }
     }
 

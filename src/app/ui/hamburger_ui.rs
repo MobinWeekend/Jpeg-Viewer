@@ -135,7 +135,7 @@ impl ViewerApp {
                         item_width,
                         28.0,
                     ) {
-                        crate::app::ui::toggle_settings_menu(self);
+                        crate::app::ui::toggle_settings_menu(self, ctx);
                         self.hamburger_menu_open = false;
                     }
                     if Self::hamburger_menu_item_sized(

@@ -157,7 +157,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     } else {
         "Active"
     };
-    let focus_text = if ctx.input(|i| i.viewport().focused).unwrap_or(false) {
+    let focus_text = if ctx.input_for(egui::ViewportId::ROOT, |i| i.viewport().focused).unwrap_or(false) {
         "✅ Focused"
     } else {
         "❌ Unfocused"

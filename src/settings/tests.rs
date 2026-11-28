@@ -351,6 +351,7 @@ fn viewing_and_single_instance_settings_round_trip() {
         .view_padding_fine_tune
         .insert("cosmic".to_string(), [2.0, 4.0, 6.0, 8.0]);
     settings.view_padding_custom = [10.0, 20.0, 30.0, 40.0];
+    settings.image_fit_mode = "all".to_string();
     settings.fit_window_to_image = true;
     settings.fit_window_limit = "custom".to_string();
     settings.window_default_monitor = "DISPLAY-2".to_string();
@@ -374,6 +375,7 @@ fn viewing_and_single_instance_settings_round_trip() {
         Some(&[2.0, 4.0, 6.0, 8.0])
     );
     assert_eq!(loaded.view_padding_custom, [10.0, 20.0, 30.0, 40.0]);
+    assert_eq!(loaded.image_fit_mode, "all");
     assert!(loaded.fit_window_to_image);
     assert_eq!(loaded.fit_window_limit, "custom");
     assert_eq!(loaded.window_default_monitor, "DISPLAY-2");

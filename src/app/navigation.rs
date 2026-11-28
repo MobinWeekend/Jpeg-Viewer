@@ -12,7 +12,6 @@ impl ViewerApp {
         {
             self.edit_status = Some(dirty_message.to_owned());
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return false;
         }
         if self.edit_session.is_some() {

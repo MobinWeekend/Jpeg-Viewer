@@ -11,6 +11,40 @@ use resvg::{tiny_skia, usvg};
 // linear texture sampler. This produces cleaner diagonals at fractional UI scales.
 const ICON_RASTER_SIZE: u32 = 192;
 
+/// Paint the same full-color PNG used by the native application window icon.
+pub(crate) fn paint_application_icon(ui: &egui::Ui, rect: egui::Rect) {
+    static TEXTURE_ID: std::sync::OnceLock<egui::Id> = std::sync::OnceLock::new();
+    let texture_id = *TEXTURE_ID.get_or_init(|| {
+        egui::Id::unique("jpeg_viewer_application_icon_texture")
+    });
+
+    let texture = ui.ctx().data(|data| data.get_temp::<egui::TextureHandle>(texture_id));
+    let texture = texture.unwrap_or_else(|| {
+        // Reuse the same decoded PNG pixels that are supplied to native OS
+        // window icons. This keeps the Help/Settings branding identical and
+        // avoids introducing another image-decoding path in the UI module.
+        let icon = crate::application_window_icon_data();
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+            [icon.width as usize, icon.height as usize],
+            &icon.rgba,
+        );
+        let texture = ui.ctx().load_texture(
+            "jpeg_viewer_application_icon",
+            color_image,
+            egui::TextureOptions::LINEAR,
+        );
+        ui.ctx().data_mut(|data| data.insert_temp(texture_id, texture.clone()));
+        texture
+    });
+
+    ui.painter().image(
+        texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum SvgIcon {
     AppLogo,

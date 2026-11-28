@@ -523,7 +523,7 @@ fn render_menus(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui, com
         }
         ui.separator();
         if ui.button("Settings…").clicked() {
-            crate::app::ui::toggle_settings_menu(app);
+            crate::app::ui::toggle_settings_menu(app, ctx);
             ui.close();
         }
         ui.separator();

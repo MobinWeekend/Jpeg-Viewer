@@ -2,7 +2,7 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "window_frame", crate::app::ui::SvgIcon::WindowFrame, "Window frame", false, |ui| {
+    crate::app::settings_menu::section(ui, "window_frame", crate::app::ui::SvgIcon::WindowFrame, "Window frame", true, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add_space(8.0);
@@ -11,7 +11,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                 let _ = app.settings_manager.update(|settings| {
                     settings.show_titlebar = show_titlebar;
                 });
-                ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(show_titlebar));
+                ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Decorations(show_titlebar));
                 ctx.request_repaint();
             }
         });

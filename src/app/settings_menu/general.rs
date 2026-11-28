@@ -9,44 +9,53 @@ use crate::app::types::ViewerApp;
 use eframe::egui;
 
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "general", crate::app::ui::SvgIcon::General, "General", false, |ui| {
+    ui.vertical(|ui| {
         ui.add_space(4.0);
 
-        // Keep General as one settings section, but show its individual options
-        // directly. Nested collapsibles made commonly used controls unnecessarily
-        // difficult to discover and inconsistent with the other settings sections.
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Interface, "Interface");
-        render_toggle_compactui(app, ui);
+        crate::app::settings_menu::settings_search_anchor(ui, "general_interface", |ui| {
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Interface, "Interface");
+            render_toggle_compactui(app, ui);
+        });
 
         ui.add_space(6.0);
         ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Input, "Input");
-        render_invert_scroll_zoom(app, ui);
-        render_window_mouse_shortcuts(app, ui);
-        render_recursive_folder_drop(app, ui);
+        crate::app::settings_menu::settings_search_anchor(ui, "general_input", |ui| {
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Input, "Input");
+            render_invert_scroll_zoom(app, ui);
+            render_window_mouse_shortcuts(app, ui);
+            render_recursive_folder_drop(app, ui);
+        });
 
         ui.add_space(6.0);
         ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::MasonryFolder, "Masonry browsing");
-        render_masonry_folder_headers(app, ui);
+        crate::app::settings_menu::settings_search_anchor(ui, "general_masonry", |ui| {
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::MasonryFolder, "Masonry browsing");
+            render_masonry_folder_headers(app, ui);
+        });
 
         ui.add_space(6.0);
         ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::HomeStart, "Home");
-        render_new_tab_recent_options(app, ui);
+        crate::app::settings_menu::settings_search_anchor(ui, "general_home", |ui| {
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::HomeStart, "Home");
+            render_new_tab_recent_options(app, ui);
+        });
 
         ui.add_space(6.0);
         ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Image, "Image rendering");
-        render_texture_filter(app, ui, ctx);
+        crate::app::settings_menu::settings_search_anchor(ui, "general_image_rendering", |ui| {
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Image, "Image rendering");
+            render_texture_filter(app, ui, ctx);
+        });
 
         ui.add_space(6.0);
         ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Startup, "Startup");
-        render_startup_fullscreen(app, ui);
-        render_start_centered(app, ui);
-        render_session_restore(app, ui);
-        render_single_instance(app, ui);
+        crate::app::settings_menu::settings_search_anchor(ui, "general_startup", |ui| {
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Startup, "Startup");
+            render_startup_fullscreen(app, ui);
+            render_start_centered(app, ui);
+            render_session_restore(app, ui);
+            render_single_instance(app, ui);
+        });
     });
 }
 

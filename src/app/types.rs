@@ -8,7 +8,7 @@ use crate::imaging::core::ImageFormat;
 use crate::imaging::entry::ImageEntry;
 use crate::imaging::sort::SortMethod;
 use crate::input::shortcuts::InputBindings;
-use crate::settings::SettingsManager;
+use crate::settings::{AppSettings, SettingsManager};
 use eframe::egui;
 use lru::LruCache;
 use std::collections::{HashMap, HashSet};
@@ -119,6 +119,23 @@ pub enum LoadingState {
 }
 
 // ====== VIEWER APP ======
+
+/// Runtime-only state that a Settings preview may temporarily affect.
+/// Most settings can be rolled back from AppSettings alone; Reset All also
+/// changes window and slideshow state, so preserve those separately.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SettingsRuntimeSnapshot {
+    pub fullscreen: bool,
+    pub maximized: bool,
+    pub always_on_top: bool,
+    pub slideshow_enabled: bool,
+    pub slideshow_settings_loaded: bool,
+    pub slideshow_has_advanced: bool,
+    pub startup_restore_maximize_pending: bool,
+    pub startup_fullscreen_handled: bool,
+    pub startup_window_placement_handled: bool,
+    pub preserve_reset_window_geometry: bool,
+}
 
 pub struct ViewerApp {
     // ====== IMAGE ======
@@ -268,8 +285,22 @@ pub struct ViewerApp {
     pub show_delete_confirmation: bool,
     pub delete_key_was_pressed: bool,
 
+    /// True while the independent native Settings viewport is open.
     pub show_settings_menu: bool,
     pub show_help_menu: bool,
+    /// Original settings at the beginning of the current editing session.
+    /// Settings are previewed live but are not persisted until Save is pressed.
+    pub settings_session_snapshot: Option<AppSettings>,
+    /// Whether settings were already dirty before the current editing session.
+    pub settings_session_was_dirty: bool,
+    pub(crate) settings_runtime_snapshot: Option<SettingsRuntimeSnapshot>,
+    pub settings_reset_all_previewed: bool,
+    pub settings_close_prompt: bool,
+    pub settings_save_error: Option<String>,
+    pub settings_window_generation: u64,
+    /// Whether the current Settings viewport has received its initial size and position.
+    pub settings_window_initialized: bool,
+    pub settings_active_page: u8,
 
     pub dialog_open: bool,
     pub hamburger_menu_open: bool,
@@ -292,7 +323,7 @@ pub struct ViewerApp {
     pub sidebar_width_needs_save: bool,
     /// Actual width allocated to the left sidebar this frame, used to position overlays.
     pub sidebar_actual_width: f32,
-    /// Actual width allocated to the active right-side panel (Settings or Edit) this frame.
+    /// Actual width allocated to the active right-side editing or pop-out panel this frame.
     pub right_sidebar_actual_width: f32,
     /// Screen-space rectangle allocated to egui's CentralPanel after docked sidebars.
     /// Overlay toolbars and fullscreen workspace tabs use this instead of estimating
@@ -633,6 +664,15 @@ impl ViewerApp {
 
             show_settings_menu: false,
             show_help_menu: false,
+            settings_session_snapshot: None,
+            settings_session_was_dirty: false,
+            settings_runtime_snapshot: None,
+            settings_reset_all_previewed: false,
+            settings_close_prompt: false,
+            settings_save_error: None,
+            settings_window_generation: 0,
+            settings_window_initialized: false,
+            settings_active_page: 0,
 
             dialog_open: false,
             hamburger_menu_open: false,

@@ -880,7 +880,6 @@ impl crate::app::types::ViewerApp {
         }
         if let Some(tab_id) = toggle_popout_sidebar {
             if !self.popouts.settings_sidebar_open(tab_id) {
-                self.show_settings_menu = false;
                 self.show_edit_menu = false;
                 self.crop_tool_active = false;
                 self.crop_drag_start_image = None;
@@ -1327,7 +1326,6 @@ impl crate::app::types::ViewerApp {
         }
         if let Some(tab_id) = toggle_popout_sidebar {
             if !self.popouts.settings_sidebar_open(tab_id) {
-                self.show_settings_menu = false;
                 self.show_edit_menu = false;
                 self.crop_tool_active = false;
                 self.crop_drag_start_image = None;

@@ -491,6 +491,7 @@ impl SettingsManager {
                 settings.view_padding_custom[3]
             ),
         );
+        section.set("image_fit_mode", if settings.image_fit_mode == "all" { "all" } else { "big_only" });
         section.set(
             "fit_window_to_image",
             if settings.fit_window_to_image {

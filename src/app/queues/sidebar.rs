@@ -958,7 +958,7 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
 
     if app.sidebar_resize_dragging && any_released {
         // Do not force a settings.ini write from a sidebar resize. The shared
-        // save scheduler waits until the Settings drawer is closed.
+        // save scheduler waits until the Settings window is closed.
         app.sidebar_width_needs_save = false;
         app.sidebar_resize_dragging = false;
     } else if !primary_down

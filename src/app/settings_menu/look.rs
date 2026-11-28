@@ -12,7 +12,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 }
 
 fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "look_appearance", crate::app::ui::SvgIcon::Palette, "Appearance", false, |ui| {
+    crate::app::settings_menu::section(ui, "look_appearance", crate::app::ui::SvgIcon::Palette, "Appearance", true, |ui| {
         ui.add_space(4.0);
         let settings = app.settings_manager.get().clone();
         let current = settings.look_preference.clone();
@@ -138,7 +138,7 @@ fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
 }
 
 fn render_layout(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "look_layout", crate::app::ui::SvgIcon::Layout, "Layout & Navigation", false, |ui| {
+    crate::app::settings_menu::section(ui, "look_layout", crate::app::ui::SvgIcon::Layout, "Layout & Navigation", true, |ui| {
         ui.add_space(4.0);
         let effective = crate::ui_theme::current_look_profile(ctx);
         ui.label(egui::RichText::new("Main toolbar and navigation placement").strong());
@@ -244,7 +244,7 @@ fn render_layout(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
 }
 
 fn render_window(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "look_window", crate::app::ui::SvgIcon::WindowFrame, "Window & Backdrop", false, |ui| {
+    crate::app::settings_menu::section(ui, "look_window", crate::app::ui::SvgIcon::WindowFrame, "Window & Backdrop", true, |ui| {
         ui.add_space(4.0);
         crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::WindowFrame, "OS/DE glass");
         let mut background_blur = app.settings_manager.get().os_background_blur;

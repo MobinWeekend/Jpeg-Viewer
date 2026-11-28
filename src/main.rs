@@ -31,6 +31,23 @@ fn open_startup_paths(
     }
 }
 
+/// Shared application icon data for the root and utility native viewports.
+pub(crate) fn application_window_icon_data() -> egui::IconData {
+    static ICON: std::sync::OnceLock<egui::IconData> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| {
+        let image = image::load_from_memory(include_bytes!("../assets/icons/icon.png"))
+            .expect("Failed to load JPEG Viewer window icon")
+            .into_rgba8();
+        let (width, height) = image.dimensions();
+        egui::IconData {
+            rgba: image.into_raw(),
+            width,
+            height,
+        }
+    })
+    .clone()
+}
+
 fn main() -> eframe::Result<()> {
     let settings_manager = settings::SettingsManager::new();
     let app_settings = settings_manager.get().clone();
@@ -54,15 +71,7 @@ fn main() -> eframe::Result<()> {
         None
     };
 
-    let icon = image::load_from_memory(include_bytes!("../assets/icons/icon.png"))
-        .expect("Failed to load icon")
-        .into_rgba8();
-    let (icon_width, icon_height) = icon.dimensions();
-    let icon = egui::IconData {
-        rgba: icon.into_raw(),
-        width: icon_width,
-        height: icon_height,
-    };
+    let icon = application_window_icon_data();
 
     let mut viewport = egui::ViewportBuilder::default()
         // Match the Linux desktop entry ID so Wayland compositors (including COSMIC)

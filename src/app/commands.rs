@@ -25,7 +25,6 @@ impl ViewerApp {
                     .into(),
             );
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return;
         }
         if is_navigation_command && self.edit_session.is_some() {
@@ -157,7 +156,7 @@ impl ViewerApp {
                 }
             }
             ViewerCommand::Settings => {
-                crate::app::ui::toggle_settings_menu(self);
+                crate::app::ui::toggle_settings_menu(self, ctx);
             }
             ViewerCommand::Help => {
                 self.toggle_help_menu(ctx);

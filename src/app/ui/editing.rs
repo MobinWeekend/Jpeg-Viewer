@@ -122,7 +122,6 @@ impl ViewerApp {
         if self.edit_session.is_some() {
             self.edit_output_format = self.last_export_format;
             self.show_edit_menu = !self.show_edit_menu;
-            self.show_settings_menu = false;
             self.crop_tool_active = false;
             self.crop_drag_start_image = None;
             if self.show_edit_menu {
@@ -138,7 +137,6 @@ impl ViewerApp {
                 "Editing is available for fully loaded, non-animated raster images only.".into(),
             );
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return;
         }
         let Some(path) = self.current_image_path.clone() else {
@@ -147,7 +145,6 @@ impl ViewerApp {
                     .into(),
             );
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return;
         };
         let bytes = match fs::read(&path) {
@@ -155,7 +152,6 @@ impl ViewerApp {
             Err(error) => {
                 self.edit_status = Some(format!("Could not read source image: {error}"));
                 self.show_edit_menu = true;
-                self.show_settings_menu = false;
                 return;
             }
         };
@@ -167,14 +163,12 @@ impl ViewerApp {
                     "Could not decode source image for editing: {error}"
                 ));
                 self.show_edit_menu = true;
-                self.show_settings_menu = false;
                 return;
             }
         };
         let Some(image) = RgbaImage::from_raw(decoded.width, decoded.height, decoded.data) else {
             self.edit_status = Some("Decoded image data had an invalid size.".into());
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             return;
         };
 
@@ -189,7 +183,6 @@ impl ViewerApp {
         self.crop_drag_start_image = None;
         self.crop_selection = None;
         self.adjustment_gesture_active = false;
-        self.show_settings_menu = false;
         self.edit_session = Some(EditSession::new(path, image));
         self.edit_status =
             Some("Editing a working copy. Very large images require substantial memory; the practical size limit depends on available RAM and the image decoder. The source remains unchanged until you save.".into());
@@ -209,7 +202,6 @@ impl ViewerApp {
             self.start_editing(ctx);
         } else {
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
         }
 
         if self.edit_session.is_some() {
@@ -219,7 +211,6 @@ impl ViewerApp {
             self.edit_status =
                 Some("Crop mode: drag across the image to select a crop region.".into());
             self.show_edit_menu = true;
-            self.show_settings_menu = false;
             ctx.request_repaint();
         }
     }
@@ -256,7 +247,6 @@ impl ViewerApp {
         self.crop_selection = None;
         self.crop_drag_start_image = None;
         self.show_edit_menu = true;
-        self.show_settings_menu = false;
         self.refresh_edit_texture(ctx);
     }
 

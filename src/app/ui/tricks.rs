@@ -748,11 +748,12 @@ fn reflected_phase(value: f32) -> f32 {
 
 /// Settings section for the three main-view decoration effects.
 pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "tricks", crate::app::ui::SvgIcon::Image, "Tricks", false, |ui| {
+    ui.vertical(|ui| {
         ui.label(egui::RichText::new("Decorative effects inside the main image view. They are rendered below application controls and sidebars.").small().weak());
 
-        ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Image, "Falling particles");
+        crate::app::settings_menu::settings_search_anchor(ui, "tricks_snow", |ui| {
+            ui.separator();
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Image, "Falling particles");
         let settings = app.settings_manager.get().clone();
         let mut enabled = settings.tricks_snow_enabled;
         if crate::ui_theme::switch(ui, &mut enabled, "Enable falling particles") {
@@ -798,9 +799,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
         }
 
+        });
         ui.add_space(6.0);
-        ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::SettingsFile, "Watermark");
+        crate::app::settings_menu::settings_search_anchor(ui, "tricks_watermark", |ui| {
+            ui.separator();
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::SettingsFile, "Watermark");
         let settings = app.settings_manager.get().clone();
         let mut enabled = settings.tricks_watermark_enabled;
         if crate::ui_theme::switch(ui, &mut enabled, "Enable watermark") {
@@ -898,9 +901,11 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
         }
 
+        });
         ui.add_space(6.0);
-        ui.separator();
-        crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Viewing, "Blurred photo backdrop");
+        crate::app::settings_menu::settings_search_anchor(ui, "tricks_backdrop", |ui| {
+            ui.separator();
+            crate::app::settings_menu::subsection_heading(ui, crate::app::ui::SvgIcon::Viewing, "Blurred photo backdrop");
         let settings = app.settings_manager.get().clone();
         let mut enabled = settings.tricks_backdrop_enabled;
         if crate::ui_theme::switch(ui, &mut enabled, "Show blurred photo behind the image") {
@@ -926,6 +931,7 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
             ui.label(egui::RichText::new("The backdrop is built from a cached 256×256-or-smaller preview of the decoded image, then tinted with the program's Main color. Archive entries and virtual-texture images are skipped.").small().weak());
         }
+        });
     });
 }
 

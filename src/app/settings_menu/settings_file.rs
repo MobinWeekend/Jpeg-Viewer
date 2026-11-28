@@ -3,8 +3,8 @@
 use crate::app::types::ViewerApp;
 use eframe::egui;
 
-pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    crate::app::settings_menu::section(ui, "settings_file", crate::app::ui::SvgIcon::SettingsFile, "Settings file", false, |ui| {
+pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
+    ui.vertical(|ui| {
         ui.add_space(4.0);
 
         let path = app.settings_manager.path();
@@ -51,10 +51,5 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             );
         }
 
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(egui::RichText::new("Reset settings").strong());
-        super::advanced::reset_all::render(app, ui, ctx);
-        ui.add_space(4.0);
     });
 }

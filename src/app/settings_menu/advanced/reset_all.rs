@@ -63,14 +63,14 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             let update_result = app.settings_manager.update(|settings| {
                 *settings = defaults.clone();
             });
-            // Keep reset changes in memory while the Settings panel is open. The
-            // normal save path writes them after the panel closes.
+            // Keep reset changes in memory inside the Settings editing session.
+            // They are written only after the user presses Save.
             apply_runtime_defaults(app, ctx, &defaults);
 
             let feedback = match update_result {
                 Ok(()) => (
                     false,
-                    "Settings were reset. Changes will be written when Settings closes. Restart to apply startup-only options, the thumbnail worker pool, and default window placement.".to_owned(),
+                    "Settings were reset in the preview. Press Save to write them to disk. Restart to apply startup-only options, the thumbnail worker pool, and default window placement.".to_owned(),
                 ),
                 Err(error) => (true, format!("Could not reset settings: {error}")),
             };
@@ -102,6 +102,7 @@ fn apply_runtime_defaults(
     ctx: &egui::Context,
     defaults: &crate::settings::AppSettings,
 ) {
+    app.settings_reset_all_previewed = true;
     app.load_frame_limiter_settings();
     app.load_slideshow_settings();
     app.slideshow_settings_loaded = true;
@@ -133,12 +134,12 @@ fn apply_runtime_defaults(
     app.main_view_window_drag_active = false;
     app.window_mouse_operation_active = false;
     app.sidebar_resize_dragging = false;
-    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::WindowLevel(
         egui::WindowLevel::Normal,
     ));
-    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
-    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
-    ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(defaults.show_titlebar));
+    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Fullscreen(false));
+    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Maximized(false));
+    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Decorations(defaults.show_titlebar));
 
     // Rebuild the image LRU at the default capacity and invalidate all running
     // speculative work. Resetting only the settings struct would otherwise leave
