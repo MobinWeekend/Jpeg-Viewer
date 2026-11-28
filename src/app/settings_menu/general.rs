@@ -115,11 +115,10 @@ fn render_start_centered(app: &mut ViewerApp, ui: &mut egui::Ui) {
 pub(crate) fn render_thumbnail_workers(app: &mut ViewerApp, ui: &mut egui::Ui) {
     let current = app.settings_manager.get().thumbnail_workers;
     let mut workers = current as u32;
-    ui.horizontal(|ui| {
-        ui.label("Thumbnail worker multiplier");
+    crate::ui_theme::labeled_slider(ui, "Thumbnail worker multiplier", |ui| {
         ui.add(crate::ui_theme::BorderedSlider::new(
             egui::Slider::new(&mut workers, 1..=8).show_value(true),
-        ));
+        ))
     });
     if workers as usize != current {
         let _ = app
@@ -311,54 +310,52 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     let mut scale = ctx
         .data(|d| d.get_temp::<f32>(scale_id))
         .unwrap_or(current.ui_scale);
-    ui.horizontal(|ui| {
-        ui.label("UI scale");
-        let response = ui.add(crate::ui_theme::BorderedSlider::new(
+    let response = crate::ui_theme::labeled_slider(ui, "UI scale", |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
             egui::Slider::new(&mut scale, 0.75..=1.50)
                 .step_by(0.05)
                 .suffix("×"),
-        ));
-        ctx.data_mut(|d| d.insert_temp(scale_id, scale));
-        if response.drag_stopped() || (response.changed() && !response.dragged()) {
-            let _ = app.settings_manager.update(|s| s.ui_scale = scale);
-            let s = app.settings_manager.get().clone();
-            crate::ui_theme::apply_polished_style_with_options(
-                ctx,
-                &s.ui_accent_color,
-                s.ui_scale,
-                s.ui_text_scale,
-            );
-            ctx.data_mut(|d| d.remove::<f32>(scale_id));
-        }
+        ))
     });
+    ctx.data_mut(|d| d.insert_temp(scale_id, scale));
+    if response.drag_stopped() || (response.changed() && !response.dragged()) {
+        let _ = app.settings_manager.update(|s| s.ui_scale = scale);
+        let s = app.settings_manager.get().clone();
+        crate::ui_theme::apply_polished_style_with_options(
+            ctx,
+            &s.ui_accent_color,
+            s.ui_scale,
+            s.ui_text_scale,
+        );
+        ctx.data_mut(|d| d.remove::<f32>(scale_id));
+    }
 
     let saved_text_scale = app.settings_manager.get().ui_text_scale;
     let text_scale_id = egui::Id::unique("ui_text_scale_draft");
     let mut text_scale = ctx
         .data(|d| d.get_temp::<f32>(text_scale_id))
         .unwrap_or(saved_text_scale);
-    ui.horizontal(|ui| {
-        ui.label("Text size");
-        let response = ui.add(crate::ui_theme::BorderedSlider::new(
+    let response = crate::ui_theme::labeled_slider(ui, "Text size", |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
             egui::Slider::new(&mut text_scale, 0.80..=1.40)
                 .step_by(0.05)
                 .suffix("×"),
-        ));
-        ctx.data_mut(|d| d.insert_temp(text_scale_id, text_scale));
-        if response.drag_stopped() || (response.changed() && !response.dragged()) {
-            let _ = app
-                .settings_manager
-                .update(|s| s.ui_text_scale = text_scale);
-            let s = app.settings_manager.get().clone();
-            crate::ui_theme::apply_polished_style_with_options(
-                ctx,
-                &s.ui_accent_color,
-                s.ui_scale,
-                s.ui_text_scale,
-            );
-            ctx.data_mut(|d| d.remove::<f32>(text_scale_id));
-        }
+        ))
     });
+    ctx.data_mut(|d| d.insert_temp(text_scale_id, text_scale));
+    if response.drag_stopped() || (response.changed() && !response.dragged()) {
+        let _ = app
+            .settings_manager
+            .update(|s| s.ui_text_scale = text_scale);
+        let s = app.settings_manager.get().clone();
+        crate::ui_theme::apply_polished_style_with_options(
+            ctx,
+            &s.ui_accent_color,
+            s.ui_scale,
+            s.ui_text_scale,
+        );
+        ctx.data_mut(|d| d.remove::<f32>(text_scale_id));
+    }
 
     let current_accent = app.settings_manager.get().ui_accent_color.clone();
     let mut accent = current_accent.clone();
@@ -480,17 +477,17 @@ pub(crate) fn render_ui_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: 
     }
     let settings = app.settings_manager.get().clone();
     let mut checker_size = settings.alpha_checkerboard_size;
-    ui.add(crate::ui_theme::BorderedSlider::new(
-        egui::Slider::new(&mut checker_size, 12.0..=64.0)
-            .step_by(2.0)
-            .text("Checker size"),
-    ));
+    crate::ui_theme::labeled_slider(ui, "Checker size", |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut checker_size, 12.0..=64.0).step_by(2.0),
+        ))
+    });
     let mut checker_brightness = settings.alpha_checkerboard_brightness;
-    ui.add(crate::ui_theme::BorderedSlider::new(
-        egui::Slider::new(&mut checker_brightness, 0.25..=1.5)
-            .step_by(0.05)
-            .text("Checker brightness"),
-    ));
+    crate::ui_theme::labeled_slider(ui, "Checker brightness", |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut checker_brightness, 0.25..=1.5).step_by(0.05),
+        ))
+    });
     if checker_size != settings.alpha_checkerboard_size
         || checker_brightness != settings.alpha_checkerboard_brightness
     {

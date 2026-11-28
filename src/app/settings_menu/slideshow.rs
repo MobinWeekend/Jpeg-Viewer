@@ -119,19 +119,17 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
                     let _ = app.settings_manager.update(|s| s.slideshow_motion = motion);
                 }
             });
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                let (icon_rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
-                crate::app::ui::paint_svg_icon(ui, icon_rect, crate::app::ui::SvgIcon::Strength, ui.visuals().text_color());
-                ui.label("Motion strength:");
-                let mut strength = app.slideshow_motion_strength;
-                if ui.add(crate::ui_theme::BorderedSlider::new(
+            let mut strength = app.slideshow_motion_strength;
+            if crate::ui_theme::labeled_slider(ui, "Motion strength", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(
                     egui::Slider::new(&mut strength, 5.0..=40.0).suffix("%"),
-                )).changed() {
-                    app.slideshow_motion_strength = strength;
-                    let _ = app.settings_manager.update(|s| s.slideshow_motion_strength = strength);
-                }
-            });
+                ))
+            })
+            .changed()
+            {
+                app.slideshow_motion_strength = strength;
+                let _ = app.settings_manager.update(|s| s.slideshow_motion_strength = strength);
+            }
             ui.label(egui::RichText::new("Effects operate on the displayed texture; decoders remain independent.").small().weak());
         });
 

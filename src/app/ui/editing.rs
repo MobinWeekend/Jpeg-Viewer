@@ -455,523 +455,542 @@ impl ViewerApp {
     }
 
     pub fn render_editing_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if self.show_edit_menu {
-            let mut action = None;
-            let dimensions = self
-                .edit_session
-                .as_ref()
-                .map(|session| session.image.dimensions());
-            let can_undo = self
-                .edit_session
-                .as_ref()
-                .is_some_and(EditSession::can_undo);
-            let can_redo = self
-                .edit_session
-                .as_ref()
-                .is_some_and(EditSession::can_redo);
-            let dirty = self
-                .edit_session
-                .as_ref()
-                .is_some_and(|session| session.dirty);
-            let has_structural_edits = self
-                .edit_session
-                .as_ref()
-                .is_some_and(EditSession::has_structural_edits);
-            let source_path = self
-                .edit_session
-                .as_ref()
-                .map(|session| session.source_path.clone());
-            let mut adjustments = self
-                .edit_session
-                .as_ref()
-                .map(|session| session.adjustments)
-                .unwrap_or_default();
-            let original_adjustments = adjustments;
-            let mut adjustments_changed = false;
-            let mut adjustment_dragging = false;
-            let mut adjustment_drag_stopped = false;
-            let mut reset_adjustments_clicked = false;
-            let mut output_format = self.edit_output_format;
-            let mut quality = self.save_quality;
-            let mut crop_tool_active = self.crop_tool_active;
-            let mut crop_x = self.crop_x;
-            let mut crop_y = self.crop_y;
-            let mut crop_width = self.crop_width;
-            let mut crop_height = self.crop_height;
-            let mut crop_selection = self.crop_selection;
+        let mut editing_sidebar_open = self.show_edit_menu;
+        let editing_sidebar_open_before_panel = editing_sidebar_open;
+        let parent_clip = ui.clip_rect();
+        let mut action = None;
+        let dimensions = self
+            .edit_session
+            .as_ref()
+            .map(|session| session.image.dimensions());
+        let can_undo = self
+            .edit_session
+            .as_ref()
+            .is_some_and(EditSession::can_undo);
+        let can_redo = self
+            .edit_session
+            .as_ref()
+            .is_some_and(EditSession::can_redo);
+        let dirty = self
+            .edit_session
+            .as_ref()
+            .is_some_and(|session| session.dirty);
+        let has_structural_edits = self
+            .edit_session
+            .as_ref()
+            .is_some_and(EditSession::has_structural_edits);
+        let source_path = self
+            .edit_session
+            .as_ref()
+            .map(|session| session.source_path.clone());
+        let mut adjustments = self
+            .edit_session
+            .as_ref()
+            .map(|session| session.adjustments)
+            .unwrap_or_default();
+        let original_adjustments = adjustments;
+        let mut adjustments_changed = false;
+        let mut adjustment_dragging = false;
+        let mut adjustment_drag_stopped = false;
+        let mut reset_adjustments_clicked = false;
+        let mut output_format = self.edit_output_format;
+        let mut quality = self.save_quality;
+        let mut crop_tool_active = self.crop_tool_active;
+        let mut crop_x = self.crop_x;
+        let mut crop_y = self.crop_y;
+        let mut crop_width = self.crop_width;
+        let mut crop_height = self.crop_height;
+        let mut crop_selection = self.crop_selection;
 
-            let sidebar_settings = self.settings_manager.get().clone();
-            let default_width = sidebar_settings.settings_sidebar_width.clamp(280.0, 560.0);
-            let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
-                // Use the active Win98 palette for both Light and Dark themes; other looks
-                // retain the existing image-view surface behavior.
-                ctx.global_style().visuals.panel_fill
-            } else {
-                crate::ui_theme::main_view_surface_color(
-                    ctx,
-                    &sidebar_settings.main_view_background,
-                    sidebar_settings.main_view_background_opacity,
-                )
-            };
-            let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
-                .fill(sidebar_background)
-                .stroke(egui::Stroke::NONE);
-            let panel_response = egui::Panel::right("edit_tools_sidebar")
-                .resizable(true)
-                .default_size(default_width)
-                .size_range(280.0..=560.0)
-                .frame(sidebar_frame)
-                .show(ui, |ui| {
-                    if sidebar_settings.tricks_backdrop_enabled {
-                        let sidebar_clip = ui.painter().clip_rect();
-                        let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
-                        self.paint_tricks_backdrop(
-                            ui.painter(),
-                            sidebar_clip,
-                            backdrop_rect,
-                            crate::ui_theme::main_accent_color(ctx),
-                            sidebar_settings.tricks_backdrop_tint,
-                            sidebar_settings.tricks_backdrop_opacity,
-                        );
-                    }
-                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.heading("Image editor");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if edit_icon_only_button(
-                                ui,
-                                crate::app::ui::SvgIcon::CaptionClose,
-                                "Exit edit mode; keep this working copy",
-                            ).clicked() {
-                                action = Some(EditAction::ExitMode);
-                            }
-                        });
-                    });
-                    ui.separator();
-
-                    if let (Some((width, height)), Some(path)) = (dimensions, source_path.as_ref()) {
-                        let full_filename = path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .into_owned();
-                        let display_filename = crate::app::queues::sidebar::middle_ellipsis(
-                            &full_filename,
-                            (ui.available_width() / 7.2).floor() as usize,
-                        );
-                        ui.add(egui::Label::new(
-                            egui::RichText::new(display_filename).strong(),
-                        ).truncate()).on_hover_text(full_filename);
-                        ui.horizontal(|ui| {
-                            ui.label(format!("{width} × {height}"));
-                            ui.separator();
-                            ui.label(if dirty { "Unsaved changes" } else { "No unsaved changes" });
-                        });
-                        ui.add_space(6.0);
-
-                        ui.horizontal_wrapped(|ui| {
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::Undo, "Undo", can_undo).clicked() {
-                                action = Some(EditAction::Undo);
-                            }
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::Redo, "Redo", can_redo).clicked() {
-                                action = Some(EditAction::Redo);
-                            }
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::Reset, "Reset All", true).clicked() {
-                                action = Some(EditAction::Reset);
-                            }
-                        });
-                        if ui.add_enabled(has_structural_edits, egui::Button::new("Restore to original size")).clicked() {
-                            action = Some(EditAction::RestoreOriginalSize);
+        let sidebar_settings = self.settings_manager.get().clone();
+        let target_width = sidebar_settings.settings_sidebar_width.clamp(280.0, 560.0);
+        let default_width = target_width;
+        let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
+            // Use the active Win98 palette for both Light and Dark themes; other looks
+            // retain the existing image-view surface behavior.
+            ctx.global_style().visuals.panel_fill
+        } else {
+            crate::ui_theme::main_view_surface_color(
+                ctx,
+                &sidebar_settings.main_view_background,
+                sidebar_settings.main_view_background_opacity,
+            )
+        };
+        let sidebar_frame = egui::Frame::side_top_panel(&ctx.global_style())
+            .fill(sidebar_background)
+            .stroke(egui::Stroke::NONE);
+        let panel_response = egui::Panel::right("edit_tools_sidebar")
+            .resizable(true)
+            .default_size(default_width)
+            .size_range(280.0..=560.0)
+            .frame(sidebar_frame)
+            .show_collapsible(ui, &mut editing_sidebar_open, |ui| {
+                if sidebar_settings.tricks_backdrop_enabled {
+                    let sidebar_clip = ui.painter().clip_rect();
+                    let backdrop_rect = crate::app::ui::tricks_backdrop_window_rect(ctx, sidebar_clip);
+                    self.paint_tricks_backdrop(
+                        ui.painter(),
+                        sidebar_clip,
+                        backdrop_rect,
+                        crate::ui_theme::main_accent_color(ctx),
+                        sidebar_settings.tricks_backdrop_tint,
+                        sidebar_settings.tricks_backdrop_opacity,
+                    );
+                }
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Image editor");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if edit_icon_only_button(
+                            ui,
+                            crate::app::ui::SvgIcon::CaptionClose,
+                            "Exit edit mode; keep this working copy",
+                        ).clicked() {
+                            action = Some(EditAction::ExitMode);
                         }
-
-                        ui.separator();
-                        edit_section_heading(ui, crate::app::ui::SvgIcon::RotateRight, "Transform");
-                        ui.horizontal_wrapped(|ui| {
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::RotateLeft, "Rotate left", true).clicked() {
-                                action = Some(EditAction::RotateLeft);
-                            }
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::RotateRight, "Rotate right", true).clicked() {
-                                action = Some(EditAction::RotateRight);
-                            }
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::FlipHorizontal, "Flip H", true).clicked() {
-                                action = Some(EditAction::FlipHorizontal);
-                            }
-                            if edit_icon_button(ui, crate::app::ui::SvgIcon::FlipVertical, "Flip V", true).clicked() {
-                                action = Some(EditAction::FlipVertical);
-                            }
-                        });
-
-                        ui.separator();
-                        edit_section_heading(ui, crate::app::ui::SvgIcon::Resize, "Resize");
-                        if self.resize_width == 0 || self.resize_height == 0 {
-                            self.resize_width = width;
-                            self.resize_height = height;
-                        }
-                        let mut resize_width = self.resize_width.max(1);
-                        let mut resize_height = self.resize_height.max(1);
-                        let mut resize_linked = self.resize_linked;
-                        crate::ui_theme::switch(ui, &mut resize_linked, "Keep aspect ratio");
-                        let aspect = width as f64 / height.max(1) as f64;
-                        let mut width_changed = false;
-                        let mut height_changed = false;
-                        ui.horizontal(|ui| {
-                            ui.label("Width (px)");
-                            width_changed = ui.add(egui::DragValue::new(&mut resize_width).range(1..=u32::MAX)).changed();
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Height (px)");
-                            height_changed = ui.add(egui::DragValue::new(&mut resize_height).range(1..=u32::MAX)).changed();
-                        });
-                        if resize_linked {
-                            if width_changed {
-                                resize_height = ((resize_width as f64 / aspect).round() as u32).max(1);
-                            } else if height_changed {
-                                resize_width = ((resize_height as f64 * aspect).round() as u32).max(1);
-                            }
-                        }
-                        self.resize_width = resize_width;
-                        self.resize_height = resize_height;
-                        self.resize_linked = resize_linked;
-                        if ui.button("Apply resize").clicked() {
-                            action = Some(EditAction::Resize);
-                        }
-                        ui.small("Crop and resize cannot be undone step by step. Use Restore to original size to return to the source dimensions. Very large output dimensions may exceed available memory.");
-
-                        ui.separator();
-                        edit_section_heading(ui, crate::app::ui::SvgIcon::Crop, "Crop");
-                        let crop_was_active = crop_tool_active;
-                        if crate::ui_theme::switch(ui, &mut crop_tool_active, "Crop selection mode")
-                            && crop_tool_active
-                            && !crop_was_active
-                        {
-                            crop_selection = None;
-                        }
-                        if crop_tool_active {
-                            ui.label("Drag a rectangle over the image. Then apply it here.");
-                        }
-                        if let Some([x, y, width, height]) = crop_selection {
-                            ui.label(format!("Selection: {width} × {height} at ({x}, {y})"));
-                            ui.horizontal(|ui| {
-                                if ui.button("Apply crop").clicked() {
-                                    action = Some(EditAction::Crop);
-                                }
-                                if ui.small_button("Clear").clicked() {
-                                    crop_selection = None;
-                                    crop_x = 0;
-                                    crop_y = 0;
-                                    crop_width = dimensions.map(|d| d.0).unwrap_or(1);
-                                    crop_height = dimensions.map(|d| d.1).unwrap_or(1);
-                                }
-                            });
-                        } else {
-                            ui.label("No crop selection");
-                        }
-                        ui.collapsing("Enter crop coordinates", |ui| {
-                            let (max_width, max_height) = dimensions.unwrap_or((1, 1));
-                            let mut numeric_crop_changed = false;
-                            ui.horizontal(|ui| {
-                                ui.label("X");
-                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_x).range(0..=max_width.saturating_sub(1))).changed();
-                                ui.label("Y");
-                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_y).range(0..=max_height.saturating_sub(1))).changed();
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("W");
-                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_width).range(1..=max_width.max(1))).changed();
-                                ui.label("H");
-                                numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_height).range(1..=max_height.max(1))).changed();
-                            });
-                            if numeric_crop_changed {
-                                crop_selection = Some([
-                                    crop_x.min(max_width.saturating_sub(1)),
-                                    crop_y.min(max_height.saturating_sub(1)),
-                                    crop_width.max(1).min(max_width.saturating_sub(crop_x.min(max_width.saturating_sub(1))).max(1)),
-                                    crop_height.max(1).min(max_height.saturating_sub(crop_y.min(max_height.saturating_sub(1))).max(1)),
-                                ]);
-                            }
-                            if ui.button("Apply numeric crop").clicked() {
-                                action = Some(EditAction::Crop);
-                                crop_selection = Some([crop_x, crop_y, crop_width, crop_height]);
-                            }
-                        });
-
-                        ui.separator();
-                        if crate::ui_theme::switch(ui, &mut adjustments.per_channel, "Independent RGB controls") {
-                            adjustments_changed = true;
-                        }
-                        if !adjustments.per_channel {
-                            edit_section_heading(ui, crate::app::ui::SvgIcon::Palette, "Colour adjustments");
-                            edit_section_heading(ui, crate::app::ui::SvgIcon::Brightness, "Brightness");
-                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).show_value(true)));
-                            adjustments_changed |= response.changed();
-                            adjustment_dragging |= response.dragged();
-                            adjustment_drag_stopped |= response.drag_stopped();
-
-                            edit_section_heading(ui, crate::app::ui::SvgIcon::Contrast, "Contrast");
-                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).show_value(true)));
-                            adjustments_changed |= response.changed();
-                            adjustment_dragging |= response.dragged();
-                            adjustment_drag_stopped |= response.drag_stopped();
-
-                        }else{
-                            edit_section_heading(ui, crate::app::ui::SvgIcon::Palette, "Independent RGB adjustments");
-                            for (index, name) in ["Red", "Green", "Blue"].iter().enumerate() {
-                                ui.label(*name);
-                                let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness_rgb[index], -100..=100).text("Brightness")));
-                                adjustments_changed |= response.changed();
-                                adjustment_dragging |= response.dragged();
-                                adjustment_drag_stopped |= response.drag_stopped();
-                                let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast_rgb[index], -100..=100).text("Contrast")));
-                                adjustments_changed |= response.changed();
-                                adjustment_dragging |= response.dragged();
-                                adjustment_drag_stopped |= response.drag_stopped();
-                            }
-                            ui.separator();
-                        };
-                        edit_section_heading(ui, crate::app::ui::SvgIcon::Saturation, "Saturation");
-                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.saturation, 0..=200).show_value(true)));
-                        adjustments_changed |= response.changed();
-                        adjustment_dragging |= response.dragged();
-                        adjustment_drag_stopped |= response.drag_stopped();
-
-                        edit_section_heading(ui, crate::app::ui::SvgIcon::Hue, "Hue");
-                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.hue, -180..=180).show_value(true)));
-                        adjustments_changed |= response.changed();
-                        adjustment_dragging |= response.dragged();
-                        adjustment_drag_stopped |= response.drag_stopped();
-
-                        if edit_icon_button(ui, crate::app::ui::SvgIcon::Reset, "Reset colour adjustments", true).clicked() {
-                            adjustments = ImageAdjustments::default();
-                            reset_adjustments_clicked = true;
-                            adjustments_changed = adjustments != original_adjustments;
-                        }
-
-                        ui.separator();
-                        ui.label(egui::RichText::new("Export").strong());
-                        egui::ComboBox::from_id_salt("edit_output_format")
-                            .selected_text(output_format.label())
-                            .width(ui.available_width())
-                            .show_ui(ui, |ui| {
-                                for format in EditOutputFormat::ALL {
-                                    ui.selectable_value(&mut output_format, format, format.label());
-                                }
-                            });
-                        match output_format {
-                            EditOutputFormat::Jpeg => {
-                                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut quality, 1..=100).text("JPEG quality")));
-                                ui.small("Higher quality reduces compression artifacts and usually increases file size.");
-                            }
-                            EditOutputFormat::Png => { ui.label("PNG options"); ui.small("Lossless output; alpha is preserved. Encoder uses its default compression strategy."); }
-                            EditOutputFormat::WebP => { ui.label("WebP options"); ui.small("Lossless WebP output; alpha is preserved."); }
-                            EditOutputFormat::Tiff => { ui.label("TIFF options"); ui.small("TIFF output uses the encoder's default compression settings."); }
-                            EditOutputFormat::Bmp => { ui.label("BMP options"); ui.small("Uncompressed bitmap output; alpha support depends on the source and encoder."); }
-                            EditOutputFormat::Tga => { ui.label("TGA options"); ui.small("TGA output uses the encoder's default settings."); }
-                            EditOutputFormat::Qoi => { ui.label("QOI options"); ui.small("Lossless output; alpha is preserved."); }
-                        }
-
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            if ui.button("Save As…").clicked() {
-                                action = Some(EditAction::SaveAs);
-                            }
-                            if ui.button("Overwrite original…").clicked() {
-                                action = Some(EditAction::SaveOverwrite);
-                            }
-                        });
-                        if ui.button("Discard working copy…").clicked() {
-                            action = Some(EditAction::Discard);
-                        }
-                        ui.add_space(4.0);
-                        ui.small("Edits remain in memory until saved. Re-encoding can remove EXIF and other embedded metadata.");
-                    } else {
-                        ui.label("Choose a supported, fully loaded image file to begin editing.");
-                    }
-
-                    if let Some(status) = &self.edit_status {
-                        ui.separator();
-                        ui.label(status);
-                    }
                     });
                 });
+                ui.separator();
 
-            self.right_sidebar_actual_width = panel_response.response.rect.width().max(0.0);
-            let width = panel_response.response.rect.width().clamp(280.0, 560.0);
+                if let (Some((width, height)), Some(path)) = (dimensions, source_path.as_ref()) {
+                    let full_filename = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned();
+                    let display_filename = crate::app::queues::sidebar::middle_ellipsis(
+                        &full_filename,
+                        (ui.available_width() / 7.2).floor() as usize,
+                    );
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(display_filename).strong(),
+                    ).truncate()).on_hover_text(full_filename);
+                    ui.horizontal(|ui| {
+                        ui.label(format!("{width} × {height}"));
+                        ui.separator();
+                        ui.label(if dirty { "Unsaved changes" } else { "No unsaved changes" });
+                    });
+                    ui.add_space(6.0);
+
+                    ui.horizontal_wrapped(|ui| {
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::Undo, "Undo", can_undo).clicked() {
+                            action = Some(EditAction::Undo);
+                        }
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::Redo, "Redo", can_redo).clicked() {
+                            action = Some(EditAction::Redo);
+                        }
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::Reset, "Reset All", true).clicked() {
+                            action = Some(EditAction::Reset);
+                        }
+                    });
+                    if ui.add_enabled(has_structural_edits, egui::Button::new("Restore to original size")).clicked() {
+                        action = Some(EditAction::RestoreOriginalSize);
+                    }
+
+                    ui.separator();
+                    edit_section_heading(ui, crate::app::ui::SvgIcon::RotateRight, "Transform");
+                    ui.horizontal_wrapped(|ui| {
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::RotateLeft, "Rotate left", true).clicked() {
+                            action = Some(EditAction::RotateLeft);
+                        }
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::RotateRight, "Rotate right", true).clicked() {
+                            action = Some(EditAction::RotateRight);
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::FlipHorizontal, "Flip H", true).clicked() {
+                            action = Some(EditAction::FlipHorizontal);
+                        }
+                        if edit_icon_button(ui, crate::app::ui::SvgIcon::FlipVertical, "Flip V", true).clicked() {
+                            action = Some(EditAction::FlipVertical);
+                        }
+                    });
+
+                    ui.separator();
+                    edit_section_heading(ui, crate::app::ui::SvgIcon::Resize, "Resize");
+                    if self.resize_width == 0 || self.resize_height == 0 {
+                        self.resize_width = width;
+                        self.resize_height = height;
+                    }
+                    let mut resize_width = self.resize_width.max(1);
+                    let mut resize_height = self.resize_height.max(1);
+                    let mut resize_linked = self.resize_linked;
+                    crate::ui_theme::switch(ui, &mut resize_linked, "Keep aspect ratio");
+                    let aspect = width as f64 / height.max(1) as f64;
+                    let mut width_changed = false;
+                    let mut height_changed = false;
+                    ui.horizontal(|ui| {
+                        ui.label("Width (px)");
+                        width_changed = ui.add(egui::DragValue::new(&mut resize_width).range(1..=u32::MAX)).changed();
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Height (px)");
+                        height_changed = ui.add(egui::DragValue::new(&mut resize_height).range(1..=u32::MAX)).changed();
+                    });
+                    if resize_linked {
+                        if width_changed {
+                            resize_height = ((resize_width as f64 / aspect).round() as u32).max(1);
+                        } else if height_changed {
+                            resize_width = ((resize_height as f64 * aspect).round() as u32).max(1);
+                        }
+                    }
+                    self.resize_width = resize_width;
+                    self.resize_height = resize_height;
+                    self.resize_linked = resize_linked;
+                    if ui.button("Apply resize").clicked() {
+                        action = Some(EditAction::Resize);
+                    }
+                    ui.small("Crop and resize cannot be undone step by step. Use Restore to original size to return to the source dimensions. Very large output dimensions may exceed available memory.");
+
+                    ui.separator();
+                    edit_section_heading(ui, crate::app::ui::SvgIcon::Crop, "Crop");
+                    let crop_was_active = crop_tool_active;
+                    if crate::ui_theme::switch(ui, &mut crop_tool_active, "Crop selection mode")
+                        && crop_tool_active
+                        && !crop_was_active
+                    {
+                        crop_selection = None;
+                    }
+                    if crop_tool_active {
+                        ui.label("Drag a rectangle over the image. Then apply it here.");
+                    }
+                    if let Some([x, y, width, height]) = crop_selection {
+                        ui.label(format!("Selection: {width} × {height} at ({x}, {y})"));
+                        ui.horizontal(|ui| {
+                            if ui.button("Apply crop").clicked() {
+                                action = Some(EditAction::Crop);
+                            }
+                            if ui.small_button("Clear").clicked() {
+                                crop_selection = None;
+                                crop_x = 0;
+                                crop_y = 0;
+                                crop_width = dimensions.map(|d| d.0).unwrap_or(1);
+                                crop_height = dimensions.map(|d| d.1).unwrap_or(1);
+                            }
+                        });
+                    } else {
+                        ui.label("No crop selection");
+                    }
+                    ui.collapsing("Enter crop coordinates", |ui| {
+                        let (max_width, max_height) = dimensions.unwrap_or((1, 1));
+                        let mut numeric_crop_changed = false;
+                        ui.horizontal(|ui| {
+                            ui.label("X");
+                            numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_x).range(0..=max_width.saturating_sub(1))).changed();
+                            ui.label("Y");
+                            numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_y).range(0..=max_height.saturating_sub(1))).changed();
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("W");
+                            numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_width).range(1..=max_width.max(1))).changed();
+                            ui.label("H");
+                            numeric_crop_changed |= ui.add(egui::DragValue::new(&mut crop_height).range(1..=max_height.max(1))).changed();
+                        });
+                        if numeric_crop_changed {
+                            crop_selection = Some([
+                                crop_x.min(max_width.saturating_sub(1)),
+                                crop_y.min(max_height.saturating_sub(1)),
+                                crop_width.max(1).min(max_width.saturating_sub(crop_x.min(max_width.saturating_sub(1))).max(1)),
+                                crop_height.max(1).min(max_height.saturating_sub(crop_y.min(max_height.saturating_sub(1))).max(1)),
+                            ]);
+                        }
+                        if ui.button("Apply numeric crop").clicked() {
+                            action = Some(EditAction::Crop);
+                            crop_selection = Some([crop_x, crop_y, crop_width, crop_height]);
+                        }
+                    });
+
+                    ui.separator();
+                    if crate::ui_theme::switch(ui, &mut adjustments.per_channel, "Independent RGB controls") {
+                        adjustments_changed = true;
+                    }
+                    if !adjustments.per_channel {
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Palette, "Colour adjustments");
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Brightness, "Brightness");
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness, -100..=100).show_value(true)));
+                        adjustments_changed |= response.changed();
+                        adjustment_dragging |= response.dragged();
+                        adjustment_drag_stopped |= response.drag_stopped();
+
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Contrast, "Contrast");
+                        let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast, -100..=100).show_value(true)));
+                        adjustments_changed |= response.changed();
+                        adjustment_dragging |= response.dragged();
+                        adjustment_drag_stopped |= response.drag_stopped();
+
+                    }else{
+                        edit_section_heading(ui, crate::app::ui::SvgIcon::Palette, "Independent RGB adjustments");
+                        for (index, name) in ["Red", "Green", "Blue"].iter().enumerate() {
+                            ui.label(*name);
+                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.brightness_rgb[index], -100..=100).text("Brightness")));
+                            adjustments_changed |= response.changed();
+                            adjustment_dragging |= response.dragged();
+                            adjustment_drag_stopped |= response.drag_stopped();
+                            let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.contrast_rgb[index], -100..=100).text("Contrast")));
+                            adjustments_changed |= response.changed();
+                            adjustment_dragging |= response.dragged();
+                            adjustment_drag_stopped |= response.drag_stopped();
+                        }
+                        ui.separator();
+                    };
+                    edit_section_heading(ui, crate::app::ui::SvgIcon::Saturation, "Saturation");
+                    let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.saturation, 0..=200).show_value(true)));
+                    adjustments_changed |= response.changed();
+                    adjustment_dragging |= response.dragged();
+                    adjustment_drag_stopped |= response.drag_stopped();
+
+                    edit_section_heading(ui, crate::app::ui::SvgIcon::Hue, "Hue");
+                    let response = ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut adjustments.hue, -180..=180).show_value(true)));
+                    adjustments_changed |= response.changed();
+                    adjustment_dragging |= response.dragged();
+                    adjustment_drag_stopped |= response.drag_stopped();
+
+                    if edit_icon_button(ui, crate::app::ui::SvgIcon::Reset, "Reset colour adjustments", true).clicked() {
+                        adjustments = ImageAdjustments::default();
+                        reset_adjustments_clicked = true;
+                        adjustments_changed = adjustments != original_adjustments;
+                    }
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("Export").strong());
+                    egui::ComboBox::from_id_salt("edit_output_format")
+                        .selected_text(output_format.label())
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for format in EditOutputFormat::ALL {
+                                ui.selectable_value(&mut output_format, format, format.label());
+                            }
+                        });
+                    match output_format {
+                        EditOutputFormat::Jpeg => {
+                            ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut quality, 1..=100).text("JPEG quality")));
+                            ui.small("Higher quality reduces compression artifacts and usually increases file size.");
+                        }
+                        EditOutputFormat::Png => { ui.label("PNG options"); ui.small("Lossless output; alpha is preserved. Encoder uses its default compression strategy."); }
+                        EditOutputFormat::WebP => { ui.label("WebP options"); ui.small("Lossless WebP output; alpha is preserved."); }
+                        EditOutputFormat::Tiff => { ui.label("TIFF options"); ui.small("TIFF output uses the encoder's default compression settings."); }
+                        EditOutputFormat::Bmp => { ui.label("BMP options"); ui.small("Uncompressed bitmap output; alpha support depends on the source and encoder."); }
+                        EditOutputFormat::Tga => { ui.label("TGA options"); ui.small("TGA output uses the encoder's default settings."); }
+                        EditOutputFormat::Qoi => { ui.label("QOI options"); ui.small("Lossless output; alpha is preserved."); }
+                    }
+
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Save As…").clicked() {
+                            action = Some(EditAction::SaveAs);
+                        }
+                        if ui.button("Overwrite original…").clicked() {
+                            action = Some(EditAction::SaveOverwrite);
+                        }
+                    });
+                    if ui.button("Discard working copy…").clicked() {
+                        action = Some(EditAction::Discard);
+                    }
+                    ui.add_space(4.0);
+                    ui.small("Edits remain in memory until saved. Re-encoding can remove EXIF and other embedded metadata.");
+                } else {
+                    ui.label("Choose a supported, fully loaded image file to begin editing.");
+                }
+
+                if let Some(status) = &self.edit_status {
+                    ui.separator();
+                    ui.label(status);
+                }
+                });
+            });
+
+        if let Some(panel_response) = panel_response {
+            let panel_rect = panel_response.response.rect;
+            self.right_sidebar_actual_width = panel_rect.intersect(parent_clip).width().max(0.0);
+            let width = panel_rect.width().clamp(280.0, 560.0);
             let previous_width = self.settings_manager.get().settings_sidebar_width;
-            if !ctx.input(|input| input.pointer.any_down()) && (width - previous_width).abs() > 2.0
+            if editing_sidebar_open
+                && !ctx.input(|input| input.pointer.any_down())
+                && (width - previous_width).abs() > 2.0
             {
                 let _ = self
                     .settings_manager
                     .update(|settings| settings.settings_sidebar_width = width);
             }
+        } else {
+            self.right_sidebar_actual_width = 0.0;
+        }
 
-            self.edit_output_format = output_format;
-            self.save_quality = quality.clamp(1, 100);
-            self.crop_tool_active = crop_tool_active;
-            self.crop_x = crop_x;
-            self.crop_y = crop_y;
-            self.crop_width = crop_width.max(1);
-            self.crop_height = crop_height.max(1);
-            self.crop_selection = crop_selection;
+        self.edit_output_format = output_format;
+        self.save_quality = quality.clamp(1, 100);
+        self.crop_tool_active = crop_tool_active;
+        self.crop_x = crop_x;
+        self.crop_y = crop_y;
+        self.crop_width = crop_width.max(1);
+        self.crop_height = crop_height.max(1);
+        self.crop_selection = crop_selection;
 
-            if adjustments_changed {
-                if let Some(session) = self.edit_session.as_mut() {
-                    if !self.adjustment_gesture_active {
-                        session.record_current_state();
-                    }
-                    session.set_adjustments(adjustments);
+        if adjustments_changed {
+            if let Some(session) = self.edit_session.as_mut() {
+                if !self.adjustment_gesture_active {
+                    session.record_current_state();
                 }
-                self.adjustment_gesture_active = adjustment_dragging;
-                self.refresh_adjustment_preview(ctx, adjustment_dragging);
-                if reset_adjustments_clicked || !adjustment_dragging {
+                session.set_adjustments(adjustments);
+            }
+            self.adjustment_gesture_active = adjustment_dragging;
+            self.refresh_adjustment_preview(ctx, adjustment_dragging);
+            if reset_adjustments_clicked || !adjustment_dragging {
+                self.adjustment_gesture_active = false;
+            }
+        }
+        if adjustment_drag_stopped {
+            self.adjustment_gesture_active = false;
+            self.refresh_adjustment_preview(ctx, false);
+        }
+
+        if let Some(action) = action {
+            match action {
+                EditAction::RotateLeft => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.rotate_left();
+                    }
+                    self.crop_selection = None;
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::RotateRight => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.rotate_right();
+                    }
+                    self.crop_selection = None;
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::FlipHorizontal => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.flip_horizontal();
+                    }
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::FlipVertical => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.flip_vertical();
+                    }
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::Undo => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.undo();
+                    }
+                    self.crop_selection = None;
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::Redo => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.redo();
+                    }
+                    self.crop_selection = None;
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::Crop => {
+                    let result = self.edit_session.as_mut().map(|session| {
+                        session.crop(
+                            self.crop_x,
+                            self.crop_y,
+                            self.crop_width,
+                            self.crop_height,
+                        )
+                    });
+                    match result {
+                        Some(Ok(())) => {
+                            self.edit_status = Some("Crop applied to the working copy.".into());
+                            self.crop_selection = None;
+                            self.crop_tool_active = false;
+                            self.refresh_edit_texture(ctx);
+                        }
+                        Some(Err(error)) => self.edit_status = Some(error),
+                        None => {}
+                    }
+                }
+                EditAction::Resize => {
+                    let result = self
+                        .edit_session
+                        .as_mut()
+                        .map(|session| session.resize(self.resize_width, self.resize_height));
+                    match result {
+                        Some(Ok(())) => {
+                            self.crop_selection = None;
+                            self.crop_x = 0;
+                            self.crop_y = 0;
+                            self.crop_width = self.resize_width;
+                            self.crop_height = self.resize_height;
+                            self.edit_status = Some(format!(
+                                "Resized working copy to {} × {} pixels.",
+                                self.resize_width, self.resize_height
+                            ));
+                            self.refresh_edit_texture(ctx);
+                        }
+                        Some(Err(error)) => self.edit_status = Some(error),
+                        None => {}
+                    }
+                }
+                EditAction::RestoreOriginalSize => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.restore_to_original_size();
+                    }
+                    if let Some(session) = self.edit_session.as_ref() {
+                        self.crop_x = 0;
+                        self.crop_y = 0;
+                        self.crop_width = session.original.width();
+                        self.crop_height = session.original.height();
+                        self.resize_width = session.original.width();
+                        self.resize_height = session.original.height();
+                    }
+                    self.crop_selection = None;
+                    self.crop_tool_active = false;
+                    self.crop_drag_start_image = None;
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::Reset => {
+                    if let Some(session) = self.edit_session.as_mut() {
+                        session.reset();
+                    }
+                    if let Some(session) = self.edit_session.as_ref() {
+                        self.crop_x = 0;
+                        self.crop_y = 0;
+                        self.crop_width = session.original.width();
+                        self.crop_height = session.original.height();
+                        self.resize_width = session.original.width();
+                        self.resize_height = session.original.height();
+                    }
+                    self.crop_selection = None;
+                    self.crop_tool_active = false;
+                    self.refresh_edit_texture(ctx);
+                }
+                EditAction::SaveOverwrite => {
+                    if let Some(session) = self.edit_session.as_ref() {
+                        self.confirm_overwrite_path = Some(session.source_path.clone());
+                        self.overwrite_is_save_as = false;
+                    }
+                }
+                EditAction::SaveAs => self.request_save_as(ctx),
+                EditAction::ExitMode => {
+                    self.show_edit_menu = false;
+                    self.crop_tool_active = false;
+                    self.crop_drag_start_image = None;
                     self.adjustment_gesture_active = false;
+                    self.refresh_adjustment_preview(ctx, false);
+                }
+                EditAction::Discard => {
+                    if dirty {
+                        self.confirm_discard_edits = true;
+                    } else {
+                        self.restore_original_preview(ctx);
+                    }
                 }
             }
-            if adjustment_drag_stopped {
+        }
+
+        if editing_sidebar_open != editing_sidebar_open_before_panel {
+            self.show_edit_menu = editing_sidebar_open;
+            if !editing_sidebar_open {
+                self.crop_tool_active = false;
+                self.crop_drag_start_image = None;
                 self.adjustment_gesture_active = false;
                 self.refresh_adjustment_preview(ctx, false);
-            }
-
-            if let Some(action) = action {
-                match action {
-                    EditAction::RotateLeft => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.rotate_left();
-                        }
-                        self.crop_selection = None;
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::RotateRight => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.rotate_right();
-                        }
-                        self.crop_selection = None;
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::FlipHorizontal => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.flip_horizontal();
-                        }
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::FlipVertical => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.flip_vertical();
-                        }
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::Undo => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.undo();
-                        }
-                        self.crop_selection = None;
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::Redo => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.redo();
-                        }
-                        self.crop_selection = None;
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::Crop => {
-                        let result = self.edit_session.as_mut().map(|session| {
-                            session.crop(
-                                self.crop_x,
-                                self.crop_y,
-                                self.crop_width,
-                                self.crop_height,
-                            )
-                        });
-                        match result {
-                            Some(Ok(())) => {
-                                self.edit_status = Some("Crop applied to the working copy.".into());
-                                self.crop_selection = None;
-                                self.crop_tool_active = false;
-                                self.refresh_edit_texture(ctx);
-                            }
-                            Some(Err(error)) => self.edit_status = Some(error),
-                            None => {}
-                        }
-                    }
-                    EditAction::Resize => {
-                        let result = self
-                            .edit_session
-                            .as_mut()
-                            .map(|session| session.resize(self.resize_width, self.resize_height));
-                        match result {
-                            Some(Ok(())) => {
-                                self.crop_selection = None;
-                                self.crop_x = 0;
-                                self.crop_y = 0;
-                                self.crop_width = self.resize_width;
-                                self.crop_height = self.resize_height;
-                                self.edit_status = Some(format!(
-                                    "Resized working copy to {} × {} pixels.",
-                                    self.resize_width, self.resize_height
-                                ));
-                                self.refresh_edit_texture(ctx);
-                            }
-                            Some(Err(error)) => self.edit_status = Some(error),
-                            None => {}
-                        }
-                    }
-                    EditAction::RestoreOriginalSize => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.restore_to_original_size();
-                        }
-                        if let Some(session) = self.edit_session.as_ref() {
-                            self.crop_x = 0;
-                            self.crop_y = 0;
-                            self.crop_width = session.original.width();
-                            self.crop_height = session.original.height();
-                            self.resize_width = session.original.width();
-                            self.resize_height = session.original.height();
-                        }
-                        self.crop_selection = None;
-                        self.crop_tool_active = false;
-                        self.crop_drag_start_image = None;
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::Reset => {
-                        if let Some(session) = self.edit_session.as_mut() {
-                            session.reset();
-                        }
-                        if let Some(session) = self.edit_session.as_ref() {
-                            self.crop_x = 0;
-                            self.crop_y = 0;
-                            self.crop_width = session.original.width();
-                            self.crop_height = session.original.height();
-                            self.resize_width = session.original.width();
-                            self.resize_height = session.original.height();
-                        }
-                        self.crop_selection = None;
-                        self.crop_tool_active = false;
-                        self.refresh_edit_texture(ctx);
-                    }
-                    EditAction::SaveOverwrite => {
-                        if let Some(session) = self.edit_session.as_ref() {
-                            self.confirm_overwrite_path = Some(session.source_path.clone());
-                            self.overwrite_is_save_as = false;
-                        }
-                    }
-                    EditAction::SaveAs => self.request_save_as(ctx),
-                    EditAction::ExitMode => {
-                        self.show_edit_menu = false;
-                        self.crop_tool_active = false;
-                        self.crop_drag_start_image = None;
-                        self.adjustment_gesture_active = false;
-                        self.refresh_adjustment_preview(ctx, false);
-                    }
-                    EditAction::Discard => {
-                        if dirty {
-                            self.confirm_discard_edits = true;
-                        } else {
-                            self.restore_original_preview(ctx);
-                        }
-                    }
-                }
             }
         }
 

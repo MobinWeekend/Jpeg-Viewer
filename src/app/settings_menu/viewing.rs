@@ -113,16 +113,15 @@ fn render_zoom_step(app: &mut ViewerApp, ui: &mut egui::Ui) {
         .get()
         .zoom_step_mouse_right_button
         .clamp(1.05, 2.0);
-    ui.label(egui::RichText::new("Right mouse button").strong());
     let step_label = format!(
-        "Change per step (+{:.0}%)",
+        "Right mouse button · Change per step (+{:.0}%)",
         (step_mouse_right_button - 1.0) * 100.0
     );
-    ui.add(
-        egui::Slider::new(&mut step_mouse_right_button, 1.05..=2.0)
-            .step_by(0.05)
-            .text(step_label),
-    );
+    crate::ui_theme::labeled_slider(ui, step_label, |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut step_mouse_right_button, 1.05..=2.0).step_by(0.05),
+        ))
+    });
     if (step_mouse_right_button - app.settings_manager.get().zoom_step_mouse_right_button).abs()
         > f32::EPSILON
     {
@@ -136,16 +135,15 @@ fn render_zoom_step(app: &mut ViewerApp, ui: &mut egui::Ui) {
         .get()
         .zoom_step_mouse_wheel
         .clamp(1.05, 2.0);
-    ui.label(egui::RichText::new("Mouse Wheel").strong());
     let step_label = format!(
-        "Change per step (+{:.0}%)",
+        "Mouse wheel · Change per step (+{:.0}%)",
         (step_mouse_wheel - 1.0) * 100.0
     );
-    ui.add(
-        egui::Slider::new(&mut step_mouse_wheel, 1.05..=2.0)
-            .step_by(0.05)
-            .text(step_label),
-    );
+    crate::ui_theme::labeled_slider(ui, step_label, |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut step_mouse_wheel, 1.05..=2.0).step_by(0.05),
+        ))
+    });
     if (step_mouse_wheel - app.settings_manager.get().zoom_step_mouse_wheel).abs() > f32::EPSILON {
         let _ = app
             .settings_manager
@@ -157,13 +155,12 @@ fn render_zoom_step(app: &mut ViewerApp, ui: &mut egui::Ui) {
         .get()
         .zoom_step_keyboard
         .clamp(1.05, 2.0);
-    ui.label(egui::RichText::new("Keyboard").strong());
-    let step_label = format!("Change per step (+{:.0}%)", (step_keyboard - 1.0) * 100.0);
-    ui.add(
-        egui::Slider::new(&mut step_keyboard, 1.05..=2.0)
-            .step_by(0.05)
-            .text(step_label),
-    );
+    let step_label = format!("Keyboard · Change per step (+{:.0}%)", (step_keyboard - 1.0) * 100.0);
+    crate::ui_theme::labeled_slider(ui, step_label, |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut step_keyboard, 1.05..=2.0).step_by(0.05),
+        ))
+    });
     if (step_keyboard - app.settings_manager.get().zoom_step_keyboard).abs() > f32::EPSILON {
         let _ = app
             .settings_manager
@@ -241,11 +238,11 @@ fn render_padding(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             for index in 0..4 {
                 // Build the label before borrowing this element mutably for the slider.
                 let label = format!("{} ({:+.0} pt)", labels[index], values[index]);
-                ui.add(
-                    egui::Slider::new(&mut values[index], -100.0..=100.0)
-                        .step_by(1.0)
-                        .text(label),
-                );
+                crate::ui_theme::labeled_slider(ui, label, |ui| {
+                    ui.add(crate::ui_theme::BorderedSlider::new(
+                        egui::Slider::new(&mut values[index], -100.0..=100.0).step_by(1.0),
+                    ))
+                });
                 changed |= (values[index]
                     - current
                         .view_padding_fine_tune
@@ -270,13 +267,12 @@ fn render_padding(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             for index in 0..4 {
                 // Avoid reading `values[index]` while the slider holds its mutable borrow.
                 let label = format!("{} ({:.0} pt)", labels[index], values[index]);
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut values[index], 0.0..=300.0)
-                            .step_by(1.0)
-                            .text(label),
-                    )
-                    .changed();
+                changed |= crate::ui_theme::labeled_slider(ui, label, |ui| {
+                    ui.add(crate::ui_theme::BorderedSlider::new(
+                        egui::Slider::new(&mut values[index], 0.0..=300.0).step_by(1.0),
+                    ))
+                })
+                .changed();
             }
             if changed {
                 let _ = app

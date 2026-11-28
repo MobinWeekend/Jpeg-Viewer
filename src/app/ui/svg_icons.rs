@@ -14,11 +14,12 @@ const ICON_RASTER_SIZE: u32 = 192;
 /// Paint the same full-color PNG used by the native application window icon.
 pub(crate) fn paint_application_icon(ui: &egui::Ui, rect: egui::Rect) {
     static TEXTURE_ID: std::sync::OnceLock<egui::Id> = std::sync::OnceLock::new();
-    let texture_id = *TEXTURE_ID.get_or_init(|| {
-        egui::Id::unique("jpeg_viewer_application_icon_texture")
-    });
+    let texture_id =
+        *TEXTURE_ID.get_or_init(|| egui::Id::unique("jpeg_viewer_application_icon_texture"));
 
-    let texture = ui.ctx().data(|data| data.get_temp::<egui::TextureHandle>(texture_id));
+    let texture = ui
+        .ctx()
+        .data(|data| data.get_temp::<egui::TextureHandle>(texture_id));
     let texture = texture.unwrap_or_else(|| {
         // Reuse the same decoded PNG pixels that are supplied to native OS
         // window icons. This keeps the Help/Settings branding identical and
@@ -33,7 +34,8 @@ pub(crate) fn paint_application_icon(ui: &egui::Ui, rect: egui::Rect) {
             color_image,
             egui::TextureOptions::LINEAR,
         );
-        ui.ctx().data_mut(|data| data.insert_temp(texture_id, texture.clone()));
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(texture_id, texture.clone()));
         texture
     });
 
@@ -113,7 +115,6 @@ pub(crate) enum SvgIcon {
     Loop,
     Transition,
     Motion,
-    Strength,
     Palette,
     Layout,
     General,
@@ -152,30 +153,81 @@ impl SvgIcon {
                 "navigation-next",
                 include_bytes!("../../../assets/icons/ui/navigation-next.svg"),
             ),
-            Self::ZoomIn => ("zoom-in", include_bytes!("../../../assets/icons/ui/zoom-in.svg")),
-            Self::ZoomOut => ("zoom-out", include_bytes!("../../../assets/icons/ui/zoom-out.svg")),
-            Self::OneToOne => ("one-to-one", include_bytes!("../../../assets/icons/ui/one-to-one.svg")),
+            Self::ZoomIn => (
+                "zoom-in",
+                include_bytes!("../../../assets/icons/ui/zoom-in.svg"),
+            ),
+            Self::ZoomOut => (
+                "zoom-out",
+                include_bytes!("../../../assets/icons/ui/zoom-out.svg"),
+            ),
+            Self::OneToOne => (
+                "one-to-one",
+                include_bytes!("../../../assets/icons/ui/one-to-one.svg"),
+            ),
             Self::Fit => ("fit", include_bytes!("../../../assets/icons/ui/fit.svg")),
-            Self::CaptionMinimize => ("caption-minimize", include_bytes!("../../../assets/icons/ui/caption-minimize.svg")),
-            Self::CaptionMaximize => ("caption-maximize", include_bytes!("../../../assets/icons/ui/caption-maximize.svg")),
-            Self::CaptionRestore => ("caption-restore", include_bytes!("../../../assets/icons/ui/caption-restore.svg")),
-            Self::CaptionClose => ("caption-close", include_bytes!("../../../assets/icons/ui/caption-close.svg")),
+            Self::CaptionMinimize => (
+                "caption-minimize",
+                include_bytes!("../../../assets/icons/ui/caption-minimize.svg"),
+            ),
+            Self::CaptionMaximize => (
+                "caption-maximize",
+                include_bytes!("../../../assets/icons/ui/caption-maximize.svg"),
+            ),
+            Self::CaptionRestore => (
+                "caption-restore",
+                include_bytes!("../../../assets/icons/ui/caption-restore.svg"),
+            ),
+            Self::CaptionClose => (
+                "caption-close",
+                include_bytes!("../../../assets/icons/ui/caption-close.svg"),
+            ),
             Self::Eye => ("eye", include_bytes!("../../../assets/icons/ui/eye.svg")),
             Self::Undo => ("undo", include_bytes!("../../../assets/icons/ui/undo.svg")),
             Self::Redo => ("redo", include_bytes!("../../../assets/icons/ui/redo.svg")),
-            Self::RotateLeft => ("rotate-left", include_bytes!("../../../assets/icons/ui/rotate-left.svg")),
-            Self::RotateRight => ("rotate-right", include_bytes!("../../../assets/icons/ui/rotate-right.svg")),
-            Self::FlipHorizontal => ("flip-horizontal", include_bytes!("../../../assets/icons/ui/flip-horizontal.svg")),
-            Self::FlipVertical => ("flip-vertical", include_bytes!("../../../assets/icons/ui/flip-vertical.svg")),
+            Self::RotateLeft => (
+                "rotate-left",
+                include_bytes!("../../../assets/icons/ui/rotate-left.svg"),
+            ),
+            Self::RotateRight => (
+                "rotate-right",
+                include_bytes!("../../../assets/icons/ui/rotate-right.svg"),
+            ),
+            Self::FlipHorizontal => (
+                "flip-horizontal",
+                include_bytes!("../../../assets/icons/ui/flip-horizontal.svg"),
+            ),
+            Self::FlipVertical => (
+                "flip-vertical",
+                include_bytes!("../../../assets/icons/ui/flip-vertical.svg"),
+            ),
             Self::Crop => ("crop", include_bytes!("../../../assets/icons/ui/crop.svg")),
-            Self::Resize => ("resize", include_bytes!("../../../assets/icons/ui/resize.svg")),
-            Self::Brightness => ("brightness", include_bytes!("../../../assets/icons/ui/brightness.svg")),
-            Self::Contrast => ("contrast", include_bytes!("../../../assets/icons/ui/contrast.svg")),
-            Self::Saturation => ("saturation", include_bytes!("../../../assets/icons/ui/saturation.svg")),
+            Self::Resize => (
+                "resize",
+                include_bytes!("../../../assets/icons/ui/resize.svg"),
+            ),
+            Self::Brightness => (
+                "brightness",
+                include_bytes!("../../../assets/icons/ui/brightness.svg"),
+            ),
+            Self::Contrast => (
+                "contrast",
+                include_bytes!("../../../assets/icons/ui/contrast.svg"),
+            ),
+            Self::Saturation => (
+                "saturation",
+                include_bytes!("../../../assets/icons/ui/saturation.svg"),
+            ),
             Self::Hue => ("hue", include_bytes!("../../../assets/icons/ui/hue.svg")),
-            Self::Fullscreen => ("fullscreen", include_bytes!("../../../assets/icons/ui/fullscreen.svg")),
+            Self::Fullscreen => (
+                "fullscreen",
+                include_bytes!("../../../assets/icons/ui/fullscreen.svg"),
+            ),
             Self::Pin => ("pin", include_bytes!("../../../assets/icons/ui/pin.svg")),
-            Self::Unpin => ("unpin", include_bytes!("../../../assets/icons/ui/unpin.svg")),
+            Self::Unpin => (
+                "unpin",
+                include_bytes!("../../../assets/icons/ui/unpin.svg"),
+            ),
             Self::SidebarShow => (
                 "sidebar-show",
                 include_bytes!("../../../assets/icons/ui/sidebar-show.svg"),
@@ -184,7 +236,10 @@ impl SvgIcon {
                 "sidebar-hide",
                 include_bytes!("../../../assets/icons/ui/sidebar-hide.svg"),
             ),
-            Self::Masonry => ("masonry", include_bytes!("../../../assets/icons/ui/masonry.svg")),
+            Self::Masonry => (
+                "masonry",
+                include_bytes!("../../../assets/icons/ui/masonry.svg"),
+            ),
             Self::Home => ("home", include_bytes!("../../../assets/icons/ui/home.svg")),
             Self::ContextShare => (
                 "context-share",
@@ -210,56 +265,174 @@ impl SvgIcon {
                 "context-copy-name",
                 include_bytes!("../../../assets/icons/ui/context-copy-name.svg"),
             ),
-            Self::ContextNewTab => ("context-new-tab", include_bytes!("../../../assets/icons/ui/context-new-tab.svg")),
-            Self::ContextCompare => ("context-compare", include_bytes!("../../../assets/icons/ui/context-compare.svg")),
-            Self::ContextCopy => ("context-copy", include_bytes!("../../../assets/icons/ui/context-copy.svg")),
-            Self::ContextMove => ("context-move", include_bytes!("../../../assets/icons/ui/context-move.svg")),
-            Self::ContextDelete => ("context-delete", include_bytes!("../../../assets/icons/ui/context-delete.svg")),
-            Self::ContextEdit => ("context-edit", include_bytes!("../../../assets/icons/ui/context-edit.svg")),
-            Self::ContextOpenWith => ("context-open-with", include_bytes!("../../../assets/icons/ui/context-open-with.svg")),
-            Self::ContextRename => ("context-rename", include_bytes!("../../../assets/icons/ui/context-rename.svg")),
-            Self::ContextCopyPath => ("context-copy-path", include_bytes!("../../../assets/icons/ui/context-copy-path.svg")),
-            Self::FavoriteStarOutline => ("favorite-star-outline", include_bytes!("../../../assets/icons/ui/favorite-star-outline.svg")),
-            Self::FavoriteStarFilled => ("favorite-star-filled", include_bytes!("../../../assets/icons/ui/favorite-star-filled.svg")),
-            Self::FavoriteHeartOutline => ("favorite-heart-outline", include_bytes!("../../../assets/icons/ui/favorite-heart-outline.svg")),
-            Self::FavoriteHeartFilled => ("favorite-heart-filled", include_bytes!("../../../assets/icons/ui/favorite-heart-filled.svg")),
-            Self::OpenFile => ("open-file", include_bytes!("../../../assets/icons/ui/open-file.svg")),
-            Self::OpenFolder => ("open-folder", include_bytes!("../../../assets/icons/ui/open-folder.svg")),
-            Self::FolderTree => ("folder-tree", include_bytes!("../../../assets/icons/ui/folder-tree.svg")),
+            Self::ContextNewTab => (
+                "context-new-tab",
+                include_bytes!("../../../assets/icons/ui/context-new-tab.svg"),
+            ),
+            Self::ContextCompare => (
+                "context-compare",
+                include_bytes!("../../../assets/icons/ui/context-compare.svg"),
+            ),
+            Self::ContextCopy => (
+                "context-copy",
+                include_bytes!("../../../assets/icons/ui/context-copy.svg"),
+            ),
+            Self::ContextMove => (
+                "context-move",
+                include_bytes!("../../../assets/icons/ui/context-move.svg"),
+            ),
+            Self::ContextDelete => (
+                "context-delete",
+                include_bytes!("../../../assets/icons/ui/context-delete.svg"),
+            ),
+            Self::ContextEdit => (
+                "context-edit",
+                include_bytes!("../../../assets/icons/ui/context-edit.svg"),
+            ),
+            Self::ContextOpenWith => (
+                "context-open-with",
+                include_bytes!("../../../assets/icons/ui/context-open-with.svg"),
+            ),
+            Self::ContextRename => (
+                "context-rename",
+                include_bytes!("../../../assets/icons/ui/context-rename.svg"),
+            ),
+            Self::ContextCopyPath => (
+                "context-copy-path",
+                include_bytes!("../../../assets/icons/ui/context-copy-path.svg"),
+            ),
+            Self::FavoriteStarOutline => (
+                "favorite-star-outline",
+                include_bytes!("../../../assets/icons/ui/favorite-star-outline.svg"),
+            ),
+            Self::FavoriteStarFilled => (
+                "favorite-star-filled",
+                include_bytes!("../../../assets/icons/ui/favorite-star-filled.svg"),
+            ),
+            Self::FavoriteHeartOutline => (
+                "favorite-heart-outline",
+                include_bytes!("../../../assets/icons/ui/favorite-heart-outline.svg"),
+            ),
+            Self::FavoriteHeartFilled => (
+                "favorite-heart-filled",
+                include_bytes!("../../../assets/icons/ui/favorite-heart-filled.svg"),
+            ),
+            Self::OpenFile => (
+                "open-file",
+                include_bytes!("../../../assets/icons/ui/open-file.svg"),
+            ),
+            Self::OpenFolder => (
+                "open-folder",
+                include_bytes!("../../../assets/icons/ui/open-folder.svg"),
+            ),
+            Self::FolderTree => (
+                "folder-tree",
+                include_bytes!("../../../assets/icons/ui/folder-tree.svg"),
+            ),
             Self::Wrap => ("wrap", include_bytes!("../../../assets/icons/ui/wrap.svg")),
-            Self::Inspect => ("inspect", include_bytes!("../../../assets/icons/ui/inspect.svg")),
+            Self::Inspect => (
+                "inspect",
+                include_bytes!("../../../assets/icons/ui/inspect.svg"),
+            ),
             Self::Raw => ("raw", include_bytes!("../../../assets/icons/ui/raw.svg")),
-            Self::Settings => ("settings", include_bytes!("../../../assets/icons/ui/settings.svg")),
+            Self::Settings => (
+                "settings",
+                include_bytes!("../../../assets/icons/ui/settings.svg"),
+            ),
             Self::Help => ("help", include_bytes!("../../../assets/icons/ui/help.svg")),
             Self::Exit => ("exit", include_bytes!("../../../assets/icons/ui/exit.svg")),
-            Self::Slideshow => ("slideshow", include_bytes!("../../../assets/icons/ui/slideshow.svg")),
-            Self::Sleep => ("sleep", include_bytes!("../../../assets/icons/ui/sleep.svg")),
-            Self::Interval => ("interval", include_bytes!("../../../assets/icons/ui/interval.svg")),
+            Self::Slideshow => (
+                "slideshow",
+                include_bytes!("../../../assets/icons/ui/slideshow.svg"),
+            ),
+            Self::Sleep => (
+                "sleep",
+                include_bytes!("../../../assets/icons/ui/sleep.svg"),
+            ),
+            Self::Interval => (
+                "interval",
+                include_bytes!("../../../assets/icons/ui/interval.svg"),
+            ),
             Self::Loop => ("loop", include_bytes!("../../../assets/icons/ui/loop.svg")),
-            Self::Transition => ("transition", include_bytes!("../../../assets/icons/ui/transition.svg")),
-            Self::Motion => ("motion", include_bytes!("../../../assets/icons/ui/motion.svg")),
-            Self::Strength => ("strength", include_bytes!("../../../assets/icons/ui/strength.svg")),
-            Self::Palette => ("palette", include_bytes!("../../../assets/icons/ui/palette.svg")),
-            Self::Layout => ("layout", include_bytes!("../../../assets/icons/ui/layout.svg")),
-            Self::General => ("general", include_bytes!("../../../assets/icons/ui/general.svg")),
-            Self::Viewing => ("viewing", include_bytes!("../../../assets/icons/ui/viewing.svg")),
-            Self::WindowFrame => ("window-frame", include_bytes!("../../../assets/icons/ui/window-frame.svg")),
-            Self::Cache => ("cache", include_bytes!("../../../assets/icons/ui/cache.svg")),
-            Self::Performance => ("performance", include_bytes!("../../../assets/icons/ui/performance.svg")),
-            Self::VirtualTexture => ("virtual-texture", include_bytes!("../../../assets/icons/ui/virtual-texture.svg")),
-            Self::Reset => ("reset", include_bytes!("../../../assets/icons/ui/reset.svg")),
-            Self::Updates => ("updates", include_bytes!("../../../assets/icons/ui/updates.svg")),
-            Self::SettingsFile => ("settings-file", include_bytes!("../../../assets/icons/ui/settings-file.svg")),
-            Self::Interface => ("interface", include_bytes!("../../../assets/icons/ui/interface.svg")),
-            Self::Input => ("input", include_bytes!("../../../assets/icons/ui/input.svg")),
-            Self::MasonryFolder => ("masonry-folder", include_bytes!("../../../assets/icons/ui/masonry-folder.svg")),
-            Self::HomeStart => ("home-start", include_bytes!("../../../assets/icons/ui/home-start.svg")),
-            Self::Image => ("image", include_bytes!("../../../assets/icons/ui/image.svg")),
-            Self::Startup => ("startup", include_bytes!("../../../assets/icons/ui/startup.svg")),
+            Self::Transition => (
+                "transition",
+                include_bytes!("../../../assets/icons/ui/transition.svg"),
+            ),
+            Self::Motion => (
+                "motion",
+                include_bytes!("../../../assets/icons/ui/motion.svg"),
+            ),
+            Self::Palette => (
+                "palette",
+                include_bytes!("../../../assets/icons/ui/palette.svg"),
+            ),
+            Self::Layout => (
+                "layout",
+                include_bytes!("../../../assets/icons/ui/layout.svg"),
+            ),
+            Self::General => (
+                "general",
+                include_bytes!("../../../assets/icons/ui/general.svg"),
+            ),
+            Self::Viewing => (
+                "viewing",
+                include_bytes!("../../../assets/icons/ui/viewing.svg"),
+            ),
+            Self::WindowFrame => (
+                "window-frame",
+                include_bytes!("../../../assets/icons/ui/window-frame.svg"),
+            ),
+            Self::Cache => (
+                "cache",
+                include_bytes!("../../../assets/icons/ui/cache.svg"),
+            ),
+            Self::Performance => (
+                "performance",
+                include_bytes!("../../../assets/icons/ui/performance.svg"),
+            ),
+            Self::VirtualTexture => (
+                "virtual-texture",
+                include_bytes!("../../../assets/icons/ui/virtual-texture.svg"),
+            ),
+            Self::Reset => (
+                "reset",
+                include_bytes!("../../../assets/icons/ui/reset.svg"),
+            ),
+            Self::Updates => (
+                "updates",
+                include_bytes!("../../../assets/icons/ui/updates.svg"),
+            ),
+            Self::SettingsFile => (
+                "settings-file",
+                include_bytes!("../../../assets/icons/ui/settings-file.svg"),
+            ),
+            Self::Interface => (
+                "interface",
+                include_bytes!("../../../assets/icons/ui/interface.svg"),
+            ),
+            Self::Input => (
+                "input",
+                include_bytes!("../../../assets/icons/ui/input.svg"),
+            ),
+            Self::MasonryFolder => (
+                "masonry-folder",
+                include_bytes!("../../../assets/icons/ui/masonry-folder.svg"),
+            ),
+            Self::HomeStart => (
+                "home-start",
+                include_bytes!("../../../assets/icons/ui/home-start.svg"),
+            ),
+            Self::Image => (
+                "image",
+                include_bytes!("../../../assets/icons/ui/image.svg"),
+            ),
+            Self::Startup => (
+                "startup",
+                include_bytes!("../../../assets/icons/ui/startup.svg"),
+            ),
         }
     }
 }
-
 
 /// Select the configured favorite mark while keeping added/removed states distinct.
 pub(crate) fn favorite_svg_icon(style: &str, filled: bool) -> SvgIcon {
@@ -273,12 +446,7 @@ pub(crate) fn favorite_svg_icon(style: &str, filled: bool) -> SvgIcon {
 
 /// Paint an SVG icon into an existing rectangle without affecting layout.
 /// The SVG is rasterized only once per egui context and the texture is reused.
-pub(crate) fn paint_svg_icon(
-    ui: &egui::Ui,
-    rect: egui::Rect,
-    icon: SvgIcon,
-    tint: egui::Color32,
-) {
+pub(crate) fn paint_svg_icon(ui: &egui::Ui, rect: egui::Rect, icon: SvgIcon, tint: egui::Color32) {
     let side = rect.width().min(rect.height());
     if !side.is_finite() || side <= 0.0 {
         return;
@@ -397,24 +565,59 @@ mod tests {
             SvgIcon::ContextReorder,
             SvgIcon::ContextArchive,
             SvgIcon::ContextCopyName,
-            SvgIcon::ContextNewTab, SvgIcon::ContextCompare, SvgIcon::ContextCopy,
-            SvgIcon::ContextMove, SvgIcon::ContextDelete, SvgIcon::ContextEdit,
-            SvgIcon::ContextOpenWith, SvgIcon::ContextRename, SvgIcon::ContextCopyPath,
-            SvgIcon::FavoriteStarOutline, SvgIcon::FavoriteStarFilled,
-            SvgIcon::FavoriteHeartOutline, SvgIcon::FavoriteHeartFilled,
-            SvgIcon::OpenFile, SvgIcon::OpenFolder, SvgIcon::FolderTree, SvgIcon::Wrap,
-            SvgIcon::Inspect, SvgIcon::Raw, SvgIcon::Settings, SvgIcon::Help, SvgIcon::Exit,
-            SvgIcon::Slideshow, SvgIcon::Sleep, SvgIcon::Interval, SvgIcon::Loop,
-            SvgIcon::Transition, SvgIcon::Motion, SvgIcon::Strength, SvgIcon::Palette,
-            SvgIcon::Layout, SvgIcon::General, SvgIcon::Viewing, SvgIcon::WindowFrame,
-            SvgIcon::Cache, SvgIcon::Performance, SvgIcon::VirtualTexture, SvgIcon::Reset,
-            SvgIcon::Updates, SvgIcon::SettingsFile, SvgIcon::Interface, SvgIcon::Input,
-            SvgIcon::MasonryFolder, SvgIcon::HomeStart, SvgIcon::Image, SvgIcon::Startup,
+            SvgIcon::ContextNewTab,
+            SvgIcon::ContextCompare,
+            SvgIcon::ContextCopy,
+            SvgIcon::ContextMove,
+            SvgIcon::ContextDelete,
+            SvgIcon::ContextEdit,
+            SvgIcon::ContextOpenWith,
+            SvgIcon::ContextRename,
+            SvgIcon::ContextCopyPath,
+            SvgIcon::FavoriteStarOutline,
+            SvgIcon::FavoriteStarFilled,
+            SvgIcon::FavoriteHeartOutline,
+            SvgIcon::FavoriteHeartFilled,
+            SvgIcon::OpenFile,
+            SvgIcon::OpenFolder,
+            SvgIcon::FolderTree,
+            SvgIcon::Wrap,
+            SvgIcon::Inspect,
+            SvgIcon::Raw,
+            SvgIcon::Settings,
+            SvgIcon::Help,
+            SvgIcon::Exit,
+            SvgIcon::Slideshow,
+            SvgIcon::Sleep,
+            SvgIcon::Interval,
+            SvgIcon::Loop,
+            SvgIcon::Transition,
+            SvgIcon::Motion,
+            SvgIcon::Palette,
+            SvgIcon::Layout,
+            SvgIcon::General,
+            SvgIcon::Viewing,
+            SvgIcon::WindowFrame,
+            SvgIcon::Cache,
+            SvgIcon::Performance,
+            SvgIcon::VirtualTexture,
+            SvgIcon::Reset,
+            SvgIcon::Updates,
+            SvgIcon::SettingsFile,
+            SvgIcon::Interface,
+            SvgIcon::Input,
+            SvgIcon::MasonryFolder,
+            SvgIcon::HomeStart,
+            SvgIcon::Image,
+            SvgIcon::Startup,
         ];
 
         for icon in icons {
             let (name, bytes) = icon.source();
-            assert!(rasterize_svg(bytes).is_some(), "SVG icon {name} did not rasterize");
+            assert!(
+                rasterize_svg(bytes).is_some(),
+                "SVG icon {name} did not rasterize"
+            );
         }
     }
 }

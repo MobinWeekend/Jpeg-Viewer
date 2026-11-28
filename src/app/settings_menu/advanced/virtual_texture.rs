@@ -33,29 +33,25 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui) {
     });
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add_space(8.0);
-        ui.label("VT Threshold:");
-        ui.add_space(8.0);
-        let mut threshold = app.settings_manager.get().virtual_texture_threshold;
-        if ui
-            .add(crate::ui_theme::BorderedSlider::new(
-                egui::Slider::new(&mut threshold, 4096..=16384).text("px"),
-            ))
-            .changed()
-            && threshold != app.settings_manager.get().virtual_texture_threshold
-        {
-            let _ = app.settings_manager.update(|settings| {
-                settings.virtual_texture_threshold = threshold;
-            });
-            if !app.image_entries.is_empty() {
-                app.virtual_texture = None;
-                app.vt_progress = None;
-                app.vt_total_tiles = 0;
-                app.virtual_texture_thread = None;
-                app.load_current_image_with_cache();
-            }
+    let mut threshold = app.settings_manager.get().virtual_texture_threshold;
+    if crate::ui_theme::labeled_slider(ui, "VT Threshold", |ui| {
+        ui.add(crate::ui_theme::BorderedSlider::new(
+            egui::Slider::new(&mut threshold, 4096..=16384).suffix(" px"),
+        ))
+    })
+    .changed()
+        && threshold != app.settings_manager.get().virtual_texture_threshold
+    {
+        let _ = app.settings_manager.update(|settings| {
+            settings.virtual_texture_threshold = threshold;
+        });
+        if !app.image_entries.is_empty() {
+            app.virtual_texture = None;
+            app.vt_progress = None;
+            app.vt_total_tiles = 0;
+            app.virtual_texture_thread = None;
+            app.load_current_image_with_cache();
         }
-    });
+    }
     ui.add_space(8.0);
 }

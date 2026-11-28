@@ -499,14 +499,27 @@ fn render_slideshow_options_row_intrinsic(
 ) {
     // Slideshow settings contain several controls. Let them wrap instead of
     // extending beyond the centered toolbar or being clipped at narrower widths.
-    ui.horizontal_wrapped(|row| app.slideshow_speed_ui(ctx, row));
+    slideshow_options_frame(ui, |row| app.slideshow_speed_ui(ctx, row));
 }
 
 fn render_slideshow_options_row(app: &mut ViewerApp, ctx: &egui::Context, ui: &mut egui::Ui) {
     // The original JPEG Viewer layout has a narrower, floating toolbar than the
     // desktop-profile layouts. Wrap controls directly in the available region so
     // the content determines the height instead of reserving a zero-height row.
-    ui.horizontal_wrapped(|row| app.slideshow_speed_ui(ctx, row));
+    slideshow_options_frame(ui, |row| app.slideshow_speed_ui(ctx, row));
+}
+
+fn slideshow_options_frame(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
+    let visuals = ui.visuals().clone();
+    egui::Frame::new()
+        .fill(visuals.faint_bg_color)
+        .stroke(egui::Stroke::new(0.8, visuals.widgets.noninteractive.bg_stroke.color))
+        .corner_radius(egui::CornerRadius::same(if crate::ui_theme::current_look_profile(ui.ctx()) == "win98" { 0 } else { 8 }))
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            ui.horizontal_wrapped(content);
+        });
 }
 
 fn render_platform_primary_row(

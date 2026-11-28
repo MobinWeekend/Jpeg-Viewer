@@ -818,36 +818,18 @@ fn render_settings_window_contents_inner(
                             if search_query.trim().is_empty() {
                                 for destination in SettingsPage::ALL {
                                     let selected = page == destination;
-                                    let (rect, response) = nav.allocate_exact_size(
-                                        egui::vec2(nav_width - 16.0, 34.0),
-                                        egui::Sense::click(),
-                                    );
-                                    if selected || response.hovered() || response.is_pointer_button_down_on() {
-                                        let fill = if response.is_pointer_button_down_on() {
-                                            nav.visuals().widgets.active.bg_fill
-                                        } else if selected {
-                                            nav.visuals().selection.bg_fill
-                                        } else {
-                                            nav.visuals().widgets.hovered.bg_fill
-                                        };
-                                        nav.painter().rect_filled(rect, egui::CornerRadius::same(6), fill);
-                                    }
-                                    let foreground = if selected || response.hovered() {
-                                        nav.visuals().text_color()
-                                    } else {
-                                        nav.visuals().widgets.inactive.fg_stroke.color
-                                    };
-                                    let icon_rect = egui::Rect::from_center_size(
-                                        egui::pos2(rect.left() + 16.0, rect.center().y),
-                                        egui::vec2(17.0, 17.0),
-                                    );
-                                    crate::app::ui::paint_svg_icon(nav, icon_rect, destination.icon(), foreground);
-                                    nav.painter().text(
-                                        egui::pos2(icon_rect.right() + 8.0, rect.center().y),
-                                        egui::Align2::LEFT_CENTER,
+                                    let response = crate::ui_theme::vertical_tab(
+                                        nav,
                                         destination.label(),
-                                        egui::FontId::proportional(13.0),
-                                        foreground,
+                                        selected,
+                                        |nav, icon_rect, foreground| {
+                                            crate::app::ui::paint_svg_icon(
+                                                nav,
+                                                icon_rect,
+                                                destination.icon(),
+                                                foreground,
+                                            );
+                                        },
                                     );
                                     if response.clicked() {
                                         app.settings_active_page = destination.index();

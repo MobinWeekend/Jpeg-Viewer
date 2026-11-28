@@ -546,20 +546,10 @@ pub fn apply_polished_style_with_options(
             },
         );
         visuals.widgets.active.fg_stroke = egui::Stroke::new(
-            1.0_f32,
-            if dark {
-                body_text
-            } else {
-                contrast_foreground(active_fill)
-            },
+            1.0_f32, contrast_foreground(active_fill),
         );
         visuals.widgets.open.fg_stroke = egui::Stroke::new(
-            1.0_f32,
-            if dark {
-                body_text
-            } else {
-                contrast_foreground(open_fill)
-            },
+            1.0_f32, contrast_foreground(open_fill),
         );
     }
     visuals.weak_text_color = Some(accessible_accent(weak_text, visuals.panel_fill));
@@ -582,11 +572,9 @@ pub fn apply_polished_style_with_options(
     visuals.widgets.active.bg_fill = with_alpha(visuals.widgets.active.bg_fill, 255);
     visuals.widgets.open.bg_fill = with_alpha(visuals.widgets.open.bg_fill, 255);
     visuals.selection.bg_fill = with_alpha(visuals.selection.bg_fill, 255);
-    let hovered_text = if look_profile == "win98" && !dark {
+    let hovered_text = if look_profile == "win98" {
         contrast_foreground(visuals.widgets.hovered.bg_fill)
-    } else {
-        body_text
-    };
+    } else { body_text };
     visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.35_f32, hovered_text);
     visuals.override_text_color = None;
 

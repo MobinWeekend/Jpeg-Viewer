@@ -19,14 +19,13 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         let current = app.settings_manager.get().custom_window_frame_thickness;
         let mut thickness = current;
         ui.add_enabled_ui(!app.settings_manager.get().show_titlebar, |ui| {
-            let response = ui.add(
-                crate::ui_theme::BorderedSlider::new(
+            let response = crate::ui_theme::labeled_slider(ui, "Custom frame thickness", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(
                     egui::Slider::new(&mut thickness, 2.0..=8.0)
                         .step_by(1.0)
-                        .text("Custom frame thickness")
                         .suffix(" px"),
-                ),
-            );
+                ))
+            });
             if response.changed() {
                 let _ = app.settings_manager.update(|settings| {
                     settings.custom_window_frame_thickness = thickness.clamp(2.0, 8.0);

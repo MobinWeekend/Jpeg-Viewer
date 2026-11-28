@@ -200,69 +200,9 @@ fn help_nav_item(
     label: &str,
 ) {
     let selected = *active_tab == tab;
-    let font_id = egui::FontId::proportional(12.5);
-    let text_color = if selected {
-        ui.visuals().text_color()
-    } else {
-        ui.visuals().widgets.inactive.fg_stroke.color
-    };
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.to_owned(), font_id.clone(), text_color);
-    let width = ui.available_width().max(galley.size().x + 43.0);
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(width, 36.0), egui::Sense::click());
-
-    if selected || response.hovered() || response.is_pointer_button_down_on() {
-        let visuals = if response.is_pointer_button_down_on() {
-            &ui.visuals().widgets.active
-        } else if selected {
-            &ui.visuals().widgets.open
-        } else {
-            &ui.visuals().widgets.hovered
-        };
-        let fill = if visuals.bg_fill == egui::Color32::TRANSPARENT {
-            crate::ui_theme::with_alpha(
-                ui.visuals().selection.bg_fill,
-                if selected { 112 } else { 64 },
-            )
-        } else {
-            visuals.bg_fill
-        };
-        ui.painter()
-            .rect_filled(rect, egui::CornerRadius::same(7), fill);
-    }
-
-    let icon_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 16.0, rect.center().y),
-        egui::vec2(16.0, 16.0),
-    );
-    let foreground = if selected || response.hovered() {
-        ui.visuals().text_color()
-    } else {
-        ui.visuals().widgets.inactive.fg_stroke.color
-    };
-    crate::app::ui::paint_svg_icon(ui, icon_rect, icon, foreground);
-    ui.painter().galley(
-        egui::pos2(icon_rect.right() + 7.0, rect.center().y - galley.size().y * 0.5),
-        galley,
-        foreground,
-    );
-
-    if selected {
-        // A vertical marker reinforces that this is a left-side section list,
-        // not a horizontal tab strip.
-        let indicator = egui::Rect::from_min_size(
-            egui::pos2(rect.left() + 2.0, rect.top() + 7.0),
-            egui::vec2(2.0, rect.height() - 14.0),
-        );
-        ui.painter().rect_filled(
-            indicator,
-            egui::CornerRadius::same(1),
-            ui.visuals().selection.stroke.color,
-        );
-    }
-
+    let response = crate::ui_theme::vertical_tab(ui, label, selected, |ui, icon_rect, foreground| {
+        crate::app::ui::paint_svg_icon(ui, icon_rect, icon, foreground);
+    });
     if response.clicked() {
         *active_tab = tab;
     }

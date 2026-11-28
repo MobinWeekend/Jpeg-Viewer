@@ -779,18 +779,24 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             });
 
             let mut size = settings.tricks_snow_size;
-            if ui.add(crate::ui_theme::BorderedSlider::new(
-                egui::Slider::new(&mut size, 2.0..=64.0).text("Size")
-            )).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Size", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(
+                    egui::Slider::new(&mut size, 2.0..=64.0),
+                ))
+            }).changed() {
                 let _ = app.settings_manager.update(|s| s.tricks_snow_size = size.clamp(2.0, 64.0));
             }
 
             let mut speed = settings.tricks_snow_speed;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut speed, 0.1..=5.0).text("Speed"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Speed", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut speed, 0.1..=5.0)))
+            }).changed() {
                 let _ = app.settings_manager.update(|s| s.tricks_snow_speed = speed.clamp(0.1, 5.0));
             }
             let mut density = settings.tricks_snow_density;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut density, 0.25..=2.5).text("Density"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Density", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut density, 0.25..=2.5)))
+            }).changed() {
                 let _ = app.settings_manager.update(|s| s.tricks_snow_density = density.clamp(0.25, 2.5));
             }
             let mut above = settings.tricks_snow_above_image;
@@ -877,26 +883,36 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             }
             if settings.tricks_watermark_mode == "bounce" {
                 let mut speed = settings.tricks_watermark_speed;
-                if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut speed, 0.1..=5.0).text("Bounce speed"))).changed() {
+                if crate::ui_theme::labeled_slider(ui, "Bounce speed", |ui| {
+                    ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut speed, 0.1..=5.0)))
+                }).changed() {
                     let _ = app.settings_manager.update(|s| s.tricks_watermark_speed = speed.clamp(0.1, 5.0));
                 }
             } else {
                 let mut x = settings.tricks_watermark_x;
-                if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut x, 0.0..=100.0).text("Horizontal position").suffix("%"))).changed() {
+                if crate::ui_theme::labeled_slider(ui, "Horizontal position", |ui| {
+                    ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut x, 0.0..=100.0).suffix("%")))
+                }).changed() {
                     let _ = app.settings_manager.update(|s| s.tricks_watermark_x = x.clamp(0.0, 100.0));
                 }
                 let mut y = settings.tricks_watermark_y;
-                if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut y, 0.0..=100.0).text("Vertical position").suffix("%"))).changed() {
+                if crate::ui_theme::labeled_slider(ui, "Vertical position", |ui| {
+                    ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut y, 0.0..=100.0).suffix("%")))
+                }).changed() {
                     let _ = app.settings_manager.update(|s| s.tricks_watermark_y = y.clamp(0.0, 100.0));
                 }
             }
             let mut opacity = (settings.tricks_watermark_opacity * 100.0).round() as i32;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut opacity, 5..=100).text("Opacity").suffix("%"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Opacity", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut opacity, 5..=100).suffix("%")))
+            }).changed() {
                 let value = opacity as f32 / 100.0;
                 let _ = app.settings_manager.update(|s| s.tricks_watermark_opacity = value.clamp(0.05, 1.0));
             }
             let mut size = settings.tricks_watermark_size;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut size, 32.0..=512.0).text("Size"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Size", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut size, 32.0..=512.0)))
+            }).changed() {
                 let _ = app.settings_manager.update(|s| s.tricks_watermark_size = size.clamp(32.0, 512.0));
             }
         }
@@ -914,18 +930,24 @@ pub fn render(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         }
         if enabled {
             let mut blur = settings.tricks_backdrop_blur;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut blur, 8.0..=64.0).text("Blur radius"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Blur radius", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut blur, 8.0..=64.0)))
+            }).changed() {
                 let _ = app.settings_manager.update(|s| s.tricks_backdrop_blur = blur.clamp(8.0, 64.0));
             }
             let mut tint = (settings.tricks_backdrop_tint * 100.0).round() as i32;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut tint, 0..=85).text("Main color tint").suffix("%"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Main color tint", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut tint, 0..=85).suffix("%")))
+            }).changed() {
                 let value = tint as f32 / 100.0;
                 let _ = app.settings_manager.update(|s| s.tricks_backdrop_tint = value.clamp(0.0, 0.85));
             }
             let mut transparency = ((1.0 - settings.tricks_backdrop_opacity) * 100.0)
                 .round()
                 .clamp(0.0, 100.0) as i32;
-            if ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut transparency, 0..=100).text("Transparency").suffix("%"))).changed() {
+            if crate::ui_theme::labeled_slider(ui, "Transparency", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(egui::Slider::new(&mut transparency, 0..=100).suffix("%")))
+            }).changed() {
                 let value = 1.0 - transparency as f32 / 100.0;
                 let _ = app.settings_manager.update(|s| s.tricks_backdrop_opacity = value.clamp(0.0, 1.0));
             }

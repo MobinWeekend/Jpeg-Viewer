@@ -92,11 +92,11 @@ fn render_appearance(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context
             }
             let mut connection = settings.win98_dialup_connection_kbps;
             ui.add_enabled_ui(enabled, |ui| {
-                let response = ui.add(crate::ui_theme::BorderedSlider::new(
-                    egui::Slider::new(&mut connection, 1..=56)
-                        .text("Connection")
-                        .suffix(" kbps"),
-                ));
+                let response = crate::ui_theme::labeled_slider(ui, "Connection", |ui| {
+                    ui.add(crate::ui_theme::BorderedSlider::new(
+                        egui::Slider::new(&mut connection, 1..=56).suffix(" kbps"),
+                    ))
+                });
                 if response.changed() {
                     let _ = app.settings_manager.update(|s| {
                         s.win98_dialup_connection_kbps = connection.clamp(1, 56);
@@ -219,12 +219,13 @@ fn render_layout(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         let auto_hide_enabled = crate::ui_theme::navigation_auto_hide_enabled(&settings, ctx);
         let mut hide_delay_ms = settings.navigation_ui_auto_hide_ms;
         ui.add_enabled_ui(auto_hide_enabled, |ui| {
-            let response = ui.add(crate::ui_theme::BorderedSlider::new(
-                egui::Slider::new(&mut hide_delay_ms, 500..=5000)
-                    .step_by(100.0)
-                    .text("Hide after")
-                    .suffix(" ms"),
-            ));
+            let response = crate::ui_theme::labeled_slider(ui, "Hide after", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(
+                    egui::Slider::new(&mut hide_delay_ms, 500..=5000)
+                        .step_by(100.0)
+                        .suffix(" ms"),
+                ))
+            });
             if response.changed() {
                 let _ = app.settings_manager.update(|settings| {
                     settings.navigation_ui_auto_hide_ms = hide_delay_ms.clamp(500, 5000);
@@ -270,12 +271,13 @@ fn render_window(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
         let settings = app.settings_manager.get().clone();
         let mut opacity_percent = (settings.main_view_background_opacity.clamp(0.15, 1.0) * 100.0).round() as i32;
         ui.add_enabled_ui(crate::ui_theme::os_background_blur_enabled(ctx), |ui| {
-            let response = ui.add(crate::ui_theme::BorderedSlider::new(
-                egui::Slider::new(&mut opacity_percent, 15..=100)
-                    .step_by(5.0)
-                    .text("Main view opacity")
-                    .suffix("%"),
-            ));
+            let response = crate::ui_theme::labeled_slider(ui, "Main view opacity", |ui| {
+                ui.add(crate::ui_theme::BorderedSlider::new(
+                    egui::Slider::new(&mut opacity_percent, 15..=100)
+                        .step_by(5.0)
+                        .suffix("%"),
+                ))
+            });
             if response.changed() {
                 let opacity = (opacity_percent as f32 / 100.0).clamp(0.15, 1.0);
                 let _ = app.settings_manager.update(|settings| settings.main_view_background_opacity = opacity);

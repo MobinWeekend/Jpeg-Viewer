@@ -184,23 +184,9 @@ fn paint_image_tab_controls(
 }
 
 pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    if !app.settings_manager.get().show_file_sidebar {
-        app.sidebar_visible_sources.clear();
-        app.sidebar_prefetch_sources.clear();
-        app.sidebar_last_scroll_offset = None;
-        app.finish_sidebar_thumbnail_frame();
-        app.collect_sidebar_thumbnails(ctx);
-        app.queue_drop_rect = None;
-        app.sidebar_last_current_index = None;
-        app.sidebar_actual_width = 0.0;
-        app.sidebar_resize_dragging = false;
-        return;
-    }
-
-    app.collect_sidebar_thumbnails(ctx);
-    app.sidebar_visible_sources.clear();
-    app.sidebar_prefetch_sources.clear();
-    app.ensure_favorites_loaded();
+    let mut sidebar_wanted = app.settings_manager.get().show_file_sidebar;
+    let sidebar_wanted_before_panel = sidebar_wanted;
+    let sidebar_settings = app.settings_manager.get().clone();
 
     let window_width = ctx.input(|input| {
         input
@@ -213,13 +199,12 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
     // saved width whenever it fits, with a modest minimum for usable controls.
     let max_sidebar_width = (window_width * 0.5).max(1.0);
     let min_sidebar_width = 90.0_f32.min(max_sidebar_width);
-    let default_width = app
+    let target_width = app
         .settings_manager
         .get()
         .file_sidebar_width
         .clamp(min_sidebar_width, max_sidebar_width);
-
-    let sidebar_settings = app.settings_manager.get().clone();
+    let default_width = target_width;
     let sidebar_background = if crate::ui_theme::current_look_profile(ctx) == "win98" {
         // Use the active Win98 palette for both Light and Dark themes; other looks
         // retain the existing image-view surface behavior.
@@ -235,12 +220,18 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
         .fill(sidebar_background)
         .stroke(egui::Stroke::NONE);
 
-    let response = egui::Panel::left("file_sidebar")
+    let parent_clip = ui.clip_rect();
+    let panel_response = egui::Panel::left("file_sidebar")
         .resizable(true)
         .default_size(default_width)
         .size_range(min_sidebar_width..=max_sidebar_width)
         .frame(sidebar_frame)
-        .show(ui, |ui| {
+        .show_collapsible(ui, &mut sidebar_wanted, |ui| {
+            app.collect_sidebar_thumbnails(ctx);
+            app.sidebar_visible_sources.clear();
+            app.sidebar_prefetch_sources.clear();
+            app.ensure_favorites_loaded();
+
             // Extend the same window-local blurred photo backdrop behind the sidebar.
             // The panel painter is clipped to this sidebar, while the backdrop target
             // remains the full client area so its crop aligns with the title bar/canvas.
@@ -838,6 +829,24 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
             }
         });
 
+    if sidebar_wanted != sidebar_wanted_before_panel {
+        let _ = app.settings_manager.update(|settings| {
+            settings.show_file_sidebar = sidebar_wanted;
+        });
+    }
+    let Some(response) = panel_response else {
+        app.sidebar_visible_sources.clear();
+        app.sidebar_prefetch_sources.clear();
+        app.sidebar_last_scroll_offset = None;
+        app.queue_drop_rect = None;
+        app.sidebar_last_current_index = None;
+        app.sidebar_actual_width = 0.0;
+        app.sidebar_resize_dragging = false;
+        app.sidebar_width_needs_save = false;
+        app.finish_sidebar_thumbnail_frame();
+        return;
+    };
+
     // Quick position editor: entering a 1-based position inserts the item there,
     // shifting intervening entries rather than swapping them.
     if let Some((collection, index, value)) = app.sidebar_number_edit.clone() {
@@ -923,7 +932,8 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
     let width = panel_rect
         .width()
         .clamp(min_sidebar_width, max_sidebar_width);
-    app.sidebar_actual_width = width;
+    let visible_panel_rect = panel_rect.intersect(parent_clip);
+    app.sidebar_actual_width = visible_panel_rect.width().max(0.0);
 
     // Track resizing only when the initial pointer press lands on the panel's
     // right-edge resize grip. A generic panel drag can also be triggered by
@@ -939,14 +949,16 @@ pub fn render_left_sidebar(app: &mut ViewerApp, ui: &mut egui::Ui, ctx: &egui::C
     });
 
     if primary_pressed {
-        app.sidebar_resize_dragging = press_origin.is_some_and(|origin| {
-            (origin.x - panel_rect.right()).abs() <= 14.0
-                && origin.y >= panel_rect.top()
-                && origin.y <= panel_rect.bottom()
-        });
+        app.sidebar_resize_dragging = sidebar_wanted
+            && (visible_panel_rect.width() - panel_rect.width()).abs() <= 1.0
+            && press_origin.is_some_and(|origin| {
+                (origin.x - panel_rect.right()).abs() <= 14.0
+                    && origin.y >= panel_rect.top()
+                    && origin.y <= panel_rect.bottom()
+            });
     }
 
-    if app.sidebar_resize_dragging && primary_down {
+    if app.sidebar_resize_dragging && primary_down && sidebar_wanted {
         let previous = app.settings_manager.get().file_sidebar_width;
         if (width - previous).abs() > 1.0 {
             let _ = app.settings_manager.update(|settings| {
